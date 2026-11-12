@@ -582,6 +582,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
+
+        Raises:
+            ValueError: If `func` is defined with `async def`, or is a `functools.wraps` wrapper
+                around an `async def` function.
         """
 
         if not callable(func):
@@ -630,6 +634,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
+
+        Raises:
+            ValueError: If `func` is defined with `async def`, or is a `functools.wraps` wrapper
+                around an `async def` function.
         """
 
         pass
@@ -664,6 +672,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
+
+        Raises:
+            ValueError: If `primary_func` or any of `functions` is defined with `async def`, or is a
+                `functools.wraps` wrapper around an `async def` function.
         """
 
         if not callable(primary_func):
@@ -743,6 +755,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
+
+        Raises:
+            ValueError: If `primary_func` or any of `functions` is defined with `async def`, or is a
+                `functools.wraps` wrapper around an `async def` function.
         """
 
         pass

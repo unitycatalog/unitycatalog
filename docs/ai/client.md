@@ -139,7 +139,7 @@ In order to make a Python callable recognizable to the Unity Catalog functions d
 1. The function must use type hints in both the signature and the return of the function.
 2. A Google-style docstring must be used. A description of the function is required and descriptions of the parameters are strongly recommended for proper use by GenAI agents.
 3. Dependent libraries must be imported within the body of the function. Imports outside of the function will not be resolvable when executing otherwise.
-4. The function you register must be a regular `def`. An `async def` function, or a function that wraps one, is rejected when you create it. This rule is about the function you register, not the client. The async client methods such as `create_python_function_async` still take a regular `def`.
+4. The function you register must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around an `async def`, is rejected when you create it. This rule is about the function you register, not the client. The async client methods such as `create_python_function_async` still take a regular `def`.
 
 Below, we show a proper function definition (with type hints and docstring) that is then used to register the function to Unity Catalog using the async API for creating functions.
 
@@ -218,6 +218,8 @@ wrapped_function = uc_client.create_wrapped_function(
 ```
 
 This API in-lines the helper functions (`a` and `b`) into the primary function (`wrapper`) so that they are part of the same function definition stored in Unity Catalog.
+
+The primary function and every helper function must be a regular `def`. An `async def` helper is rejected the same way as an `async def` primary function.
 
 #### Testing a function
 
@@ -379,6 +381,7 @@ parsing the contents of your function definition and extracting the relevant inf
 - **type hints in collections**: If you are using a collection (`tuple`, `list`, or `dict`), all internal types **must be defined**. Generic collections are not permitted.
 - **generics**: the `Any` type is not supported. All types must be concrete.
 - **defaults**: Default values that are defined in your function signature will be extracted as UC function `DEFAULT` entries in your function. Ensure that the default values are valid for your function and that your type hints are correct (using `Optional[<type>]`).
+- **no async functions**: The function must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around an `async def`, raises a `ValueError`.
 - **docstring formatting**: In order for relevant information to be extracted from the docstring, the syntax of your docstring must match the [Google Docstring](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html) conventions. `reST`, `Epytext` and `Numpydoc` style docstrings are **not supported**.
 - **external dependencies**: There is limited library support within the function execution environment. The list of supported available libraries [can be seen here](https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#supported-libraries-in-python-udfs) and is subject to change over time.
 - **overwriting functions**: To replace an existing function, specify the argument `replace=True` when calling `create_python_function`.

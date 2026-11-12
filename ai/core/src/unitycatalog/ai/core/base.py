@@ -61,6 +61,10 @@ class BaseFunctionClient(ABC):
 
         Returns:
             The UC function information metadata for the configured UC implementation.
+
+        Raises:
+            ValueError: If `func` is defined with `async def`, or is a `functools.wraps` wrapper
+                around an `async def` function.
         """
 
     @abstractmethod
@@ -85,6 +89,10 @@ class BaseFunctionClient(ABC):
 
         Returns:
             The UC function information metadata for the configured UC implementation.
+
+        Raises:
+            ValueError: If `primary_func` or any of `functions` is defined with `async def`, or is a
+                `functools.wraps` wrapper around an `async def` function.
         """
 
     @abstractmethod

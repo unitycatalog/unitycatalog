@@ -11,8 +11,14 @@ from unitycatalog.ai.core.utils.callable_utils import (
 )
 from unitycatalog.ai.core.utils.callable_utils_oss import generate_wrapped_function_info
 from unitycatalog.ai.test_utils.function_utils import (
+    ASYNC_FUNCTION_ERROR,
+    ASYNC_WRAPPER_ERROR,
+    async_int_func,
+    async_int_func_partial,
+    async_int_gen,
     int_func_no_doc,
     int_func_with_doc,
+    run_sync,
     str_func_no_doc,
     str_func_with_doc,
     wrap_func_no_doc,
@@ -215,21 +221,6 @@ def test_generate_wrapped_sql_function_body_with_doc():
     assert wrapped_sql_body_with_doc == expected
 
 
-async def async_int_helper(a: int) -> int:
-    return a + 10
-
-
-async def async_wrap_func(a: int, b: str) -> str:
-    """
-    An async primary function.
-
-    Args:
-        a: An integer.
-        b: A string.
-    """
-    return f"{int_func_no_doc(a)} {str_func_no_doc(b)}"
-
-
 @pytest.mark.parametrize(
     "generate",
     [
@@ -241,19 +232,48 @@ async def async_wrap_func(a: int, b: str) -> str:
     ids=["generate_wrapped_function_info", "generate_wrapped_sql_function_body"],
 )
 @pytest.mark.parametrize(
-    ("primary_func", "functions", "async_name"),
+    ("primary_func", "functions", "expected_error"),
     [
-        (async_wrap_func, [int_func_no_doc, str_func_no_doc], "async_wrap_func"),
-        (wrap_func_no_doc, [async_int_helper, str_func_no_doc], "async_int_helper"),
-    ],
-    ids=["async_primary", "async_helper"],
-)
-def test_wrapped_async_function_is_rejected(generate, primary_func, functions, async_name):
-    with pytest.raises(
-        ValueError,
-        match=re.escape(
-            f"Function '{async_name}' is an async function. Async functions are not supported in "
-            "Unity Catalog. Define it with a regular 'def' instead of 'async def'."
+        (
+            async_int_func,
+            [int_func_no_doc, str_func_no_doc],
+            ASYNC_FUNCTION_ERROR.format("async_int_func"),
         ),
-    ):
+        (
+            wrap_func_no_doc,
+            [async_int_func, str_func_no_doc],
+            ASYNC_FUNCTION_ERROR.format("async_int_func"),
+        ),
+        (
+            wrap_func_no_doc,
+            [async_int_gen, str_func_no_doc],
+            ASYNC_FUNCTION_ERROR.format("async_int_gen"),
+        ),
+        (
+            wrap_func_no_doc,
+            [staticmethod(async_int_func), str_func_no_doc],
+            ASYNC_FUNCTION_ERROR.format("async_int_func"),
+        ),
+        (
+            wrap_func_no_doc,
+            [async_int_func_partial, str_func_no_doc],
+            ASYNC_FUNCTION_ERROR.format(repr(async_int_func_partial)),
+        ),
+        (
+            wrap_func_no_doc,
+            [run_sync(async_int_func), str_func_no_doc],
+            ASYNC_WRAPPER_ERROR.format("async_int_func"),
+        ),
+    ],
+    ids=[
+        "async_primary",
+        "async_helper",
+        "async_generator_helper",
+        "staticmethod_of_async_helper",
+        "partial_of_async_helper",
+        "sync_wrapper_of_async_helper",
+    ],
+)
+def test_wrapped_async_function_is_rejected(generate, primary_func, functions, expected_error):
+    with pytest.raises(ValueError, match=re.escape(expected_error)):
         generate(primary_func, functions)

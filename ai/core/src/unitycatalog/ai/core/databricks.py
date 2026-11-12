@@ -389,6 +389,10 @@ class DatabricksFunctionClient(BaseFunctionClient):
             - Functions that declare credentials or secrets cannot be run in 'local' execution mode, which has no
             access to the Unity Catalog credential and secret services. Use 'serverless' execution mode instead.
 
+        5. **Regular Functions Only**:
+            - The Python function must be a regular `def`. A coroutine function or async generator function
+            defined with `async def`, or a `functools.wraps` wrapper around one, raises a `ValueError`.
+
         **Function Metadata**:
         - Docstrings (if provided and Google-style) will automatically be included as detailed descriptions for
         function parameters as well as for the function itself, enhancing the discoverability of the utility of your
@@ -440,6 +444,10 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
         Returns:
             FunctionInfo: Metadata about the created function, including its name and signature.
+
+        Raises:
+            ValueError: If `func` is defined with `async def`, or is a `functools.wraps` wrapper
+                around an `async def` function.
         """
 
         if not callable(func):
@@ -511,6 +519,10 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
         Returns:
             FunctionInfo: Metadata about the created function, including its name and signature.
+
+        Raises:
+            ValueError: If `primary_func` or any of `functions` is defined with `async def`, or is a
+                `functools.wraps` wrapper around an `async def` function.
         """
         if not callable(primary_func):
             raise ValueError("The provided primary function is not callable.")

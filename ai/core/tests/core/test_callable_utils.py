@@ -1,7 +1,5 @@
-import asyncio
 import datetime
 import decimal
-import functools
 import re
 import textwrap
 import warnings
@@ -28,6 +26,14 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_parameter_defaults,
 )
 from unitycatalog.ai.core.utils.type_utils import SQL_TYPE_TO_PYTHON_TYPE_MAPPING
+from unitycatalog.ai.test_utils.function_utils import (
+    ASYNC_FUNCTION_ERROR,
+    ASYNC_WRAPPER_ERROR,
+    async_int_func,
+    async_int_func_partial,
+    async_int_gen,
+    run_sync,
+)
 from unitycatalog.client.models import FunctionInfo, FunctionParameterInfos
 
 # ---------------------------
@@ -2555,46 +2561,6 @@ def test_identifiers_are_quoted_verbatim(identifier, expected):
     assert construct_credentials_statement([identifier]) == f"\nCREDENTIALS ({expected})"
 
 
-async def async_add(a: int, b: int) -> int:
-    """
-    Adds two integers.
-
-    Args:
-        a: The first integer.
-        b: The second integer.
-    """
-    return a + b
-
-
-async def async_count_up(n: int) -> int:
-    """
-    Yields the integers from 0 up to n.
-
-    Args:
-        n: The upper bound.
-    """
-    for i in range(n):
-        yield i
-
-
-def run_sync(async_func):
-    @functools.wraps(async_func)
-    def wrapper(*args, **kwargs):
-        return asyncio.run(async_func(*args, **kwargs))
-
-    return wrapper
-
-
-ASYNC_FUNCTION_ERROR = (
-    "Function '{}' is an async function. Async functions are not supported in Unity Catalog. "
-    "Define it with a regular 'def' instead of 'async def'."
-)
-ASYNC_WRAPPER_ERROR = (
-    "Function '{}' wraps an async function. Async functions are not supported in Unity Catalog. "
-    "Define the wrapped function with a regular 'def' instead of 'async def'."
-)
-
-
 @pytest.mark.parametrize(
     "generate",
     [
@@ -2606,11 +2572,19 @@ ASYNC_WRAPPER_ERROR = (
 @pytest.mark.parametrize(
     ("func", "expected_error"),
     [
-        (async_add, ASYNC_FUNCTION_ERROR.format("async_add")),
-        (async_count_up, ASYNC_FUNCTION_ERROR.format("async_count_up")),
-        (run_sync(async_add), ASYNC_WRAPPER_ERROR.format("async_add")),
+        (async_int_func, ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (async_int_gen, ASYNC_FUNCTION_ERROR.format("async_int_gen")),
+        (staticmethod(async_int_func), ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (async_int_func_partial, ASYNC_FUNCTION_ERROR.format(repr(async_int_func_partial))),
+        (run_sync(async_int_func), ASYNC_WRAPPER_ERROR.format("async_int_func")),
     ],
-    ids=["coroutine", "async_generator", "sync_wrapper_of_coroutine"],
+    ids=[
+        "coroutine",
+        "async_generator",
+        "staticmethod_of_coroutine",
+        "partial_of_coroutine",
+        "sync_wrapper_of_coroutine",
+    ],
 )
 def test_async_function_is_rejected(generate, func, expected_error):
     with pytest.raises(ValueError, match=re.escape(expected_error)):
