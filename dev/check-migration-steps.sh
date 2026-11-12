@@ -55,7 +55,7 @@ version_of() { basename "$1" | sed -n 's/^V\([0-9]*\)__.*/\1/p'; }
 added_steps=$(git diff --diff-filter=A --name-only "$merge_base" HEAD -- "$steps_dir")
 for step in $added_steps; do
   folder=$(dirname "$step")
-  highest=$(git ls-tree --name-only "$merge_base" -- "$folder/" \
+  highest=$(git ls-tree --name-only "$1" -- "$folder/" \
     | while read -r f; do version_of "$f"; done | sort -n | tail -n 1)
   version=$(version_of "$step")
   if [[ ! "$version" =~ ^[0-9]+$ ]]; then
