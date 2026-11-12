@@ -552,8 +552,9 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * For the index {@code index} missing on {@code table}: when a table that is not Unity Catalog's
-   * ({@code uc_*}) has an index of that name, the clash: "index idx on other_app, so ... could not
-   * create it on uc_x ...". {@code null} when the index is missing for another reason.
+   * ({@code uc_*} or {@code os_*}) has an index of that name, the clash: "index idx on other_app,
+   * so ... could not create it on uc_x ...". {@code null} when the index is missing for another
+   * reason.
    */
   private static String indexClashHint(Connection connection, String index, String table)
       throws SQLException {
@@ -570,7 +571,7 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     }
     for (String other : others) {
-      if (!other.toLowerCase(Locale.ROOT).startsWith("uc_")
+      if (!isUnityCatalogTable(other)
           && indexNames(metaData, connection, other).contains(index.toLowerCase(Locale.ROOT))) {
         return "index "
             + index
@@ -584,6 +585,12 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     }
     return null;
+  }
+
+  /** Unity Catalog's tables: {@code uc_*}, and {@code os_*}, which embedded OpenSharing owns. */
+  private static boolean isUnityCatalogTable(String table) {
+    String lower = table.toLowerCase(Locale.ROOT);
+    return lower.startsWith("uc_") || lower.startsWith("os_");
   }
 
   private static Set<String> indexNames(

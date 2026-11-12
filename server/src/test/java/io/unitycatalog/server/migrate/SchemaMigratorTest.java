@@ -146,6 +146,34 @@ public class SchemaMigratorTest {
   }
 
   @Test
+  void createsOpenSharingsTables() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    for (String table :
+        List.of(
+            "os_shares",
+            "os_share_properties",
+            "os_shared_data_objects",
+            "os_share_permissions",
+            "os_recipients",
+            "os_recipient_tokens")) {
+      // Each table exists and is empty.
+      UpgradeTestUtils.execute(db, "SELECT 1 FROM " + table + " WHERE 1 = 0");
+    }
+  }
+
+  @Test
+  void doesNotBlameAnOpenSharingTableForAStepsIndexName() {
+    assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL names indexes per table");
+    UpgradeTestUtils.execute(db, "CREATE TABLE os_other (x INT)");
+    UpgradeTestUtils.execute(db, "CREATE INDEX idx_name ON os_other (x)");
+
+    // os_* tables are Unity Catalog's own, so the index is not "another application's".
+    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
+        .hasMessageContaining("index idx_name missing on uc_tables")
+        .hasMessageNotContaining("is used by table");
+  }
+
+  @Test
   void readsOnlyTheConfiguredSchema() {
     assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL has no schemas within a database");
     // In a metadata search, "_" matches any character: uc_a would also list ucxa's tables.

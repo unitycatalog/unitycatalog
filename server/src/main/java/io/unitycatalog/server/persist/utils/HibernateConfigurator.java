@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.opensharing.runtime.OpenSharing;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -231,6 +232,8 @@ public class HibernateConfigurator implements AutoCloseable {
       configuration.addAnnotatedClass(DeltaCommitDAO.class);
       configuration.addAnnotatedClass(DependencyDAO.class);
       configuration.addAnnotatedClass(StorageCleanupTaskDAO.class);
+      // OpenSharing's tables (os_*) have schema steps like UC's own, enabled or not.
+      OpenSharing.entities().forEach(configuration::addAnnotatedClass);
 
       ServiceRegistry serviceRegistry =
           new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();
