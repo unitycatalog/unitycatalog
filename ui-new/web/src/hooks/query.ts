@@ -35,10 +35,15 @@ export async function collectAllPages<
   } as Response;
 }
 
+// useInvalidateMethod returns a callback that marks every cached result of the
+// method stale and refetches the ones on screen. With `refetch: false` it only
+// marks them stale: use that for a deleted or renamed entity, whose old name
+// would fail to load while its page navigates away, but must not be served
+// from cache on a later visit.
 export function useInvalidateMethod<
   Input extends DescMessage,
   Output extends DescMessage,
->(method: DescMethodUnary<Input, Output>) {
+>(method: DescMethodUnary<Input, Output>, { refetch = true } = {}) {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({
@@ -46,6 +51,7 @@ export function useInvalidateMethod<
         schema: method,
         cardinality: undefined,
       }),
+      refetchType: refetch ? "active" : "none",
     });
   };
 }

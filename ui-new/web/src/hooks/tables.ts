@@ -58,7 +58,13 @@ export function useCreateTable() {
 
 export function useDeleteTable() {
   const invalidateList = useInvalidateMethod(TableService.method.listTables);
+  const markDetailStale = useInvalidateMethod(TableService.method.getTable, {
+    refetch: false,
+  });
   return useMutation(TableService.method.deleteTable, {
-    onSuccess: invalidateList,
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+    },
   });
 }

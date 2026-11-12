@@ -118,10 +118,15 @@ export function useUpdateModel() {
   const invalidateDetail = useInvalidateMethod(
     ModelService.method.getRegisteredModel,
   );
+  const markDetailStale = useInvalidateMethod(
+    ModelService.method.getRegisteredModel,
+    { refetch: false },
+  );
   return useMutation(ModelService.method.updateRegisteredModel, {
     onSuccess: (_response, request) => {
       invalidateList();
-      if (!request.newName) invalidateDetail();
+      if (request.newName) markDetailStale();
+      else invalidateDetail();
     },
   });
 }
@@ -130,8 +135,15 @@ export function useDeleteModel() {
   const invalidateList = useInvalidateMethod(
     ModelService.method.listRegisteredModels,
   );
+  const markDetailStale = useInvalidateMethod(
+    ModelService.method.getRegisteredModel,
+    { refetch: false },
+  );
   return useMutation(ModelService.method.deleteRegisteredModel, {
-    onSuccess: invalidateList,
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+    },
   });
 }
 
@@ -178,7 +190,14 @@ export function useDeleteModelVersion() {
   const invalidateList = useInvalidateMethod(
     ModelService.method.listModelVersions,
   );
+  const markDetailStale = useInvalidateMethod(
+    ModelService.method.getModelVersion,
+    { refetch: false },
+  );
   return useMutation(ModelService.method.deleteModelVersion, {
-    onSuccess: invalidateList,
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+    },
   });
 }

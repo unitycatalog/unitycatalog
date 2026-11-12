@@ -57,10 +57,15 @@ export function useUpdateCatalog() {
   const invalidateDetail = useInvalidateMethod(
     CatalogService.method.getCatalog,
   );
+  const markDetailStale = useInvalidateMethod(
+    CatalogService.method.getCatalog,
+    { refetch: false },
+  );
   return useMutation(CatalogService.method.updateCatalog, {
     onSuccess: (_response, request) => {
       invalidateList();
-      if (!request.newName) invalidateDetail();
+      if (request.newName) markDetailStale();
+      else invalidateDetail();
     },
   });
 }
@@ -69,7 +74,14 @@ export function useDeleteCatalog() {
   const invalidateList = useInvalidateMethod(
     CatalogService.method.listCatalogs,
   );
+  const markDetailStale = useInvalidateMethod(
+    CatalogService.method.getCatalog,
+    { refetch: false },
+  );
   return useMutation(CatalogService.method.deleteCatalog, {
-    onSuccess: invalidateList,
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+    },
   });
 }

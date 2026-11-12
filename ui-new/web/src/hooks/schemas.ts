@@ -55,17 +55,27 @@ export function useCreateSchema() {
 export function useUpdateSchema() {
   const invalidateList = useInvalidateMethod(SchemaService.method.listSchemas);
   const invalidateDetail = useInvalidateMethod(SchemaService.method.getSchema);
+  const markDetailStale = useInvalidateMethod(SchemaService.method.getSchema, {
+    refetch: false,
+  });
   return useMutation(SchemaService.method.updateSchema, {
     onSuccess: (_response, request) => {
       invalidateList();
-      if (!request.newName) invalidateDetail();
+      if (request.newName) markDetailStale();
+      else invalidateDetail();
     },
   });
 }
 
 export function useDeleteSchema() {
   const invalidateList = useInvalidateMethod(SchemaService.method.listSchemas);
+  const markDetailStale = useInvalidateMethod(SchemaService.method.getSchema, {
+    refetch: false,
+  });
   return useMutation(SchemaService.method.deleteSchema, {
-    onSuccess: invalidateList,
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+    },
   });
 }

@@ -58,7 +58,13 @@ export function useCreateView() {
 
 export function useDeleteView() {
   const invalidateList = useInvalidateMethod(ViewService.method.listViews);
+  const markDetailStale = useInvalidateMethod(ViewService.method.getView, {
+    refetch: false,
+  });
   return useMutation(ViewService.method.deleteView, {
-    onSuccess: invalidateList,
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+    },
   });
 }

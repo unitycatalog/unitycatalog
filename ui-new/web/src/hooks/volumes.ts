@@ -59,17 +59,27 @@ export function useCreateVolume() {
 export function useUpdateVolume() {
   const invalidateList = useInvalidateMethod(VolumeService.method.listVolumes);
   const invalidateDetail = useInvalidateMethod(VolumeService.method.getVolume);
+  const markDetailStale = useInvalidateMethod(VolumeService.method.getVolume, {
+    refetch: false,
+  });
   return useMutation(VolumeService.method.updateVolume, {
     onSuccess: (_response, request) => {
       invalidateList();
-      if (!request.newName) invalidateDetail();
+      if (request.newName) markDetailStale();
+      else invalidateDetail();
     },
   });
 }
 
 export function useDeleteVolume() {
   const invalidateList = useInvalidateMethod(VolumeService.method.listVolumes);
+  const markDetailStale = useInvalidateMethod(VolumeService.method.getVolume, {
+    refetch: false,
+  });
   return useMutation(VolumeService.method.deleteVolume, {
-    onSuccess: invalidateList,
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+    },
   });
 }

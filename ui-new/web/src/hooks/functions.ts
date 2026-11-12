@@ -62,7 +62,14 @@ export function useDeleteFunction() {
   const invalidateList = useInvalidateMethod(
     FunctionService.method.listFunctions,
   );
+  const markDetailStale = useInvalidateMethod(
+    FunctionService.method.getFunction,
+    { refetch: false },
+  );
   return useMutation(FunctionService.method.deleteFunction, {
-    onSuccess: invalidateList,
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+    },
   });
 }
