@@ -123,13 +123,8 @@ final class UpgradeTestUtils {
               }
               return sql;
             });
-    Flyway.configure()
-        .dataSource(watched)
-        .locations("classpath:db/migration/" + DatabaseKind.of(db.dataSource()).folder())
-        .table("uc_schema_history")
-        .callbacks(recorder)
-        .load()
-        .migrate();
+    // The server's own configuration, so the recorder sees the steps the server would run.
+    new SchemaMigrator(watched).flyway().callbacks(recorder).load().migrate();
     return sent;
   }
 
