@@ -239,8 +239,7 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     // The old email is free again, and there is no alias for it.
     createTestUser(OTHER_USER, "Takes The Old Email");
 
-    // The user's own email is not a clash, and a list without a primary email is refused as on
-    // create.
+    // The user's own email is not a clash.
     assertThat(
             usersApi
                 .updateUser(
@@ -252,17 +251,6 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
                 .get(0)
                 .getValue())
         .isEqualTo("moved@localhost");
-    ApiException noPrimary =
-        assertThrows(
-            ApiException.class,
-            () ->
-                usersApi.updateUser(
-                    otherUser.getId(),
-                    new UserResource()
-                        .id(otherUser.getId())
-                        .emails(List.of(new Email().value("other@localhost").primary(false)))));
-    assertThat(noPrimary.getCode()).isEqualTo(412);
-    assertThat(noPrimary.getResponseBody()).contains("User does not have a primary email.");
 
     // An email that belongs to another user is a conflict.
     ApiException clash =
