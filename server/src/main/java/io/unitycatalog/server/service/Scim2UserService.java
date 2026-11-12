@@ -180,13 +180,14 @@ public class Scim2UserService implements ScimService {
 
     // Absent or empty emails leave the email as it is: `uc user update` without --email sends [].
     boolean hasEmails = userResource.getEmails() != null && !userResource.getEmails().isEmpty();
-    if (hasEmails && !primaryEmail(userResource).getValue().equals(existing.getEmail())) {
+    String newEmail = hasEmails ? primaryEmail(userResource).getValue() : null;
+    if (hasEmails && !newEmail.equals(existing.getEmail())) {
       checkNotBootstrapAdmin(existing);
     }
     UpdateUser updateUser =
         UpdateUser.builder()
             .name(userResource.getDisplayName())
-            .email(hasEmails ? primaryEmail(userResource).getValue() : null)
+            .email(newEmail)
             .active(userResource.getActive())
             .externalId(userResource.getExternalId())
             .build();
