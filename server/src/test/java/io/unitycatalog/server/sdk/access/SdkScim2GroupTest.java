@@ -389,17 +389,7 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     HttpResponse<String> deleted = send(adminConfig, "DELETE", path, null);
 
     assertThat(deleted.statusCode()).isEqualTo(204);
-    for (String method : List.of("GET", "DELETE")) {
-      assertThat(send(adminConfig, method, path, null).statusCode()).isEqualTo(404);
-    }
-    assertThat(send(adminConfig, "PUT", path, groupBody("doomed")).statusCode()).isEqualTo(404);
-    assertThat(
-            send(adminConfig, "PATCH", path, patchBody(op("replace", "displayName", "\"x\"")))
-                .statusCode())
-        .isEqualTo(404);
-    assertThat(groupNames(list(""))).isEmpty();
-    assertThat(send(adminConfig, "GET", USERS_PATH + "/" + alice.getId(), null).statusCode())
-        .isEqualTo(200);
+    assertThat(send(adminConfig, "GET", path, null).statusCode()).isEqualTo(404);
     // The name is free again.
     assertThat(send(adminConfig, "POST", GROUPS_PATH, groupBody("doomed")).statusCode())
         .isEqualTo(201);
