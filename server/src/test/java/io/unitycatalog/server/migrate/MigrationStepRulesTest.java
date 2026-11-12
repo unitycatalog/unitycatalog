@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -426,7 +427,12 @@ public class MigrationStepRulesTest {
         // PostgreSQL rebuilds the index for int4 to int8, and rows already there can outgrow it.
         "type=varchar size=673|type=varchar size=673|type=int4 size=10|type=int8 size=19"
             + "|up to 2712 bytes",
-        "type=varchar size=673|type=varchar size=673|type=int4 size=10|type=int4 size=10|"
+        "type=varchar size=673|type=varchar size=673|type=int4 size=10|type=int4 size=10|",
+        // Dropping NOT NULL doesn't grow an entry, even in an index already over the estimate.
+        "type=varchar size=2048 nullable=NO|type=varchar size=2048 nullable=YES|type=int4 size=10"
+            + "|type=int4 size=10|",
+        "type=varchar size=2048|type=varchar size=4096|type=int4 size=10|type=int4 size=10"
+            + "|up to 16408 bytes"
       })
   void typeChangesKeepIndexEntriesShort(
       String textBefore,
@@ -448,7 +454,11 @@ public class MigrationStepRulesTest {
 
   private static SchemaSnapshot snapshot(String text, String number, List<String> index) {
     List<String> entries = new ArrayList<>(index);
-    entries.add("column t.c " + text + " nullable=YES default=null");
+    entries.add(
+        "column t.c "
+            + text
+            + (text.contains(" nullable=") ? "" : " nullable=YES")
+            + " default=null");
     entries.add("column t.i " + number + " nullable=YES default=null");
     return new SchemaSnapshot(entries);
   }
@@ -785,12 +795,16 @@ public class MigrationStepRulesTest {
    */
   private static List<String> regrownIndexes(
       DatabaseKind kind, SchemaSnapshot before, SchemaSnapshot after) {
+    // A column grows an entry only through its type, size or scale; NOT NULL, the default and
+    // the collation don't change how many bytes a value takes.
     Set<String> changed = new HashSet<>();
     for (String entry : after.entries()) {
       Matcher line = COLUMN_LINE.matcher("+ " + entry);
-      if (line.matches()
-          && !before.entries().contains(entry)
-          && columnLine(before, line.group(2)) != null) {
+      if (!line.matches()) {
+        continue;
+      }
+      Matcher old = columnLine(before, line.group(2));
+      if (old != null && !sizing(old).equals(sizing(line))) {
         changed.add(line.group(2));
       }
     }
@@ -825,6 +839,11 @@ public class MigrationStepRulesTest {
           }
         });
     return problems;
+  }
+
+  /** The type, size and scale of a column line: what sets the bytes a value takes. */
+  private static List<String> sizing(Matcher line) {
+    return Arrays.asList(line.group(3), line.group(4), line.group(5));
   }
 
   /** The column line of {@code column} ({@code table.name}) in {@code snapshot}, or null. */
