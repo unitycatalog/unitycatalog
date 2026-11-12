@@ -16,6 +16,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -31,6 +32,8 @@ import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 /**
  * E2E tests for the Delta REST Catalog {@code DELETE table} endpoint (204 on success, 404 on
@@ -113,15 +116,23 @@ public class SdkDeleteTableTest extends BaseServerTest {
         "Table not found");
   }
 
-  /** A rename that commits in between must not make the drop delete the renamed table. */
-  @Test
-  public void dropRacingARenameDoesNotDeleteTheRenamedTable() throws Exception {
+  /**
+   * A rename that commits in between must not make the drop delete the renamed table, nor, for a
+   * managed table, queue the deletion of its storage.
+   */
+  @ParameterizedTest
+  @EnumSource(
+      value = TableType.class,
+      names = {"EXTERNAL", "MANAGED"})
+  public void dropRacingARenameDoesNotDeleteTheRenamedTable(TableType type) throws Exception {
     String oldName = TestUtils.SCHEMA_FULL_NAME + ".tbl_drop_race";
     TableInfo table =
         BaseTableCRUDTestEnv.createTestingTable(
             "tbl_drop_race",
-            TableType.EXTERNAL,
-            Optional.of("file:///tmp/uc_test/tbl_drop_race"),
+            type,
+            type == TableType.EXTERNAL
+                ? Optional.of("file:///tmp/uc_test/tbl_drop_race")
+                : Optional.empty(),
             tableOps);
 
     TestUtils.assertApiException(
@@ -144,6 +155,11 @@ public class SdkDeleteTableTest extends BaseServerTest {
     assertThat(tableOps.getTable(oldName + "_renamed").getTableId()).isEqualTo(table.getTableId());
     // The refused drop leaves the renamed table's columns in place.
     assertThat(columnRows(table.getTableId())).isEqualTo(2);
+    // A refused drop queues no cleanup of the live table's storage.
+    assertThat(
+            StorageCleanupTestSupport.findTask(
+                hibernateConfigurator.getSessionFactory(), UUID.fromString(table.getTableId())))
+        .isNull();
   }
 
   /**
