@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createRouterTransport, type Transport } from "@connectrpc/connect";
 import { ColumnTypeName } from "@/gen/uc/v1/common_pb";
 import { DataSourceFormat } from "@/gen/uc/v1/table_pb";
+import { ViewService, type CreateViewRequest } from "@/gen/uc/v1/view_pb";
 import { VolumeType } from "@/gen/uc/v1/volume_pb";
+import { renderWithProviders } from "@/test/providers";
 
 const mutations = vi.hoisted(() => ({
   table: vi.fn(),
   volume: vi.fn(),
   func: vi.fn(),
   model: vi.fn(),
-  view: vi.fn(),
 }));
 
 vi.mock("@/hooks/tables", () => ({
@@ -25,9 +27,6 @@ vi.mock("@/hooks/functions", () => ({
 vi.mock("@/hooks/models", () => ({
   useCreateModel: () => ({ mutateAsync: mutations.model }),
 }));
-vi.mock("@/hooks/views", () => ({
-  useCreateView: () => ({ mutateAsync: mutations.view }),
-}));
 
 import CreateSchemaObjectAction from "@/components/CreateSchemaObjectAction";
 
@@ -38,8 +37,11 @@ describe("CreateSchemaObjectAction", () => {
     }
   });
 
-  async function open(kind: string) {
-    render(<CreateSchemaObjectAction catalog="main" schema="default" />);
+  async function open(kind: string, transport?: Transport) {
+    renderWithProviders(
+      <CreateSchemaObjectAction catalog="main" schema="default" />,
+      { transport },
+    );
     await userEvent.click(
       screen.getByRole("button", { name: "Create object" }),
     );
@@ -60,7 +62,7 @@ describe("CreateSchemaObjectAction", () => {
       String(DataSourceFormat.PARQUET),
     );
     await userEvent.selectOptions(
-      screen.getByLabelText("Column type"),
+      screen.getByLabelText("Column 1 type"),
       String(ColumnTypeName.INT),
     );
     await userEvent.type(
@@ -124,30 +126,64 @@ describe("CreateSchemaObjectAction", () => {
     );
   });
 
-  it("creates a metric view with its column and table dependency", async () => {
-    await open("view");
-    await userEvent.type(
-      screen.getByLabelText("Metric view YAML"),
-      "version: 1.1",
+  it("sends a column for every metric view dimension and measure", async () => {
+    const definition = [
+      "version: 0.1",
+      "source: main.default.orders",
+      "dimensions:",
+      "  - name: region",
+      "    expr: region",
+      "measures:",
+      "  - name: revenue",
+      "    expr: SUM(amount)",
+    ].join("\n");
+    let request: CreateViewRequest | undefined;
+    const transport = createRouterTransport(({ service }) => {
+      service(ViewService, {
+        createView(input) {
+          request = input;
+          return {};
+        },
+      });
+    });
+    await open("view", transport);
+    expect(
+      screen.getByRole("button", { name: "Remove column 1" }),
+    ).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText("Metric view YAML"));
+    await userEvent.paste(definition);
+    await userEvent.click(screen.getByRole("button", { name: "Add column" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add column" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remove column 2" }),
+    );
+    const firstName = screen.getByLabelText("Column 1 name");
+    await userEvent.clear(firstName);
+    await userEvent.type(firstName, "region");
+    await userEvent.type(screen.getByLabelText("Column 2 name"), "revenue");
+    await userEvent.selectOptions(
+      screen.getByLabelText("Column 2 type"),
+      String(ColumnTypeName.DOUBLE),
     );
     await userEvent.type(
       screen.getByLabelText("Table dependency (full name)"),
-      "main.default.source",
+      "main.default.orders",
     );
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() =>
-      expect(mutations.view).toHaveBeenCalledWith({
-        view: reference("view"),
-        columns: [
-          { name: "value", typeName: ColumnTypeName.STRING, nullable: true },
-        ],
-        viewDefinition: "version: 1.1",
-        dependencies: [
-          { target: { case: "tableFullName", value: "main.default.source" } },
-        ],
-        comment: undefined,
-      }),
-    );
+
+    await waitFor(() => expect(request).toBeDefined());
+    expect(request).toMatchObject({
+      view: reference("view"),
+      columns: [
+        { name: "region", typeName: ColumnTypeName.STRING, nullable: true },
+        { name: "revenue", typeName: ColumnTypeName.DOUBLE, nullable: true },
+      ],
+      viewDefinition: definition,
+      dependencies: [
+        { target: { case: "tableFullName", value: "main.default.orders" } },
+      ],
+    });
   });
 
   it("creates a registered model", async () => {

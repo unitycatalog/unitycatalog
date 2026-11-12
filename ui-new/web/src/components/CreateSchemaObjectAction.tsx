@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { ColumnTypeName } from "@/gen/uc/v1/common_pb";
 import { DataSourceFormat } from "@/gen/uc/v1/table_pb";
 import { VolumeType } from "@/gen/uc/v1/volume_pb";
@@ -9,6 +10,7 @@ import { useCreateView } from "@/hooks/views";
 import { useCreateVolume } from "@/hooks/volumes";
 import EntityFormDialog from "@/components/EntityFormDialog";
 import FormField from "@/components/FormField";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 type ObjectKind = "table" | "volume" | "function" | "model" | "view";
@@ -42,6 +44,12 @@ export default function CreateSchemaObjectAction({
   const create = (form: FormData) => {
     const value = (field: string) => String(form.get(field) ?? "");
     const comment = value("comment") || undefined;
+    const columnTypes = form.getAll("columnType");
+    const columns = form.getAll("column").map((name, index) => ({
+      name: String(name),
+      typeName: Number(columnTypes[index]) as ColumnTypeName,
+      nullable: true,
+    }));
     const reference = {
       catalogName: catalog,
       schemaName: schema,
@@ -52,13 +60,7 @@ export default function CreateSchemaObjectAction({
         return createTable.mutateAsync({
           table: reference,
           dataSourceFormat: Number(value("format")) as DataSourceFormat,
-          columns: [
-            {
-              name: value("column"),
-              typeName: Number(value("columnType")) as ColumnTypeName,
-              nullable: true,
-            },
-          ],
+          columns,
           storageLocation: { value: value("location") },
           comment,
         });
@@ -87,13 +89,7 @@ export default function CreateSchemaObjectAction({
       case "view":
         return createView.mutateAsync({
           view: reference,
-          columns: [
-            {
-              name: value("column"),
-              typeName: Number(value("columnType")) as ColumnTypeName,
-              nullable: true,
-            },
-          ],
+          columns,
           viewDefinition: value("definition"),
           dependencies: [
             {
@@ -131,32 +127,7 @@ export default function CreateSchemaObjectAction({
       <FormField id="object-name" label="Name">
         <Input id="object-name" name="name" required />
       </FormField>
-      {(kind === "table" || kind === "view") && (
-        <>
-          <FormField id="object-column" label="Column name">
-            <Input
-              id="object-column"
-              name="column"
-              required
-              defaultValue="value"
-            />
-          </FormField>
-          <FormField id="object-column-type" label="Column type">
-            <select
-              id="object-column-type"
-              name="columnType"
-              className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-              defaultValue={ColumnTypeName.STRING}
-            >
-              {scalarTypes.map((type) => (
-                <option key={type} value={type}>
-                  {ColumnTypeName[type]}
-                </option>
-              ))}
-            </select>
-          </FormField>
-        </>
-      )}
+      {(kind === "table" || kind === "view") && <ColumnRows />}
       {kind === "table" && (
         <FormField id="table-format" label="Data source format">
           <select
@@ -250,5 +221,59 @@ export default function CreateSchemaObjectAction({
         <Input id="object-comment" name="comment" />
       </FormField>
     </EntityFormDialog>
+  );
+}
+
+// ColumnRows edits a column list as repeated `column` and `columnType` form
+// fields, which the submit handler reads back in order with FormData.getAll.
+// A metric view needs one column per YAML dimension and measure.
+function ColumnRows() {
+  const [rows, setRows] = useState([0]);
+  const nextRow = useRef(1);
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className="text-sm leading-none font-medium">Columns</legend>
+      {rows.map((row, index) => (
+        <div key={row} className="flex gap-2">
+          <Input
+            name="column"
+            aria-label={`Column ${index + 1} name`}
+            required
+            defaultValue={row === 0 ? "value" : undefined}
+          />
+          <select
+            name="columnType"
+            aria-label={`Column ${index + 1} type`}
+            className="h-9 rounded-md border bg-transparent px-3 text-sm"
+            defaultValue={ColumnTypeName.STRING}
+          >
+            {scalarTypes.map((type) => (
+              <option key={type} value={type}>
+                {ColumnTypeName[type]}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove column ${index + 1}`}
+            disabled={rows.length === 1}
+            onClick={() => setRows(rows.filter((other) => other !== row))}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setRows([...rows, nextRow.current++])}
+      >
+        <Plus className="h-4 w-4" />
+        Add column
+      </Button>
+    </fieldset>
   );
 }
