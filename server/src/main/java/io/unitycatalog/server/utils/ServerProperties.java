@@ -446,8 +446,7 @@ public class ServerProperties {
     }
     validateAuthAllowlistConfiguration();
     validateStorageCleanupConfiguration();
-    getIdentityProviders();
-    warnAboutExternalModeConfiguration();
+    warnAboutExternalModeConfiguration(getIdentityProviders());
     validateOpaConfiguration();
   }
 
@@ -823,11 +822,11 @@ public class ServerProperties {
    * The exchange's allowlists don't apply to IdP tokens sent directly; without an IdP block only
    * the bootstrap admin's SERVICE token and SCIM tokens work.
    */
-  private void warnAboutExternalModeConfiguration() {
+  private void warnAboutExternalModeConfiguration(List<IdentityProvider> identityProviders) {
     if (!isExternalAuthentication()) {
       return;
     }
-    if (getIdentityProviders().isEmpty()) {
+    if (identityProviders.isEmpty()) {
       LOGGER.warn(
           "No identity provider is configured; only the bootstrap admin's service token and SCIM"
               + " tokens are accepted. Set {}<name>.issuer and .audience.",
