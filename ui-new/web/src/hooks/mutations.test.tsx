@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { act, waitFor } from "@testing-library/react";
-import type { QueryClient } from "@tanstack/react-query";
+import type { DescMessage, DescMethodUnary } from "@bufbuild/protobuf";
+import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { createConnectQueryKey } from "@connectrpc/connect-query";
 import { CatalogService } from "@/gen/uc/v1/catalog_pb";
 import { FunctionService } from "@/gen/uc/v1/function_pb";
 import { ModelService } from "@/gen/uc/v1/model_pb";
+import { UnityProxyService } from "@/gen/uc/v1/proxy_pb";
 import { SchemaService } from "@/gen/uc/v1/schema_pb";
 import { DataSourceFormat, TableService } from "@/gen/uc/v1/table_pb";
 import { ViewService } from "@/gen/uc/v1/view_pb";
@@ -370,4 +372,121 @@ describe("domain mutation hooks", () => {
 
     expect(client.getQueryState(detailKey)?.isInvalidated).toBe(true);
   });
+
+  function useRenameHooks() {
+    return {
+      catalog: useUpdateCatalog(),
+      schema: useUpdateSchema(),
+      model: useUpdateModel(),
+    };
+  }
+  type RenameCase = {
+    parent: string;
+    update: (
+      hooks: ReturnType<typeof useRenameHooks>,
+      newName?: string,
+    ) => Promise<unknown>;
+    descendants: DescMethodUnary[];
+    unrelated: DescMethodUnary[];
+  };
+  const methodKey = <I extends DescMessage, O extends DescMessage>(
+    schema: DescMethodUnary<I, O>,
+  ): QueryKey => createConnectQueryKey({ schema, cardinality: "finite" });
+  const callKey = (path: string): QueryKey =>
+    createConnectQueryKey({
+      schema: UnityProxyService.method.call,
+      input: { method: "GET", path },
+      cardinality: "finite",
+    });
+  const grants = callKey(
+    "/api/2.1/unity-catalog/permissions/table/old.default.obj",
+  );
+  const currentUser = callKey("/api/1.0/unity-control/scim2/Me");
+  const renames: RenameCase[] = [
+    {
+      parent: "catalog",
+      update: (h, newName) =>
+        h.catalog.mutateAsync({ catalog: { name: "old" }, newName }),
+      descendants: [
+        SchemaService.method.listSchemas,
+        SchemaService.method.getSchema,
+        TableService.method.getTable,
+        ViewService.method.getView,
+        VolumeService.method.getVolume,
+        FunctionService.method.getFunction,
+        ModelService.method.getModelVersion,
+      ],
+      unrelated: [],
+    },
+    {
+      parent: "schema",
+      update: (h, newName) =>
+        h.schema.mutateAsync({
+          schema: { catalogName: "main", name: "old" },
+          newName,
+        }),
+      descendants: [
+        TableService.method.listTables,
+        TableService.method.getTable,
+        ViewService.method.getView,
+        VolumeService.method.getVolume,
+        FunctionService.method.getFunction,
+        ModelService.method.getRegisteredModel,
+        ModelService.method.getModelVersion,
+      ],
+      unrelated: [CatalogService.method.getCatalog],
+    },
+    {
+      parent: "model",
+      update: (h, newName) => h.model.mutateAsync({ model: object, newName }),
+      descendants: [
+        ModelService.method.listModelVersions,
+        ModelService.method.getModelVersion,
+      ],
+      unrelated: [TableService.method.getTable],
+    },
+  ];
+
+  // Caches a result for every case key, runs the update, and returns a
+  // reader for whether a key was marked stale.
+  async function updateCached(rename: RenameCase, newName?: string) {
+    const client = makeQueryClient();
+    const keys = [...rename.descendants, ...rename.unrelated].map(methodKey);
+    for (const key of [...keys, grants, currentUser]) {
+      client.setQueryData(key, {});
+    }
+    const { result } = renderHookWithProviders(useRenameHooks, { client });
+    await act(async () => {
+      await rename.update(result.current, newName);
+    });
+    return (key: QueryKey) => client.getQueryState(key)?.isInvalidated;
+  }
+
+  it.each(renames)(
+    "renaming a $parent marks its descendants and grants stale",
+    async (rename) => {
+      const isStale = await updateCached(rename, "new");
+
+      for (const method of rename.descendants) {
+        expect(isStale(methodKey(method)), method.name).toBe(true);
+      }
+      expect(isStale(grants)).toBe(true);
+      for (const method of rename.unrelated) {
+        expect(isStale(methodKey(method)), method.name).toBe(false);
+      }
+      expect(isStale(currentUser)).toBe(false);
+    },
+  );
+
+  it.each(renames)(
+    "editing a $parent keeps its descendants cached",
+    async (rename) => {
+      const isStale = await updateCached(rename);
+
+      for (const method of rename.descendants) {
+        expect(isStale(methodKey(method)), method.name).toBe(false);
+      }
+      expect(isStale(grants)).toBe(false);
+    },
+  );
 });

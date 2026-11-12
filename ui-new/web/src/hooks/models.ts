@@ -8,7 +8,11 @@ import {
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { ModelService } from "@/gen/uc/v1/model_pb";
 import { splitFullName } from "@/lib/uc";
-import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
+import {
+  collectAllPages,
+  useInvalidateMethod,
+  useMarkDescendantsStale,
+} from "@/hooks/query";
 
 export function useListModels(
   catalogName: string,
@@ -123,11 +127,19 @@ export function useUpdateModel() {
     ModelService.method.getRegisteredModel,
     { refetch: false },
   );
+  const markDescendantsStale = useMarkDescendantsStale([
+    ModelService.method.listModelVersions,
+    ModelService.method.getModelVersion,
+  ]);
   return useMutation(ModelService.method.updateRegisteredModel, {
     onSuccess: (_response, request) => {
       invalidateList();
-      if (request.newName) markDetailStale();
-      else invalidateDetail();
+      if (request.newName) {
+        markDetailStale();
+        markDescendantsStale();
+      } else {
+        invalidateDetail();
+      }
     },
   });
 }

@@ -7,7 +7,13 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { CatalogService } from "@/gen/uc/v1/catalog_pb";
-import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
+import { SchemaService } from "@/gen/uc/v1/schema_pb";
+import {
+  collectAllPages,
+  useInvalidateMethod,
+  useMarkDescendantsStale,
+} from "@/hooks/query";
+import { SCHEMA_OBJECT_SERVICES } from "@/hooks/schemas";
 
 export function useListCatalogs() {
   const transport = useTransport();
@@ -61,11 +67,19 @@ export function useUpdateCatalog() {
     CatalogService.method.getCatalog,
     { refetch: false },
   );
+  const markDescendantsStale = useMarkDescendantsStale([
+    SchemaService,
+    ...SCHEMA_OBJECT_SERVICES,
+  ]);
   return useMutation(CatalogService.method.updateCatalog, {
     onSuccess: (_response, request) => {
       invalidateList();
-      if (request.newName) markDetailStale();
-      else invalidateDetail();
+      if (request.newName) {
+        markDetailStale();
+        markDescendantsStale();
+      } else {
+        invalidateDetail();
+      }
     },
   });
 }
