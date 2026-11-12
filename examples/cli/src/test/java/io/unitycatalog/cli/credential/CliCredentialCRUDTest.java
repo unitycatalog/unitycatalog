@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.cli.CredentialCli;
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.externallocation.CliExternalLocationOperations;
 import io.unitycatalog.cli.utils.CliException;
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -56,8 +58,32 @@ public class CliCredentialCRUDTest extends BaseCredentialCRUDTest {
                         "secret")))
         .isInstanceOf(CliException.class)
         .hasMessage(
-            "--azure_directory_id, --azure_application_id and --azure_client_secret must be set"
-                + " together.");
+            "An Azure credential needs both --azure_directory_id and --azure_application_id.");
+  }
+
+  @Test
+  public void testAzureClientSecretComesFromTheFlagThenTheEnvironmentThenAPrompt() {
+    Map<String, String> env = Map.of("UC_AZURE_CLIENT_SECRET", "env-secret\n");
+    Supplier<char[]> prompt = "typed-secret"::toCharArray;
+    Supplier<char[]> noTerminal = () -> null;
+
+    assertThat(CredentialCli.azureClientSecret("flag-secret", env, prompt))
+        .isEqualTo("flag-secret");
+    // A line break at the end, as in a secret read from a file, is dropped.
+    assertThat(CredentialCli.azureClientSecret(null, env, prompt)).isEqualTo("env-secret");
+    // An absent, empty or line-break-only variable falls back to the prompt.
+    for (Map<String, String> unset :
+        List.of(
+            Map.<String, String>of(),
+            Map.of("UC_AZURE_CLIENT_SECRET", ""),
+            Map.of("UC_AZURE_CLIENT_SECRET", "\r\n"))) {
+      assertThat(CredentialCli.azureClientSecret(null, unset, prompt)).isEqualTo("typed-secret");
+    }
+    assertThatThrownBy(() -> CredentialCli.azureClientSecret(null, Map.of(), noTerminal))
+        .isInstanceOf(CliException.class)
+        .hasMessage(
+            "Set the Azure client secret in UC_AZURE_CLIENT_SECRET or with --azure_client_secret,"
+                + " or run the command in a terminal to be prompted for it.");
   }
 
   @Test
