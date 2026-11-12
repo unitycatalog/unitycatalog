@@ -3,8 +3,10 @@ import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppConfig } from "@/lib/appConfig";
 import { clearToken, setToken, useToken } from "@/lib/session";
+import { markOktaToken, type OktaTokens } from "@/lib/okta";
 import {
   CURRENT_USER_QUERY_KEY,
+  TokenExchangeError,
   useGetCurrentUser,
   useLoginWithToken,
   useLogoutCurrentUser,
@@ -25,6 +27,11 @@ interface AuthContextValue {
   // Paste-a-token bypass: store a UC access JWT and use it as a bearer on every
   // call. Refetches the current user so the gate updates immediately.
   signInWithAccessToken: (accessToken: string) => void;
+  // Finishes "Sign in with Okta" with the tokens from the code exchange: the ID
+  // token goes through the UC token exchange as for Google; if the server has
+  // turned the exchange off (external mode), the Okta access token is kept as
+  // the bearer instead.
+  signInWithOkta: (tokens: OktaTokens) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -60,8 +67,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient],
   );
 
+  const signInWithOkta = useCallback(
+    async ({ accessToken, idToken }: OktaTokens) => {
+      let cookieSession = true;
+      try {
+        await loginMutation.mutateAsync(idToken);
+        // The session cookie is the credential now; a stored bearer would outrank it.
+        clearToken();
+        markOktaToken(false);
+      } catch (e) {
+        if (!(e instanceof TokenExchangeError && e.isDisabledByServer())) throw e;
+        cookieSession = false;
+        signInWithAccessToken(accessToken);
+        markOktaToken(true);
+      }
+      // Resolve only once /scim2/Me has answered, so the caller can go to a page behind the auth gate.
+      // Cancel first: a request sent before the credentials changed would otherwise be reused.
+      await queryClient.cancelQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+      await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY }, { throwOnError: true });
+      // Only a cookie session fails here: in external mode a 401 sends Login back to Okta.
+      // With auth off and no token the user query is disabled, so there is no user to wait for.
+      const userQuery = queryClient.getQueryCache().find({ queryKey: CURRENT_USER_QUERY_KEY });
+      if (cookieSession && userQuery && !userQuery.isDisabled() && !userQuery.state.data) {
+        throw new Error("Login failed. Contact your administrator.");
+      }
+    },
+    [loginMutation, signInWithAccessToken, queryClient],
+  );
+
   const logout = useCallback(async () => {
     clearToken();
+    markOktaToken(false);
     try {
       await logoutMutation.mutateAsync();
     } finally {
@@ -77,9 +113,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasAccessToken: token.length > 0,
       loginWithToken,
       signInWithAccessToken,
+      signInWithOkta,
       logout,
     }),
-    [authEnabled, configLoading, userLoading, currentUser, token, loginWithToken, signInWithAccessToken, logout],
+    [
+      authEnabled,
+      configLoading,
+      userLoading,
+      currentUser,
+      token,
+      loginWithToken,
+      signInWithAccessToken,
+      signInWithOkta,
+      logout,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

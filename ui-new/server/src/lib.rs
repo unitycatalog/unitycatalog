@@ -28,6 +28,10 @@ async fn config_handler(
         "authEnabled": state.config.auth_enabled,
         "googleClientId": state.config.google_client_id,
         "oktaEnabled": state.config.okta_enabled,
+        "oktaIssuer": state.config.okta_issuer,
+        "oktaClientId": state.config.okta_client_id,
+        "oktaScopes": state.config.okta_scopes,
+        "oktaRedirectUri": state.config.okta_redirect_uri,
         "keycloakEnabled": state.config.keycloak_enabled,
     }))
 }
@@ -76,6 +80,7 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
                 header::CONTENT_TYPE,
                 header::AUTHORIZATION,
                 HeaderName::from_static("connect-protocol-version"),
+                HeaderName::from_static("x-requested-with"),
             ])
             .allow_credentials(true),
     )

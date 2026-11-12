@@ -11,6 +11,12 @@ export type AppConfig = {
   // googleClientId, when set, enables the Google Identity Services button.
   googleClientId: string;
   oktaEnabled: boolean;
+  // Okta authorization server and OIDC client for the PKCE sign-in; both must be
+  // set for the button. Scopes and redirect URI are optional overrides.
+  oktaIssuer: string;
+  oktaClientId: string;
+  oktaScopes: string;
+  oktaRedirectUri: string;
   keycloakEnabled: boolean;
 };
 
@@ -18,6 +24,10 @@ const EMPTY: AppConfig = {
   authEnabled: false,
   googleClientId: "",
   oktaEnabled: false,
+  oktaIssuer: "",
+  oktaClientId: "",
+  oktaScopes: "",
+  oktaRedirectUri: "",
   keycloakEnabled: false,
 };
 

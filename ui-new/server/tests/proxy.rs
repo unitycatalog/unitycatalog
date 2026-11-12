@@ -15,6 +15,10 @@ fn test_config(uc_server: String) -> Config {
         auth_enabled: true,
         google_client_id: "gid".to_string(),
         okta_enabled: false,
+        okta_issuer: "https://dev-1.okta.com/oauth2/aus1".to_string(),
+        okta_client_id: "okta-cid".to_string(),
+        okta_scopes: "openid profile email".to_string(),
+        okta_redirect_uri: String::new(),
         keycloak_enabled: true,
         allowed_origins: vec![],
         // A path that certainly does not exist, so the SPA fallback stays inert.
@@ -135,6 +139,73 @@ async fn call_forwards_cookie_and_propagates_set_cookie() {
 }
 
 #[tokio::test]
+async fn call_forwards_x_requested_with() {
+    let uc = MockServer::start().await;
+    // UC refuses the ext=cookie token exchange without this CSRF header.
+    Mock::given(method("POST"))
+        .and(path("/api/1.0/unity-control/auth/tokens"))
+        .and(wiremock::matchers::header("x-requested-with", "XMLHttpRequest"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .mount(&uc)
+        .await;
+
+    let app = build_app(uc.uri());
+    let req = Request::builder()
+        .method("POST")
+        .uri("/uc.v1.UnityProxyService/Call")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-requested-with", "XMLHttpRequest")
+        .body(Body::from(
+            serde_json::json!({
+                "method": "POST",
+                "path": "/api/1.0/unity-control/auth/tokens",
+                "query": [{"key": "ext", "value": "cookie"}],
+                "jsonBody": "grant_type=x",
+                "contentType": "application/x-www-form-urlencoded"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["httpStatus"], 200);
+    assert_eq!(json["ok"], true);
+}
+
+#[tokio::test]
+async fn cors_preflight_allows_x_requested_with() {
+    let app = app(AppState {
+        http: reqwest::Client::new(),
+        config: Arc::new(Config {
+            allowed_origins: vec!["http://localhost:5173".to_string()],
+            ..test_config("http://127.0.0.1:1".to_string())
+        }),
+    });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/uc.v1.UnityProxyService/Call")
+                .header(header::ORIGIN, "http://localhost:5173")
+                .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type,x-requested-with")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let allowed = resp
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(allowed.contains("x-requested-with"), "allow-headers: {allowed}");
+}
+
+#[tokio::test]
 async fn call_requires_path() {
     let app = build_app("http://127.0.0.1:1".to_string());
     let resp = app
@@ -164,6 +235,10 @@ async fn config_reports_auth_flags() {
     assert_eq!(json["googleClientId"], "gid");
     assert_eq!(json["keycloakEnabled"], true);
     assert_eq!(json["oktaEnabled"], false);
+    assert_eq!(json["oktaIssuer"], "https://dev-1.okta.com/oauth2/aus1");
+    assert_eq!(json["oktaClientId"], "okta-cid");
+    assert_eq!(json["oktaScopes"], "openid profile email");
+    assert_eq!(json["oktaRedirectUri"], "");
 }
 
 #[tokio::test]

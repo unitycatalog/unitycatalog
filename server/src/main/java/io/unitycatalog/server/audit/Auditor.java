@@ -1,16 +1,14 @@
 package io.unitycatalog.server.audit;
 
-import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CleanupTaskRepository;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.security.JwtClaim;
-import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import jakarta.transaction.Status;
@@ -248,8 +246,7 @@ public final class Auditor implements AutoCloseable {
     if (ctx == null) {
       return SERVER_USER;
     }
-    DecodedJWT jwt = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
-    return jwt == null ? null : jwt.getClaim(JwtClaim.SUBJECT.key()).asString();
+    return IdentityUtils.findPrincipalEmailAddress(ctx);
   }
 
   private void emit(Supplier<AuditRecord> build) {

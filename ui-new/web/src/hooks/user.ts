@@ -36,6 +36,30 @@ const GRANT_TYPE_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchan
 const TOKEN_TYPE_ACCESS = "urn:ietf:params:oauth:token-type:access_token";
 const TOKEN_TYPE_ID = "urn:ietf:params:oauth:token-type:id_token";
 
+// TokenExchangeError is the failed POST /auth/tokens, with the status and body so
+// the caller can tell "exchange is off" from a refused login.
+export class TokenExchangeError extends Error {
+  status: number;
+  body: string;
+  constructor(status: number, body: string) {
+    super(`Login failed (HTTP ${status})`);
+    this.status = status;
+    this.body = body;
+    this.name = "TokenExchangeError";
+  }
+
+  // The server answers the exchange with 501 UNIMPLEMENTED when it runs in
+  // external mode and expects the IdP access token as the bearer instead.
+  isDisabledByServer(): boolean {
+    if (this.status !== 501) return false;
+    try {
+      return (JSON.parse(this.body) as { error_code?: string }).error_code === "UNIMPLEMENTED";
+    } catch {
+      return false;
+    }
+  }
+}
+
 // useLoginWithToken exchanges a provider id_token (e.g. Google) for a UC session
 // cookie via POST /auth/tokens with ext=cookie. The endpoint requires
 // application/x-www-form-urlencoded; the bridge propagates the Set-Cookie back
@@ -55,7 +79,7 @@ export function useLoginWithToken() {
         body: form,
         contentType: "application/x-www-form-urlencoded",
       });
-      if (!res.ok) throw new Error(`Login failed (HTTP ${res.httpStatus})`);
+      if (!res.ok) throw new TokenExchangeError(res.httpStatus, res.body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });

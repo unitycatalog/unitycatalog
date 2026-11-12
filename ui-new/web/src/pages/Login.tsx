@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useGetCurrentUser } from "@/hooks/user";
 import { useAppConfig } from "@/lib/appConfig";
 import { useAuth } from "@/context/auth-context";
+import { beginOktaLogin, canRetryOktaSignIn, isOktaToken, markOktaToken, oktaConfigFrom } from "@/lib/okta";
+import { clearToken, getToken } from "@/lib/session";
 import Logo from "@/components/Logo";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import { Button } from "@/components/ui/button";
@@ -12,7 +15,9 @@ import { Label } from "@/components/ui/label";
 export default function Login() {
   const navigate = useNavigate();
   const { data: appConfig } = useAppConfig();
-  const { loginWithToken, signInWithAccessToken } = useAuth();
+  const { loginWithToken, signInWithAccessToken, currentUser } = useAuth();
+  // Read-only subscription, so the check below re-runs when a background refetch settles.
+  const { status, fetchStatus, data: user } = useGetCurrentUser(false);
   const [error, setError] = useState<string | null>(null);
   const [pastedToken, setPastedToken] = useState("");
 
@@ -36,6 +41,35 @@ export default function Login() {
     navigate({ to: "/" });
   };
 
+  const okta = appConfig ? oktaConfigFrom(appConfig) : null;
+
+  const onOktaSignIn = async () => {
+    if (!okta) return;
+    setError(null);
+    try {
+      window.location.assign(await beginOktaLogin(okta));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start the Okta sign-in.");
+    }
+  };
+
+  // An Okta token that is still stored while we are on the login page was
+  // refused (expired): sign in with Okta again, but only once in a while. Act
+  // only on a settled 401 from /scim2/Me (the cached user is null and idle), not
+  // on a manual visit, a request in flight or a 5xx.
+  useEffect(() => {
+    if (!okta || !getToken() || !isOktaToken()) return;
+    if (status !== "success" || user !== null || fetchStatus !== "idle") return;
+    clearToken();
+    markOktaToken(false);
+    if (canRetryOktaSignIn()) void onOktaSignIn();
+    else setError("Unity Catalog refused your Okta sign-in. Contact your administrator.");
+  }, [okta?.issuer, okta?.clientId, status, fetchStatus, user]);
+
+  useEffect(() => {
+    if (currentUser) navigate({ to: "/", replace: true });
+  }, [currentUser]);
+
   const googleClientId = appConfig?.googleClientId ?? "";
   const anyProvider = googleClientId || appConfig?.oktaEnabled || appConfig?.keycloakEnabled;
 
@@ -57,9 +91,14 @@ export default function Login() {
                 <GoogleAuthButton clientId={googleClientId} onCredential={onGoogleCredential} />
               </div>
             )}
-            {appConfig?.oktaEnabled && (
+            {okta && (
+              <Button className="w-full" onClick={onOktaSignIn}>
+                Sign in with Okta
+              </Button>
+            )}
+            {appConfig?.oktaEnabled && !okta && (
               <p className="text-sm text-muted-foreground">
-                Okta sign-in is enabled on the server. Complete the Okta flow, then return here.
+                Okta sign-in is enabled on the server, but OKTA_ISSUER and OKTA_CLIENT_ID are not both set.
               </p>
             )}
             {appConfig?.keycloakEnabled && (

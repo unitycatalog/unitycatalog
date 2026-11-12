@@ -22,6 +22,10 @@ describe("useAppConfig", () => {
       authEnabled: true,
       googleClientId: "gid",
       oktaEnabled: false,
+      oktaIssuer: "",
+      oktaClientId: "",
+      oktaScopes: "",
+      oktaRedirectUri: "",
       keycloakEnabled: false,
     });
   });
