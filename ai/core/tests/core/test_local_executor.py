@@ -409,13 +409,19 @@ def test_memory_limit_is_not_applied_when_address_space_size_is_unknown(
     resource = pytest.importorskip("resource")
     monkeypatch.setattr(local_executor, "_STATM_PATH", str(tmp_path / "missing"))
     original_limits = resource.getrlimit(resource.RLIMIT_AS)
+    original_cpu_limits = resource.getrlimit(resource.RLIMIT_CPU)
 
-    with caplog.at_level(logging.INFO, logger=local_executor.__name__):
-        local_executor._limit_resources(cpu_time_limit=resource.RLIM_INFINITY, memory_limit=1)
+    try:
+        with caplog.at_level(logging.INFO, logger=local_executor.__name__):
+            local_executor._limit_resources(cpu_time_limit=resource.RLIM_INFINITY, memory_limit=1)
+        limits_after_call = resource.getrlimit(resource.RLIMIT_AS)
+    finally:
+        resource.setrlimit(resource.RLIMIT_CPU, original_cpu_limits)
+        resource.setrlimit(resource.RLIMIT_AS, original_limits)
     succeeded, result = run_in_sandbox(read_memory_limit, {})
 
     assert "cannot read the current address space size" in caplog.text
-    assert resource.getrlimit(resource.RLIMIT_AS) == original_limits
+    assert limits_after_call == original_limits
     assert succeeded, result
     assert result == original_limits
 

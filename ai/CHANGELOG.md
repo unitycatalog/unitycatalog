@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### Behavior Changes
+### Major Changes
 
 - **Sandbox memory limit is relative to the inherited address space**: In the `sandbox` execution mode, `EXECUTOR_MAX_MEMORY_LIMIT` (added in 0.3.0) is now the extra virtual memory, in MB, that the function can allocate on top of the address space the forked sandbox process inherits from your application. It used to be an absolute cap on the whole process, so functions could not allocate anything once your application used more memory than the limit. An existing lower limit is never raised, and no memory limit is applied when the current address space size cannot be read. The `local` execution mode of `DatabricksFunctionClient` is unchanged and still caps the whole subprocess.
 
@@ -13,6 +13,7 @@
 ### Change Log
 
 - Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
+- Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #<this PR>
 
 ## Unity Catalog AI 0.4.0
 
