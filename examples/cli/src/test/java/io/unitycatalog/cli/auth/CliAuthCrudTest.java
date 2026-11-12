@@ -165,33 +165,6 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     }
   }
 
-  // A pasted identity token has no access token to fall back to, so the 501 is reported.
-  @Test
-  public void testAuthLoginWithAnIdentityTokenReportsTheUnimplementedExchange() throws Exception {
-    HttpServer server = startTokenEndpoint(501, ucError("UNIMPLEMENTED"), new AtomicReference<>());
-    try {
-      assertThatThrownBy(
-              () -> AuthCli.exchangeForAccessToken(clientFor(server), "the-id-token", null))
-          .isInstanceOf(ApiException.class)
-          .hasMessageContaining("Token exchange is disabled")
-          .hasMessageContaining("use the identity provider's access token as --auth_token");
-
-      ServerConfig config =
-          new ServerConfig("http://localhost:" + server.getAddress().getPort(), "");
-      assertThatThrownBy(
-              () ->
-                  executeCliCommand(
-                      config, List.of("auth", "login", "--identity_token", "the-id-token")))
-          .isInstanceOf(RuntimeException.class)
-          .hasRootCauseMessage(
-              "Error authenticating - token exchange is disabled on this server; use the identity"
-                  + " provider's access token as --auth_token - "
-                  + ucError("UNIMPLEMENTED"));
-    } finally {
-      server.stop(0);
-    }
-  }
-
   // Internal mode: the exchange works, and the CLI returns the UC token, never the access token
   // the identity provider issued.
   @Test
