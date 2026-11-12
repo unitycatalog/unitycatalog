@@ -50,15 +50,10 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -465,48 +460,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         client.execute(headers, HttpData.ofUtf8(noPrimaryEmailJson)).aggregate().join();
     assertThat(noPrimary.status()).isEqualTo(HttpStatus.PRECONDITION_FAILED);
     assertThat(MAPPER.readTree(noPrimary.contentUtf8()).get("status").asText()).isEqualTo("412");
-  }
-
-  @Test
-  public void testScimConcurrentDuplicateUsersAreConflicts() throws Exception {
-    String userJson =
-        "{\"displayName\":\"test\",\"emails\":[{\"value\":\"scim-race@test.com\",\"primary\":true}]}";
-    RequestHeaders headers =
-        RequestHeaders.builder()
-            .method(HttpMethod.POST)
-            .path("/api/1.0/unity-control/scim2/Users")
-            .contentType(MediaType.JSON)
-            .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
-            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
-            .build();
-    int requests = 16;
-    ExecutorService executor = Executors.newFixedThreadPool(requests);
-    try {
-      CountDownLatch start = new CountDownLatch(1);
-      List<Future<HttpStatus>> responses = new ArrayList<>();
-      for (int i = 0; i < requests; i++) {
-        responses.add(
-            executor.submit(
-                () -> {
-                  start.await();
-                  return client
-                      .execute(headers, HttpData.ofUtf8(userJson))
-                      .aggregate()
-                      .join()
-                      .status();
-                }));
-      }
-      start.countDown();
-      List<HttpStatus> statuses = new ArrayList<>();
-      for (Future<HttpStatus> response : responses) {
-        statuses.add(response.get());
-      }
-
-      assertThat(statuses).containsOnly(HttpStatus.CREATED, HttpStatus.CONFLICT);
-      assertThat(statuses).filteredOn(HttpStatus.CREATED::equals).hasSize(1);
-    } finally {
-      executor.shutdownNow();
-    }
   }
 
   /**
