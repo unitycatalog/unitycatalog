@@ -33,7 +33,6 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.ServerSocket;
 import java.net.URI;
-import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -102,11 +101,11 @@ public class UnityCatalogServerTest extends BaseServerTest {
 
   @Test
   public void startFailsWhenThePortIsTaken() throws Exception {
-    // The server setUp() built writes certs.json and token.txt to configurationFolder, next to the
-    // signing keys copied there.
-    String keyId = Files.readString(configurationFolder.resolve("key_id.txt"));
-    assertThat(Files.readString(configurationFolder.resolve("certs.json"))).contains(keyId);
-    assertThat(configurationFolder.resolve("token.txt")).isNotEmptyFile();
+    // The server setUp() built keeps its signing keys in configurationFolder and writes no
+    // certs.json or admin token file there.
+    assertThat(configurationFolder.resolve("private_key.der")).isNotEmptyFile();
+    assertThat(configurationFolder.resolve("certs.json")).doesNotExist();
+    assertThat(configurationFolder.resolve("token.txt")).doesNotExist();
     assertThatThrownBy(() -> UnityCatalogServer.builder().configurationFolder(null))
         .isInstanceOf(NullPointerException.class);
 
