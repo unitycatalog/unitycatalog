@@ -93,6 +93,7 @@ public class RepositoryUtilsTest {
                     Optional.of("cat.sch.tbl"),
                     ErrorCode.COMMIT_STATE_UNKNOWN))
         .isInstanceOf(BaseException.class)
+        .hasCause(lockFailure)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
 
@@ -106,6 +107,7 @@ public class RepositoryUtilsTest {
                     Optional.of("cat.sch.tbl"),
                     ErrorCode.UPDATE_REQUIREMENT_CONFLICT))
         .isInstanceOf(BaseException.class)
+        .hasCause(lockFailure)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
   }
@@ -129,7 +131,10 @@ public class RepositoryUtilsTest {
                     ErrorCode.COMMIT_STATE_UNKNOWN))
         .isInstanceOfSatisfying(
             BaseException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN));
+            e -> {
+              assertThat(e.getErrorCode()).isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+              assertThat(e.getCause()).isSameAs(lockFailure);
+            });
   }
 
   /**
@@ -235,6 +240,7 @@ public class RepositoryUtilsTest {
             BaseException.class,
             e -> {
               assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+              assertThat(e.getCause()).isSameAs(lockFailure);
               assertThat(e.getMessage())
                   .contains("Concurrent modification in progress on table tbl");
             });
@@ -260,7 +266,10 @@ public class RepositoryUtilsTest {
                     NOT_FOUND))
         .isInstanceOfSatisfying(
             BaseException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
+            e -> {
+              assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+              assertThat(e.getCause()).isSameAs(lockFailure);
+            });
   }
 
   /** A delete whose key no longer matches changes nothing and reports not found. */

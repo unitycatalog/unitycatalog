@@ -97,7 +97,8 @@ public class RepositoryUtils {
       }
       throw new BaseException(
           lockContentionError,
-          "Concurrent modification in progress on table " + tableName + "; retry the request.");
+          "Concurrent modification in progress on table " + tableName + "; retry the request.",
+          e);
     }
   }
 
@@ -171,7 +172,8 @@ public class RepositoryUtils {
       }
       throw new BaseException(
           ErrorCode.UNAVAILABLE,
-          "Concurrent modification in progress on " + description + "; retry the request.");
+          "Concurrent modification in progress on " + description + "; retry the request.",
+          e);
     }
   }
 
