@@ -9,6 +9,7 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.StorageCredentialCacheMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
@@ -145,9 +146,13 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
 
     static Key of(CredentialContext context) {
       // Per-bucket config vends have no credential DAO, so both role fields are null. AWS IAM role
-      // is the only DB-backed credential type today; a new type must add its binding to the key.
+      // is the only credential type that can be vended today: the Azure and GCS vendors refuse a
+      // credential, so nothing is cached for one. Vending them must add their binding to the key.
       Optional<AwsIamRoleResponse> awsIamRole =
-          context.getCredentialDAO().map(CredentialDAO::getAwsIamRoleResponse);
+          context
+              .getCredentialDAO()
+              .filter(dao -> dao.getCredentialType() == CredentialType.AWS_IAM_ROLE)
+              .map(CredentialDAO::getAwsIamRoleResponse);
       return new Key(
           context.getLocations(),
           context.getPrivileges(),

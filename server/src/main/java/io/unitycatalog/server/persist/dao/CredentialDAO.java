@@ -6,9 +6,13 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
+import io.unitycatalog.server.model.AzureServicePrincipalResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
+import io.unitycatalog.server.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import jakarta.persistence.Column;
@@ -33,6 +37,9 @@ import lombok.experimental.SuperBuilder;
  * payload is stored as a JSON blob in the {@code credential} column, with the {@code
  * credentialType} discriminator indicating how to deserialize it.
  *
+ * <p>For Azure and GCS the blob includes the client secret or private key. It is stored as is, and
+ * {@link #toCredentialInfo} leaves it out of every response.
+ *
  * @see CredentialService
  * @see AwsCredentialVendor
  */
@@ -50,7 +57,8 @@ public class CredentialDAO extends IdentifiableDAO {
 
   public enum CredentialType {
     AWS_IAM_ROLE,
-    // Add other types as necessary
+    AZURE_SERVICE_PRINCIPAL,
+    GCP_SERVICE_ACCOUNT_KEY
   }
 
   @Column(name = "credential_type", nullable = false)
@@ -59,8 +67,9 @@ public class CredentialDAO extends IdentifiableDAO {
   @Setter(AccessLevel.NONE)
   private CredentialType credentialType;
 
+  // A GCS service account key does not fit in MySQL's default tinytext of 255 bytes.
   @Lob
-  @Column(name = "credential", nullable = false)
+  @Column(name = "credential", nullable = false, length = 16777215)
   // No direct access from outside
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
@@ -103,6 +112,10 @@ public class CredentialDAO extends IdentifiableDAO {
             .build();
     if (createRequest.getAwsIamRole() != null) {
       dao.setAwsIamRole(createRequest.getAwsIamRole());
+    } else if (createRequest.getAzureServicePrincipal() != null) {
+      dao.setAzureServicePrincipal(createRequest.getAzureServicePrincipal());
+    } else if (createRequest.getGcpServiceAccountKey() != null) {
+      dao.setGcpServiceAccountKey(createRequest.getGcpServiceAccountKey());
     } else {
       throw new IllegalArgumentException("Unknown credential type");
     }
@@ -122,14 +135,26 @@ public class CredentialDAO extends IdentifiableDAO {
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
             .updatedBy(updatedBy);
     switch (credentialType) {
-      case AWS_IAM_ROLE:
+      case AWS_IAM_ROLE -> {
         AwsIamRoleResponse awsIamRole = parseCredential(AwsIamRoleResponse.class);
         masterAwsIamRoleArn.ifPresent(awsIamRole::setUnityCatalogIamArn);
         credentialInfo.setAwsIamRole(awsIamRole);
-        break;
-      // TODO: support Azure and GCP.
-      default:
-        throw new IllegalArgumentException("Unknown credential type: " + credentialType);
+      }
+      case AZURE_SERVICE_PRINCIPAL -> {
+        AzureServicePrincipalRequest servicePrincipal =
+            parseCredential(AzureServicePrincipalRequest.class);
+        credentialInfo.setAzureServicePrincipal(
+            new AzureServicePrincipalResponse()
+                .directoryId(servicePrincipal.getDirectoryId())
+                .applicationId(servicePrincipal.getApplicationId()));
+      }
+      case GCP_SERVICE_ACCOUNT_KEY -> {
+        GcpServiceAccountKeyRequest key = parseCredential(GcpServiceAccountKeyRequest.class);
+        credentialInfo.setGcpServiceAccountKey(
+            new GcpServiceAccountKeyResponse()
+                .email(key.getEmail())
+                .privateKeyId(key.getPrivateKeyId()));
+      }
     }
     return credentialInfo;
   }
@@ -155,6 +180,14 @@ public class CredentialDAO extends IdentifiableDAO {
 
   public void setAwsIamRole(AwsIamRoleRequest awsIamRole) {
     setCredential(CredentialType.AWS_IAM_ROLE, fromAwsIamRoleRequest(awsIamRole));
+  }
+
+  public void setAzureServicePrincipal(AzureServicePrincipalRequest servicePrincipal) {
+    setCredential(CredentialType.AZURE_SERVICE_PRINCIPAL, servicePrincipal);
+  }
+
+  public void setGcpServiceAccountKey(GcpServiceAccountKeyRequest key) {
+    setCredential(CredentialType.GCP_SERVICE_ACCOUNT_KEY, key);
   }
 
   private <T> void setCredential(CredentialType type, T inputCredential) {

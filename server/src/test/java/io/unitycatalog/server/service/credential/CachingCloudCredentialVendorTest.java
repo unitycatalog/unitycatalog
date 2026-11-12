@@ -16,6 +16,8 @@ import static org.mockito.Mockito.when;
 
 import com.google.auth.oauth2.AccessToken;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
@@ -158,6 +160,7 @@ public class CachingCloudCredentialVendorTest {
   private static CredentialContext ctx(
       String roleArn, String externalId, Set<CredentialContext.Privilege> privileges) {
     CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.AWS_IAM_ROLE);
     when(dao.getAwsIamRoleResponse())
         .thenReturn(new AwsIamRoleResponse().roleArn(roleArn).externalId(externalId));
     return CredentialContext.create(LOC, privileges, Optional.of(dao));
@@ -165,6 +168,27 @@ public class CachingCloudCredentialVendorTest {
 
   private static String accessKey(TemporaryCredentials credentials) {
     return credentials.getAwsTempCredentials().getAccessKeyId();
+  }
+
+  /**
+   * The Azure vendor refuses a credential, so its error reaches the caller, not one from reading an
+   * Azure credential as an AWS role for the key.
+   */
+  @Test
+  void azureCredentialIsPassedToTheAzureVendor() {
+    BaseException unimplemented = new BaseException(ErrorCode.UNIMPLEMENTED, "not supported yet");
+    when(azure.vendAzureCredential(any())).thenThrow(unimplemented);
+    CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.AZURE_SERVICE_PRINCIPAL);
+    CredentialContext context =
+        CredentialContext.create(
+            NormalizedURL.from("abfss://container@account.dfs.core.windows.net/table"),
+            READ_ONLY,
+            Optional.of(dao));
+
+    assertThat(assertThrows(BaseException.class, () -> cache().vendCredential(context)))
+        .isSameAs(unimplemented);
+    verify(dao, times(0)).getAwsIamRoleResponse();
   }
 
   @Test
