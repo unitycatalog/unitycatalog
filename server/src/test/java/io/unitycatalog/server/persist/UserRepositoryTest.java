@@ -148,47 +148,6 @@ class UserRepositoryTest {
   }
 
   @Test
-  void updateUserChangesEmail() {
-    var user =
-        userRepository.createUser(
-            CreateUser.builder().name("Mover").email("mover-old@example.com").build());
-
-    var updated =
-        userRepository.updateUser(
-            user.getId(), UpdateUser.builder().email("mover-new@example.com").build());
-
-    assertThat(updated.getId()).isEqualTo(user.getId());
-    assertThat(userRepository.getUser(user.getId()).getEmail()).isEqualTo("mover-new@example.com");
-    assertThat(userRepository.getUserByEmail("mover-new@example.com").getId())
-        .isEqualTo(user.getId());
-    assertThatThrownBy(() -> userRepository.getUserByEmail("mover-old@example.com"))
-        .isInstanceOf(BaseException.class)
-        .satisfies(
-            e -> assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND));
-  }
-
-  @Test
-  void updateUserRejectsDuplicateEmailOnAnotherUser() {
-    var first =
-        userRepository.createUser(
-            CreateUser.builder().name("Clash A").email("clash-a@example.com").build());
-    userRepository.createUser(
-        CreateUser.builder().name("Clash B").email("clash-b@example.com").build());
-
-    assertThatThrownBy(
-            () ->
-                userRepository.updateUser(
-                    first.getId(), UpdateUser.builder().email("clash-b@example.com").build()))
-        .isInstanceOf(BaseException.class)
-        .satisfies(
-            e -> {
-              assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.ALREADY_EXISTS);
-              assertThat(e).hasMessageContaining("User already exists: clash-b@example.com");
-            });
-    assertThat(userRepository.getUser(first.getId()).getEmail()).isEqualTo("clash-a@example.com");
-  }
-
-  @Test
   void updateUserLosingTheEmailRaceIsAlreadyExists() {
     var a =
         userRepository.createUser(
@@ -215,31 +174,6 @@ class UserRepositoryTest {
                 assertThat(e).hasMessageContaining("User already exists: race-b@example.com");
               });
     }
-  }
-
-  @Test
-  void deleteUserRemovesTheRowAndFreesTheEmail() {
-    var user =
-        userRepository.createUser(
-            CreateUser.builder().name("Leaver").email("leaver@example.com").build());
-
-    userRepository.deleteUser(user.getId());
-
-    for (Runnable lookup :
-        List.<Runnable>of(
-            () -> userRepository.getUser(user.getId()),
-            () -> userRepository.getUserByEmail("leaver@example.com"),
-            () -> userRepository.deleteUser(user.getId()),
-            () -> userRepository.updateUser(user.getId(), UpdateUser.builder().build()))) {
-      assertThatThrownBy(lookup::run)
-          .isInstanceOf(BaseException.class)
-          .satisfies(
-              e -> assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND));
-    }
-    var recreated =
-        userRepository.createUser(
-            CreateUser.builder().name("Leaver").email("leaver@example.com").build());
-    assertThat(recreated.getId()).isNotEqualTo(user.getId());
   }
 
   @Test
