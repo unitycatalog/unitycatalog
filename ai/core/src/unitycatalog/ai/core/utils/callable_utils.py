@@ -166,14 +166,14 @@ def _reject_async_function(func: Callable[..., Any]) -> None:
     Args:
         func: The function to check.
     """
-    original = inspect.unwrap(func)
+    named = func.func if isinstance(func, functools.partial) else func
+    original = inspect.unwrap(named)
     if not (inspect.iscoroutinefunction(original) or inspect.isasyncgenfunction(original)):
         return
-    if original is func:
+    if original is named:
         problem, target = "is an async function", "it"
     else:
         problem, target = "wraps an async function", "the wrapped function"
-    named = func.func if isinstance(func, functools.partial) else func
     name = getattr(named, "__name__", repr(func))
     raise ValueError(
         f"Function '{name}' {problem}. Async functions are not supported in Unity "

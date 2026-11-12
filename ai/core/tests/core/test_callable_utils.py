@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import functools
 import re
 import textwrap
 import warnings
@@ -2575,15 +2576,22 @@ def test_identifiers_are_quoted_verbatim(identifier, expected):
         (async_int_func, ASYNC_FUNCTION_ERROR.format("async_int_func")),
         (async_int_gen, ASYNC_FUNCTION_ERROR.format("async_int_gen")),
         (staticmethod(async_int_func), ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (classmethod(async_int_func), ASYNC_FUNCTION_ERROR.format("async_int_func")),
         (async_int_func_partial, ASYNC_FUNCTION_ERROR.format("async_int_func")),
         (run_sync(async_int_func), ASYNC_WRAPPER_ERROR.format("async_int_func")),
+        (
+            functools.partial(run_sync(async_int_func), 1),
+            ASYNC_WRAPPER_ERROR.format("async_int_func"),
+        ),
     ],
     ids=[
         "coroutine",
         "async_generator",
         "staticmethod_of_coroutine",
+        "classmethod_of_coroutine",
         "partial_of_coroutine",
         "sync_wrapper_of_coroutine",
+        "partial_of_sync_wrapper_of_coroutine",
     ],
 )
 def test_async_function_is_rejected(generate, func, expected_error):

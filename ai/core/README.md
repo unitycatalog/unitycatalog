@@ -96,7 +96,7 @@ SCHEMA = "my_schema"
 
 You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
 
-To create a UC function from a Python function, define your function as a regular `def` (not `async def`) with appropriate type hints and a Google-style docstring:
+To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
 
 ```python
 def add_numbers(a: float, b: float) -> float:

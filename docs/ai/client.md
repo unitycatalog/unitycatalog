@@ -381,7 +381,6 @@ parsing the contents of your function definition and extracting the relevant inf
 - **type hints in collections**: If you are using a collection (`tuple`, `list`, or `dict`), all internal types **must be defined**. Generic collections are not permitted.
 - **generics**: the `Any` type is not supported. All types must be concrete.
 - **defaults**: Default values that are defined in your function signature will be extracted as UC function `DEFAULT` entries in your function. Ensure that the default values are valid for your function and that your type hints are correct (using `Optional[<type>]`).
-- **no async functions**: The function must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around an `async def`, raises a `ValueError`.
 - **docstring formatting**: In order for relevant information to be extracted from the docstring, the syntax of your docstring must match the [Google Docstring](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html) conventions. `reST`, `Epytext` and `Numpydoc` style docstrings are **not supported**.
 - **external dependencies**: There is limited library support within the function execution environment. The list of supported available libraries [can be seen here](https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#supported-libraries-in-python-udfs) and is subject to change over time.
 - **overwriting functions**: To replace an existing function, specify the argument `replace=True` when calling `create_python_function`.
