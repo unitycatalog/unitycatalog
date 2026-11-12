@@ -45,24 +45,35 @@ def classify_lines(code: str) -> tuple[set[int], set[int]]:
 
     Only statement lines carry indentation that Python checks. Comment lines and lines that
     continue a statement (inside brackets or after a backslash) may sit at any column, so they
-    must not decide the margin. Code that does not tokenize cannot compile either, so it is
-    treated as having no string lines and every nonblank line as a statement line.
+    must not decide the margin. A statement that is only a string, such as a docstring, is not
+    reported as string lines: its value is never used by the code, and `inspect.cleandoc`
+    removes its indentation, so it is laid out like the code around it. Code that does not
+    tokenize cannot compile either, so it is treated as having no string lines and every
+    nonblank line as a statement line.
     """
     string_lines = set()
     statement_lines = set()
     open_string_lines = []
     at_statement_start = True
+    string_statement_lines = range(0)
     try:
         for token in tokenize.generate_tokens(io.StringIO(code).readline):
+            if string_statement_lines and token.type not in (tokenize.NL, tokenize.COMMENT):
+                if token.type != tokenize.NEWLINE:
+                    string_lines.update(string_statement_lines)
+                string_statement_lines = range(0)
+            starts_statement = at_statement_start and token.type not in _NON_STATEMENT_TOKENS
             if token.type == tokenize.NEWLINE:
                 at_statement_start = True
-            elif at_statement_start and token.type not in _NON_STATEMENT_TOKENS:
+            elif starts_statement:
                 statement_lines.add(token.start[0] - 1)
                 at_statement_start = False
             if token.type in _STRING_START_TOKENS:
                 open_string_lines.append(token.start[0])
             elif token.type in _STRING_END_TOKENS:
                 string_lines.update(range(open_string_lines.pop(), token.end[0]))
+            elif token.type == tokenize.STRING and starts_statement:
+                string_statement_lines = range(token.start[0], token.end[0])
             elif token.type == tokenize.STRING:
                 string_lines.update(range(token.start[0], token.end[0]))
     except (tokenize.TokenError, SyntaxError):
