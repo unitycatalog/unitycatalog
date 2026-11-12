@@ -227,7 +227,7 @@ public class Scim2UserService implements ScimService {
     // as a whole, so no part of the request is applied.
     List<PatchOperation> operations = patchRequest.getOperations();
     if (operations.isEmpty() || !operations.stream().allMatch(Scim2UserService::isActiveReplace)) {
-      // TODO(#2205): throw PR 1's SCIM NotImplementedException so the 501 carries a SCIM Error body.
+      // TODO(#2205): throw the SCIM NotImplementedException so the 501 carries a SCIM Error body.
       return HttpResponse.of(HttpStatus.NOT_IMPLEMENTED);
     }
     // Every value is validated before anything is applied; the last operation wins.
