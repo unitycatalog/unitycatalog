@@ -865,7 +865,7 @@ components:
           description: |
             Table properties. Besides the table's metaData.configuration entries, the map carries
             server-derived keys (delta.minReaderVersion, delta.minWriterVersion, delta.feature.*,
-            delta.clusteringColumns, delta.rowTracking.rowIdHighWaterMark, delta.lastUpdateVersion,
+            clusteringColumns, delta.rowTracking.rowIdHighWaterMark, delta.lastUpdateVersion,
             delta.lastCommitTimestamp) that clients must not write back to the Delta log or send in
             set-properties / remove-properties.
           additionalProperties:

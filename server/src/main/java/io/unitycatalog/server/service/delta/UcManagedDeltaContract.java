@@ -93,6 +93,10 @@ public final class UcManagedDeltaContract {
           TableProperties.LAST_UPDATE_VERSION,
           TableProperties.LAST_COMMIT_TIMESTAMP);
 
+  /**
+   * True for a key in {@link #SYNTHETIC_PROPERTY_KEYS} or any {@code delta.feature.<name>} key,
+   * whatever the feature name. Protocol and feature changes go through {@code set-protocol}.
+   */
   public static boolean isSyntheticPropertyKey(String key) {
     return key != null
         && (SYNTHETIC_PROPERTY_KEYS.contains(key)
@@ -111,6 +115,19 @@ public final class UcManagedDeltaContract {
     Set<String> keys = new HashSet<>(REQUIRED_FIXED_PROPERTIES.keySet());
     keys.addAll(ENGINE_GENERATED_PROPERTY_KEYS);
     keys.add(TableProperties.UC_TABLE_ID);
+    return Collections.unmodifiableSet(keys);
+  }
+
+  /**
+   * Keys whose stored value {@link #validate} reads: the {@link #CONTRACT_PROPERTY_KEYS} plus
+   * {@code delta.enableIcebergCompatV2}, which decides whether the deletion-vector requirement is
+   * skipped. A MANAGED update that changes the stored value of one of them is re-validated.
+   */
+  public static final Set<String> CONTRACT_INPUT_KEYS = buildContractInputKeys();
+
+  private static Set<String> buildContractInputKeys() {
+    Set<String> keys = new HashSet<>(CONTRACT_PROPERTY_KEYS);
+    keys.add(TableProperties.ENABLE_ICEBERG_COMPAT_V2);
     return Collections.unmodifiableSet(keys);
   }
 

@@ -33,9 +33,9 @@ import java.util.Set;
  *
  * <ul>
  *   <li>The {@code delta.clustering} domain-metadata entry's {@code clusteringColumns} field
- *       projects to the {@code delta.clusteringColumns} table property as a JSON-encoded list of
- *       column paths. Paths are arrays of segment names so nested columns survive as arrays rather
- *       than collapsing into dotted strings.
+ *       projects to the {@code clusteringColumns} table property as a JSON-encoded list of column
+ *       paths. Paths are arrays of segment names so nested columns survive as arrays rather than
+ *       collapsing into dotted strings.
  *   <li>The {@code delta.rowTracking} domain-metadata entry's {@code rowIdHighWaterMark} field
  *       projects to the {@code delta.rowTracking.rowIdHighWaterMark} table property.
  * </ul>
@@ -56,7 +56,7 @@ public final class DeltaPropertyMapper {
    * Builds the stored UC property map by layering client-supplied entries first, then overlaying
    * protocol- and domain-metadata-derived entries on top. The structured {@code protocol} and
    * {@code domain-metadata} blocks are the canonical source for the keys this method derives
-   * ({@code delta.feature.*}, {@code delta.clusteringColumns}, {@code
+   * ({@code delta.feature.*}, {@code clusteringColumns}, {@code
    * delta.rowTracking.rowIdHighWaterMark}); a stray client property under those names cannot
    * silently override the projection. Client-only properties (e.g. {@code
    * delta.rowTracking.materializedRowIdColumnName}) flow through untouched.
@@ -180,7 +180,7 @@ public final class DeltaPropertyMapper {
    * Rebuilds a protocol from the stored properties for contract validation only. It is lossy:
    * properties do not record which features are reader features, so every stored feature is listed
    * as both a reader and a writer feature. A missing version comes back as null, and a non-numeric
-   * one is rejected with the stored value in the message.
+   * one is reported as corrupt stored state, like {@link #synthesizeDomainMetadataFromProperties}.
    */
   public static DeltaProtocol synthesizeProtocolFromProperties(Map<String, String> props) {
     List<String> features = List.copyOf(extractFeaturesFromProperties(props));
@@ -198,8 +198,8 @@ public final class DeltaPropertyMapper {
       return Integer.valueOf(value);
     } catch (NumberFormatException e) {
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "MANAGED table property '" + key + "' must be an integer (got '" + value + "').");
+          ErrorCode.INTERNAL,
+          String.format("Corrupt stored property %s: '%s' is not an integer", key, value));
     }
   }
 

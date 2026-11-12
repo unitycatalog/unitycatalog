@@ -583,10 +583,10 @@ latest-table-version | int64 | The latest version tracked by Unity Catalog for t
 
 **Note:** Vended cloud storage credentials are not included in this response. Clients obtain credentials with the appropriate operation level (`READ` or `READ_WRITE`) via the dedicated [Get Table Credentials](#get-table-credentials) endpoint.
 
-**Synthetic property keys.** `metadata.properties` mixes the table's real `metaData.configuration` entries with keys the server derives from other state. The derived keys are listed below; clients must never copy them back into a `metaData.configuration` they write to the Delta log, and must not send them in `set-properties` / `remove-properties` actions:
+**Synthetic property keys.** `metadata.properties` mixes the table's real `metaData.configuration` entries with keys the server derives from other state. The derived keys are listed below; clients must never copy them back into a `metaData.configuration` they write to the Delta log, and must not send them in `set-properties` / `remove-properties` actions. For a MANAGED table the server rejects a `set-properties` or `remove-properties` that names any of these keys with a 400 `InvalidParameterValueException`, even when the value matches the stored one. Protocol versions and table features change through `set-protocol`, and the domain-metadata projections through `set-domain-metadata` / `remove-domain-metadata`:
 
 - `delta.minReaderVersion`, `delta.minWriterVersion`, `delta.feature.<name>`: projected from the table's protocol. In the Delta log these live in the `protocol` action, and `delta.feature.<name>` keys inside `configuration` are creation-time directives, not persisted properties.
-- `delta.clusteringColumns`, `delta.rowTracking.rowIdHighWaterMark`: projected from the `delta.clustering` / `delta.rowTracking` domain metadata. In the Delta log these live in `domainMetadata` actions.
+- `clusteringColumns`, `delta.rowTracking.rowIdHighWaterMark`: projected from the `delta.clustering` / `delta.rowTracking` domain metadata. In the Delta log these live in `domainMetadata` actions.
 - `delta.lastUpdateVersion`, `delta.lastCommitTimestamp`: catalog bookkeeping for the last metadata-changing commit; they have no Delta log representation.
 
 `io.unitycatalog.tableId` is not synthetic: it is a real `metaData.configuration` entry that the client itself is required to write in the initial commit.

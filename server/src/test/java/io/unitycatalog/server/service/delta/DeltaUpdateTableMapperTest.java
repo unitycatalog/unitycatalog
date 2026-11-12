@@ -437,16 +437,27 @@ public class DeltaUpdateTableMapperTest {
   // ---------- synthetic and contract properties on MANAGED tables ----------
 
   static Stream<String> syntheticPropertyKeys() {
-    Stream<String> featureKeys =
-        Stream.concat(
-                UcManagedDeltaContract.REQUIRED_WRITER_FEATURES.stream(),
-                UcManagedDeltaContract.SUGGESTED_WRITER_FEATURES.stream())
-            .map(f -> TableProperties.FEATURE_PREFIX + f);
-    return Stream.concat(UcManagedDeltaContract.SYNTHETIC_PROPERTY_KEYS.stream(), featureKeys);
+    return Stream.of(
+        "delta.minReaderVersion",
+        "delta.minWriterVersion",
+        "clusteringColumns",
+        "delta.rowTracking.rowIdHighWaterMark",
+        "delta.lastUpdateVersion",
+        "delta.lastCommitTimestamp",
+        "delta.feature.catalogManaged",
+        "delta.feature.deletionVectors",
+        "delta.feature.rowTracking",
+        "delta.feature.someFutureFeature");
   }
 
   static Stream<String> contractPropertyKeys() {
-    return UcManagedDeltaContract.CONTRACT_PROPERTY_KEYS.stream();
+    return Stream.of(
+        "delta.enableDeletionVectors",
+        "delta.checkpointPolicy",
+        "delta.enableInCommitTimestamps",
+        "delta.checkpoint.writeStatsAsStruct",
+        "delta.checkpoint.writeStatsAsJson",
+        "io.unitycatalog.tableId");
   }
 
   @ParameterizedTest(name = "{0}")
@@ -628,27 +639,100 @@ public class DeltaUpdateTableMapperTest {
         dao,
         propsFrom(stored),
         catalogManaged,
-        new DeltaSetPropertiesUpdate().updates(Map.of(TableProperties.CHECKPOINT_POLICY, "v2")));
+        new DeltaSetPropertiesUpdate()
+            .updates(Map.of(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true")));
   }
 
-  @Test
-  public void nonNumericStoredVersionIsReportedWithItsValue() {
+  @ParameterizedTest(name = "\"{0}\"")
+  @ValueSource(strings = {"disabled", ""})
+  public void setDomainMetadataNeedsStoredFeatureSupported(String value) {
     TableInfoDAO dao = managedDao();
     Map<String, String> stored = new HashMap<>(contractProperties(dao));
-    stored.put(TableProperties.MIN_READER_VERSION, "three");
+    stored.put("delta.feature.clustering", value);
     assertManagedUpdateRejected(
         dao,
         propsFrom(stored),
-        "'three'",
-        new DeltaSetPropertiesUpdate().updates(Map.of(TableProperties.CHECKPOINT_POLICY, "v2")));
+        "clustering",
+        new DeltaSetDomainMetadataUpdate()
+            .updates(
+                new DeltaDomainMetadataUpdates()
+                    .deltaClustering(
+                        new DeltaClusteringDomainMetadata()
+                            .clusteringColumns(List.of(List.of("id"))))));
+  }
+
+  @Test
+  public void resendingStoredTableIdOfManagedTableWithoutTheFullContractIsANoOp() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = Map.of("io.unitycatalog.tableId", dao.getId().toString());
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(new DeltaSetPropertiesUpdate().updates(stored)),
+        new ServerProperties());
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @Test
+  public void droppingIcebergCompatV2OfManagedTableWithoutDeletionVectorsIsRejected() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored =
+        new HashMap<>(TestUtils.propertiesWithoutDvAndWithIcebergCompatV2());
+    stored.put("io.unitycatalog.tableId", dao.getId().toString());
+    DeltaPropertyMapper.deriveFromProtocol(stored, TestUtils.protocolWithoutDv());
+    ServerProperties allowMissingDv = TestUtils.serverPropertiesWithAllowMissingDv();
+    assertManagedUpdateRejected(
+        dao,
+        propsFrom(stored),
+        allowMissingDv,
+        "deletionVectors",
+        new DeltaRemovePropertiesUpdate().removals(List.of("delta.enableIcebergCompatV2")));
+    assertManagedUpdateRejected(
+        dao,
+        propsFrom(stored),
+        allowMissingDv,
+        "deletionVectors",
+        new DeltaSetPropertiesUpdate().updates(Map.of("delta.enableIcebergCompatV2", "false")));
+  }
+
+  @Test
+  public void nonNumericStoredVersionIsReportedAsCorruptWithItsValue() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put(TableProperties.MIN_READER_VERSION, "three");
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    dao,
+                    propsFrom(stored),
+                    collectUpdatesRequest(
+                        new DeltaSetPropertiesUpdate()
+                            .updates(Map.of(TableProperties.CHECKPOINT_POLICY, "v1"))),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("'three'")
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INTERNAL);
   }
 
   private static void assertManagedUpdateRejected(
       TableInfoDAO dao, MutablePropertyMap props, String message, DeltaTableUpdate... updates) {
+    assertManagedUpdateRejected(dao, props, new ServerProperties(), message, updates);
+  }
+
+  private static void assertManagedUpdateRejected(
+      TableInfoDAO dao,
+      MutablePropertyMap props,
+      ServerProperties serverProperties,
+      String message,
+      DeltaTableUpdate... updates) {
     assertThatThrownBy(
             () ->
                 DeltaUpdateTableMapper.applyUpdates(
-                    null, dao, props, collectUpdatesRequest(updates), new ServerProperties()))
+                    null, dao, props, collectUpdatesRequest(updates), serverProperties))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(message)
         .extracting("errorCode")

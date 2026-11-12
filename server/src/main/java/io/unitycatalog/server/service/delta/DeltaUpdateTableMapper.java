@@ -388,6 +388,13 @@ public final class DeltaUpdateTableMapper {
     if (managed) {
       rejectSyntheticPropertyChanges(c);
     }
+    Map<String, String> storedBeforeUpdate = managed ? new HashMap<>(properties.asMap()) : Map.of();
+    boolean changesContractInput =
+        managed
+            && changesStoredValue(
+                c, storedBeforeUpdate, UcManagedDeltaContract.CONTRACT_INPUT_KEYS);
+    boolean changesTableId =
+        managed && changesStoredValue(c, storedBeforeUpdate, Set.of(TableProperties.UC_TABLE_ID));
     // set-columns is validated against the table's stored mode and properties, before this
     // request's property changes apply, and against the mode the request sets, which only enabling
     // reads. The modes are parsed only for set-columns, so an unknown mode value never blocks other
@@ -428,16 +435,15 @@ public final class DeltaUpdateTableMapper {
     c.setTableComment.ifPresent(u -> applySetTableComment(dao, u));
     c.updateSnapshotVersion.ifPresent(u -> applyUpdateSnapshotVersion(dao, properties, u));
     // Re-validate the MANAGED contract against the final post-apply state. set-protocol, or a
-    // set-/remove-properties that touches a contract key, runs full validation; set-domain-metadata
-    // alone only needs the DM-vs-writer-features check.
+    // set-/remove-properties that changes a contract input, runs full validation;
+    // set-domain-metadata alone only needs the DM-vs-writer-features check.
     if (managed) {
-      boolean touchesContractProperty = touchesContractProperty(c);
       DeltaDomainMetadataUpdates effectiveDm =
           DeltaPropertyMapper.synthesizeDomainMetadataFromProperties(properties.asMap());
       if (c.setProtocol.isPresent()) {
         UcManagedDeltaContract.validate(
             c.setProtocol.get().getProtocol(), effectiveDm, properties.asMap(), serverProperties);
-      } else if (touchesContractProperty) {
+      } else if (changesContractInput) {
         UcManagedDeltaContract.validate(
             DeltaPropertyMapper.synthesizeProtocolFromProperties(properties.asMap()),
             effectiveDm,
@@ -447,7 +453,7 @@ public final class DeltaUpdateTableMapper {
         UcManagedDeltaContract.validateDomainMetadataAgainstWriterFeatures(
             DeltaPropertyMapper.extractFeaturesFromProperties(properties.asMap()), effectiveDm);
       }
-      if (touchesContractProperty) {
+      if (changesTableId) {
         UcManagedDeltaContract.validateTableIdProperty(properties.asMap(), dao.getId().toString());
       }
     }
@@ -471,10 +477,32 @@ public final class DeltaUpdateTableMapper {
     return Stream.concat(setKeys.stream(), removedKeys.stream());
   }
 
-  private static boolean touchesContractProperty(CollectedUpdates c) {
-    return touchedPropertyKeys(c).anyMatch(UcManagedDeltaContract.CONTRACT_PROPERTY_KEYS::contains);
+  /**
+   * True when the request changes the stored value of one of {@code keys}. Resending a stored
+   * value, or removing a key that is not stored, is a no-op and does not trigger validation.
+   */
+  private static boolean changesStoredValue(
+      CollectedUpdates c, Map<String, String> stored, Set<String> keys) {
+    Map<String, String> setValues =
+        c.setProperties.map(DeltaSetPropertiesUpdate::getUpdates).orElse(Map.of());
+    List<String> removedKeys =
+        c.removeProperties.map(DeltaRemovePropertiesUpdate::getRemovals).orElse(List.of());
+    return setValues.entrySet().stream()
+            .anyMatch(
+                e ->
+                    keys.contains(e.getKey())
+                        && !Objects.equals(stored.get(e.getKey()), e.getValue()))
+        || removedKeys.stream()
+            .anyMatch(
+                k ->
+                    UcManagedDeltaContract.CONTRACT_INPUT_KEYS.contains(k)
+                        && stored.containsKey(k));
   }
 
+  /**
+   * Rejects a MANAGED set-properties or remove-properties that names a synthetic key, before any
+   * update applies, because the server derives those keys itself.
+   */
   private static void rejectSyntheticPropertyChanges(CollectedUpdates c) {
     Optional<String> synthetic =
         touchedPropertyKeys(c).filter(UcManagedDeltaContract::isSyntheticPropertyKey).findFirst();

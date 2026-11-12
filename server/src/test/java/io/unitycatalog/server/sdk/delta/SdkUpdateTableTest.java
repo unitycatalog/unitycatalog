@@ -1519,7 +1519,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       TestUtils.assertDeltaApiException(
           () -> updateTable(h, new DeltaRemovePropertiesUpdate().removals(List.of(key))),
           DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          key.substring(key.lastIndexOf('.') + 1));
+          key);
     }
     String otherId = UUID.randomUUID().toString();
     TestUtils.assertDeltaApiException(
