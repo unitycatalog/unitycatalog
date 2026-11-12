@@ -58,20 +58,33 @@ import org.apache.hadoop.fs.FilterFileSystem;
  * <p>The cache owns each delegate, and every wrapper of the same scope shares it. Each wrapper
  * therefore wraps its own {@code Lease} on the delegate rather than the delegate itself, so closing
  * a wrapper runs the regular {@link FileSystem#close()} bookkeeping but only releases the lease. A
- * wrapper that is never closed releases its lease when it is garbage collected. A delegate is
- * closed once it has been evicted from the cache and every wrapper of it has been closed or garbage
- * collected, so an open wrapper never sees its delegate closed.
+ * wrapper that is never closed releases its lease once the lease is garbage collected. A wrapper
+ * obtained through {@link FileSystem#newInstance(URI, Configuration)} is held by Hadoop's cache
+ * until it is closed, so only {@code close()} releases it. A delegate is closed once it has been
+ * evicted from the cache and every lease on it has been released. A lease stays reachable until
+ * each call forwarded through it returns (see {@link ReachabilityFencedFileSystem}), so a call on
+ * an open wrapper never sees its delegate closed, even when the caller keeps no reference to the
+ * wrapper.
  *
- * <p>Streams and iterators returned by a wrapper come from the delegate and do not hold a lease. A
- * stream still in use after every wrapper of an evicted scope is gone can therefore find the
- * delegate closed under it. Callers that read or write through a stream should keep the wrapper
- * reachable until the stream is closed.
+ * <p>Objects that a call returns, such as streams, iterators and builders, come from the delegate
+ * and do not hold a lease. One that is still in use after every lease of an evicted scope has been
+ * released can find the delegate closed under it, so callers should keep the wrapper reachable
+ * until they close those objects.
+ *
+ * <p>These guarantees hold for delegates that are not shared outside this cache. For S3, GCS and
+ * Azure schemes the delegate is created with Hadoop's own cache disabled. For any other scheme
+ * {@link FileSystem#get(URI, Configuration)} can return a JVM-wide instance from Hadoop's cache,
+ * which other scopes and callers may share, and evicting a scope closes it regardless.
  */
 public class CredScopedFileSystem extends FilterFileSystem {
 
   private static final String CRED_SCOPED_FS_CACHE_MAX_SIZE =
       "unitycatalog.credScopedFs.cache.maxSize";
   private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
+
+  /** The effective maximum size of {@link #CACHE}. Visible for testing. */
+  static final int CACHE_MAX_SIZE =
+      Integer.getInteger(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT);
 
   private static final Cleaner CLEANER = Cleaner.create();
 
@@ -81,22 +94,26 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * pools (e.g. AWS sdk-ScheduledExecutor threads). The maximum size bounds the cached delegates,
    * not the open ones: an evicted delegate stays open while a wrapper still uses it, and a cached
    * delegate stays open after its last wrapper closes until it is evicted. The maximum size can be
-   * tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}. Visible for
-   * testing.
+   * tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}.
+   *
+   * <p>Visible for testing.
    */
   static final BoundedKeyedCache<FileSystemCredId, SharedFileSystem> CACHE =
-      new BoundedKeyedCache<>(
-          Integer.getInteger(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT),
-          SharedFileSystem::evict);
+      new BoundedKeyedCache<>(CACHE_MAX_SIZE, SharedFileSystem::evict);
 
   /** Visible for testing only. Clears the static cache, closing delegates no open wrapper uses. */
   static void clearCacheForTesting() {
     CACHE.clear();
   }
 
+  /**
+   * Returns the shared delegate, or {@code null} before {@link #initialize(URI, Configuration)}.
+   * The delegate is not leased to the caller: callers must not close it, and it can be closed once
+   * this wrapper is closed or unreachable and its scope has been evicted.
+   */
   @Override
   public FileSystem getRawFileSystem() {
-    return ((Lease) fs).getRawFileSystem();
+    return fs == null ? null : ((Lease) fs).getRawFileSystem();
   }
 
   @Override
@@ -116,12 +133,14 @@ public class CredScopedFileSystem extends FilterFileSystem {
   }
 
   private void acquire(FileSystemCredId key, Supplier<FileSystem> loader) {
+    // A delegate loaded here is published with this wrapper's lease already taken, so a concurrent
+    // eviction cannot close it before it is used. A cached entry evicted between the lookup and
+    // acquire() is already gone from the cache, so the retry loads a fresh delegate.
+    SharedFileSystem[] loaded = new SharedFileSystem[1];
     SharedFileSystem shared;
-    // An entry evicted between the lookup and acquire() is gone from the cache, so retrying loads a
-    // fresh delegate instead of leasing one that is about to close.
     do {
-      shared = CACHE.getOrLoad(key, () -> new SharedFileSystem(loader.get()));
-    } while (!shared.acquire());
+      shared = CACHE.getOrLoad(key, () -> loaded[0] = new SharedFileSystem(loader.get()));
+    } while (shared != loaded[0] && !shared.acquire());
     this.fs = new Lease(shared);
   }
 
@@ -130,7 +149,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * usual bookkeeping on the wrapper and then close this lease, which releases the reference
    * without closing the delegate.
    */
-  private static final class Lease extends FilterFileSystem {
+  private static final class Lease extends ReachabilityFencedFileSystem {
     private final Cleaner.Cleanable release;
 
     private Lease(SharedFileSystem shared) {
@@ -150,8 +169,10 @@ public class CredScopedFileSystem extends FilterFileSystem {
     private int openWrappers;
     private boolean evicted;
 
-    SharedFileSystem(FileSystem fs) {
+    /** Creates an entry that already counts the lease of the wrapper that loads it. */
+    private SharedFileSystem(FileSystem fs) {
       this.fs = fs;
+      this.openWrappers = 1;
     }
 
     private synchronized boolean acquire() {

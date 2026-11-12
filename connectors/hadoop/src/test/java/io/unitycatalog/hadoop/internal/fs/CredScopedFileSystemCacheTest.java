@@ -9,11 +9,21 @@ import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URI;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -21,6 +31,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Verifies the caching behaviour of {@link CredScopedFileSystem}: same credential scope reuses the
@@ -33,6 +44,9 @@ class CredScopedFileSystemCacheTest {
 
   private static final Path PATH = new Path("file:///tmp/any");
   private static final Duration GC_TIMEOUT = Duration.ofSeconds(10);
+  private static final Duration STRESS_TIMEOUT = Duration.ofSeconds(60);
+  private static final int STRESS_WORKERS = 4;
+  private static final int STRESS_ITERATIONS = 500;
 
   private static final String CONTEXT_A =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
@@ -217,11 +231,75 @@ class CredScopedFileSystemCacheTest {
   void wrapperCreatedAfterAnotherWrapperClosedWorks() throws Exception {
     URI uri = URI.create("file:///tmp");
     Configuration conf = trackedConf("tid-1");
-    init(uri, conf).close();
+    CredScopedFileSystem first = init(uri, conf);
+    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) first.getRawFileSystem();
+    first.close();
 
     CredScopedFileSystem fresh = init(uri, conf);
 
+    assertThat(delegate.closed).isFalse();
+    assertThat(fresh.getRawFileSystem()).isSameAs(delegate);
     assertThat(fresh.getFileStatus(PATH)).isNotNull();
+  }
+
+  @Test
+  void closingAWrapperDeletesItsDeleteOnExitPaths(@TempDir java.nio.file.Path dir)
+      throws Exception {
+    java.nio.file.Path file = Files.createFile(dir.resolve("scratch"));
+    CredScopedFileSystem fs = init(URI.create("file:///"), trackedConf("tid-1"));
+    assertThat(fs.deleteOnExit(new Path(file.toUri()))).isTrue();
+
+    fs.close();
+
+    assertThat(file).doesNotExist();
+    assertThat(((CloseTrackingFileSystem) fs.getRawFileSystem()).closed).isFalse();
+  }
+
+  @Test
+  void concurrentEvictionNeverBreaksAnOpenWrapperOrDiscardsAnUnusedDelegate() throws Exception {
+    CloseTrackingFileSystem.CREATED.clear();
+    URI uri = URI.create("file:///tmp");
+    AtomicBoolean done = new AtomicBoolean();
+    ExecutorService pool = Executors.newFixedThreadPool(STRESS_WORKERS + 1);
+    try {
+      Future<?> evictor =
+          pool.submit(
+              () -> {
+                while (!done.get()) {
+                  CredScopedFileSystem.clearCacheForTesting();
+                }
+              });
+      List<Future<Void>> workers =
+          IntStream.range(0, STRESS_WORKERS)
+              .mapToObj(worker -> pool.submit(() -> openUseAndClose(uri)))
+              .collect(Collectors.toList());
+      for (Future<Void> worker : workers) {
+        worker.get(STRESS_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+      }
+      done.set(true);
+      evictor.get(STRESS_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    } finally {
+      done.set(true);
+      pool.shutdownNow();
+    }
+    CredScopedFileSystem.clearCacheForTesting();
+
+    assertThat(CloseTrackingFileSystem.CREATED)
+        .isNotEmpty()
+        .allSatisfy(
+            delegate -> {
+              assertThat(delegate.used).isTrue();
+              assertThat(delegate.closed).isTrue();
+            });
+  }
+
+  private static Void openUseAndClose(URI uri) throws Exception {
+    for (int i = 0; i < STRESS_ITERATIONS; i++) {
+      CredScopedFileSystem fs = init(uri, trackedConf("tid-stress-" + (i % 3)));
+      assertThat(fs.getFileStatus(PATH)).isNotNull();
+      fs.close();
+    }
+    return null;
   }
 
   @Test
@@ -229,7 +307,7 @@ class CredScopedFileSystemCacheTest {
     URI uri = URI.create("file:///tmp");
     CredScopedFileSystem held = init(uri, trackedConf("tid-held"));
 
-    int maxSize = CredScopedFileSystem.CACHE.maxSize();
+    int maxSize = CredScopedFileSystem.CACHE_MAX_SIZE;
     for (int i = 0; i < maxSize; i++) {
       init(uri, trackedConf("tid-other-" + i));
     }
@@ -281,10 +359,12 @@ class CredScopedFileSystemCacheTest {
     int sizeBefore = hadoopCacheSize();
 
     FileSystem fs = FileSystem.newInstance(URI.create("s3a://bucket/"), conf);
-    assertThat(fs).isInstanceOf(CredScopedFileSystem.class);
-    assertThat(hadoopCacheSize()).isEqualTo(sizeBefore + 1);
-
-    fs.close();
+    try {
+      assertThat(fs).isInstanceOf(CredScopedFileSystem.class);
+      assertThat(hadoopCacheSize()).isEqualTo(sizeBefore + 1);
+    } finally {
+      fs.close();
+    }
     assertThat(hadoopCacheSize()).isEqualTo(sizeBefore);
   }
 
@@ -321,14 +401,22 @@ class CredScopedFileSystemCacheTest {
 
   /** Local filesystem stand-in that, like cloud filesystems, rejects calls once closed. */
   public static class CloseTrackingFileSystem extends RawLocalFileSystem {
+    static final Queue<CloseTrackingFileSystem> CREATED = new ConcurrentLinkedQueue<>();
+
     final AtomicInteger closeCount = new AtomicInteger();
     volatile boolean closed;
+    volatile boolean used;
+
+    CloseTrackingFileSystem() {
+      CREATED.add(this);
+    }
 
     @Override
     public FileStatus getFileStatus(Path path) throws IOException {
       if (closed) {
         throw new IOException("Filesystem closed");
       }
+      used = true;
       return new FileStatus(0, true, 1, 0, 0, path);
     }
 
