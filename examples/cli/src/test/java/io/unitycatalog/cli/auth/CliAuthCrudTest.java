@@ -128,13 +128,21 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     return server;
   }
 
-  private static ApiClient clientFor(HttpServer server) {
+  private static ApiClient clientFor(int port) {
     ApiClient apiClient = new ApiClient();
     apiClient.setScheme("http");
     apiClient.setHost("localhost");
-    apiClient.setPort(server.getAddress().getPort());
+    apiClient.setPort(port);
     apiClient.setBasePath("/api/1.0/unity-control");
     return apiClient;
+  }
+
+  private static ApiClient clientFor(HttpServer server) {
+    return clientFor(server.getAddress().getPort());
+  }
+
+  private ApiClient clientForTestServer() {
+    return clientFor(Integer.parseInt(serverConfig.getServerUrl().replaceAll(".*:", "")));
   }
 
   // Only a 501 whose UC error body says UNIMPLEMENTED switches to the access token. Anything else
@@ -174,11 +182,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     String identityToken =
         createIdentityToken(
             ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
-    ApiClient apiClient = new ApiClient();
-    apiClient.setScheme("http");
-    apiClient.setHost("localhost");
-    apiClient.setPort(Integer.parseInt(serverConfig.getServerUrl().replaceAll(".*:", "")));
-    apiClient.setBasePath("/api/1.0/unity-control");
+    ApiClient apiClient = clientForTestServer();
 
     String accessToken = AuthCli.exchangeForAccessToken(apiClient, identityToken, IDP_ACCESS_TOKEN);
 
@@ -235,11 +239,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             .withClaim("sub", "person-1")
             .withClaim("email", ENABLED_USER_EMAIL)
             .sign(testIssuerAlgorithm);
-    ApiClient apiClient = new ApiClient();
-    apiClient.setScheme("http");
-    apiClient.setHost("localhost");
-    apiClient.setPort(Integer.parseInt(serverConfig.getServerUrl().replaceAll(".*:", "")));
-    apiClient.setBasePath("/api/1.0/unity-control");
+    ApiClient apiClient = clientForTestServer();
 
     assertThat(AuthCli.exchangeForAccessToken(apiClient, identityToken, idpAccessToken))
         .isEqualTo(idpAccessToken);
