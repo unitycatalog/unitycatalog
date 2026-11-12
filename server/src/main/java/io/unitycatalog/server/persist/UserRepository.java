@@ -140,8 +140,7 @@ public class UserRepository {
    * created again with the same email is not its creator. A row from before the id was stored has
    * only the creator's email, and is matched by it.
    */
-  boolean isCreator(
-      Session session, UUID createdById, String createdBy, String callerEmail) {
+  boolean isCreator(Session session, UUID createdById, String createdBy, String callerEmail) {
     if (createdById == null) {
       return Objects.equals(createdBy, callerEmail);
     }
