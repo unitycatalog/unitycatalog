@@ -287,7 +287,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
   @Test
   public void testGroupCrud() throws IOException {
-    serverConfig.setAuthToken(Files.readString(Path.of("etc", "conf", "token.txt")));
+    serverConfig.setAuthToken(Files.readString(configurationFolder.resolve("token.txt")));
     String ada = createUserId("ada@localhost");
     String bob = createUserId("bob@localhost");
 
