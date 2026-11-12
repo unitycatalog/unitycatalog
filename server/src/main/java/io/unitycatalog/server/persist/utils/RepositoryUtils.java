@@ -12,6 +12,7 @@ import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.UuidEntity;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.lang.reflect.InvocationTargetException;
@@ -23,7 +24,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import org.hibernate.Hibernate;
 import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.query.CommonQueryContract;
@@ -113,7 +113,7 @@ public class RepositoryUtils {
    * @throws BaseException {@code notFound} if no row matches; {@link ErrorCode#UNAVAILABLE} if the
    *     lock cannot be acquired (timeout or deadlock victim)
    */
-  public static <T> T lockByKey(
+  public static <T extends UuidEntity> T lockByKey(
       Session session,
       Class<T> type,
       UUID id,
@@ -144,14 +144,14 @@ public class RepositoryUtils {
    * @throws BaseException {@code notFound} if no row matches
    */
   public static void deleteByKey(
-      Session session, Object locked, Map<String, Object> key, Supplier<BaseException> notFound) {
+      Session session,
+      UuidEntity locked,
+      Map<String, Object> key,
+      Supplier<BaseException> notFound) {
     MutationQuery delete =
         session.createMutationQuery(
-            "delete from "
-                + Hibernate.getClass(locked).getSimpleName()
-                + " where "
-                + predicate(key));
-    bindKey(delete, (UUID) session.getIdentifier(locked), key);
+            "delete from " + session.getEntityName(locked) + " where " + predicate(key));
+    bindKey(delete, locked.getId(), key);
     if (delete.executeUpdate() == 0) {
       throw notFound.get();
     }
