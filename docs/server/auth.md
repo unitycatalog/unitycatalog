@@ -533,8 +533,10 @@ that existed before the upgrade are owned by `admin`.
   looks for a user or group the admin created it finds none, and its create gets 409: emails and group names are
   unique across the admin and every identity provider.
 - The admin sees every user and group, but can't update, deactivate or delete one an identity provider owns, or
-  replace (PUT), rename or delete its group (403). To move a user under an identity provider, delete it in Unity Catalog
-  and let the identity provider create it again; then grant its privileges again.
+  replace (PUT), rename or delete its group (403). To move a user under an identity provider, delete it in Unity Catalog,
+  let the identity provider create it again, and grant its privileges again. This works once a delete removes the user;
+  today a delete only disables it, so the identity provider's create gets 409.
+  <!-- TODO(PR 3): a user delete removes the row, so the re-create works. -->
 - A group has two member lists: the identity provider's and the admin's. A user is a member if it is in either. Each
   side adds, removes and replaces members only in its own list, so the identity provider's push never removes a
   member the admin added. The admin sees both lists in the owner extension (`idpMembers`, `adminMembers`); the
