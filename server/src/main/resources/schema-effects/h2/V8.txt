@@ -1,0 +1,16 @@
++ column os_share_permissions.created_at type=timestamp with time zone size=32 nullable=NO default=null
++ column os_share_permissions.id type=uuid size=16 nullable=NO default=null
++ column os_share_permissions.privilege type=character varying size=32 nullable=NO default=null
++ column os_share_permissions.recipient_id type=uuid size=16 nullable=NO default=null
++ column os_share_permissions.share_id type=uuid size=16 nullable=NO default=null
++ column os_share_permissions.updated_at type=timestamp with time zone size=32 nullable=NO default=null
++ fk os_share_permissions.fk_share_permissions_recipient os_share_permissions.recipient_id -> os_recipients.id#1 on update restrict on delete restrict
++ fk os_share_permissions.fk_share_permissions_share os_share_permissions.share_id -> os_shares.id#1 on update restrict on delete restrict
++ index os_share_permissions.fk_share_permissions_recipient_index_* unique=false column=recipient_id#1
++ index os_share_permissions.fk_share_permissions_share_index_* unique=false column=share_id#1
++ index os_share_permissions.primary_key_* unique=true column=id#1
++ index os_share_permissions.uk_share_permission_index_* unique=true column=privilege#3
++ index os_share_permissions.uk_share_permission_index_* unique=true column=recipient_id#2
++ index os_share_permissions.uk_share_permission_index_* unique=true column=share_id#1
++ pk os_share_permissions.id#1
++ table os_share_permissions

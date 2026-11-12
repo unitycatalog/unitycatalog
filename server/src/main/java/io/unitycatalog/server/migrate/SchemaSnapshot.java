@@ -25,8 +25,9 @@ import javax.sql.DataSource;
  * delete rules), and CHECK constraints (read from the database's catalog tables, by clause: their
  * generated names differ between a schema the steps built and one Hibernate built). Names are
  * lower-cased; CHECK clauses and enum values keep their case, since they are case-sensitive. Only
- * Unity Catalog's tables (names starting with {@code uc_}) are read, without its schema history
- * table: Casbin's rule table and other applications' tables are left out.
+ * Unity Catalog's tables (names starting with {@code uc_}, and {@code os_}, which embedded
+ * OpenSharing owns) are read, without its schema history table: Casbin's rule table and other
+ * applications' tables are left out.
  */
 record SchemaSnapshot(List<String> entries) {
 
@@ -40,7 +41,8 @@ record SchemaSnapshot(List<String> entries) {
 
   /** Whether a table of this lower-case name is part of Unity Catalog's schema. */
   private static boolean isSchemaTable(String lowerName) {
-    return lowerName.startsWith("uc_") && !lowerName.equals("uc_schema_history");
+    return (lowerName.startsWith("uc_") && !lowerName.equals("uc_schema_history"))
+        || lowerName.startsWith("os_");
   }
 
   /** H2 and MySQL list CHECK constraints in the standard information schema. */

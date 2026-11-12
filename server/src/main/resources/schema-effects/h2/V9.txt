@@ -1,0 +1,16 @@
++ column os_recipient_tokens.activated type=boolean size=1 nullable=NO default=null
++ column os_recipient_tokens.activation_code type=character varying size=36 nullable=YES default=null
++ column os_recipient_tokens.created_at type=timestamp with time zone size=32 nullable=NO default=null
++ column os_recipient_tokens.expires_at type=timestamp with time zone size=32 nullable=NO default=null
++ column os_recipient_tokens.id type=uuid size=16 nullable=NO default=null
++ column os_recipient_tokens.recipient_id type=uuid size=16 nullable=NO default=null
++ column os_recipient_tokens.superseded_at type=timestamp with time zone size=32 nullable=YES default=null
++ column os_recipient_tokens.token_hash type=character varying size=64 nullable=YES default=null
++ column os_recipient_tokens.updated_at type=timestamp with time zone size=32 nullable=NO default=null
++ fk os_recipient_tokens.fk_recipient_tokens_recipient os_recipient_tokens.recipient_id -> os_recipients.id#1 on update restrict on delete restrict
++ index os_recipient_tokens.fk_recipient_tokens_recipient_index_* unique=false column=recipient_id#1
++ index os_recipient_tokens.primary_key_* unique=true column=id#1
++ index os_recipient_tokens.uk_recipient_tokens_activation_code_index_* unique=true column=activation_code#1
++ index os_recipient_tokens.uk_recipient_tokens_token_hash_index_* unique=true column=token_hash#1
++ pk os_recipient_tokens.id#1
++ table os_recipient_tokens

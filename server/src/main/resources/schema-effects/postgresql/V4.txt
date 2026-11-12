@@ -1,0 +1,11 @@
++ column os_shares.comment type=varchar size=65536 nullable=YES default=null
++ column os_shares.created_at type=timestamptz size=35 nullable=NO default=null
++ column os_shares.display_name type=varchar size=255 nullable=YES default=null
++ column os_shares.id type=uuid size=2147483647 nullable=NO default=null
++ column os_shares.name type=varchar size=255 nullable=NO default=null
++ column os_shares.owner_id type=varchar size=255 nullable=NO default=null
++ column os_shares.updated_at type=timestamptz size=35 nullable=NO default=null
++ index os_shares.os_shares_pkey unique=true column=id#1
++ index os_shares.uk_shares_name unique=true column=name#1
++ pk os_shares.id#1
++ table os_shares
