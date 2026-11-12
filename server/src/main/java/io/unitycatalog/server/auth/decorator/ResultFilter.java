@@ -4,6 +4,8 @@ import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
+import io.opensharing.recipient.RecipientResponse;
+import io.opensharing.share.ShareResponse;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CredentialInfo;
@@ -185,6 +187,8 @@ public class ResultFilter {
           case SCHEMA -> ((SchemaInfo) item).getSchemaId();
           case CREDENTIAL -> ((CredentialInfo) item).getId();
           case EXTERNAL_LOCATION -> ((ExternalLocationInfo) item).getId();
+          case SHARE -> ((ShareResponse) item).id();
+          case RECIPIENT -> ((RecipientResponse) item).id();
           default -> throw new RuntimeException("Unsupported securable type: " + securableType);
         };
     return UUID.fromString(id);

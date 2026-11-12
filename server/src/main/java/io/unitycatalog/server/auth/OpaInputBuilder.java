@@ -2,6 +2,8 @@ package io.unitycatalog.server.auth;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.opensharing.recipient.RecipientEntity;
+import io.opensharing.share.ShareEntity;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
@@ -100,6 +102,14 @@ class OpaInputBuilder {
       }
       case EXTERNAL_LOCATION -> withParents(type, required(session, ExternalLocationDAO.class, id));
       case CREDENTIAL -> withParents(type, required(session, CredentialDAO.class, id));
+      case SHARE -> {
+        ShareEntity share = required(session, ShareEntity.class, id);
+        yield withoutParents(type, share.getId().toString(), share.getName());
+      }
+      case RECIPIENT -> {
+        RecipientEntity recipient = required(session, RecipientEntity.class, id);
+        yield withoutParents(type, recipient.getId().toString(), recipient.getName());
+      }
     };
   }
 
@@ -130,6 +140,17 @@ class OpaInputBuilder {
         .put("id", resource.getId().toString())
         .put("type", type.name())
         .put("name", resource.getName());
+  }
+
+  private ObjectNode withoutParents(SecurableType type, String id, String name) {
+    ObjectNode result =
+        JsonUtils.getInstance()
+            .createObjectNode()
+            .put("id", id)
+            .put("type", type.name())
+            .put("name", name);
+    result.putArray("parents");
+    return result;
   }
 
   private <T> T required(Session session, Class<T> type, UUID id) {

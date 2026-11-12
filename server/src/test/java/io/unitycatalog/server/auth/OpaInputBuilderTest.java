@@ -5,13 +5,18 @@ import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.FUNCTION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.RECIPIENT;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.SHARE;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import io.opensharing.recipient.AuthenticationType;
+import io.opensharing.recipient.RecipientEntity;
+import io.opensharing.share.ShareEntity;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
@@ -160,6 +165,38 @@ public class OpaInputBuilderTest {
     assertInput(TABLE, staging, parents);
     assertInput(CREDENTIAL, credential, List.of());
     assertInput(EXTERNAL_LOCATION, location, List.of());
+    ShareEntity share = new ShareEntity();
+    share.setName("sales_share");
+    share.setOwnerId(user.getId().toString());
+    RecipientEntity recipient = new RecipientEntity();
+    recipient.setName("acme");
+    recipient.setOwnerId(user.getId().toString());
+    recipient.setAuthenticationType(AuthenticationType.TOKEN);
+    persist(share, recipient);
+    assertInput(
+        SHARE,
+        share.getId(),
+        Map.of(
+            "id",
+            share.getId().toString(),
+            "type",
+            "SHARE",
+            "name",
+            "sales_share",
+            "parents",
+            List.of()));
+    assertInput(
+        RECIPIENT,
+        recipient.getId(),
+        Map.of(
+            "id",
+            recipient.getId().toString(),
+            "type",
+            "RECIPIENT",
+            "name",
+            "acme",
+            "parents",
+            List.of()));
   }
 
   @Test
