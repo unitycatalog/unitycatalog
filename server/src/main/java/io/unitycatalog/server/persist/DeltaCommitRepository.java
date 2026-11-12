@@ -471,7 +471,14 @@ public class DeltaCommitRepository {
           RepositoryUtils.lockTableForCommit(
               session, tableInfoDAO, tableId, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN);
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
-          postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields, filesChecked);
+          postCommitCore(
+              session,
+              tableId,
+              tableInfoDAO,
+              commit,
+              uniformFields,
+              getNewestCommits(session, tableId),
+              filesChecked);
           return null;
         },
         "Error committing to table: " + commit.getTableId(),
@@ -479,8 +486,8 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Shared core of {@link #postCommit} and {@link #applyCommitAndBackfillInSession}: read the
-   * newest commits and route to {@link #handleOnboardingCommit} (no prior commits + commit info
+   * Shared core of {@link #postCommit} and {@link #applyCommitAndBackfillInSession}: given the
+   * newest commits, route to {@link #handleOnboardingCommit} (no prior commits + commit info
    * present), {@link #handleBackfillOnlyCommit} (prior commits + commit info absent), or {@link
    * #handleNormalCommit} (prior commits + commit info present). A backfill-only request against an
    * empty commit log is rejected here directly with a caller-aware message.
@@ -494,8 +501,8 @@ public class DeltaCommitRepository {
       TableInfoDAO tableInfoDAO,
       DeltaCommit commit,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      List<DeltaCommitDAO> newestCommits,
       boolean filesChecked) {
-    List<DeltaCommitDAO> newestCommits = getNewestCommits(session, tableId);
     if (newestCommits.isEmpty()) {
       if (commit.getCommitInfo() == null) {
         throw new BaseException(
@@ -630,6 +637,8 @@ public class DeltaCommitRepository {
    * @param latestBackfilledVersion the {@code set-latest-backfilled-version} target, if any. Same
    *     value as the Delta wire field {@code latest-published-version}. When paired with {@code
    *     deltaCommitOpt}, the helper runs both in one read of the commit log.
+   * @param newestCommits the commit log head that {@link #throwIfCommitVersionTaken} read earlier
+   *     in this transaction, if it ran; read here otherwise.
    * @param filesChecked true on the retry, after the published files for this request were HEADed
    */
   void applyCommitAndBackfillInSession(
@@ -638,6 +647,7 @@ public class DeltaCommitRepository {
       Optional<DeltaCommitInfo> commitInfoOpt,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<Long> latestBackfilledVersion,
+      Optional<List<DeltaCommitDAO>> newestCommits,
       boolean filesChecked) {
     ValidationUtils.checkArgument(
         commitInfoOpt.isPresent() || latestBackfilledVersion.isPresent(),
@@ -661,6 +671,7 @@ public class DeltaCommitRepository {
             .commitInfo(commitInfoOpt.orElse(null))
             .latestBackfilledVersion(latestBackfilledVersion.orElse(null)),
         uniformFields,
+        newestCommits.orElseGet(() -> getNewestCommits(session, dao.getId())),
         filesChecked);
   }
 
@@ -1235,13 +1246,17 @@ public class DeltaCommitRepository {
    * Returns normally when the version is free, leaving the commit path to validate it.
    *
    * <p>The caller must hold the table lock (see {@link RepositoryUtils#lockTableForCommit}).
+   *
+   * @return the newest commits read for the check, so {@link #applyCommitAndBackfillInSession} in
+   *     the same transaction can reuse them instead of reading the commit log again.
    */
-  void throwIfCommitVersionTaken(Session session, TableInfoDAO dao, DeltaCommitInfo commitInfo) {
+  List<DeltaCommitDAO> throwIfCommitVersionTaken(
+      Session session, TableInfoDAO dao, DeltaCommitInfo commitInfo) {
     serverProperties.checkManagedTableEnabled();
     validateCommitInfo(commitInfo);
     List<DeltaCommitDAO> newestCommits = getNewestCommits(session, dao.getId());
     if (newestCommits.isEmpty()) {
-      return;
+      return newestCommits;
     }
     DeltaCommitDAO lastCommitDAO = newestCommits.get(0);
     if (commitInfo.getVersion() <= lastCommitDAO.getCommitVersion()) {
@@ -1253,6 +1268,7 @@ public class DeltaCommitRepository {
           backfilledVersionOf(session, dao.getId(), newestCommits),
           lastCommitDAO);
     }
+    return newestCommits;
   }
 
   /**

@@ -388,13 +388,12 @@ public final class DeltaUpdateTableMapper {
     if (managed) {
       rejectSyntheticPropertyChanges(c);
     }
-    Map<String, String> storedBeforeUpdate = managed ? new HashMap<>(properties.asMap()) : Map.of();
     boolean changesContractInput =
         managed
             && changesStoredValue(
-                c, storedBeforeUpdate, UcManagedDeltaContract.CONTRACT_INPUT_KEYS);
+                c, properties.asMap(), UcManagedDeltaContract.CONTRACT_INPUT_KEYS);
     boolean changesTableId =
-        managed && changesStoredValue(c, storedBeforeUpdate, Set.of(TableProperties.UC_TABLE_ID));
+        managed && changesStoredValue(c, properties.asMap(), Set.of(TableProperties.UC_TABLE_ID));
     // set-columns is validated against the table's stored mode and properties, before this
     // request's property changes apply, and against the mode the request sets, which only enabling
     // reads. The modes are parsed only for set-columns, so an unknown mode value never blocks other

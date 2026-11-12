@@ -84,7 +84,7 @@ public final class UcManagedDeltaContract {
    * #isSyntheticPropertyKey}) they are the synthetic property keys of the managed Delta tables
    * spec, which clients must not send in {@code set-properties} or {@code remove-properties}.
    */
-  public static final Set<String> SYNTHETIC_PROPERTY_KEYS =
+  static final Set<String> SYNTHETIC_PROPERTY_KEYS =
       Set.of(
           TableProperties.MIN_READER_VERSION,
           TableProperties.MIN_WRITER_VERSION,
@@ -97,7 +97,7 @@ public final class UcManagedDeltaContract {
    * True for a key in {@link #SYNTHETIC_PROPERTY_KEYS} or any {@code delta.feature.<name>} key,
    * whatever the feature name. Protocol and feature changes go through {@code set-protocol}.
    */
-  public static boolean isSyntheticPropertyKey(String key) {
+  static boolean isSyntheticPropertyKey(String key) {
     return key != null
         && (SYNTHETIC_PROPERTY_KEYS.contains(key)
             || key.startsWith(TableProperties.FEATURE_PREFIX));
@@ -107,7 +107,7 @@ public final class UcManagedDeltaContract {
    * Real {@code metaData.configuration} entries that carry the contract: the fixed-value and
    * engine-generated properties and the UC table id.
    */
-  public static final Set<String> CONTRACT_PROPERTY_KEYS = buildContractPropertyKeys();
+  static final Set<String> CONTRACT_PROPERTY_KEYS = buildContractPropertyKeys();
 
   private static Set<String> buildContractPropertyKeys() {
     Set<String> keys = new HashSet<>(REQUIRED_FIXED_PROPERTIES.keySet());
@@ -121,7 +121,7 @@ public final class UcManagedDeltaContract {
    * {@code delta.enableIcebergCompatV2}, which decides whether the deletion-vector requirement is
    * skipped. A MANAGED update that changes the stored value of one of them is re-validated.
    */
-  public static final Set<String> CONTRACT_INPUT_KEYS = buildContractInputKeys();
+  static final Set<String> CONTRACT_INPUT_KEYS = buildContractInputKeys();
 
   private static Set<String> buildContractInputKeys() {
     Set<String> keys = new HashSet<>(CONTRACT_PROPERTY_KEYS);

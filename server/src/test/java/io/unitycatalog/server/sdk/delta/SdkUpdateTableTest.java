@@ -1580,6 +1580,20 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   }
 
   @Test
+  public void testTakenCommitVersionIsReportedBeforeOtherValidation() throws Exception {
+    Handle h = createDeltaManaged("tbl_taken_version_first", Map.of());
+    updateTable(h, new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")));
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                new DeltaAddCommitUpdate().commit(commit(1L, "00000001b.json")),
+                new DeltaSetPropertiesUpdate().updates(Map.of("delta.minReaderVersion", "3"))),
+        DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
+        "already accepted");
+  }
+
+  @Test
   public void testReplayOfPropertyChangingCommitAfterLaterChangeReturnsNewestState()
       throws Exception {
     Handle h = createDeltaManaged("tbl_replay_property_commit", Map.of());

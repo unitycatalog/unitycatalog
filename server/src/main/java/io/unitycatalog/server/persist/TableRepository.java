@@ -23,6 +23,7 @@ import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.observability.TableMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
@@ -367,15 +368,16 @@ public class TableRepository {
           // The request is validated against the table's current state, which would wrongly
           // reject a replay of an add-commit whose changes a later commit superseded. Settle a
           // taken add-commit version first, so the replay or conflict is reported as the commit
-          // path would.
-          collected
-              .updates()
-              .addCommitInfo()
-              .ifPresent(
-                  ci ->
-                      repositories
-                          .getDeltaCommitRepository()
-                          .throwIfCommitVersionTaken(session, dao, ci));
+          // path would. The commit log head read here is reused by the commit below.
+          Optional<List<DeltaCommitDAO>> newestCommits =
+              collected
+                  .updates()
+                  .addCommitInfo()
+                  .map(
+                      ci ->
+                          repositories
+                              .getDeltaCommitRepository()
+                              .throwIfCommitVersionTaken(session, dao, ci));
           // The commit path throws CommitAlreadyAcceptedException on an idempotent replay (caught
           // in updateTableForDelta); everything applied above is rolled back with it.
           DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
@@ -389,6 +391,7 @@ public class TableRepository {
                               d.commit(),
                               d.uniformFields(),
                               d.latestBackfilledVersion(),
+                              newestCommits,
                               filesChecked));
           // Non-replay only (a replay already threw out): enforce assert-etag against pre-apply
           // state, rolling back the applied changes on mismatch.
