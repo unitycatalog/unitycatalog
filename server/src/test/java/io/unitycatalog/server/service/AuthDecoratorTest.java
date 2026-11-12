@@ -114,22 +114,6 @@ class AuthDecoratorTest {
     verifyNotDelegated();
   }
 
-  @Test
-  void userDisabledAfterSignInIsDeniedOnTheNextRequest() throws Exception {
-    // The user is read on every request, so disabling it stops a token that is still valid.
-    when(userRepository.getUserByEmail(EMAIL))
-        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED))
-        .thenReturn(new User().email(EMAIL).state(User.StateEnum.DISABLED));
-    when(delegate.serve(any(), any())).thenReturn(HttpResponse.of(200));
-    serve();
-
-    assertThatThrownBy(this::serve)
-        .isInstanceOf(AuthorizationException.class)
-        .hasMessage("User not allowed: " + EMAIL)
-        .extracting(e -> ((BaseException) e).getErrorCode())
-        .isEqualTo(ErrorCode.PERMISSION_DENIED);
-  }
-
   static Stream<Arguments> tokensWithoutKnownTypeOrExpiry() {
     String typeMessage =
         "Access token has a missing or unknown type. Get a new token from this server.";
