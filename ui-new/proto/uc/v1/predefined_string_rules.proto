@@ -1,0 +1,47 @@
+syntax = "proto2";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+
+// Predefined protovalidate rules shared by the uc.v1 services. Each rule mirrors
+// a check in the UC Java server so the bridge rejects a value before calling UC.
+// Predefined rules must be declared in a proto2 or editions file; proto3 files
+// apply them as `(buf.validate.field).string.(securable_name) = true`.
+extend buf.validate.StringRules {
+  // securable_name matches ValidationUtils.validateSqlObjectName: 1 to 255
+  // letters, digits, '_', '-', or '@', in any position.
+  optional bool securable_name = 50001 [
+    (buf.validate.predefined).cel = {
+      id: "securable_name.length"
+      message: "must be 1 to 255 characters"
+      expression: "!rule || (this.size() >= 1 && this.size() <= 255)"
+    },
+    (buf.validate.predefined).cel = {
+      id: "securable_name.characters"
+      message: "must contain only letters, digits, '_', '-', or '@'"
+      expression: "!rule || this.matches('^[A-Za-z0-9_@-]*$')"
+    }
+  ];
+
+  // storage_path accepts what NormalizedURL.normalize accepts: an s3, gs, abfs,
+  // abfss, or file URI, or a scheme-less local path containing '/'. UriScheme
+  // rejects every other scheme, including http and https.
+  optional bool storage_path = 50002 [
+    (buf.validate.predefined).cel = {
+      id: "storage_path.uri_ref"
+      message: "must be a valid URI or path"
+      expression: "!rule || this.isUriRef()"
+    },
+    (buf.validate.predefined).cel = {
+      id: "storage_path.scheme"
+      message: "must be an s3, gs, abfs, abfss, or file URI, or a local path containing '/'"
+      expression: "!rule || (this.isUri() ? ['s3://', 'gs://', 'abfs://', 'abfss://', 'file:/'].exists(prefix, this.startsWith(prefix)) : this.contains('/'))"
+    },
+    (buf.validate.predefined).cel = {
+      id: "storage_path.bucket"
+      message: "must name a bucket or container after the scheme"
+      expression: "!rule || !['s3://', 'gs://', 'abfs://', 'abfss://'].exists(prefix, this == prefix || this.startsWith(prefix + '/'))"
+    }
+  ];
+}
