@@ -71,6 +71,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .port(0)
                     .serverProperties(properties)
                     .hibernateConfigurator(hibernateConfigurator)
+                    .configurationFolder(configurationFolder)
                     .build())
         .isInstanceOf(BaseException.class)
         .hasMessage(
@@ -90,6 +91,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .port(0)
                     .serverProperties(properties)
                     .hibernateConfigurator(hibernateConfigurator)
+                    .configurationFolder(configurationFolder)
                     .build())
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("server.authorization.opa.decision-url is required");
@@ -102,6 +104,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .port(0)
             .serverProperties(properties)
             .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(configurationFolder)
             .build();
     try (Connection connection = hibernateConfigurator.getDataSource().getConnection()) {
       connection.createStatement().execute("CREATE TABLE callers_table (id INT)");
