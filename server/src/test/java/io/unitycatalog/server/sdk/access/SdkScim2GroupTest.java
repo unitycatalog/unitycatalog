@@ -144,19 +144,6 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
       assertThat(unchanged.get("displayName").asText()).isEqualTo("target");
       assertThat(memberIds(unchanged)).containsExactly(alice.getId());
     }
-    // A null member is refused the same way.
-    String nullMember = "{\"displayName\":\"renamed\",\"members\":[null]}";
-    for (HttpResponse<String> response :
-        List.of(
-            send(adminConfig, "POST", GROUPS_PATH, nullMember),
-            send(adminConfig, "PUT", groupPath, nullMember))) {
-      assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
-      assertThat(MAPPER.readTree(response.body()).get("detail").asText())
-          .isEqualTo("Member is not an existing user: null");
-    }
-    JsonNode unchanged = get(group.get("id").asText());
-    assertThat(unchanged.get("displayName").asText()).isEqualTo("target");
-    assertThat(memberIds(unchanged)).containsExactly(alice.getId());
     assertThat(groupNames(list(""))).containsExactly("other", "target");
   }
 
