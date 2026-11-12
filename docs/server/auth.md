@@ -325,7 +325,7 @@ Other changes to the server's own tokens:
 
 By default (`server.authentication.type=internal`), people and machines call the server with its own token, which
 `POST /auth/tokens` issues in exchange for an identity provider's token. In `external` mode they send the identity
-provider's access token directly, as in Apache Polaris' external mode:
+provider's access token directly:
 
 ```properties
 server.authorization=enable
@@ -360,16 +360,15 @@ claim from `subject-claim` counts, so a later email change in the identity provi
   with the value `user.email` to the access tokens of your custom authorization server. For a machine, add one to its
   application's tokens. A token without one is refused until its user is linked.
 - Only an enabled user that is not yet linked is linked, never the `admin` user or a user marked as an identity
-  provider's SCIM principal; a linked user's tokens get 403 once it is marked as one. A user linked to another identity gets 403 `User not allowed: <email>`, as does a token
-  whose email has no user: create the user first (SCIM or `bin/uc user create`).
-- When SCIM reactivates a user (`active` from false to true), the link is cleared and the next call links again. Okta
-  reuses a deactivated user for a rehire, so the new person's identity is linked, not the old one's. From then on,
-  only a token issued at or after the reactivation (its `iat`) is accepted for the user, on the first call and on
-  every later one, even when Okta keeps the same `uid`: the old person's unexpired token gets 403 `User not allowed:
-  <email>`, and so does any token without `iat` once the user has been reactivated. Both times are compared in
-  whole seconds, so a token issued in the second of the reactivation is accepted. If the identity provider's clock is
-  behind the server's, a token issued just after the reactivation can carry an earlier `iat` and is refused; a token
-  issued later links.
+  provider's SCIM principal; a linked user's tokens get 403 once it is marked as one. A user linked to another
+  identity gets 403 `User not allowed: <email>`, as does a token whose email has no user: create the user first (SCIM
+  or `bin/uc user create`).
+- When SCIM reactivates a user (`active` from false to true), the link is cleared and the next call links again, so an
+  Okta rehire (which reuses the deactivated user) does not inherit the old person's identity. From then on, only a token
+  issued at or after the reactivation (its `iat`, compared in whole seconds) is accepted for the user, on the first call
+  and on every later one, even when Okta keeps the same `uid`; the old person's unexpired token, or any token without
+  `iat`, gets 403 `User not allowed: <email>`. If the identity provider's clock is behind the server's, a token issued
+  just after the reactivation can carry an earlier `iat` and is refused; a token issued later links.
 
 In `external` mode the server's own tokens work only for the bootstrap admin (`bin/uc-admin-token`) and for identity
 providers' SCIM tokens. Its access tokens get 401, and `POST /auth/tokens` returns 501 `Token exchange is disabled in
