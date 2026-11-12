@@ -103,6 +103,11 @@ async fn call_forwards_cookie_and_propagates_set_cookie() {
     Mock::given(method("POST"))
         .and(path("/api/1.0/unity-control/auth/tokens"))
         .and(wiremock::matchers::header("cookie", "UC_SESSION=abc"))
+        .and(wiremock::matchers::header(
+            "content-type",
+            "application/x-www-form-urlencoded",
+        ))
+        .and(wiremock::matchers::body_string("grant_type=x"))
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("set-cookie", "UC_SESSION=fresh; HttpOnly; Path=/")
@@ -176,6 +181,84 @@ async fn call_rejects_typed_domain_bypass() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     let json = body_json(resp).await;
     assert_eq!(json["code"], "permission_denied");
+}
+
+#[tokio::test]
+async fn call_allows_only_listed_auth_scim_and_permission_reads() {
+    let uc = MockServer::start().await;
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .mount(&uc)
+        .await;
+    let app = build_app(uc.uri());
+    let cases = [
+        ("GET", "/api/1.0/unity-control/scim2/Me", true),
+        ("get", "/api/1.0/unity-control/scim2/Me", true),
+        ("POST", "/api/1.0/unity-control/auth/tokens", true),
+        ("POST", "/api/1.0/unity-control/auth/logout", true),
+        (
+            "GET",
+            "/api/2.1/unity-catalog/permissions/registered_model/main.default.model",
+            true,
+        ),
+        ("POST", "/api/1.0/unity-control/scim2/Me", false),
+        ("GET", "/api/1.0/unity-control/scim2/Me?attributes=x", false),
+        ("GET", "/api/1.0/unity-control/auth/tokens", false),
+        (
+            "PATCH",
+            "/api/2.1/unity-catalog/permissions/catalog/main",
+            false,
+        ),
+        (
+            "GET",
+            "/api/2.1/unity-catalog/permissions/metastore/main",
+            false,
+        ),
+        ("GET", "/api/2.1/unity-catalog/permissions/catalog/", false),
+        (
+            "GET",
+            "/api/2.1/unity-catalog/permissions/catalog/main/grants",
+            false,
+        ),
+        (
+            "GET",
+            "/api/2.1/unity-catalog/permissions/catalog/..",
+            false,
+        ),
+        (
+            "GET",
+            "/api/2.1/unity-catalog/permissions/catalog/%2E%2E",
+            false,
+        ),
+        (
+            "GET",
+            "/api/2.1/unity-catalog/permissions/catalog/main%2F..%2F..%2Fcatalogs",
+            false,
+        ),
+    ];
+
+    for (call_method, call_path, allowed) in cases {
+        let resp = app
+            .clone()
+            .oneshot(call_request(serde_json::json!({
+                "method": call_method,
+                "path": call_path
+            })))
+            .await
+            .unwrap();
+        if allowed {
+            assert_eq!(resp.status(), StatusCode::OK, "{call_method} {call_path}");
+        } else {
+            assert_eq!(
+                resp.status(),
+                StatusCode::FORBIDDEN,
+                "{call_method} {call_path}"
+            );
+            assert_eq!(body_json(resp).await["code"], "permission_denied");
+        }
+    }
+    let allowed = cases.iter().filter(|(_, _, allowed)| *allowed).count();
+    assert_eq!(uc.received_requests().await.unwrap().len(), allowed);
 }
 
 #[tokio::test]

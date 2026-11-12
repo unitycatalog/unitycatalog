@@ -50,6 +50,7 @@ async fn list_catalogs_forwards_auth_and_pagination() {
         .and(query_param("max_results", "10"))
         .and(query_param("page_token", "next"))
         .and(header_match("authorization", "Bearer user-token"))
+        .and(header_match("cookie", "UC_TOKEN=session"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "catalogs": [{"name": "main", "owner": "owner@example.com"}],
             "next_page_token": "later"
@@ -58,14 +59,15 @@ async fn list_catalogs_forwards_auth_and_pagination() {
         .mount(&uc)
         .await;
 
-    let response = build_app(uc.uri())
-        .oneshot(rpc_request(
-            "CatalogService",
-            "ListCatalogs",
-            serde_json::json!({"page": {"maxResults": 10, "pageToken": "next"}}),
-        ))
-        .await
-        .unwrap();
+    let mut request = rpc_request(
+        "CatalogService",
+        "ListCatalogs",
+        serde_json::json!({"page": {"maxResults": 10, "pageToken": "next"}}),
+    );
+    request
+        .headers_mut()
+        .insert(header::COOKIE, "UC_TOKEN=session".parse().unwrap());
+    let response = build_app(uc.uri()).oneshot(request).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
     let json = body_json(response).await;
@@ -430,6 +432,11 @@ async fn delete_services_refuse_the_other_table_type() {
         .expect(1)
         .mount(&uc)
         .await;
+    Mock::given(method("DELETE"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&uc)
+        .await;
     let app = build_app(uc.uri());
 
     let table_response = app
@@ -444,6 +451,10 @@ async fn delete_services_refuse_the_other_table_type() {
         .await
         .unwrap();
     assert_eq!(table_response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        body_json(table_response).await["message"],
+        "Table not found: main.default.metrics"
+    );
 
     let view_response = app
         .oneshot(rpc_request(
@@ -456,6 +467,10 @@ async fn delete_services_refuse_the_other_table_type() {
         .await
         .unwrap();
     assert_eq!(view_response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        body_json(view_response).await["message"],
+        "Metric view not found: main.default.events"
+    );
 }
 
 #[tokio::test]
@@ -561,6 +576,67 @@ async fn upstream_gateway_timeout_maps_to_deadline_exceeded() {
     assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
     let json = body_json(response).await;
     assert_eq!(json["code"], "deadline_exceeded");
+}
+
+#[tokio::test]
+async fn upstream_errors_map_to_connect_codes() {
+    let uc = MockServer::start().await;
+    let cases = [
+        (
+            409,
+            r#"{"error_code":"CATALOG_ALREADY_EXISTS"}"#,
+            "already_exists",
+        ),
+        (500, r#"{"code":"PERMISSION_DENIED"}"#, "permission_denied"),
+        (400, "{}", "invalid_argument"),
+        (401, "{}", "unauthenticated"),
+        (403, "{}", "permission_denied"),
+        (409, "{}", "aborted"),
+        (429, "{}", "resource_exhausted"),
+        (503, "{}", "unavailable"),
+        (500, "not json", "internal"),
+    ];
+    for (index, (status, body, _)) in cases.iter().enumerate() {
+        Mock::given(method("GET"))
+            .and(path(format!("/api/2.1/unity-catalog/catalogs/case{index}")))
+            .respond_with(ResponseTemplate::new(*status).set_body_string(*body))
+            .mount(&uc)
+            .await;
+    }
+    let app = build_app(uc.uri());
+
+    for (index, (status, body, code)) in cases.iter().enumerate() {
+        let response = app
+            .clone()
+            .oneshot(rpc_request(
+                "CatalogService",
+                "GetCatalog",
+                serde_json::json!({"catalog": {"name": format!("case{index}")}}),
+            ))
+            .await
+            .unwrap();
+        let json = body_json(response).await;
+        assert_eq!(json["code"], *code, "UC {status} {body}");
+        if !body.starts_with('{') {
+            assert_eq!(json["message"], "Unity Catalog request failed");
+        }
+    }
+}
+
+#[tokio::test]
+async fn unreachable_upstream_maps_to_unavailable() {
+    let response = build_app("http://127.0.0.1:1".to_string())
+        .oneshot(rpc_request(
+            "CatalogService",
+            "GetCatalog",
+            serde_json::json!({"catalog": {"name": "main"}}),
+        ))
+        .await
+        .unwrap();
+
+    let json = body_json(response).await;
+    assert_eq!(json["code"], "unavailable");
+    assert_eq!(json["message"], "Unity Catalog server is unavailable");
 }
 
 #[tokio::test]
