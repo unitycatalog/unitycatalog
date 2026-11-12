@@ -192,23 +192,27 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|ALTER TABLE t ADD c INT|",
         "POSTGRESQL|CREATE INDEX i ON t (c)|",
         // PostgreSQL fails an index entry over 2,704 bytes, so a long text column is refused.
-        "POSTGRESQL|CREATE INDEX i ON t (long)|has an index key of up to 262140 bytes, over the"
-            + " 2704 bytes of an index entry",
-        "POSTGRESQL|CREATE INDEX i ON t (c, body)|has an index key of up to 8589935608 bytes,"
-            + " over the 2704 bytes of an index entry",
+        "POSTGRESQL|CREATE INDEX i ON t (long)|has an index entry of up to 262152 bytes, over the"
+            + " 2704 bytes PostgreSQL allows",
+        "POSTGRESQL|CREATE INDEX i ON t (c, body)|has an index entry of up to 8589935624 bytes,"
+            + " over the 2704 bytes PostgreSQL allows",
         // The limit is for the whole key: two 600-character columns can hold 4,800 bytes.
-        "POSTGRESQL|CREATE INDEX i ON t (a, b)|has an index key of up to 4800 bytes, over the"
-            + " 2704 bytes of an index entry",
+        "POSTGRESQL|CREATE INDEX i ON t (a, b)|has an index entry of up to 4816 bytes, over the"
+            + " 2704 bytes PostgreSQL allows",
         "POSTGRESQL|CREATE INDEX i ON t (a, id)|",
-        "POSTGRESQL|CREATE INDEX i ON t (data)|indexes t.data (bytea), which this test can't"
-            + " size",
+        // An entry adds an 8-byte header and a 4-byte length per text value, rounded up to 8.
+        "POSTGRESQL|CREATE INDEX i ON t (c676)|has an index entry of up to 2720 bytes, over the"
+            + " 2704 bytes PostgreSQL allows",
+        "POSTGRESQL|CREATE INDEX i ON t (c673)|",
+        "POSTGRESQL|CREATE INDEX i ON t (json)|indexes t.json (jsonb), which this test can't size",
+        "POSTGRESQL|CREATE INDEX i ON t (data)|indexes t.data (bytea), which this test can't size",
         "MYSQL|CREATE INDEX i ON t (long(100))|",
-        "POSTGRESQL|CREATE INDEX i ON t (long DESC)|has an index key of up to 262140 bytes, over"
-            + " the 2704 bytes of an index entry",
-        "POSTGRESQL|CREATE INDEX i ON t (lower(c))|indexes an expression, which this test"
-            + " can't size",
-        "POSTGRESQL|CREATE INDEX i ON t (missing)|indexes t.missing, which the schema before"
-            + " the step doesn't have",
+        "POSTGRESQL|CREATE INDEX i ON t (long DESC)|has an index entry of up to 262152 bytes, over"
+            + " the 2704 bytes PostgreSQL allows",
+        "POSTGRESQL|CREATE INDEX i ON t (lower(c))|indexes an expression, which this test can't"
+            + " size",
+        "POSTGRESQL|CREATE INDEX i ON t (missing)|indexes t.missing, which the schema before the"
+            + " step doesn't have",
         "POSTGRESQL|CREATE INDEX CONCURRENTLY i ON t (c)|creates an index CONCURRENTLY",
         "POSTGRESQL|CREATE UNIQUE INDEX i ON t (c)|creates a unique index",
         "MYSQL|CREATE FULLTEXT INDEX i ON t (c)|creates a fulltext index",
@@ -236,7 +240,10 @@ public class MigrationStepRulesTest {
                 "column t.a type=varchar size=600 nullable=YES default=null",
                 "column t.b type=varchar size=600 nullable=YES default=null",
                 "column t.id type=uuid size=2147483647 nullable=NO default=null",
-                "column t.data type=bytea size=2147483647 nullable=YES default=null"));
+                "column t.data type=bytea size=2147483647 nullable=YES default=null",
+                "column t.json type=jsonb size=2147483647 nullable=YES default=null",
+                "column t.c676 type=varchar size=676 nullable=YES default=null",
+                "column t.c673 type=varchar size=673 nullable=YES default=null"));
     assertThat(refusalOfSent(sql, kind, false, before)).isEqualTo(refusal);
   }
 
@@ -515,10 +522,19 @@ public class MigrationStepRulesTest {
   }
 
   /**
-   * PostgreSQL fails an index entry over 2,704 bytes (a third of a page) for the whole key; MySQL's
-   * 3,072-byte limit already fails the step on an empty database. A key that fits 2,704 fits both.
+   * PostgreSQL fails an index entry over 2,704 bytes (a third of a page); MySQL's 3,072-byte key
+   * limit already fails the step on an empty database. An entry that fits 2,704 fits both.
    */
   private static final long MAX_INDEX_ENTRY_BYTES = 2704;
+
+  /**
+   * The most bytes a PostgreSQL index entry over {@code keyBytes} of data takes: an 8-byte header,
+   * a 4-byte length before each of {@code variableColumns} values, all rounded up to 8.
+   */
+  private static long indexEntryBytes(long keyBytes, int variableColumns) {
+    long bytes = 8 + keyBytes + 4L * variableColumns;
+    return (bytes + 7) / 8 * 8;
+  }
 
   /** The bytes each fixed-width type, as the snapshot names it, takes in an index entry. */
   private static final Map<String, Long> FIXED_WIDTH_BYTES =
@@ -570,6 +586,7 @@ public class MigrationStepRulesTest {
   private static String indexedColumnProblem(CreateIndex index, SchemaSnapshot before) {
     String table = unquoted(index.getTable().getName());
     long keyBytes = 0;
+    int variableColumns = 0;
     for (Index.ColumnParams element : index.getIndex().getColumns()) {
       // JSqlParser keeps a MySQL prefix length as "(100)", a sort order as "DESC", and a
       // function's arguments (an expression) as "(c)".
@@ -598,13 +615,17 @@ public class MigrationStepRulesTest {
         return "indexes " + column + " (" + line.group(3) + "), which this test can't size";
       }
       keyBytes += bytes;
+      if (!FIXED_WIDTH_BYTES.containsKey(line.group(3)) && !line.group(3).startsWith("enum")) {
+        variableColumns++;
+      }
     }
-    if (keyBytes > MAX_INDEX_ENTRY_BYTES) {
-      return "has an index key of up to "
-          + keyBytes
+    long entryBytes = indexEntryBytes(keyBytes, variableColumns);
+    if (entryBytes > MAX_INDEX_ENTRY_BYTES) {
+      return "has an index entry of up to "
+          + entryBytes
           + " bytes, over the "
           + MAX_INDEX_ENTRY_BYTES
-          + " bytes of an index entry";
+          + " bytes PostgreSQL allows";
     }
     return null;
   }
