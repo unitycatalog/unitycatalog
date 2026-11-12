@@ -68,7 +68,7 @@ public class RepositoryUtilsTest {
         .toArray(RuntimeException[]::new);
   }
 
-  /** The row-lock query that lockTableForCommit runs on {@code session}. */
+  /** The row-lock query that lockTableForCommit and lockByKey run on {@code session}. */
   @SuppressWarnings("unchecked")
   private static SelectionQuery<TableInfoDAO> lockQuery(Session session) {
     SelectionQuery<TableInfoDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
@@ -240,6 +240,29 @@ public class RepositoryUtilsTest {
             });
   }
 
+  /** The re-read takes the lock too, so its lock failure is UNAVAILABLE like the lock query's. */
+  @ParameterizedTest
+  @MethodSource("lockAcquisitionFailures")
+  public void lockByKeyReportsALockFailureOnTheReReadAsUnavailable(RuntimeException lockFailure) {
+    Session session = mock();
+    TableInfoDAO dao = mock();
+    when(lockQuery(session).getSingleResultOrNull()).thenReturn(dao);
+    doThrow(lockFailure).when(session).refresh(dao, LockMode.PESSIMISTIC_WRITE);
+
+    assertThatThrownBy(
+            () ->
+                RepositoryUtils.lockByKey(
+                    session,
+                    TableInfoDAO.class,
+                    TABLE_ID,
+                    Map.of("name", "tbl"),
+                    "table tbl",
+                    NOT_FOUND))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
+  }
+
   /** A delete whose key no longer matches changes nothing and reports not found. */
   @Test
   public void deleteByKeyMatchesNothingWhenTheKeyDiffers() {
@@ -251,7 +274,9 @@ public class RepositoryUtilsTest {
                   () ->
                       RepositoryUtils.deleteByKey(
                           session, entity, Map.of("name", "renamed"), NOT_FOUND))
-              .isInstanceOf(BaseException.class);
+              .isInstanceOfSatisfying(
+                  BaseException.class,
+                  e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.CATALOG_NOT_FOUND));
           return null;
         });
     assertThat(findCatalog(id).getComment()).isEqualTo("c");
