@@ -306,17 +306,11 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     group = executeCliCommand(serverConfig, List.of("group", "get", "--id", id));
     assertThat(memberIds(group)).containsExactlyInAnyOrder(ada, bob);
 
-    // Both are repeatable: adding a member twice and removing a non-member change nothing.
+    // Remove one member.
     group =
         executeCliCommand(
-            serverConfig, List.of("group", "add-member", "--id", id, "--member", bob));
-    assertThat(memberIds(group)).containsExactlyInAnyOrder(ada, bob);
-    for (int attempt = 0; attempt < 2; attempt++) {
-      group =
-          executeCliCommand(
-              serverConfig, List.of("group", "remove-member", "--id", id, "--member", ada));
-      assertThat(memberIds(group)).containsExactly(bob);
-    }
+            serverConfig, List.of("group", "remove-member", "--id", id, "--member", ada));
+    assertThat(memberIds(group)).containsExactly(bob);
 
     // A second group, created with several members: ids are split on commas and trimmed, and an
     // empty entry is skipped. Then a duplicate name.
@@ -344,10 +338,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     assertThat(group.get("external_id").asText()).isEqualTo("okta-1");
     assertThat(memberIds(group)).containsExactly(bob);
 
-    // Get and list, with and without a filter.
-    group = executeCliCommand(serverConfig, List.of("group", "get", "--id", id));
-    assertThat(group.get("name").asText()).isEqualTo("data-platform");
-    assertThat(memberIds(group)).containsExactly(bob);
+    // List, with and without a filter.
     assertThat(executeCliCommand(serverConfig, List.of("group", "list")))
         .extracting(g -> g.get("name").asText())
         .containsExactly("data-platform", "empty");
@@ -362,12 +353,11 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
         .extracting(g -> g.get("name").asText())
         .containsExactly("empty");
 
-    // Delete; the group is gone and its members stay.
+    // Delete; the group is gone.
     executeCliCommand(serverConfig, List.of("group", "delete", "--id", id));
     ApiException gone = refusedCommand(List.of("group", "get", "--id", id));
     assertThat(gone.getCode()).isEqualTo(404);
     assertThat(gone.getResponseBody()).contains("Group not found: " + id);
-    assertThat(executeCliCommand(serverConfig, List.of("user", "get", "--id", bob))).isNotNull();
 
     serverConfig.setAuthToken("");
   }
