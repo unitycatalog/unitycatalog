@@ -1,0 +1,1 @@
+-- Changes nothing on H2, where the credential column is already a CLOB.

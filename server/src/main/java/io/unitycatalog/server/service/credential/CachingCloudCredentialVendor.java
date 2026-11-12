@@ -9,6 +9,7 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.StorageCredentialCacheMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
@@ -31,10 +32,10 @@ import lombok.SneakyThrows;
  * binding before calling it, so only the cloud vend is skipped; the binding is re-read on every
  * request.
  *
- * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}. It is served until
- * {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where {@code vendTime} is read
- * before the cloud call; a static credential with no expiry is bounded by the max age alone.
- * Callers always receive a copy, so they cannot change a cached credential.
+ * <p>An entry is keyed by {@code (locations, privileges, credentialType, roleArn, externalId)}. It
+ * is served until {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where {@code
+ * vendTime} is read before the cloud call; a static credential with no expiry is bounded by the max
+ * age alone. Callers always receive a copy, so they cannot change a cached credential.
  *
  * <p>Each request is recorded as a hit or a miss in {@link StorageCredentialCacheMetrics}.
  */
@@ -135,6 +136,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   private record Key(
       List<NormalizedURL> locations,
       Set<CredentialContext.Privilege> privileges,
+      CredentialType credentialType,
       String roleArn,
       String externalId) {
     Key {
@@ -144,13 +146,20 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
     }
 
     static Key of(CredentialContext context) {
-      // Per-bucket config vends have no credential DAO, so both role fields are null. AWS IAM role
-      // is the only DB-backed credential type today; a new type must add its binding to the key.
+      // Per-bucket config vends have no credential DAO, so the type and role fields are null. The
+      // type keeps an Azure or GCS credential, which has no role, from sharing the key of a
+      // per-bucket vend for the same location. Vending those types must add their identity too.
+      Optional<CredentialType> credentialType =
+          context.getCredentialDAO().map(CredentialDAO::getCredentialType);
       Optional<AwsIamRoleResponse> awsIamRole =
-          context.getCredentialDAO().map(CredentialDAO::getAwsIamRoleResponse);
+          context
+              .getCredentialDAO()
+              .filter(dao -> dao.getCredentialType() == CredentialType.AWS_IAM_ROLE)
+              .map(CredentialDAO::getAwsIamRoleResponse);
       return new Key(
           context.getLocations(),
           context.getPrivileges(),
+          credentialType.orElse(null),
           awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(null),
           awsIamRole.map(AwsIamRoleResponse::getExternalId).orElse(null));
     }

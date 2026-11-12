@@ -7,6 +7,8 @@
 | **comment** | **String** | Comment associated with the credential. | [optional] [default to null] |
 | **aws\_iam\_role** | [**AwsIamRoleRequest**](AwsIamRoleRequest.md) |  | [optional] [default to null] |
 | **s3\_compatible** | [**S3CompatibleRequest**](S3CompatibleRequest.md) |  | [optional] [default to null] |
+| **azure\_service\_principal** | [**AzureServicePrincipalRequest**](AzureServicePrincipalRequest.md) |  | [optional] [default to null] |
+| **gcp\_service\_account\_key** | [**GcpServiceAccountKeyRequest**](GcpServiceAccountKeyRequest.md) |  | [optional] [default to null] |
 | **purpose** | [**CredentialPurpose**](CredentialPurpose.md) |  | [optional] [default to null] |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
