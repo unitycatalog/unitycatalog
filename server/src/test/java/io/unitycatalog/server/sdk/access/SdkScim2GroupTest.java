@@ -101,6 +101,7 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
       assertThat(conflict.statusCode()).isEqualTo(409);
       JsonNode error = MAPPER.readTree(conflict.body());
       assertThat(error.get("status").asText()).isEqualTo("409");
+      assertThat(error.get("scimType").asText()).isEqualTo("uniqueness");
       assertThat(error.get("detail").asText()).contains("Group already exists: taken");
     }
     assertThat(groupNames(list(""))).containsExactly("other", "taken");
