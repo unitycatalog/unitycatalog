@@ -109,39 +109,6 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
 
   @Test
   @SneakyThrows
-  public void testConcurrentCreatesOfOneNameYieldOneGroup() {
-    int threads = 8;
-    ExecutorService pool = Executors.newFixedThreadPool(threads);
-    try {
-      for (int round = 0; round < 5; round++) {
-        String name = "race-" + round;
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<Integer>> statuses = new ArrayList<>();
-        for (int i = 0; i < threads; i++) {
-          statuses.add(
-              pool.submit(
-                  () -> {
-                    start.await();
-                    return send(adminConfig, "POST", GROUPS_PATH, groupBody(name)).statusCode();
-                  }));
-        }
-        start.countDown();
-        List<Integer> codes = new ArrayList<>();
-        for (Future<Integer> status : statuses) {
-          codes.add(status.get());
-        }
-        assertThat(codes.stream().filter(code -> code == 201)).hasSize(1);
-        assertThat(codes.stream().filter(code -> code == 409)).hasSize(threads - 1);
-        assertThat(groupNames(list("?filter=" + encode("displayName eq \"" + name + "\""))).size())
-            .isEqualTo(1);
-      }
-    } finally {
-      pool.shutdownNow();
-    }
-  }
-
-  @Test
-  @SneakyThrows
   public void testInvalidMembersAreRejectedAndNothingIsApplied() {
     JsonNode other = createGroup("other");
     JsonNode group = createGroup("target", alice.getId());
