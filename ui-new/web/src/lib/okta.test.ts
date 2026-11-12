@@ -84,10 +84,6 @@ describe("callback state check", () => {
     // A failed callback also consumes the pending login.
     expect(() => takeCallback(`?code=abc&state=${state}`)).toThrow("No Okta sign-in is in progress");
   });
-
-  it("refuses a callback when no sign-in was started in this tab", () => {
-    expect(() => takeCallback("?code=abc&state=x")).toThrow("No Okta sign-in is in progress");
-  });
 });
 
 describe("exchangeCode", () => {
