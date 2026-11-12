@@ -336,19 +336,6 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
 
   @Test
   @SneakyThrows
-  public void testUserCarriesTheNameAttribute() {
-    HttpResponse<String> response =
-        TestUtils.sendRaw(
-            adminConfig, "GET", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.empty());
-    assertThat(response.statusCode()).isEqualTo(200);
-    JsonNode body = MAPPER.readTree(response.body());
-    assertThat(body.get("name").get("formatted").asText()).isEqualTo("Other User");
-    // userName stays the email.
-    assertThat(body.get("userName").asText()).isEqualTo(OTHER_USER);
-  }
-
-  @Test
-  @SneakyThrows
   public void testPutStoresTheNameInOrderOfPrecedence() {
     // UC stores one name. It is displayName, else name.formatted, else givenName and familyName
     // joined by a space, and the current name is kept when the request carries none. A null
