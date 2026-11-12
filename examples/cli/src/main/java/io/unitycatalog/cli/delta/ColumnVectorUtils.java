@@ -19,6 +19,14 @@ import java.util.function.Function;
  * href="https://github.com/delta-io/delta/blob/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples/BaseTableWriter.java">BaseTableWriter.java</a>
  */
 public class ColumnVectorUtils {
+  /**
+   * Creates a ColumnVector over the given values.
+   *
+   * @param data the values, which give the vector size and which rows are null
+   * @param dataType the Delta type of the vector. Only the getter for this type returns a value,
+   *     and every other getter throws {@link UnsupportedOperationException}.
+   * @param getter returns the value at a row index
+   */
   public static <T> ColumnVector createVector(
       List<T> data, DataType dataType, Function<Integer, T> getter) {
     return new ColumnVector() {

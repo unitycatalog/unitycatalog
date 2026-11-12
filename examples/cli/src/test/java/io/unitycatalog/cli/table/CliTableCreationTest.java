@@ -194,7 +194,7 @@ public class CliTableCreationTest extends BaseServerTest {
             .schemaName(SCHEMA_NAME)
             .name(TABLE_NAME)
             .tableType(TableType.EXTERNAL)
-            .storageLocation(tableDir.toString())
+            .storageLocation(tableDir.toUri().toString())
             .columns(
                 List.of(
                     new ColumnInfo().name("id").typeName(ColumnTypeName.INT),
