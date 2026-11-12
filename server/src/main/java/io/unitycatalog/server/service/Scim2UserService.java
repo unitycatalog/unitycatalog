@@ -225,7 +225,7 @@ public class Scim2UserService implements ScimService {
     // Only a replace of "active" is supported. Any other operation, path or attribute is refused
     // as a whole, so no part of the request is applied.
     List<PatchOperation> operations = patchRequest.getOperations();
-    if (operations.isEmpty() || !operations.stream().allMatch(this::isActiveReplace)) {
+    if (operations.isEmpty() || !operations.stream().allMatch(Scim2UserService::isActiveReplace)) {
       // TODO(#PR1): throw PR 1's SCIM NotImplementedException so the 501 carries a SCIM Error body.
       return HttpResponse.of(HttpStatus.NOT_IMPLEMENTED);
     }
@@ -269,7 +269,7 @@ public class Scim2UserService implements ScimService {
     return value != null && !value.isBlank();
   }
 
-  private boolean isActiveReplace(PatchOperation operation) {
+  private static boolean isActiveReplace(PatchOperation operation) {
     return operation.getOpType() == PatchOpType.REPLACE && activeValue(operation) != null;
   }
 
