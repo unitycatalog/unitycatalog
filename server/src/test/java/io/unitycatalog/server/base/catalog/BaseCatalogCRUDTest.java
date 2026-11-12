@@ -17,8 +17,12 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -251,5 +255,84 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     CatalogInfo renamed = catalogOperations.getCatalog("update_race_renamed");
     assertThat(renamed.getId()).isEqualTo(id.toString());
     assertThat(renamed.getComment()).isNotEqualTo("lost");
+  }
+
+  /**
+   * A force delete fails closed when a schema is renamed to before the listing's cursor while the
+   * cascade waits: the check after the cascade finds the schema the listing missed.
+   */
+  @Test
+  public void forceDeleteFailsClosedWhenASchemaWasRenamedWhileItWasBlocked() throws Exception {
+    UUID catalogId =
+        UUID.fromString(catalogOperations.createCatalog(newCatalog("cascade_rename")).getId());
+    // A full first page of schemas plus "z_last", the one renamed while the delete waits.
+    List<UUID> ids = new ArrayList<>();
+    for (int i = 0; i < PagedListingHelper.DEFAULT_PAGE_SIZE; i++) {
+      ids.add(insertSchema(catalogId, String.format("s_%03d", i)));
+    }
+    UUID last = insertSchema(catalogId, "z_last");
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> {
+                  // Holding s_000 blocks the cascade; z_last is renamed to before the cursor.
+                  setColumn(held, SchemaInfoDAO.class, last, "name", "a_first");
+                  setColumn(held, SchemaInfoDAO.class, ids.get(0), "comment", "held");
+                },
+                () -> {
+                  catalogOperations.deleteCatalog("cascade_rename", Optional.of(true));
+                  return null;
+                }),
+        ErrorCode.UNAVAILABLE,
+        "Concurrent modification in progress on catalog cascade_rename");
+
+    assertThat(catalogOperations.getCatalog("cascade_rename").getId())
+        .isEqualTo(catalogId.toString());
+    assertThat(countChildren(SchemaInfoDAO.class, "catalogId", catalogId))
+        .isEqualTo(PagedListingHelper.DEFAULT_PAGE_SIZE + 1);
+  }
+
+  /** A force delete fails closed when a schema it listed is dropped while the cascade waits. */
+  @Test
+  public void forceDeleteFailsClosedWhenASchemaWasDroppedWhileItWasBlocked() throws Exception {
+    UUID catalogId =
+        UUID.fromString(catalogOperations.createCatalog(newCatalog("cascade_drop")).getId());
+    UUID dropped = insertSchema(catalogId, "dropped");
+    insertSchema(catalogId, "kept");
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    held.createMutationQuery("delete from SchemaInfoDAO where id = :id")
+                        .setParameter("id", dropped)
+                        .executeUpdate(),
+                () -> {
+                  catalogOperations.deleteCatalog("cascade_drop", Optional.of(true));
+                  return null;
+                }),
+        ErrorCode.UNAVAILABLE,
+        "Concurrent modification in progress on catalog cascade_drop");
+
+    assertThat(catalogOperations.getCatalog("cascade_drop").getId())
+        .isEqualTo(catalogId.toString());
+    assertThat(countChildren(SchemaInfoDAO.class, "catalogId", catalogId)).isEqualTo(1);
+  }
+
+  private UUID insertSchema(UUID catalogId, String name) {
+    UUID id = UUID.randomUUID();
+    try (Session session = testDatabase.sessionFactory().openSession()) {
+      Transaction transaction = session.beginTransaction();
+      session.persist(
+          SchemaInfoDAO.builder()
+              .id(id)
+              .name(name)
+              .catalogId(catalogId)
+              .createdAt(new Date())
+              .build());
+      transaction.commit();
+    }
+    return id;
   }
 }
