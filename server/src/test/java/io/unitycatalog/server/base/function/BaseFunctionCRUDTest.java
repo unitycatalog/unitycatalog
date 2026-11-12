@@ -23,8 +23,11 @@ import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.assertj.core.api.Assertions;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.BeforeEach;
@@ -223,5 +226,56 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     assertThat(functionOperations.listFunctions(CATALOG_NEW_NAME, SCHEMA_NAME, Optional.empty()))
         .as("Function with ID '%s' exists", functionInfo.getFunctionId())
         .noneSatisfy(f -> assertThat(f.getFunctionId()).isEqualTo(functionInfo.getFunctionId()));
+  }
+
+  /** A delete that waits for a concurrent delete of the function reports it as not found. */
+  @Test
+  public void deleteRacingADropIsNotFound() throws Exception {
+    createCommonResources();
+    UUID id =
+        UUID.fromString(
+            functionOperations
+                .createFunction(
+                    new CreateFunctionRequest()
+                        .functionInfo(
+                            new CreateFunction()
+                                .name(FUNCTION_NAME)
+                                .catalogName(CATALOG_NAME)
+                                .schemaName(SCHEMA_NAME)
+                                .parameterStyle(CreateFunction.ParameterStyleEnum.S)
+                                .isDeterministic(true)
+                                .externalLanguage("python")
+                                .dataType(ColumnTypeName.INT)
+                                .fullDataType("Integer")
+                                .isNullCall(false)
+                                .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
+                                .routineDefinition("def test():\n  return 1")
+                                .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
+                                .specificName("test")
+                                .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
+                                // The CLI requires at least one input parameter.
+                                .inputParams(
+                                    new FunctionParameterInfos()
+                                        .parameters(List.of(functionParameter("a", 0))))))
+                .getFunctionId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> {
+                  held.createMutationQuery(
+                          "delete from FunctionParameterInfoDAO where function.id = :id")
+                      .setParameter("id", id)
+                      .executeUpdate();
+                  held.createMutationQuery("delete from FunctionInfoDAO where id = :id")
+                      .setParameter("id", id)
+                      .executeUpdate();
+                },
+                () -> {
+                  functionOperations.deleteFunction(FUNCTION_FULL_NAME, true);
+                  return null;
+                }),
+        ErrorCode.NOT_FOUND,
+        "Function not found");
   }
 }
