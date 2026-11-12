@@ -8,7 +8,7 @@ tags:
       A user is the identity recognized by Unity Catalog.
   - name: Groups
     description: |
-      A group is a named set of users. Groups are managed with SCIM 2.0 (RFC 7643, RFC 7644).
+      A group is a named set of users.
 
 paths:
   /scim2/Users:
