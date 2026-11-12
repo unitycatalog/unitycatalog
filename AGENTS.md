@@ -23,7 +23,8 @@ Unity Catalog is a JVM project, and mostly Java: the server, the Java client, th
 ```bash
 build/sbt clean compile                 # compile everything, no tests
 build/sbt clean package publishLocal    # build and publish artifacts locally
-build/sbt -J-Xmx2G clean test           # full test suite (give it heap)
+dev/run-tests.py                        # full test suite, preferred: same tests as `build/sbt test`, in parallel JVMs sized to the CPUs and memory (see --help)
+build/sbt -J-Xmx2G clean test           # full test suite, serially: for a weak machine, where the script picks only 1-2 JVMs (-J-Xmx is sbt's own heap, needed for serverShaded/assembly; forked test JVMs are unaffected)
 build/sbt "server/test"                 # one module's tests
 build/sbt "server/testOnly io.unitycatalog.server.service.PermissionServiceTest"  # one class (fast loop)
 build/sbt -J-Xmx2G jacoco               # coverage report
