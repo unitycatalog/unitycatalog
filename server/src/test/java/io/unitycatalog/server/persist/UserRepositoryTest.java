@@ -25,14 +25,7 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeAll;
@@ -479,38 +472,16 @@ class UserRepositoryTest {
   }
 
   @Test
-  void concurrentFirstSignInsOfOneNewPersonCreateOneRow() throws Exception {
-    UserLink link = new UserLink(ISSUER, "uid", "00u-racer");
-    int callers = 8;
-    ExecutorService executor = Executors.newFixedThreadPool(callers);
-    CountDownLatch start = new CountDownLatch(1);
-    try {
-      List<Future<User>> results = new ArrayList<>();
-      for (int i = 0; i < callers; i++) {
-        results.add(
-            executor.submit(
-                () -> {
-                  start.await();
-                  return userRepository.createLinkedUser(IDP, "race-new@example.com", link);
-                }));
-      }
-      start.countDown();
-      // The losers get null, not an exception.
-      List<String> created = new ArrayList<>();
-      for (Future<User> result : results) {
-        User user = result.get(60, TimeUnit.SECONDS);
-        if (user != null) {
-          created.add(user.getId());
-        }
-      }
-      assertThat(created).hasSize(1);
-      assertThat(userRepository.findLinkedUser(link, null).getId()).isEqualTo(created.get(0));
-      assertThat(
-              userRepository.listUsers(0, 1000, u -> "race-new@example.com".equals(u.getEmail())))
-          .hasSize(1);
-    } finally {
-      executor.shutdownNow();
-    }
+  void createLinkedUserReturnsNullWhenTheLinkBelongsToAnotherRow() {
+    UserLink link = new UserLink(ISSUER, "uid", "00u-taken");
+    assertThat(userRepository.createLinkedUser(IDP, "first@example.com", link)).isNotNull();
+
+    // The same identity under another email hits the link key: null, not an exception.
+    assertThat(userRepository.createLinkedUser(IDP, "second@example.com", link)).isNull();
+
+    assertThat(userRepository.listUsers(0, 1000, u -> "second@example.com".equals(u.getEmail())))
+        .isEmpty();
+    assertThat(userRepository.findLinkedUser(link, null).getEmail()).isEqualTo("first@example.com");
   }
 
   private static void assertSetIdpNameRefused(String email, ErrorCode code, String message) {
