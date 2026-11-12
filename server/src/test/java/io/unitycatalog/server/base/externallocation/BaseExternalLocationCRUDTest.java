@@ -36,6 +36,7 @@ import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -473,7 +474,9 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     TestUtils.assertApiException(
         () ->
             runBlockedByHeldWrite(
-                held -> setColumn(held, ExternalLocationDAO.class, id, "name", "drop_race_renamed"),
+                held ->
+                    TestDatabase.setColumn(
+                        held, ExternalLocationDAO.class, id, "name", "drop_race_renamed"),
                 () -> {
                   externalLocationOperations.deleteExternalLocation("drop_race", Optional.empty());
                   return null;
@@ -493,7 +496,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     externalLocationsToDelete.add("edited");
 
     runBlockedByHeldWrite(
-        held -> setColumn(held, ExternalLocationDAO.class, id, "comment", "held comment"),
+        held ->
+            TestDatabase.setColumn(held, ExternalLocationDAO.class, id, "comment", "held comment"),
         () ->
             externalLocationOperations.updateExternalLocation(
                 "edit_race", new UpdateExternalLocation().newName("edited")));
@@ -512,7 +516,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     ExternalLocationInfo updated =
         runBlockedByHeldWrite(
             held ->
-                setColumn(held, ExternalLocationDAO.class, id, "credentialId", anotherCredentialId),
+                TestDatabase.setColumn(
+                    held, ExternalLocationDAO.class, id, "credentialId", anotherCredentialId),
             () ->
                 externalLocationOperations.updateExternalLocation(
                     "cred_race", new UpdateExternalLocation().comment("patched")));
@@ -538,7 +543,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         runBlockedByHeldWrite(
             held -> {
               held.persist(newCredential);
-              setColumn(held, ExternalLocationDAO.class, id, "credentialId", newCredential.getId());
+              TestDatabase.setColumn(
+                  held, ExternalLocationDAO.class, id, "credentialId", newCredential.getId());
             },
             () ->
                 externalLocationOperations.updateExternalLocation(
