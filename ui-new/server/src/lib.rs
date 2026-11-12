@@ -29,6 +29,14 @@ mod validation {
 
 pub use config::Config;
 
+const X_REQUESTED_WITH: HeaderName = HeaderName::from_static("x-requested-with");
+
+/// Browser request headers both bridge paths copy onto the UC request. UC's
+/// CSRF check rejects cookie-authenticated writes, the cookie token exchange,
+/// and logout unless `X-Requested-With: XMLHttpRequest` is present.
+pub(crate) const FORWARDED_HEADERS: [HeaderName; 3] =
+    [header::COOKIE, header::AUTHORIZATION, X_REQUESTED_WITH];
+
 /// Shared handler state: a reused HTTP client and the loaded config.
 #[derive(Clone)]
 pub struct AppState {
@@ -101,6 +109,7 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
             .allow_headers([
                 header::CONTENT_TYPE,
                 header::AUTHORIZATION,
+                X_REQUESTED_WITH,
                 HeaderName::from_static("connect-protocol-version"),
             ])
             .allow_credentials(true),

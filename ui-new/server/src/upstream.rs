@@ -1,10 +1,9 @@
-use axum::http::header;
 use connectrpc::{ConnectError, ErrorCode, RequestContext};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::{Method, StatusCode};
 use serde_json::Value;
 
-use crate::AppState;
+use crate::{AppState, FORWARDED_HEADERS};
 
 const API_PREFIX: &str = "/api/2.1/unity-catalog";
 const MAX_RESPONSE_SIZE: usize = 32 * 1024 * 1024;
@@ -77,17 +76,10 @@ impl Upstream {
         );
         let mut request = self.state.http.request(method, &url).query(&query);
 
-        if let Some(cookie) = ctx
-            .header(header::COOKIE)
-            .and_then(|value| value.to_str().ok())
-        {
-            request = request.header(header::COOKIE, cookie);
-        }
-        if let Some(authorization) = ctx
-            .header(header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-        {
-            request = request.header(header::AUTHORIZATION, authorization);
+        for name in FORWARDED_HEADERS {
+            if let Some(value) = ctx.header(&name).and_then(|value| value.to_str().ok()) {
+                request = request.header(name, value);
+            }
         }
         if let Some(remaining) = ctx.time_remaining() {
             request = request.timeout(remaining);

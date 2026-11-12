@@ -97,12 +97,17 @@ async fn call_maps_non_2xx_to_ok_false() {
 }
 
 #[tokio::test]
-async fn call_forwards_cookie_and_propagates_set_cookie() {
+async fn call_forwards_cookie_auth_and_propagates_set_cookie() {
     let uc = MockServer::start().await;
-    // Assert the bridge forwarded our session cookie, and hand back a Set-Cookie.
+    // Assert the bridge forwarded our session cookie and UC's required CSRF
+    // header, and hand back a Set-Cookie.
     Mock::given(method("POST"))
         .and(path("/api/1.0/unity-control/auth/tokens"))
         .and(wiremock::matchers::header("cookie", "UC_SESSION=abc"))
+        .and(wiremock::matchers::header(
+            "x-requested-with",
+            "XMLHttpRequest",
+        ))
         .and(wiremock::matchers::header(
             "content-type",
             "application/x-www-form-urlencoded",
@@ -122,6 +127,7 @@ async fn call_forwards_cookie_and_propagates_set_cookie() {
         .uri("/uc.v1.UnityProxyService/Call")
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::COOKIE, "UC_SESSION=abc")
+        .header("x-requested-with", "XMLHttpRequest")
         .body(Body::from(
             serde_json::json!({
                 "method": "POST",
@@ -294,4 +300,35 @@ async fn healthz_ok() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn cors_preflight_allows_the_csrf_header() {
+    let app = app(AppState {
+        http: reqwest::Client::new(),
+        config: Arc::new(Config {
+            allowed_origins: vec!["http://localhost:5173".to_string()],
+            ..test_config("http://127.0.0.1:1".to_string())
+        }),
+    });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/uc.v1.CatalogService/DeleteCatalog")
+                .header(header::ORIGIN, "http://localhost:5173")
+                .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "x-requested-with")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let allowed = resp
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(allowed.contains("x-requested-with"), "{allowed}");
 }

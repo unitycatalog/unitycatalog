@@ -77,6 +77,32 @@ async fn list_catalogs_forwards_auth_and_pagination() {
 }
 
 #[tokio::test]
+async fn cookie_session_write_forwards_csrf_header() {
+    let uc = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/2.1/unity-catalog/catalogs/main"))
+        .and(header_match("cookie", "UC_TOKEN=session"))
+        .and(header_match("x-requested-with", "XMLHttpRequest"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let mut request = rpc_request(
+        "CatalogService",
+        "DeleteCatalog",
+        serde_json::json!({"catalog": {"name": "main"}}),
+    );
+    let headers = request.headers_mut();
+    headers.remove(header::AUTHORIZATION);
+    headers.insert(header::COOKIE, "UC_TOKEN=session".parse().unwrap());
+    headers.insert("x-requested-with", "XMLHttpRequest".parse().unwrap());
+    let response = build_app(uc.uri()).oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn validation_rejects_invalid_catalog_name_before_upstream() {
     let uc = MockServer::start().await;
     let response = build_app(uc.uri())

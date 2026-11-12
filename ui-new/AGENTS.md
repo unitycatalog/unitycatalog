@@ -21,8 +21,9 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
 1. Domain reads and mutations use the generated Connect services in
    `server/src/services/`; keep their translation to UC REST explicit and
    narrow. The generic proxy is reserved for auth, SCIM, and permissions.
-   Both paths forward `Cookie` and `Authorization`; the generic auth path also
-   copies UC's `Set-Cookie` onto the same-origin response.
+   Both paths forward `Cookie`, `Authorization`, and `X-Requested-With` (UC's
+   CSRF check); the generic auth path also copies UC's `Set-Cookie` onto the
+   same-origin response.
 2. Auth mirrors the legacy `ui/`: cookie-based token-exchange (`/auth/tokens`,
    `ext=cookie`) + SCIM `/scim2/Me`, with an auth-disabled mode. Provider
    enablement is runtime via `/config`, not build-time env.

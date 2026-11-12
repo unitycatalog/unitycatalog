@@ -11,9 +11,13 @@ import { getToken } from "@/lib/session";
 // an allowed cross-origin bridge.
 //
 // A static transport key gives connect-query stable query keys across reloads.
+//
+// UC's CSRF check rejects cookie-authenticated writes, the cookie token
+// exchange, and logout without X-Requested-With; the bridge forwards it.
 const authInterceptor: Interceptor = (next) => async (request) => {
   const token = getToken();
   if (token) request.header.set("Authorization", `Bearer ${token}`);
+  request.header.set("X-Requested-With", "XMLHttpRequest");
   return next(request);
 };
 

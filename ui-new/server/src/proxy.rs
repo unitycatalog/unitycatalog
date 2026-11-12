@@ -6,7 +6,7 @@ use axum::Json;
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
+use crate::{AppState, FORWARDED_HEADERS};
 
 const MAX_RESPONSE_SIZE: usize = 4 * 1024 * 1024;
 
@@ -132,12 +132,10 @@ pub async fn call_handler(
         rb = rb.query(&query);
     }
 
-    // Forward the browser's session cookie to UC (cookie-based auth).
-    if let Some(cookie) = headers.get(header::COOKIE) {
-        rb = rb.header(header::COOKIE, cookie);
-    }
-    if let Some(authorization) = headers.get(header::AUTHORIZATION) {
-        rb = rb.header(header::AUTHORIZATION, authorization);
+    for name in FORWARDED_HEADERS {
+        if let Some(value) = headers.get(&name) {
+            rb = rb.header(name, value);
+        }
     }
     // Optional explicit bearer token (paste-token style); usually empty.
     if !req.token.is_empty() {
