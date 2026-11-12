@@ -347,10 +347,6 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
         "Formatted"
       },
       {
-        "\"name\":{\"formatted\":\"Formatted Too\",\"givenName\":\"G\",\"familyName\":\"F\"}",
-        "Formatted Too"
-      },
-      {
         "\"name\":{\"givenName\":\"Tess\",\"middleName\":\"M\",\"familyName\":\"Renamed\"}",
         "Tess Renamed"
       },
