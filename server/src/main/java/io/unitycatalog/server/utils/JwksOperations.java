@@ -36,7 +36,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.atomic.AtomicLong;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -52,8 +51,6 @@ public class JwksOperations {
   private static final Duration CACHE_TTL = Duration.ofHours(1);
   private static final Duration DISCOVERY_FAILURE_TTL = Duration.ofSeconds(30);
   private static final Duration MIN_KEY_REFRESH_INTERVAL = Duration.ofSeconds(6);
-  // The key id comes from the caller, so key failures are logged at most once per interval.
-  private static final long KEY_FAILURE_REPORT_INTERVAL_NANOS = Duration.ofMinutes(1).toNanos();
 
   private final WebClient webClient;
   private static final ObjectMapper mapper = new ObjectMapper();
@@ -62,8 +59,6 @@ public class JwksOperations {
   private final Set<URI> allowedJwksUris;
   private final Cache<String, JwkProvider> providers;
   private final Cache<String, DiscoveryFailure> discoveryFailures;
-  private final AtomicLong lastKeyFailureReportNanos;
-  private final AtomicLong unreportedKeyFailures = new AtomicLong();
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JwksOperations.class);
   private static final int MAX_LOGGED_BODY_LENGTH = 500;
@@ -87,8 +82,6 @@ public class JwksOperations {
       Duration responseTimeout) {
     this.securityContext = securityContext;
     this.ticker = ticker;
-    this.lastKeyFailureReportNanos =
-        new AtomicLong(ticker.read() - KEY_FAILURE_REPORT_INTERVAL_NANOS);
     this.webClient =
         WebClient.builder()
             .followRedirects(RedirectConfig.disabled())
@@ -123,42 +116,21 @@ public class JwksOperations {
     try {
       jwk = jwkProvider.get(keyId);
     } catch (JwkException e) {
-      reportKeyFailure(keyId, issuer, e);
       if (e instanceof NetworkException && !(e.getCause() instanceof RefreshRateLimitedException)) {
+        LOGGER.warn("Failed to get signing key '{}' for issuer '{}'", keyId, issuer, e);
         throw new OAuthInvalidRequestException(
             ErrorCode.INTERNAL,
             String.format("Could not get signing key '%s' for issuer %s", keyId, issuer),
             e);
       }
       // No key has the caller's key id, or the key set was empty or had no usable key.
+      LOGGER.debug("No usable signing key '{}' for issuer '{}'", keyId, issuer, e);
       throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Unknown signing key", e);
     }
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
 
     return JWT.require(algorithm).withIssuer(issuer).build();
-  }
-
-  private void reportKeyFailure(String keyId, String issuer, JwkException e) {
-    if (claimKeyFailureReportSlot()) {
-      LOGGER.warn(
-          "Failed to get signing key '{}' for issuer '{}'; {} more failure(s) since the last"
-              + " report",
-          keyId,
-          issuer,
-          unreportedKeyFailures.getAndSet(0),
-          e);
-    } else {
-      unreportedKeyFailures.incrementAndGet();
-    }
-  }
-
-  /** True for at most one caller per interval; that caller writes the report. */
-  private boolean claimKeyFailureReportSlot() {
-    long now = ticker.read();
-    long last = lastKeyFailureReportNanos.get();
-    return now - last >= KEY_FAILURE_REPORT_INTERVAL_NANOS
-        && lastKeyFailureReportNanos.compareAndSet(last, now);
   }
 
   @SneakyThrows
