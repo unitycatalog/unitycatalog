@@ -348,7 +348,9 @@ public class MigrationStepRulesTest {
             + " nullable=YES|",
         // pgjdbc reports numeric(4,-2), which rounds to hundreds, with scale 2046 (-2 in 11 bits).
         "POSTGRESQL|type=numeric size=4 scale=2046 nullable=YES|type=numeric size=4 scale=0"
-            + " nullable=YES|not wider",
+            + " nullable=YES|numeric(4,-2) to numeric(4,0), which is not wider",
+        "POSTGRESQL|type=numeric size=4 scale=2046 nullable=YES|type=numeric size=6 scale=0"
+            + " nullable=YES|",
         "POSTGRESQL|type=numeric size=4 scale=2046 nullable=YES|type=numeric size=6 scale=2046"
             + " nullable=YES|",
         // H2 names an enum's members in its type: keeping them all and adding one widens it.
@@ -480,7 +482,13 @@ public class MigrationStepRulesTest {
     if (isUnbounded(kind, column)) {
       return Long.MAX_VALUE;
     }
-    return column.group(5) == null ? 0 : Long.parseLong(column.group(5));
+    if (column.group(5) == null) {
+      return 0;
+    }
+    long scale = Long.parseLong(column.group(5));
+    // pgjdbc reports a negative scale in 11 bits, so -2 reads as 2046 (PostgreSQL allows -1000 to
+    // 1000).
+    return kind == DatabaseKind.POSTGRESQL && scale >= 1024 ? scale - 2048 : scale;
   }
 
   private static String shape(DatabaseKind kind, Matcher column) {
@@ -490,7 +498,7 @@ public class MigrationStepRulesTest {
     return column.group(3)
         + "("
         + column.group(4)
-        + (column.group(5) == null ? "" : "," + column.group(5))
+        + (column.group(5) == null ? "" : "," + scale(kind, column))
         + ")";
   }
 
