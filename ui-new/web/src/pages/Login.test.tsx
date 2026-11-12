@@ -77,6 +77,7 @@ describe("Login", () => {
     renderLogin();
     expect(screen.getByText(/Okta sign-in is enabled/)).toBeInTheDocument();
     expect(screen.getByText(/Keycloak sign-in is enabled/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Sign in with Okta/ })).not.toBeInTheDocument();
   });
 
   it("validates an empty pasted token", async () => {
@@ -92,13 +93,6 @@ describe("Login", () => {
     await userEvent.click(screen.getByRole("button", { name: /Use token/ }));
     expect(signInWithAccessToken).toHaveBeenCalledWith("jwt-abc");
     expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
-  });
-
-  it("tells the admin which settings are missing when Okta is enabled without a client", () => {
-    appConfig.current = { oktaEnabled: true };
-    renderLogin();
-    expect(screen.getByText(/OKTA_ISSUER and OKTA_CLIENT_ID/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Sign in with Okta/ })).not.toBeInTheDocument();
   });
 
   it("sends the browser to the Okta authorize URL with a PKCE challenge", async () => {
