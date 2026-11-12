@@ -166,7 +166,7 @@ public class ArmeriaServerBuilder {
     return this;
   }
 
-  /** Registers a SCIM2 service (UC body + SCIM response converter) under the control path. */
+  /** Registers a SCIM2 service (UC body; SCIM responses and errors) under the control path. */
   ArmeriaServerBuilder annotate(String relativePath, ScimService service) {
     register(ServiceProtocol.SCIM, relativePath, service);
     return this;
