@@ -109,7 +109,11 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             tableOperations);
     ListTablesResponse resp =
         localTablesApi.listTables(
-            testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);
+            testingTable.getCatalogName(),
+            testingTable.getSchemaName(),
+            100,
+            null,
+            /* includeBrowse= */ false);
     assertThat(resp.getNextPageToken()).isNull();
     assertThat(resp.getTables())
         .hasSize(1)
@@ -117,6 +121,26 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .usingRecursiveComparison()
         .ignoringFields("columns", "storageLocation")
         .isEqualTo(testingTable);
+
+    // With authorization disabled, include_browse must keep full metadata.
+    TableInfo fullTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+    assertThat(fullTable).isEqualTo(testingTable);
+    assertThat(fullTable.getBrowseOnly()).isNull();
+    assertThat(
+            localTablesApi.getTable(
+                TestUtils.TABLE_FULL_NAME,
+                /* readStreamingTableAsManaged= */ true,
+                /* readMaterializedViewAsManaged= */ true,
+                /* includeBrowse= */ true))
+        .isEqualTo(fullTable);
+    assertThat(
+            localTablesApi.listTables(
+                testingTable.getCatalogName(),
+                testingTable.getSchemaName(),
+                100,
+                null,
+                /* includeBrowse= */ true))
+        .isEqualTo(resp);
   }
 
   @Test
@@ -124,7 +148,11 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     List<TableInfo> testingTables = createMultipleTestingTables(11);
     ListTablesResponse resp =
         localTablesApi.listTables(
-            testingTables.get(0).getCatalogName(), testingTables.get(0).getSchemaName(), 10, null);
+            testingTables.get(0).getCatalogName(),
+            testingTables.get(0).getSchemaName(),
+            10,
+            null,
+            /* includeBrowse= */ false);
     assertThat(resp.getNextPageToken()).isNotNull();
     assertThat(resp.getTables()).hasSize(10);
     // Check the next page has the last table
@@ -133,7 +161,8 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             testingTables.get(0).getCatalogName(),
             testingTables.get(0).getSchemaName(),
             10,
-            resp.getNextPageToken());
+            resp.getNextPageToken(),
+            /* includeBrowse= */ false);
     assertThat(nextPageResp.getNextPageToken()).isNull();
     assertThat(nextPageResp.getTables()).hasSize(1);
   }
@@ -175,6 +204,53 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
                 assertThat(ex.getCode())
                     .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
         .withMessageContaining("Invalid type_json for column bad_column");
+  }
+
+  @Test
+  public void testCreateTableKeepsColumnTypeTextCase() throws Exception {
+    String typeText = "STRUCT<UserId:INT,Tags:ARRAY<STRING>>";
+    ColumnInfo structColumn =
+        new ColumnInfo()
+            .name("s")
+            .typeText(typeText)
+            .typeJson(
+                "{\"name\":\"s\",\"type\":{\"type\":\"struct\",\"fields\":["
+                    + "{\"name\":\"UserId\",\"type\":\"integer\","
+                    + "\"nullable\":true,\"metadata\":{}},"
+                    + "{\"name\":\"Tags\",\"type\":{\"type\":\"array\","
+                    + "\"elementType\":\"string\",\"containsNull\":true},"
+                    + "\"nullable\":true,\"metadata\":{}}]},"
+                    + "\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.STRUCT)
+            .position(0)
+            .nullable(true);
+    ColumnInfo intColumn =
+        new ColumnInfo()
+            .name("n")
+            .typeText("INT")
+            .typeJson("{\"name\":\"n\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.INT)
+            .position(1)
+            .nullable(true);
+    List<ColumnInfo> columns = List.of(structColumn, intColumn);
+    TableInfo created =
+        tableOperations.createTable(
+            new CreateTable()
+                .name(TestUtils.TABLE_NAME)
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .columns(columns)
+                .tableType(TableType.MANAGED)
+                .dataSourceFormat(DataSourceFormat.DELTA));
+
+    assertThat(created.getColumns()).isEqualTo(columns);
+    assertThat(tableOperations.getTable(TestUtils.TABLE_FULL_NAME).getColumns()).isEqualTo(columns);
+    assertThat(
+            tableOperations.listTables(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty()))
+        .singleElement()
+        .extracting(TableInfo::getColumns)
+        .isEqualTo(columns);
   }
 
   /**

@@ -14,11 +14,16 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.util.SafeCloseable;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.CleanupTaskRepository;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.Method;
@@ -36,6 +41,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Appender;
@@ -45,6 +51,8 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationSource;
 import org.apache.logging.log4j.core.config.properties.PropertiesConfigurationFactory;
 import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -351,13 +359,72 @@ class AuditorTest {
     return config;
   }
 
+  @Test
+  void afterCommitRunsOnlyOnCommitAndNeverFailsIt() {
+    AtomicInteger runs = new AtomicInteger();
+    try (TestDatabase database = TestDatabases.newDatabase();
+        Session session = database.sessionFactory().openSession()) {
+      Transaction rolledBack = session.beginTransaction();
+      auditor.afterCommit(session, runs::incrementAndGet);
+      rolledBack.rollback();
+      assertThat(runs).hasValue(0);
+
+      Transaction committed = session.beginTransaction();
+      auditor.afterCommit(session, runs::incrementAndGet);
+      // Hibernate rethrows from commit() what an after-completion callback throws; the guard
+      // keeps a failing action from failing a commit that already happened.
+      auditor.afterCommit(
+          session,
+          () -> {
+            throw new IllegalStateException("audit action failed");
+          });
+      assertThatCode(committed::commit).doesNotThrowAnyException();
+      assertThat(runs).hasValue(1);
+    }
+  }
+
+  @Test
+  void grantRecordsThePrincipalAndThePublicPrivilegeName() {
+    UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    when(delegate.grantAuthorization(principal, ID, Privileges.USE_CATALOG)).thenReturn(true);
+    auditor.wrap(delegate).grantAuthorization(principal, ID, Privileges.USE_CATALOG);
+    assertThat(FileAuditSink.toJson(CapturingAuditSink.RECORDS.get(0)))
+        .contains(
+            "\"action\":\"GRANT\"",
+            "\"resource_id\":\"" + ID + "\"",
+            "\"principal_id\":\"" + principal + "\"",
+            "\"privilege\":\"USE CATALOG\"");
+  }
+
+  @Test
+  void permissionChangeThatThrowsIsNotRecorded() {
+    UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    // jdbc-adapter throws an Error when the database delete keeps failing.
+    Error failed = new Error("delete failed");
+    when(delegate.revokeAuthorization(principal, resource, Privileges.OWNER)).thenThrow(failed);
+    when(delegate.clearAuthorizationsForPrincipal(principal)).thenThrow(failed);
+    when(delegate.clearAuthorizationsForResource(resource)).thenThrow(failed);
+    UnityCatalogAuthorizer audited = auditor.wrap(delegate);
+
+    assertThatThrownBy(() -> audited.revokeAuthorization(principal, resource, Privileges.OWNER))
+        .isSameAs(failed);
+    assertThatThrownBy(() -> audited.clearAuthorizationsForPrincipal(principal)).isSameAs(failed);
+    assertThatThrownBy(() -> audited.clearAuthorizationsForResource(resource)).isSameAs(failed);
+    assertThat(CapturingAuditSink.RECORDS).isEmpty();
+  }
+
   /**
    * A default method added to a wrapped interface is inherited silently, so it would bypass the
    * decorator. Each decorator must declare every default method.
    */
   @Test
   void decoratorsForwardEveryDefaultMethod() {
+    assertDeclaresDefaults(UnityCatalogAuthorizer.class, AuditingAuthorizer.class);
     assertDeclaresDefaults(StorageCredentialVendor.class, AuditingStorageCredentialVendor.class);
+    assertDeclaresDefaults(CleanupTaskRepository.class, AuditingCleanupTaskRepository.class);
   }
 
   private static void assertDeclaresDefaults(Class<?> api, Class<?> decorator) {

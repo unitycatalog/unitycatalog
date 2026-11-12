@@ -14,6 +14,7 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ListSchemasResponse;
 import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.SchemaInfo;
@@ -25,6 +26,11 @@ import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.MetadataBuilder;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -64,7 +70,8 @@ public class UCProxySuite {
         new ListTablesResponse()
             .tables(List.of(new TableInfo().name("table1"), new TableInfo().name("table2")))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -85,9 +92,11 @@ public class UCProxySuite {
             .tables(List.of(new TableInfo().name("table3")))
             .nextPageToken(null);
 
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(page1);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1")))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1"), /* includeBrowse= */ eq(false)))
         .thenReturn(page2);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -97,15 +106,20 @@ public class UCProxySuite {
     assertThat(result[1]).isEqualTo(Identifier.of(NAMESPACE, "table2"));
     assertThat(result[2]).isEqualTo(Identifier.of(NAMESPACE, "table3"));
 
-    verify(mockTablesApi).listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull());
-    verify(mockTablesApi).listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1"));
+    verify(mockTablesApi)
+        .listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false));
+    verify(mockTablesApi)
+        .listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1"), /* includeBrowse= */ eq(false));
   }
 
   @Test
   public void testListTablesEmptyResult() throws Exception {
     ListTablesResponse response =
         new ListTablesResponse().tables(Collections.emptyList()).nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -117,7 +131,8 @@ public class UCProxySuite {
   public void testListTablesEmptyStringPageTokenStopsPagination() throws Exception {
     ListTablesResponse response =
         new ListTablesResponse().tables(List.of(new TableInfo().name("table1"))).nextPageToken("");
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -135,7 +150,8 @@ public class UCProxySuite {
                     new TableInfo().name("table1").tableType(TableType.EXTERNAL),
                     new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -174,7 +190,8 @@ public class UCProxySuite {
                                 + "\"nullable\":true,\"metadata\":{}}")
                         .nullable(true)
                         .position(0)));
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.t1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucTable);
 
     // `loadTable` issues the single `getTable` RPC first (via `getUCTableLike`), then proceeds to
@@ -187,7 +204,8 @@ public class UCProxySuite {
       // Expected in the mock context: credential vending has no real UC endpoint.
     }
     verify(mockTablesApi, org.mockito.Mockito.times(1))
-        .getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true));
+        .getTable(
+            eq("test_catalog.test_schema.t1"), eq(true), eq(true), /* includeBrowse= */ eq(false));
   }
 
   /**
@@ -210,7 +228,8 @@ public class UCProxySuite {
         .getTable(
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(),
+            /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
   }
 
   /** Extensionless cloud paths also carry `/` and must skip the UC RPC. */
@@ -225,7 +244,8 @@ public class UCProxySuite {
         .getTable(
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(),
+            /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
   }
 
   // -- dropTable (table surface) tests --
@@ -238,7 +258,8 @@ public class UCProxySuite {
             .schemaName(SCHEMA_NAME)
             .name("mv1")
             .tableType(TableType.METRIC_VIEW);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     boolean dropped = proxy.dropTable(Identifier.of(NAMESPACE, "mv1"));
@@ -258,7 +279,9 @@ public class UCProxySuite {
         new ListSchemasResponse()
             .schemas(List.of(new SchemaInfo().name("schema1"), new SchemaInfo().name("schema2")))
             .nextPageToken(null);
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(response);
+    when(mockSchemasApi.listSchemas(
+            eq(CATALOG_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
+        .thenReturn(response);
 
     String[][] result = proxyNs.listNamespaces();
 
@@ -278,8 +301,12 @@ public class UCProxySuite {
             .schemas(List.of(new SchemaInfo().name("schema3")))
             .nextPageToken(null);
 
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(page1);
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"))).thenReturn(page2);
+    when(mockSchemasApi.listSchemas(
+            eq(CATALOG_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
+        .thenReturn(page1);
+    when(mockSchemasApi.listSchemas(
+            eq(CATALOG_NAME), eq(0), eq("token1"), /* includeBrowse= */ eq(false)))
+        .thenReturn(page2);
 
     String[][] result = proxyNs.listNamespaces();
 
@@ -288,8 +315,10 @@ public class UCProxySuite {
     assertThat(result[1]).containsExactly("schema2");
     assertThat(result[2]).containsExactly("schema3");
 
-    verify(mockSchemasApi).listSchemas(eq(CATALOG_NAME), eq(0), isNull());
-    verify(mockSchemasApi).listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"));
+    verify(mockSchemasApi)
+        .listSchemas(eq(CATALOG_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false));
+    verify(mockSchemasApi)
+        .listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"), /* includeBrowse= */ eq(false));
   }
 
   @Test
@@ -298,11 +327,99 @@ public class UCProxySuite {
         new ListSchemasResponse()
             .schemas(List.of(new SchemaInfo().name("schema1")))
             .nextPageToken("");
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(response);
+    when(mockSchemasApi.listSchemas(
+            eq(CATALOG_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
+        .thenReturn(response);
 
     String[][] result = proxyNs.listNamespaces();
 
     assertThat(result).hasNumberOfRows(1);
     assertThat(result[0]).containsExactly("schema1");
+  }
+
+  // -- toStructField: ColumnInfo.comment wins over a comment stored in type_json metadata --
+
+  private static ColumnInfo columnWithStoredComment(String ucComment) {
+    return new ColumnInfo()
+        .name("c")
+        .typeText("int")
+        .nullable(true)
+        .comment(ucComment)
+        .typeJson(
+            "{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
+                + "\"metadata\":{\"comment\":\"stored\",\"k\":\"v\"}}");
+  }
+
+  @Test
+  public void testToStructFieldPrefersColumnInfoComment() {
+    StructField field = ((UCProxy) proxy).toStructField(columnWithStoredComment("uc"));
+    assertThat(field.getComment().get()).isEqualTo("uc");
+    assertThat(field.metadata().getString("k")).isEqualTo("v");
+  }
+
+  @Test
+  public void testToStructFieldNullColumnInfoCommentDropsStoredComment() {
+    StructField field = ((UCProxy) proxy).toStructField(columnWithStoredComment(null));
+    assertThat(field.getComment().isEmpty()).isTrue();
+    assertThat(field.metadata().getString("k")).isEqualTo("v");
+  }
+
+  private static ColumnInfo intColumn(String name, int position, String typeJson) {
+    return new ColumnInfo()
+        .name(name)
+        .typeName(ColumnTypeName.INT)
+        .typeText("int")
+        .typeJson(typeJson)
+        .nullable(true)
+        .position(position);
+  }
+
+  @Test
+  public void testLoadTableWithUnreadableTypeJsonKeepsOtherColumnsMetadata() throws Exception {
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("t_bad_json")
+            .tableId("table-id-t_bad_json")
+            .tableType(TableType.EXTERNAL)
+            .storageLocation("file:/tmp/uc/t_bad_json")
+            .dataSourceFormat(DataSourceFormat.PARQUET)
+            .columns(
+                List.of(
+                    intColumn("malformed", 0, "{not json"),
+                    intColumn(
+                        "unrepresentable",
+                        1,
+                        "{\"name\":\"unrepresentable\",\"type\":\"integer\",\"nullable\":true,"
+                            + "\"metadata\":{\"mixed\":[1,\"a\"]}}"),
+                    intColumn(
+                        "defaulted",
+                        2,
+                        "{\"name\":\"defaulted\",\"type\":\"integer\",\"nullable\":true,"
+                            + "\"metadata\":{\"CURRENT_DEFAULT\":\"42\","
+                            + "\"EXISTS_DEFAULT\":\"42\"}}")));
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.t_bad_json"),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
+        .thenReturn(ucTable);
+
+    StructType schema = proxy.loadTable(Identifier.of(NAMESPACE, "t_bad_json")).schema();
+
+    Metadata nullComment = new MetadataBuilder().putNull("comment").build();
+    Metadata defaultMetadata =
+        new MetadataBuilder()
+            .withMetadata(nullComment)
+            .putString("CURRENT_DEFAULT", "42")
+            .putString("EXISTS_DEFAULT", "42")
+            .build();
+    assertThat(schema)
+        .isEqualTo(
+            new StructType()
+                .add("malformed", DataTypes.IntegerType, true, nullComment)
+                .add("unrepresentable", DataTypes.IntegerType, true, nullComment)
+                .add("defaulted", DataTypes.IntegerType, true, defaultMetadata));
   }
 }

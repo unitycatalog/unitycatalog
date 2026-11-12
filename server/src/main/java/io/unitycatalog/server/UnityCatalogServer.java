@@ -11,6 +11,7 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.OpaAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
@@ -59,6 +60,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -109,8 +111,9 @@ public class UnityCatalogServer implements AutoCloseable {
 
   private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     setDefaults(unityCatalogServerBuilder);
+    unityCatalogServerBuilder.serverProperties.validateProperties();
     this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
-    Path configurationFolder = Path.of("etc", "conf");
+    Path configurationFolder = unityCatalogServerBuilder.configurationFolder;
     SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
 
     this.securityContext =
@@ -345,8 +348,22 @@ public class UnityCatalogServer implements AutoCloseable {
         JCasbinAuthorizer authorizer =
             new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
         try {
-          new UnityAccessUtil(repositories).initializeAdmin(authorizer);
-          return authorizer;
+          UnityCatalogAuthorizer backend;
+          if (serverProperties.isOpaAuthorizationEnabled()) {
+            LOGGER.info("Using OPA for authorization decisions.");
+            backend =
+                new OpaAuthorizer(
+                    authorizer,
+                    hibernateConfigurator.getSessionFactory(),
+                    serverProperties.getOpaDecisionUrl(),
+                    serverProperties.getOpaResponseTimeout());
+          } else {
+            backend = authorizer;
+          }
+          UnityCatalogAuthorizer effective =
+              Optional.ofNullable(auditor).map(a -> a.wrap(backend)).orElse(backend);
+          new UnityAccessUtil(repositories).initializeAdmin(effective);
+          return effective;
         } catch (Exception e) {
           authorizer.close();
           throw e;
@@ -578,6 +595,7 @@ public class UnityCatalogServer implements AutoCloseable {
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
+    private Path configurationFolder = Path.of("etc", "conf");
 
     private Builder() {}
 
@@ -626,6 +644,23 @@ public class UnityCatalogServer implements AutoCloseable {
         UnaryOperator<FileOperations> fileOperationsDecorator) {
       this.fileOperationsDecorator =
           fileOperationsDecorator != null ? fileOperationsDecorator : UnaryOperator.identity();
+      return this;
+    }
+
+    /**
+     * Sets the folder holding the signing keys, which the server creates if missing, and the {@code
+     * certs.json} and {@code token.txt} it writes when constructed. Defaults to {@code etc/conf};
+     * tests pass their own folder so concurrent servers do not share these files.
+     *
+     * <p>Only these files move: {@code server.properties}, {@code hibernate.properties} and the
+     * log4j configuration are still read from {@code etc/conf}.
+     *
+     * @param configurationFolder the folder for the signing keys, {@code certs.json} and {@code
+     *     token.txt}
+     * @return this builder
+     */
+    public UnityCatalogServer.Builder configurationFolder(Path configurationFolder) {
+      this.configurationFolder = Objects.requireNonNull(configurationFolder, "configurationFolder");
       return this;
     }
 

@@ -687,7 +687,8 @@ class UCSingleCatalog
     try {
       Some(tablesApi.getTable(fullTableName,
         /* readStreamingTableAsManaged = */ false,
-        /* readMaterializedViewAsManaged = */ false))
+        /* readMaterializedViewAsManaged = */ false,
+        /* includeBrowse = */ false))
     } catch {
       case e: ApiException if e.getCode == 404 && allowMissingTable => None
       case e: ApiException if e.getCode == 404 => throw new NoSuchTableException(ident)
@@ -964,7 +965,8 @@ private[spark] class UCProxy(
     val tables = ArrayBuffer.empty[UCTableInfo]
     var pageToken: String = null
     do {
-      val response = tablesApi.listTables(catalogName, schemaName, /* limit */ 0, pageToken)
+      val response = tablesApi.listTables(
+        catalogName, schemaName, /* limit */ 0, pageToken, /* includeBrowse = */ false)
       tables ++= response.getTables.asScala
       pageToken = response.getNextPageToken
     } while (pageToken != null && pageToken.nonEmpty)
@@ -986,7 +988,8 @@ private[spark] class UCProxy(
       Some(tablesApi.getTable(
         fullName,
         /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true))
+        /* readMaterializedViewAsManaged = */ true,
+        /* includeBrowse = */ false))
     } catch {
       case e: ApiException if e.getCode == 404 => None
     }
@@ -1088,7 +1091,11 @@ private[spark] class UCProxy(
   }
 
   private[spark] def toStructField(col: ColumnInfo): StructField =
-    StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
+    StructField(
+      col.getName,
+      DataType.fromDDL(col.getTypeText),
+      col.getNullable,
+      UCColumnConversions.metadataOf(col.getName, col.getTypeJson))
       .withComment(col.getComment)
 
   private[spark] def asV1Table(catalogTable: CatalogTable): Table = {
@@ -1268,7 +1275,8 @@ private[spark] class UCProxy(
     val schemas = ArrayBuffer.empty[Array[String]]
     var pageToken: String = null
     do {
-      val response = schemasApi.listSchemas(name, /* limit */ 0, pageToken)
+      val response = schemasApi.listSchemas(
+        name, /* limit */ 0, pageToken, /* includeBrowse = */ false)
       schemas ++= response.getSchemas.asScala.map(schema => Array(schema.getName))
       pageToken = response.getNextPageToken
     } while (pageToken != null && pageToken.nonEmpty)
@@ -1282,7 +1290,7 @@ private[spark] class UCProxy(
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     val schema = try {
-      schemasApi.getSchema(name + "." + namespace(0))
+      schemasApi.getSchema(name + "." + namespace(0), /* includeBrowse = */ false)
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchNamespaceException(namespace)
@@ -1298,6 +1306,7 @@ private[spark] class UCProxy(
     metadata(SchemaInfo.JSON_PROPERTY_CREATED_AT) = if (schema.getCreatedAt != null) {schema.getCreatedAt.toString} else {"null"}
     metadata(SchemaInfo.JSON_PROPERTY_UPDATED_AT) = if (schema.getUpdatedAt != null) {schema.getUpdatedAt.toString} else {"null"}
     metadata(SchemaInfo.JSON_PROPERTY_SCHEMA_ID) = schema.getSchemaId
+    Option(schema.getStorageRoot).foreach(metadata(SupportsNamespaces.PROP_LOCATION) = _)
     metadata.asJava
   }
 
@@ -1306,7 +1315,11 @@ private[spark] class UCProxy(
     val createSchema = new CreateSchema()
     createSchema.setCatalogName(this.name)
     createSchema.setName(namespace.head)
-    createSchema.setProperties(metadata)
+    // COMMENT and LOCATION are schema fields in UC, not properties
+    val properties = new util.HashMap[String, String](metadata)
+    Option(properties.remove(SupportsNamespaces.PROP_COMMENT)).foreach(createSchema.setComment)
+    Option(properties.remove(SupportsNamespaces.PROP_LOCATION)).foreach(createSchema.setStorageRoot)
+    createSchema.setProperties(properties)
     // Spark 4.2 removed the namespaceExists() pre-check from CreateNamespaceExec. It relies on the
     // catalog throwing NamespaceAlreadyExistsException for IF NOT EXISTS handling. On Spark 4.0/4.1
     // the pre-check prevents this path.

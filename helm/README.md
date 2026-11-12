@@ -35,10 +35,10 @@ delete both to remove the data.
 
 ## Audit records
 Turn on [audit records](https://github.com/unitycatalog/unitycatalog/blob/main/docs/server/configuration.md#audit-records)
-to write one JSON line per issued storage credential to `/home/unitycatalog/etc/logs/audit.log`; the
-chart already configures the `audit` logger. The file is lost when the pod restarts, so ship it
-continuously (for example from a sidecar in `server.deployment.extraContainers`) or keep the
-directory on a volume:
+to write one JSON line per issued storage credential, permission change and queued storage cleanup
+to `/home/unitycatalog/etc/logs/audit.log`; the chart already configures the `audit` logger. The
+file is lost when the pod restarts, so ship it continuously (for example from a sidecar in
+`server.deployment.extraContainers`) or keep the directory on a volume:
 
 ```yaml
 server:
@@ -629,7 +629,14 @@ root
 not set
 </pre>
 </td>
-			<td>Override Hibernate configuration for the server</td>
+			<td>Override Hibernate configuration for the server
+
+Do not put the password here: set `passwordSecretName` and `passwordSecretKey` of the
+database's config; with `db.type: postgresql` or `mysql` the chart passes the password to the
+server as an environment variable. A password in `hibernate.properties` is deprecated.
+If the template sets `hibernate.connection.password=${DB_PASSWORD}`, remove that line: the
+server reads the password from `UC_HIBERNATE_CONNECTION_PASSWORD`.
+</td>
 		</tr>
 		<tr>
 			<td>server.db.postgresqlConfig.dbName</td>

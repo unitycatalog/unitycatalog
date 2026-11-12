@@ -3,10 +3,11 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
+| **browse\_only** | **Boolean** | True when the response contains only discovery metadata authorized by BROWSE. | [optional] [default to null] |
 | **name** | **String** | Name of the external location. | [optional] [default to null] |
 | **id** | **String** | Unique identifier for the external location. | [optional] [default to null] |
 | **url** | **String** | Path URL of the external location. | [optional] [default to null] |
-| **credential\_name** | **String** | Name of the storage credential used with this location. | [optional] [default to null] |
+| **credential\_name** | **String** | Name of the storage credential used with this location. Omitted when the credential no longer exists, for example after it was force-deleted. Updating the external location with a new credential_name repairs it. | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
 | **owner** | **String** | The owner of the external location. | [optional] [default to null] |
 | **credential\_id** | **String** | Unique ID of the location&#39;s storage credential. | [optional] [default to null] |

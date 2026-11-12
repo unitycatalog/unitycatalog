@@ -1,5 +1,6 @@
 package io.unitycatalog.server.utils;
 
+import com.linecorp.armeria.client.Endpoint;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TableType;
@@ -40,6 +41,12 @@ public class ServerProperties {
   // UC_SERVER_CLIENT_SECRET or UC_S3_SECRETKEY_0. The prefix keeps variables that runtimes set for
   // their own use, such as AWS_REGION, from changing settings.
   private static final String ENV_PREFIX = "UC_";
+
+  /**
+   * Key of the database password in hibernate.properties; the environment variable named by {@link
+   * #envName} overrides it.
+   */
+  public static final String DB_PASSWORD_KEY = "hibernate.connection.password";
 
   // Secrets, which log a deprecation warning when they are read from server.properties.
   private static final Pattern SECRET_KEY =
@@ -106,6 +113,32 @@ public class ServerProperties {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
             String.format("Invalid URL '%s' for property '%s': %s", value, key, e.getMessage()));
+      }
+    }
+  }
+
+  /** Validator for OPA decision URLs that does not expose their values in errors. */
+  private static class OpaDecisionUrlValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      String invalidUrlMessage =
+          key + " must be an absolute HTTP or HTTPS URL without credentials or a fragment";
+      try {
+        URL url = new URL(value);
+        url.toURI();
+        if (!("http".equalsIgnoreCase(url.getProtocol())
+                || "https".equalsIgnoreCase(url.getProtocol()))
+            || url.getHost().isEmpty()
+            || url.getUserInfo() != null
+            || url.getRef() != null
+            || url.getPort() == 0
+            || url.getPort() > 65535) {
+          throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage);
+        }
+        Endpoint.parse(url.getAuthority());
+      } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+        // Parser errors can contain credentials from the URL.
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage);
       }
     }
   }
@@ -257,6 +290,11 @@ public class ServerProperties {
     SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
     AUTHORIZATION_ENABLED(
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
+    AUTHORIZATION_PROVIDER(
+        "server.authorization.provider", "casbin", new EnumValidator(true, "casbin", "opa")),
+    OPA_DECISION_URL("server.authorization.opa.decision-url", new OpaDecisionUrlValidator()),
+    OPA_RESPONSE_TIMEOUT(
+        "server.authorization.opa.response-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
     STRICT_PRIVILEGE_CHECKS_ENABLED(
         "server.authorization.strict-privilege-checks", "true", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
@@ -373,9 +411,11 @@ public class ServerProperties {
    * initialization to fail fast if any property has an invalid value. It also validates any
    * override value from system property and env if set.
    *
+   * <p>Call this after changing properties and before creating server resources.
+   *
    * @throws BaseException if any property value is invalid
    */
-  private void validateProperties() {
+  public void validateProperties() {
     for (Property property : Property.values()) {
       String value = get(property);
       if (value == null) {
@@ -386,6 +426,24 @@ public class ServerProperties {
     }
     validateAuthAllowlistConfiguration();
     validateStorageCleanupConfiguration();
+    validateOpaConfiguration();
+  }
+
+  private void validateOpaConfiguration() {
+    if (!isOpaAuthorizationEnabled()) {
+      return;
+    }
+    if (!isAuthorizationEnabled()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization=enable is required when server.authorization.provider=opa");
+    }
+    if (getOpaDecisionUrl() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization.opa.decision-url is required when"
+              + " server.authorization.provider=opa");
+    }
   }
 
   private void validateStorageCleanupConfiguration() {
@@ -457,7 +515,7 @@ public class ServerProperties {
             name,
             propertiesFile,
             envName(name));
-      } else if (System.getProperty(name) == null && getEnv(name) == null) {
+      } else if (getOverride(name) == null) {
         LOGGER.warn(
             "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
                 + " variable instead.",
@@ -465,6 +523,15 @@ public class ServerProperties {
             propertiesFile,
             envName(name));
       }
+    }
+    // The server never reads the database password from this file. Only the environment
+    // supplies it; a system property does not.
+    if (properties.containsKey(DB_PASSWORD_KEY) && getEnv(DB_PASSWORD_KEY) == null) {
+      LOGGER.warn(
+          "{} in {} is ignored; set the {} environment variable instead.",
+          DB_PASSWORD_KEY,
+          propertiesFile,
+          envName(DB_PASSWORD_KEY));
     }
   }
 
@@ -588,19 +655,27 @@ public class ServerProperties {
 
   /** Get a property value by key name. */
   private String getProperty(String key) {
-    if (System.getProperty(key) != null) {
-      return System.getProperty(key);
-    }
-    String envValue = getEnv(key);
-    if (envValue != null) {
-      return envValue;
+    String override = getOverride(key);
+    if (override != null) {
+      return override;
     }
     // Finally try properties. If not found in properties, this would return default value or null
     // if no default value.
     return properties.getProperty(key);
   }
 
-  private String getEnv(String key) {
+  private String getOverride(String key) {
+    String value = System.getProperty(key);
+    return value != null ? value : getEnv(key);
+  }
+
+  /**
+   * Get a value set for a key in the environment, or null: the variable named exactly as the key,
+   * then the one named by {@link #envName}. System properties are not consulted. Settings kept in
+   * other files, such as the database password in hibernate.properties, use this to let the
+   * environment override the file.
+   */
+  public String getEnv(String key) {
     String name = key;
     String value = env.get(key);
     if (value == null) {
@@ -624,7 +699,7 @@ public class ServerProperties {
    * The environment variable name for a key: {@code UC_}, then the key in upper case with {@code _}
    * for each character that is not a letter or digit.
    */
-  private static String envName(String key) {
+  public static String envName(String key) {
     return ENV_PREFIX + key.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
   }
 
@@ -640,6 +715,21 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  /** Whether OPA is selected for privilege decisions. */
+  public boolean isOpaAuthorizationEnabled() {
+    return "opa".equalsIgnoreCase(get(Property.AUTHORIZATION_PROVIDER));
+  }
+
+  /** Returns the configured OPA decision URL, or null when unset. */
+  public String getOpaDecisionUrl() {
+    return get(Property.OPA_DECISION_URL);
+  }
+
+  /** Response timeout for each OPA call, not the complete UC request. */
+  public Duration getOpaResponseTimeout() {
+    return Duration.parse(get(Property.OPA_RESPONSE_TIMEOUT));
   }
 
   /** Whether permission checks use the stricter rules instead of the previous rules. */

@@ -95,41 +95,48 @@ The server config file is at the location `etc/conf/server.properties` (relative
 
 Any setting can also come from an environment variable named `UC_`, then the key in upper case, with `_` for each
 character that is not a letter or digit. For example, `s3.region.0` is `UC_S3_REGION_0`. Set secrets this way, not in
-`server.properties`:
+`server.properties` or `hibernate.properties` (from `hibernate.properties`, only the password can come from the
+environment):
 
-| Key in `server.properties` | Environment variable |
+| Key | Environment variable |
 | --- | --- |
 | `server.client-secret` | `UC_SERVER_CLIENT_SECRET` |
 | `aws.secretKey` | `UC_AWS_SECRETKEY` |
 | `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `UC_S3_SECRETKEY_<n>`, `UC_S3_SESSIONTOKEN_<n>` |
 | `adls.clientSecret.<n>` | `UC_ADLS_CLIENTSECRET_<n>` |
+| `hibernate.connection.password` (in `hibernate.properties`) | `UC_HIBERNATE_CONNECTION_PASSWORD` |
 
 ```sh
 export UC_S3_SECRETKEY_0='<secret key>'
 bin/start-uc-server
 ```
 
-A variable takes precedence over the same key in `server.properties`, and a variable named exactly as the key comes
-before the `UC_` one. An empty `UC_` variable is ignored, and line breaks at the end of its value are dropped, as a
-Kubernetes Secret made from a file often ends with one. The prefix keeps variables that runtimes set for their own use,
-such as `AWS_REGION`, from changing settings. The server logs the name of each environment variable it uses for a
-setting, never its value. `server.client-secret` is read by `bin/uc auth login`, not by the server.
-The Helm chart passes each S3 and ADLS credential to the server container from its Kubernetes Secret, in
-`UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`, `UC_ADLS_CLIENTID_<n>` and
-`UC_ADLS_CLIENTSECRET_<n>`.
+A variable takes precedence over the same key in `server.properties`, and `UC_HIBERNATE_CONNECTION_PASSWORD` over
+`hibernate.properties`. A variable named exactly as the key comes before the `UC_` one. An empty `UC_` variable is
+ignored, and line breaks at the end of its value are dropped, as a Kubernetes Secret made from a file often ends with
+one. The prefix keeps variables that runtimes set for their own use, such as `AWS_REGION`, from changing settings. The
+server logs the name of each environment variable it uses for a setting, never its value. `server.client-secret` is
+read by `bin/uc auth login`, not by the server. The Helm chart passes each S3 and ADLS credential to the server
+container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`,
+`UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. With `server.db.type: postgresql` or `mysql`, it also passes
+`UC_HIBERNATE_CONNECTION_PASSWORD` if that database's `passwordSecretName` is set.
 
-!!! warning "Deprecated: secrets in `server.properties`"
-    Secrets in `server.properties` still work, but this is deprecated. The server logs a warning at startup for each
-    secret set in the file that no environment variable or system property supplies, and always for
-    `server.client-secret`. Move them to environment variables.
+!!! warning "Deprecated: secrets in properties files"
+    Secrets in `server.properties` and the password in `hibernate.properties` still work, but this is deprecated. The
+    server logs a warning at startup for each one set in a file that no environment variable or system property
+    supplies (for the database password, only `UC_HIBERNATE_CONNECTION_PASSWORD` counts), and always for
+    `server.client-secret`. Move them to environment variables. The server never reads `hibernate.connection.password`
+    from `server.properties`; unless `UC_HIBERNATE_CONNECTION_PASSWORD` is set, it logs a warning that the line is
+    ignored.
 
 #### Upgrading
 
 - A `UC_` variable that is already set in the server's environment now takes precedence over the same key in
-  `server.properties`.
+  `server.properties`, and `UC_HIBERNATE_CONNECTION_PASSWORD` over `hibernate.properties`.
 - `bin/uc auth login` reads `UC_SERVER_CLIENT_SECRET` before `server.client-secret` in `etc/conf/server.properties`.
 - Helm: use the server image from the chart's release, which is the default. An older server image doesn't read these
-  variables, so S3 and ADLS lose their secrets.
+  variables, so S3 and ADLS lose their secrets, and the server can't log in to a PostgreSQL or MySQL database that
+  needs a password (`passwordSecretName` set).
 - Helm: the rendered `server.properties` no longer holds `server.client-secret` or the S3 and ADLS credentials
   (`s3.accessKey.<n>`, `s3.secretKey.<n>`, `adls.tenantId.<n>`, `adls.clientId.<n>`, `adls.clientSecret.<n>`). The
   init container has `S3_ACCESS_KEY_<n>`, `S3_SECRET_KEY_<n>`, `ADLS_TENANT_ID_<n>`, `ADLS_CLIENT_ID_<n>`,
@@ -137,6 +144,10 @@ The Helm chart passes each S3 and ADLS credential to the server container from i
   `extraProperties` is set, so a template that uses them still gets them; that is deprecated. The server container's
   `UC_` variables still take precedence over the template's values. A container added through `extraInitContainers`
   or `extraContainers` that needs these secrets must read them from the Kubernetes Secret itself.
+- Helm: the rendered `hibernate.properties` no longer holds the password, and the init container no longer has
+  `DB_PASSWORD`. A container added through `extraInitContainers` or `extraContainers` that needs the password must
+  read it from the Secret named by the database's `passwordSecretName`. In a `server.db.overrideConfig`
+  template, remove the line `hibernate.connection.password=${DB_PASSWORD}`.
 
 ## Local file system storage
 
@@ -189,7 +200,9 @@ Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is f
 
 ### Audit records
 
-The server can write an audit record for each storage credential it issues. Audit records are off by default. Set `server.audit.sink` to turn them on:
+The server can write an audit record for each storage credential it issues, each permission change,
+and each storage cleanup it queues when a managed table, volume, model, or model version is
+dropped. Audit records are off by default. Set `server.audit.sink` to turn them on:
 
 | Property | Default | Description |
 | --- | --- | --- |
@@ -202,15 +215,28 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 ```
 
 - `time`: when the record was made, in ISO 8601 UTC.
-- `action`: `ISSUE_CREDENTIAL`.
+- `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
+  grants), `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants), or `QUEUE_CLEANUP` (a dropped
+  object's storage is queued for deletion).
 - `user`: `system:storage-cleanup` on `CLEANUP` records, whether or not authorization is on. On other
   records, the caller's identity from the token (`sub`): the user's email, or `admin` for the
-  bootstrap admin token. It is absent when authorization is off.
+  bootstrap admin token. It is `system:server` for work the server does outside a request,
+  such as the admin grant made at first start, and absent when authorization is off.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
-- `resource_id`: on a `CLEANUP` credential, the ID of the dropped object.
+- `resource_id`: on a permission change, the object whose grants changed (absent for
+  `CLEAR_PRINCIPAL_GRANTS`). On a `QUEUE_CLEANUP` record and on a `CLEANUP` credential, the ID of the
+  dropped object, so match the two on `resource_id`; they can be written in either order. Other
+  credential records do not carry it. A `CLEANUP` record can have no matching `QUEUE_CLEANUP`
+  record, for example when the drop was queued before audit records were turned on. Cleanup of
+  local `file:` storage vends no credential, so it has no `CLEANUP` record.
+- `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
+  changed.
+- `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG`, or `OWNER` for the
+  ownership grant made when an object is created.
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
-  that request. It is absent on `CLEANUP` records, which are not made while serving a request.
+  that request. It is absent on records not made while serving a request: `CLEANUP` records and
+  `system:server` records.
 - `location`: the storage location, with scheme, authority and path only. The query string and
   fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
   kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
@@ -222,9 +248,14 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 A record is written for every credential issued, including ones served from the credential cache.
 For local `file:` storage there is no credential to issue. A request for credentials, through the
 temporary-credentials endpoints, the Delta API or the Iceberg REST catalog, still writes a record of
-the access the server granted, without `expires_at`. The server's own reads, writes and cleanup of
-`file:` storage write no record. Audit records are best effort: one can be lost when the sink fails,
-or when a request is still running as the server shuts down.
+the access the server granted, without `expires_at`. The server's own reads and writes of `file:`
+storage, and its background cleanup, write no record.
+
+Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
+`REVOKE` and the two `CLEAR_*` actions are recorded once the server has run them without an error, whether or
+not they removed a grant. If the database delete fails, the request fails and nothing is recorded.
+Audit records are best effort: one can be lost when the sink fails, or when a request is still running as
+the server shuts down.
 
 There are two ways to send records:
 

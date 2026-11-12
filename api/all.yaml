@@ -85,6 +85,7 @@ paths:
             format: int32
             maximum: 1000
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listCatalogs
       summary: List catalogs
       description: |
@@ -111,6 +112,8 @@ paths:
       summary: Get a catalog
       description: |
         Gets the specified catalog.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The catalog was successfully retrieved.
@@ -206,6 +209,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listSchemas
       summary: List schemas
       description: |
@@ -233,6 +237,8 @@ paths:
       summary: Get a schema
       description: |
         Gets the specified schema for a catalog.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The schema was successfully retrieved.
@@ -369,6 +375,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listTables
       summary: List tables
       description: |
@@ -413,6 +420,7 @@ paths:
           schema:
             type: boolean
             default: true
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The table was successfully retrieved.
@@ -530,6 +538,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The volume list was successfully retrieved
@@ -576,6 +585,8 @@ paths:
       summary: Get a Volume
       description: |
         Gets a volume for a specific catalog and schema.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: Successfully retrieved the properties of the volume
@@ -764,6 +775,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listFunctions
       summary: List functions
       description: |
@@ -787,7 +799,8 @@ paths:
     get:
       tags:
         - Functions
-      parameters: []
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: getFunction
       summary: Get a function
       description: 'Gets a function from within a parent catalog and schema.'
@@ -867,6 +880,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listRegisteredModels
       summary: List models
       description: |
@@ -894,6 +908,8 @@ paths:
       summary: Get a specified registered model
       description: |
         Gets a fully specified registered model.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The registered model was successfully retrieved.
@@ -1277,7 +1293,10 @@ paths:
         - Credentials
       operationId: updateCredential
       summary: Update a credential
-      description: Updates a credential.
+      description: |-
+        Updates a credential.
+        The caller must be a metastore admin, the credential owner,
+        or have MANAGE on the credential.
       requestBody:
         content:
           application/json:
@@ -1295,11 +1314,14 @@ paths:
         - Credentials
       operationId: deleteCredential
       summary: Delete a credential
-      description: Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+      description: |-
+        Deletes a credential from the metastore.
+        The caller must be a metastore admin, the credential owner,
+        or have MANAGE on the credential.
       parameters:
         - name: force
           in: query
-          description: Force deletion even if there are dependent external locations.
+          description: Force deletion even if there are dependent external locations. The dependent external locations are kept, and they have no credential until they are updated with a new credential_name.
           required: false
           schema:
             type: boolean
@@ -1336,6 +1358,8 @@ paths:
       summary: List external locations
       description: |
         Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+        Locations visible only through BROWSE are included only with include_browse=true
+        and return discovery metadata with browse_only=true.
       operationId: listExternalLocations
       parameters:
         - name: max_results
@@ -1353,6 +1377,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The external location list was successfully retrieved.
@@ -1374,7 +1399,11 @@ paths:
       summary: Get an external location
       description: |
         Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+        A BROWSE grant alone requires include_browse=true and returns discovery metadata
+        with browse_only=true.
       operationId: getExternalLocation
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The external location was successfully retrieved.
@@ -1386,7 +1415,10 @@ paths:
       tags:
         - External Locations
       summary: Delete an external location
-      description: Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+      description: |-
+        Deletes the specified external location from the metastore.
+        The caller must be a metastore admin, the external location owner,
+        or have MANAGE on the external location.
       operationId: deleteExternalLocation
       parameters:
         - name: force
@@ -1402,8 +1434,10 @@ paths:
       tags:
         - External Locations
       summary: Update an external location
-      description: |
-        Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
+      description: |-
+        Updates an external location in the metastore.
+        The caller must be a metastore admin, the external location owner,
+        or have MANAGE on the external location.
       operationId: updateExternalLocation
       requestBody:
         required: true
@@ -1501,6 +1535,17 @@ paths:
         '501':
           description: Not Implemented. The requested functionality is not supported.
 components:
+  parameters:
+    IncludeBrowse:
+      name: include_browse
+      in: query
+      description: |
+        Include discovery metadata for objects visible through BROWSE when ordinary access fails.
+        Such objects have browse_only=true. Ordinary access returns full metadata.
+      required: false
+      schema:
+        type: boolean
+        default: false
   schemas:
     SecurablePropertiesMap:
       description: A map of key-value properties attached to the securable.
@@ -1566,6 +1611,9 @@ components:
     VolumeInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         catalog_name:
           type: string
           description: The name of the catalog where the schema and the volume are
@@ -1698,6 +1746,9 @@ components:
     TableInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of table, relative to parent schema.
           type: string
@@ -1845,6 +1896,9 @@ components:
     SchemaInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of schema, relative to parent catalog.
           type: string
@@ -1941,6 +1995,9 @@ components:
     CatalogInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of catalog.
           type: string
@@ -2219,6 +2276,9 @@ components:
     FunctionInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of function, relative to parent schema.
           type: string
@@ -2435,6 +2495,9 @@ components:
     RegisteredModelInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: The name of the registered model
           type: string
@@ -2742,7 +2805,7 @@ components:
         - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
         - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
         - 'BROWSE: Allows discovery of metadata for a catalog and its descendants, or an external location, without usage grants. Does not permit data access.'
-        - 'MANAGE: Allows metadata and grant inspection, grant changes, supported metadata changes and deletion, and ownership transfer. Does not grant data access, execution, or object creation.'
+        - 'MANAGE: Allows full metadata and grant inspection, grant changes, supported metadata changes, and deletion. Managers can grant themselves other privileges, including data access. Data access, execution, and object creation still require their own privileges.'
         - 'WRITE VOLUME: Permits creating, changing, and deleting files in volumes; also requires READ VOLUME and parent usage privileges.'
         - 'CREATE MODEL VERSION: Allows publishing versions of registered models with USE CATALOG and USE SCHEMA.'
         - 'READ METADATA: Permits reading full metadata and grants without data access or permission changes.'
@@ -2914,6 +2977,9 @@ components:
     ExternalLocationInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of the external location.
           type: string
@@ -2924,7 +2990,7 @@ components:
           description: Path URL of the external location.
           type: string
         credential_name:
-          description: Name of the storage credential used with this location.
+          description: Name of the storage credential used with this location. Omitted when the credential no longer exists, for example after it was force-deleted. Updating the external location with a new credential_name repairs it.
           type: string
         comment:
           description: User-provided free-form text description.
@@ -2975,7 +3041,7 @@ components:
           description: Path URL of the external location.
           type: string
         credential_name:
-          description: Name of the storage credential used with this location.
+          description: Name of the storage credential used with this location. Setting it on an external location whose credential was force-deleted repairs the location.
           type: string
         comment:
           description: User-provided free-form text description.

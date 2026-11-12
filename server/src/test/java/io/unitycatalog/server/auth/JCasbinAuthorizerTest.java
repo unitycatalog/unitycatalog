@@ -3,6 +3,7 @@ package io.unitycatalog.server.auth;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -11,6 +12,7 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -207,5 +209,21 @@ public class JCasbinAuthorizerTest {
     actions2.forEach(action -> authenticator.grantAuthorization(principal2, resource, action));
     Map<UUID, List<Privileges>> expected = Map.of(principal, actions, principal2, actions2);
     assertThat(authenticator.listAuthorizations(resource)).isEqualTo(expected);
+  }
+
+  @Test
+  void failedDeleteThrowsTheDatabaseError() throws Exception {
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    authenticator.grantAuthorization(principal, resource, Privileges.OWNER);
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection()) {
+      connection.createStatement().execute("DROP TABLE casbin_rule");
+      connection.commit();
+    }
+    // jdbc-adapter retries the delete, then throws an Error that wraps the SQLException.
+    assertThatThrownBy(
+            () -> authenticator.revokeAuthorization(principal, resource, Privileges.OWNER))
+        .isInstanceOf(Error.class)
+        .hasCauseInstanceOf(SQLException.class);
   }
 }

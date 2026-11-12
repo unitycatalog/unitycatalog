@@ -4,7 +4,7 @@
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
 | **url** | **String** | Path URL of the external location. | [optional] [default to null] |
-| **credential\_name** | **String** | Name of the storage credential used with this location. | [optional] [default to null] |
+| **credential\_name** | **String** | Name of the storage credential used with this location. Setting it on an external location whose credential was force-deleted repairs the location. | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
 | **owner** | **String** | The owner of the external location. | [optional] [default to null] |
 | **new\_name** | **String** | New name for the external location. | [optional] [default to null] |

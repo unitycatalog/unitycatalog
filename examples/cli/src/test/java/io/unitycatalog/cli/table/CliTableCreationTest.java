@@ -8,8 +8,11 @@ import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.fail;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.schema.CliSchemaOperations;
@@ -111,13 +114,61 @@ public class CliTableCreationTest extends BaseServerTest {
 
     // Verify CCv2 (catalog-managed) properties are persisted on the server via direct RPC call
     TablesApi tablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
-    Map<String, String> props = tablesApi.getTable(TABLE_FULL_NAME, true, true).getProperties();
+    Map<String, String> props =
+        tablesApi.getTable(TABLE_FULL_NAME, true, true, /* includeBrowse= */ false).getProperties();
     assertThat(props).isNotNull();
     assertThat(props).containsEntry("delta.feature.catalogManaged", "supported");
     assertThat(props).containsEntry("delta.feature.vacuumProtocolCheck", "supported");
     assertThat(props).containsEntry("delta.minReaderVersion", "3");
     assertThat(props).containsEntry("delta.minWriterVersion", "7");
     assertThat(props).containsEntry("delta.lastUpdateVersion", "0");
+  }
+
+  @Test
+  public void testCreateTableWithDecimalColumns() throws IOException, ApiException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+    List<ColumnInfo> columns =
+        List.of(
+            new ColumnInfo()
+                .name("price")
+                .typeName(ColumnTypeName.DECIMAL)
+                .typePrecision(10)
+                .typeScale(2),
+            new ColumnInfo().name("amount").typeName(ColumnTypeName.DECIMAL));
+    tableOperations.createTable(
+        new CreateTable()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name(TABLE_NAME)
+            .tableType(TableType.EXTERNAL)
+            .storageLocation(tableDir.toUri().toString())
+            .columns(columns));
+
+    List<ColumnInfo> created = tableOperations.getTable(TABLE_FULL_NAME).getColumns();
+    assertThat(created)
+        .extracting(
+            ColumnInfo::getName,
+            ColumnInfo::getTypeText,
+            ColumnInfo::getTypePrecision,
+            ColumnInfo::getTypeScale)
+        .containsExactly(
+            tuple("price", "decimal(10,2)", 10, 2), tuple("amount", "decimal(10,0)", 10, 0));
+    assertThat(created.get(0).getTypeJson()).contains("\"type\":\"decimal(10,2)\"");
+
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode metaData = null;
+    for (String line :
+        Files.readAllLines(tableDir.resolve("_delta_log").resolve("00000000000000000000.json"))) {
+      JsonNode action = mapper.readTree(line);
+      if (action.has("metaData")) {
+        metaData = action.get("metaData");
+      }
+    }
+    assertThat(metaData).isNotNull();
+    JsonNode fields = mapper.readTree(metaData.get("schemaString").asText()).get("fields");
+    assertThat(fields)
+        .extracting(field -> field.get("name").asText(), field -> field.get("type").asText())
+        .containsExactly(tuple("price", "decimal(10,2)"), tuple("amount", "decimal(10,0)"));
   }
 
   @Test

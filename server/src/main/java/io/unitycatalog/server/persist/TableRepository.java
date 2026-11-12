@@ -46,7 +46,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -821,17 +820,11 @@ public class TableRepository {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     DataSourceFormat format = createTable.getDataSourceFormat();
     // `columns` arrives as null (not an empty list) when a client omits the field entirely, so
-    // normalize before streaming. Whether an empty column list is acceptable is a per-table-type
+    // normalize before validating. Whether an empty column list is acceptable is a per-table-type
     // rule decided in the create branches below, and those checks must be the ones that reject the
     // request so the caller gets INVALID_ARGUMENT instead of an NPE here.
-    List<ColumnInfo> columnInfos =
-        Optional.ofNullable(createTable.getColumns()).orElse(List.of()).stream()
-            .map(
-                c -> {
-                  ColumnUtils.validateTypeJson(c, format);
-                  return c.typeText(c.getTypeText().toLowerCase(Locale.ROOT));
-                })
-            .toList();
+    List<ColumnInfo> columnInfos = Optional.ofNullable(createTable.getColumns()).orElse(List.of());
+    columnInfos.forEach(c -> ColumnUtils.validateTypeJson(c, format));
     Long createTime = System.currentTimeMillis();
     String fullName = getTableFullName(createTable);
     LOGGER.debug("Creating table: {}", fullName);
