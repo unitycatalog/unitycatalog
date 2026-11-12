@@ -14,6 +14,7 @@ import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.Produces;
 import com.linecorp.armeria.server.annotation.Put;
 import com.linecorp.armeria.server.annotation.StatusCode;
+import com.unboundid.scim2.common.Path;
 import com.unboundid.scim2.common.exceptions.BadRequestException;
 import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
@@ -69,7 +70,7 @@ import java.util.stream.Stream;
  */
 public class Scim2UserService implements ScimService {
   private static final String ACTIVE = "active";
-  private static final String CORE_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User:";
+  private static final String CORE_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
   // The uc_users.name column is varchar(255).
   private static final int MAX_NAME_LENGTH = 255;
   private final UserRepository userRepository;
@@ -276,17 +277,23 @@ public class Scim2UserService implements ScimService {
   /** The value a replace sets "active" to, or null if the operation touches anything else. */
   private static JsonNode activeValue(PatchOperation operation) {
     JsonNode value = operation.getJsonNode();
-    if (operation.getPath() != null) {
-      String path = operation.getPath().toString();
-      if (path.regionMatches(true, 0, CORE_USER_SCHEMA, 0, CORE_USER_SCHEMA.length())) {
-        path = path.substring(CORE_USER_SCHEMA.length());
-      }
-      boolean isActivePath = ACTIVE.equalsIgnoreCase(path);
-      return isActivePath ? unwrapSingleValue(value) : null;
+    Path path = operation.getPath();
+    if (path != null) {
+      return isActivePath(path) ? unwrapSingleValue(value) : null;
     }
     boolean isOnlyActive =
         value.isObject() && value.size() == 1 && ACTIVE.equalsIgnoreCase(value.fieldNames().next());
     return isOnlyActive ? unwrapSingleValue(value.elements().next()) : null;
+  }
+
+  /** The attribute "active", with no filter, optionally under the core User schema URN. */
+  private static boolean isActivePath(Path path) {
+    boolean isCoreSchema =
+        path.getSchemaUrn() == null || CORE_USER_SCHEMA.equalsIgnoreCase(path.getSchemaUrn());
+    return isCoreSchema
+        && path.size() == 1
+        && ACTIVE.equalsIgnoreCase(path.getElement(0).getAttribute())
+        && path.getElement(0).getValueFilter() == null;
   }
 
   private static JsonNode unwrapSingleValue(JsonNode value) {
