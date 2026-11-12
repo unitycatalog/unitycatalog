@@ -191,5 +191,5 @@ tokens work only for the bootstrap admin token and the SCIM principal's token.
 <!-- TODO(PR 2): PUT /Users/{id} with the full user and active false, and PATCH /Users/{id} with
 {"op":"replace","value":{"active":false}}, must disable the user. -->
 Deactivate the person in Okta, or unassign them from the app. Okta sends `active: false` in `PUT /Users/{id}` (`PATCH`
-for an Okta Integration Network app), and the server disables the user. From the next request it refuses every token for that user, including IdP access tokens
-that have not expired yet.
+for an Okta Integration Network app), and the server disables the user. From the next request it refuses every token
+for that user, including IdP access tokens that have not expired yet.
