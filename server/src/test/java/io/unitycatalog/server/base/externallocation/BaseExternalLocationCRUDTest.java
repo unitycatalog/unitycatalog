@@ -35,11 +35,13 @@ import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -578,5 +580,42 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         externalLocationOperations.getExternalLocation("update_race_renamed");
     assertThat(renamed.getId()).isEqualTo(id.toString());
     assertThat(renamed.getComment()).isNull();
+  }
+
+  /** A delete that waits behind a write sees a table that write created under the location. */
+  @Test
+  public void deleteWaitingBehindAWriteSeesATableItCreated() throws Exception {
+    String url = testUrl() + "/race";
+    UUID id = UUID.fromString(create("delete_race", url).getId());
+    UUID schemaId =
+        UUID.fromString(schemaOperations.getSchema(CATALOG_NAME + "." + SCHEMA_NAME).getSchemaId());
+
+    assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> {
+                  // Holds the location row, and creates a table under it in the same commit.
+                  TestDatabase.setColumn(held, ExternalLocationDAO.class, id, "comment", "held");
+                  held.persist(
+                      TableInfoDAO.builder()
+                          .id(UUID.randomUUID())
+                          .name("race_table")
+                          .schemaId(schemaId)
+                          .type(TableType.EXTERNAL.getValue())
+                          .dataSourceFormat(DataSourceFormat.DELTA.getValue())
+                          .url(url + "/t")
+                          .columnCount(0)
+                          .createdAt(new Date())
+                          .build());
+                },
+                () -> {
+                  delete("delete_race", Optional.of(false));
+                  return null;
+                }),
+        ErrorCode.INVALID_ARGUMENT,
+        "External location still used by");
+
+    assertThat(externalLocationOperations.getExternalLocation("delete_race").getId())
+        .isEqualTo(id.toString());
   }
 }

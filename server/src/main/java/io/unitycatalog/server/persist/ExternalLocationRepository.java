@@ -291,7 +291,8 @@ public class ExternalLocationRepository {
           return existingLocation;
         },
         "Failed to delete external location",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   /**
