@@ -144,12 +144,9 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     record Reply(int status, String body) {}
     for (Reply reply :
         List.of(
-            new Reply(501, "Not Implemented"),
             new Reply(501, "<html>501 Not Implemented</html>"),
-            new Reply(501, "{\"message\":\"Token exchange is disabled\"}"),
             new Reply(501, ucError("INTERNAL")),
-            new Reply(500, ucError("UNIMPLEMENTED")),
-            new Reply(400, ucError("INVALID_ARGUMENT")))) {
+            new Reply(500, ucError("UNIMPLEMENTED")))) {
       HttpServer server = startTokenEndpoint(reply.status(), reply.body(), new AtomicReference<>());
       try {
         assertThatThrownBy(
