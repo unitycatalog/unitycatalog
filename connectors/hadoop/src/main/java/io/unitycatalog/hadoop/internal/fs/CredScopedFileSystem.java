@@ -55,20 +55,25 @@ import org.apache.hadoop.fs.FilterFileSystem;
  * {@link FilterFileSystem}, so callers see a fully functional filesystem regardless of which
  * underlying implementation backs it.
  *
+ * <h2>Delegate lifetime</h2>
+ *
  * <p>The cache owns each delegate, and every wrapper of the same scope shares it. Each wrapper
  * therefore wraps its own {@code Lease} on the delegate rather than the delegate itself, so closing
- * a wrapper runs the regular {@link FileSystem#close()} bookkeeping but only releases the lease. A
- * wrapper that is never closed releases its lease once the lease is garbage collected. A wrapper
- * obtained through {@link FileSystem#newInstance(URI, Configuration)} is held by Hadoop's cache
- * until it is closed, so only {@code close()} releases it. A delegate is closed once it has been
- * evicted from the cache and every lease on it has been released, so it is not closed while an open
- * wrapper of it is strongly reachable.
+ * a wrapper runs the regular {@link FileSystem#close()} bookkeeping and then releases the lease,
+ * even when that bookkeeping throws. A wrapper that is never closed releases its lease once the
+ * lease is garbage collected. A wrapper obtained through {@link FileSystem#newInstance(URI,
+ * Configuration)} is held by Hadoop's cache until it is closed, so only {@code close()} releases
+ * it. A delegate is closed once it has been evicted from the cache and every lease on it has been
+ * released, so it is not closed while an open wrapper of it is strongly reachable. The cache's
+ * maximum size therefore bounds the cached delegates, not the open ones: an evicted delegate stays
+ * open while a wrapper still uses it, and a cached delegate stays open after its last wrapper
+ * closes until it is evicted.
  *
  * <p>Nothing else keeps a lease alive. A call still running on a wrapper that the caller no longer
  * references, as in {@code path.getFileSystem(conf).listStatus(path)}, and the streams, iterators
  * and builders that a wrapper returns can find an evicted delegate closed under them once the
- * wrapper has been collected. This is no worse than closing the delegate on eviction regardless of
- * its users. Fencing in-flight calls and leasing returned objects is tracked in #2191.
+ * wrapper has been collected. See <a
+ * href="https://github.com/unitycatalog/unitycatalog/issues/2191">issue #2191</a>.
  *
  * <p>These guarantees hold for delegates that are not shared outside this cache. For the {@code
  * s3}, {@code s3a}, {@code gs}, {@code abfs} and {@code abfss} schemes the delegate is created with
@@ -90,11 +95,9 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   /**
    * LRU cache of real {@link FileSystem} instances keyed by {@link FileSystemCredId}. Evicted
-   * entries are closed, once no open wrapper uses them, to release connection pools and SDK thread
-   * pools (e.g. AWS sdk-ScheduledExecutor threads). The maximum size bounds the cached delegates,
-   * not the open ones: an evicted delegate stays open while a wrapper still uses it, and a cached
-   * delegate stays open after its last wrapper closes until it is evicted. The maximum size can be
-   * tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}.
+   * entries are closed as described in the class javadoc, to release connection pools and SDK
+   * thread pools (e.g. AWS sdk-ScheduledExecutor threads). The maximum size can be tuned via the
+   * system property {@code unitycatalog.credScopedFs.cache.maxSize}.
    *
    * <p>Visible for testing.
    */
@@ -106,14 +109,31 @@ public class CredScopedFileSystem extends FilterFileSystem {
     CACHE.clear();
   }
 
+  private Lease lease;
+
   /**
    * Returns the shared delegate, or {@code null} before {@link #initialize(URI, Configuration)}.
-   * The delegate is not leased to the caller: callers must not close it, and it can be closed once
-   * this wrapper is closed or unreachable and its scope has been evicted.
+   * The delegate is not leased to the caller, so callers must not close it.
    */
   @Override
   public FileSystem getRawFileSystem() {
-    return fs == null ? null : ((Lease) fs).getRawFileSystem();
+    return lease == null ? null : lease.getRawFileSystem();
+  }
+
+  @Override
+  public FileSystem[] getChildFileSystems() {
+    return new FileSystem[] {getRawFileSystem()};
+  }
+
+  @Override
+  public void close() throws IOException {
+    try {
+      super.close();
+    } finally {
+      if (lease != null) {
+        lease.close();
+      }
+    }
   }
 
   @Override
@@ -140,16 +160,22 @@ public class CredScopedFileSystem extends FilterFileSystem {
     SharedFileSystem[] loaded = new SharedFileSystem[1];
     SharedFileSystem shared;
     do {
-      shared = CACHE.getOrLoad(key, () -> loaded[0] = new SharedFileSystem(loader.get()));
+      try {
+        shared = CACHE.getOrLoad(key, () -> loaded[0] = new SharedFileSystem(loader.get()));
+      } catch (RuntimeException | Error e) {
+        // An eviction listener can throw after the loaded entry was published with this wrapper's
+        // lease counted, so give the lease back or the entry is never closed once evicted.
+        if (loaded[0] != null) {
+          loaded[0].release();
+        }
+        throw e;
+      }
     } while (shared != loaded[0] && !shared.acquire());
-    this.fs = new Lease(shared);
+    this.lease = new Lease(shared);
+    this.fs = lease;
   }
 
-  /**
-   * One wrapper's reference to a shared delegate. It lets {@link FilterFileSystem#close()} run its
-   * usual bookkeeping on the wrapper and then close this lease, which releases the reference
-   * without closing the delegate.
-   */
+  /** One wrapper's lease on a shared delegate. Closing it releases the lease, not the delegate. */
   // TODO(#2191): fence forwarded calls and lease returned streams, iterators and builders.
   private static final class Lease extends FilterFileSystem {
     private final Cleaner.Cleanable release;
@@ -195,7 +221,8 @@ public class CredScopedFileSystem extends FilterFileSystem {
       closeIfUnused();
     }
 
-    // TODO(#2191): close outside the monitor, and on eviction outside the cache's key lock.
+    // TODO(#2191): close outside the monitor, outside the cache's key lock on eviction, and off the
+    // shared Cleaner thread, which a slow close otherwise stalls for every other release.
     private void closeIfUnused() {
       if (evicted && openWrappers == 0) {
         CloseableUtils.closeQuietly(fs);

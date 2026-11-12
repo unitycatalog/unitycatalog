@@ -2,6 +2,7 @@ package io.unitycatalog.hadoop.internal.fs;
 
 import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
@@ -258,6 +259,51 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
+  void closingAWrapperReleasesItsLeaseWhenDeleteOnExitThrows() throws Exception {
+    Configuration conf = trackedConf("tid-1");
+    conf.set("fs.file.impl", FailingDeleteFileSystem.class.getName());
+    CredScopedFileSystem fs = init(URI.create("file:///tmp"), conf);
+    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) fs.getRawFileSystem();
+    assertThat(fs.deleteOnExit(PATH)).isTrue();
+    CredScopedFileSystem.clearCacheForTesting();
+    assertThat(delegate.closed).isFalse();
+
+    assertThatThrownBy(fs::close).isInstanceOf(IllegalStateException.class);
+
+    assertThat(delegate.closed).isTrue();
+  }
+
+  @Test
+  void delegateLoadedWhenAnEvictionListenerThrowsIsClosedOnceEvicted() throws Exception {
+    URI uri = URI.create("file:///tmp");
+    Configuration failingConf = trackedConf("tid-failing-close");
+    failingConf.set("fs.file.impl", FailingCloseFileSystem.class.getName());
+    init(uri, failingConf).close();
+    for (int i = 1; i < CredScopedFileSystem.CACHE_MAX_SIZE; i++) {
+      init(uri, trackedConf("tid-other-" + i)).close();
+    }
+
+    assertThatThrownBy(() -> init(uri, trackedConf("tid-loaded")))
+        .isInstanceOf(IllegalStateException.class);
+    CloseTrackingFileSystem loaded =
+        CloseTrackingFileSystem.CREATED.stream().reduce((first, second) -> second).orElseThrow();
+    assertThat(loaded.closed).isFalse();
+
+    CredScopedFileSystem.clearCacheForTesting();
+
+    assertThat(loaded.closed).isTrue();
+  }
+
+  @Test
+  void childFileSystemsAreTheSharedDelegate() throws Exception {
+    CredScopedFileSystem fs = init(URI.create("file:///tmp"), trackedConf("tid-1"));
+
+    assertThat(fs.getChildFileSystems())
+        .containsExactly(CloseTrackingFileSystem.CREATED.toArray(new FileSystem[0]));
+    assertThat(CloseTrackingFileSystem.CREATED).hasSize(1);
+  }
+
+  @Test
   void concurrentEvictionNeverBreaksAnOpenWrapperOrDiscardsAnUnusedDelegate() throws Exception {
     URI uri = URI.create("file:///tmp");
     AtomicBoolean done = new AtomicBoolean();
@@ -440,6 +486,23 @@ class CredScopedFileSystemCacheTest {
       closeCount.incrementAndGet();
       closed = true;
       super.close();
+    }
+  }
+
+  /** A delegate whose delete fails with an unchecked exception. */
+  public static class FailingDeleteFileSystem extends CloseTrackingFileSystem {
+    @Override
+    public boolean delete(Path path, boolean recursive) {
+      throw new IllegalStateException("delete failed");
+    }
+  }
+
+  /** A delegate whose close fails with an unchecked exception after it is marked closed. */
+  public static class FailingCloseFileSystem extends CloseTrackingFileSystem {
+    @Override
+    public void close() throws IOException {
+      super.close();
+      throw new IllegalStateException("close failed");
     }
   }
 }
