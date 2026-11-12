@@ -6,14 +6,6 @@ for any IdP that can send SCIM requests with a fixed bearer token.
 
 Read [Auth](auth.md) first for how Unity Catalog authenticates and authorizes requests.
 
-The setup has five parts:
-
-1. Configure Unity Catalog for external mode.
-2. Create the IdP's SCIM principal and mint its token.
-3. Add Unity Catalog as a SCIM app in Okta.
-4. Assign users, then push groups.
-5. Sign in.
-
 ## 1. Configure Unity Catalog
 
 Turn on authorization and set the authentication type to `external`. In external mode people send IdP access tokens
