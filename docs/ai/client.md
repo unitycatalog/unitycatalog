@@ -139,6 +139,7 @@ In order to make a Python callable recognizable to the Unity Catalog functions d
 1. The function must use type hints in both the signature and the return of the function.
 2. A Google-style docstring must be used. A description of the function is required and descriptions of the parameters are strongly recommended for proper use by GenAI agents.
 3. Dependent libraries must be imported within the body of the function. Imports outside of the function will not be resolvable when executing otherwise.
+4. The function you register must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around an `async def`, is rejected when you create it. This rule is about the function you register, not the client. The async client methods such as `create_python_function_async` still take a regular `def`.
 
 Below, we show a proper function definition (with type hints and docstring) that is then used to register the function to Unity Catalog using the async API for creating functions.
 
@@ -217,6 +218,8 @@ wrapped_function = uc_client.create_wrapped_function(
 ```
 
 This API in-lines the helper functions (`a` and `b`) into the primary function (`wrapper`) so that they are part of the same function definition stored in Unity Catalog.
+
+The primary function must be a regular `def`. A helper can be an `async def` as long as the primary function runs it, for example with `asyncio.run`.
 
 #### Testing a function
 

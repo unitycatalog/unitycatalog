@@ -47,6 +47,9 @@ When using the `UnitycatalogFunctionClient` for UC, be mindful of the following 
 - **Function Overwriting**:
     - The `create_function`, `create_function_async`, `create_wrapped_function` and `create_wrapped_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
     - **Warning**: Overwriting functions can disrupt workflows that depend on existing function definitions. Use this feature judiciously and ensure that overwriting is intentional.
+- **No Async Primary Functions**:
+    - The function passed to `create_python_function`, or as `primary_func` to `create_wrapped_function`, must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around one, raises a `ValueError`.
+    - Helpers passed to `create_wrapped_function` through `functions` can be `async def`, as long as the primary function runs them, for example with `asyncio.run`.
 - **Type Validation and Compatibility**:
     - The client performs strict type validation based on the defined schemas. Ensure that your function parameters and return types adhere to the expected types to prevent execution errors.
 
