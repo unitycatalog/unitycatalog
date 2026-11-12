@@ -353,7 +353,8 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  private FluentConfiguration flyway() {
+  /** This build's Flyway configuration; tests add callbacks to it. */
+  FluentConfiguration flyway() {
     return Flyway.configure()
         .dataSource(dataSource)
         .locations(locations)
