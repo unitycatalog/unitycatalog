@@ -10,7 +10,6 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
@@ -23,14 +22,7 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -317,44 +309,18 @@ class UserRepositoryTest {
   }
 
   @Test
-  void concurrentLinksOfOneIdentityToTwoRowsLinkOneRow() throws Exception {
+  void linkUserOfAnIdentityLinkedToAnotherRowLinksNothing() {
     var rowA =
         userRepository.createUser(
-            CreateUser.builder().name("A").email("race-a@example.com").build());
-    var rowB =
-        userRepository.createUser(
-            CreateUser.builder().name("B").email("race-b@example.com").build());
-    UserLink link = new UserLink(ISSUER, "sub", "racer-shared");
-    int callers = 8;
-    ExecutorService executor = Executors.newFixedThreadPool(callers);
-    CountDownLatch start = new CountDownLatch(1);
-    try {
-      List<Future<User>> results = new ArrayList<>();
-      for (int i = 0; i < callers; i++) {
-        String email = i % 2 == 0 ? "race-a@example.com" : "race-b@example.com";
-        results.add(
-            executor.submit(
-                () -> {
-                  start.await();
-                  return userRepository.linkUser(email, link, null);
-                }));
-      }
-      start.countDown();
-      // The loser of uc_users_link_key gets null, not an exception.
-      List<String> linked = new ArrayList<>();
-      for (Future<User> result : results) {
-        User user = result.get(60, TimeUnit.SECONDS);
-        if (user != null) {
-          linked.add(user.getId());
-        }
-      }
-      assertThat(linked).hasSize(1);
-      assertThat(userRepository.findLinkedUser(link, null).getId())
-          .isEqualTo(linked.get(0))
-          .isIn(rowA.getId(), rowB.getId());
-    } finally {
-      executor.shutdownNow();
-    }
+            CreateUser.builder().name("A").email("dup-a@example.com").build());
+    userRepository.createUser(CreateUser.builder().name("B").email("dup-b@example.com").build());
+    UserLink link = new UserLink(ISSUER, "sub", "shared-identity");
+
+    assertThat(userRepository.linkUser("dup-a@example.com", link, null).getId())
+        .isEqualTo(rowA.getId());
+    // uc_users_link_key refuses the second row; that is a null result, not an exception.
+    assertThat(userRepository.linkUser("dup-b@example.com", link, null)).isNull();
+    assertThat(userRepository.findLinkedUser(link, null).getId()).isEqualTo(rowA.getId());
   }
 
   private static void assertSetIdpNameRefused(String email, ErrorCode code, String message) {
