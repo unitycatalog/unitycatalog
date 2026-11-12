@@ -381,7 +381,7 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
 
   @Test
   @SneakyThrows
-  public void testDeleteGroupRemovesItAndKeepsUsers() {
+  public void testDeleteGroupRemovesItAndFreesTheName() {
     String id = createGroup("doomed", alice.getId()).get("id").asText();
     String path = GROUPS_PATH + "/" + id;
 
