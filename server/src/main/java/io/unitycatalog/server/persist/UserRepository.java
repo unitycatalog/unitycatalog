@@ -130,7 +130,6 @@ public class UserRepository {
     return query.uniqueResult();
   }
 
-  /** The id of the user with this email, or null if the email is null or no user has it. */
   public UUID findUserId(Session session, String email) {
     UserDAO userDAO = email == null ? null : getUserByEmail(session, email);
     return userDAO == null ? null : userDAO.getId();
