@@ -57,6 +57,7 @@ class CredScopedFileSystemCacheTest {
   @AfterEach
   void clearCache() {
     CredScopedFileSystem.clearCacheForTesting();
+    CloseTrackingFileSystem.CREATED.clear();
   }
 
   private static CredScopedFileSystem init(URI uri, Configuration conf) throws Exception {
@@ -258,7 +259,6 @@ class CredScopedFileSystemCacheTest {
 
   @Test
   void concurrentEvictionNeverBreaksAnOpenWrapperOrDiscardsAnUnusedDelegate() throws Exception {
-    CloseTrackingFileSystem.CREATED.clear();
     URI uri = URI.create("file:///tmp");
     AtomicBoolean done = new AtomicBoolean();
     ExecutorService pool = Executors.newFixedThreadPool(STRESS_WORKERS + 1);
@@ -285,13 +285,14 @@ class CredScopedFileSystemCacheTest {
     }
     CredScopedFileSystem.clearCacheForTesting();
 
-    assertThat(CloseTrackingFileSystem.CREATED)
-        .isNotEmpty()
-        .allSatisfy(
-            delegate -> {
-              assertThat(delegate.used).as("delegate was used before it was closed").isTrue();
-              assertThat(delegate.closed).isTrue();
-            });
+    assertThat(CloseTrackingFileSystem.CREATED).isNotEmpty();
+    assertThat(CloseTrackingFileSystem.CREATED.stream().filter(delegate -> !delegate.used).count())
+        .as("delegates closed without ever being used")
+        .isZero();
+    assertThat(
+            CloseTrackingFileSystem.CREATED.stream().filter(delegate -> !delegate.closed).count())
+        .as("delegates still open after every wrapper closed and the cache was cleared")
+        .isZero();
     assertThat(finishedWhileEvicting).as("workers finished while eviction ran").isTrue();
   }
 

@@ -70,10 +70,11 @@ import org.apache.hadoop.fs.FilterFileSystem;
  * wrapper has been collected. This is no worse than closing the delegate on eviction regardless of
  * its users. Fencing in-flight calls and leasing returned objects is tracked in #2191.
  *
- * <p>These guarantees hold for delegates that are not shared outside this cache. For S3, GCS and
- * Azure schemes the delegate is created with Hadoop's own cache disabled. For any other scheme
- * {@link FileSystem#get(URI, Configuration)} can return a JVM-wide instance from Hadoop's cache,
- * which other scopes and callers may share, and evicting a scope closes it regardless.
+ * <p>These guarantees hold for delegates that are not shared outside this cache. For the {@code
+ * s3}, {@code s3a}, {@code gs}, {@code abfs} and {@code abfss} schemes the delegate is created with
+ * Hadoop's own cache disabled. For any other scheme, including {@code wasb}, {@link
+ * FileSystem#get(URI, Configuration)} can return a JVM-wide instance from Hadoop's cache, which
+ * other scopes and callers may share, and evicting a scope closes it regardless.
  */
 public class CredScopedFileSystem extends FilterFileSystem {
 
@@ -134,7 +135,8 @@ public class CredScopedFileSystem extends FilterFileSystem {
   private void acquire(FileSystemCredId key, Supplier<FileSystem> loader) {
     // A delegate loaded here is published with this wrapper's lease already taken, so a concurrent
     // eviction cannot close it before it is used. A cached entry evicted between the lookup and
-    // acquire() is already gone from the cache, so the retry loads a fresh delegate.
+    // acquire() is already gone from the cache, so the retry leases whichever delegate is cached
+    // next, either one it loads itself or one another thread has loaded.
     SharedFileSystem[] loaded = new SharedFileSystem[1];
     SharedFileSystem shared;
     do {
@@ -148,6 +150,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * usual bookkeeping on the wrapper and then close this lease, which releases the reference
    * without closing the delegate.
    */
+  // TODO(#2191): fence forwarded calls and lease returned streams, iterators and builders.
   private static final class Lease extends FilterFileSystem {
     private final Cleaner.Cleanable release;
 
