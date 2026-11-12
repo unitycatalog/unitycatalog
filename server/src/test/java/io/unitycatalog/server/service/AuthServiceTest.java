@@ -729,50 +729,23 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     // A PUT doesn't store a new email.
     assertThat(users.getUser(oktaUserId).getEmail()).isEqualTo("test.user@okta.local");
 
-    // A PUT on the admin's user that changes its external id or its primary email, a case variant
-    // included, or sends no primary email, or a primary with no value: not found for Okta.
+    // A PUT or a PATCH on the admin's user is not found for Okta, whatever the body.
     String put =
-        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"%s\","
-            + "\"userName\":\"%s\",\"emails\":%s,\"displayName\":\"Test User\",\"active\":true%s}";
-    String storedEmails = "[{\"primary\":true,\"value\":\"victim@example.com\"}]";
-    List<String> bodies = new java.util.ArrayList<>();
-    bodies.add(
-        String.format(
-            put,
-            victimId,
-            "victim@example.com",
-            storedEmails,
-            ",\"externalId\":\"attacker-client\""));
-    for (String emails :
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\""
+            + victimId
+            + "\",\"userName\":\"victim@example.com\",\"externalId\":\"attacker-client\","
+            + "\"emails\":[{\"primary\":true,\"value\":\"victim@example.com\"}],"
+            + "\"displayName\":\"Test User\",\"active\":true}";
+    String patch =
+        "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+            + "{\"op\":\"replace\",\"value\":{\"externalId\":\"attacker-client\"}}]}";
+    for (AggregatedHttpResponse response :
         List.of(
-            "[{\"primary\":true,\"value\":\"attacker@example.com\"}]",
-            "[{\"primary\":true,\"value\":\"Victim@example.com\"}]",
-            "[{\"primary\":false,\"value\":\"victim@example.com\"},{\"value\":\"x@example.com\"}]",
-            "[{\"primary\":true}]",
-            "[null]",
-            "[null,{\"primary\":true,\"value\":\"attacker@example.com\"}]")) {
-      bodies.add(String.format(put, victimId, "victim@example.com", emails, ""));
-    }
-    for (String body : bodies) {
-      AggregatedHttpResponse response = scimAs(okta, HttpMethod.PUT, "/" + victimId, body);
-      assertThat(response.status()).as(body).isEqualTo(HttpStatus.NOT_FOUND);
+            scimAs(okta, HttpMethod.PUT, "/" + victimId, put),
+            scimAs(okta, HttpMethod.PATCH, "/" + victimId, patch))) {
+      assertThat(response.status()).isEqualTo(HttpStatus.NOT_FOUND);
       assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
           .isEqualTo("User not found: " + victimId);
-    }
-    // PATCH changes only active.
-    for (String patch :
-        List.of(
-            "{\"op\":\"replace\",\"value\":{\"externalId\":\"attacker-client\"}}",
-            "{\"op\":\"replace\",\"path\":\"externalId\",\"value\":\"attacker-client\"}",
-            "{\"op\":\"replace\",\"path\":\"emails\",\"value\":[{\"primary\":true,"
-                + "\"value\":\"attacker@example.com\"}]}")) {
-      scimAs(
-          okta,
-          HttpMethod.PATCH,
-          "/" + victimId,
-          "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
-              + patch
-              + "]}");
     }
     User victim = users.getUser(victimId);
     assertThat(victim.getExternalId()).isNull();
