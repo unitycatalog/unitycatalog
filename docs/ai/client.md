@@ -658,7 +658,8 @@ than the wall clock execution time.
 
 The memory limit applies to the virtual memory that the callable allocates on top of what the sandbox process inherits
 from your application when it is forked, so the callable gets the same allowance no matter how much memory your application
-already uses.
+already uses. The `"local"` mode of the `DatabricksFunctionClient` runs the callable in a fresh subprocess instead, and there
+the limit caps the whole virtual memory of that subprocess.
 
 There are restrictions in which packages can be imported for use within a sandbox environment.
 

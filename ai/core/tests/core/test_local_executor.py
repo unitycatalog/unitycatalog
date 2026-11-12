@@ -276,7 +276,7 @@ linux_only = pytest.mark.skipif(
 
 @pytest.fixture
 def parent_address_space_above_memory_limit():
-    reservation = mmap.mmap(-1, 1024 * MB)
+    reservation = mmap.mmap(-1, 1024 * MB, flags=mmap.MAP_PRIVATE, prot=mmap.PROT_READ)
     yield
     reservation.close()
 
@@ -287,8 +287,10 @@ def allocate_and_return_size(megabytes: int) -> int:
 
 @linux_only
 def test_function_can_allocate_memory_when_parent_address_space_exceeds_limit(
-    parent_address_space_above_memory_limit,
+    parent_address_space_above_memory_limit, monkeypatch
 ):
+    monkeypatch.setenv("EXECUTOR_MAX_MEMORY_LIMIT", "100")
+
     succeeded, result = run_in_sandbox(allocate_and_return_size, {"megabytes": 80})
 
     assert succeeded, result
@@ -351,3 +353,36 @@ def test_process_exiting_without_result_reports_its_exit_code():
 
     assert not succeeded
     assert "exited with code 3" in result
+
+
+def read_memory_limit():
+    import resource
+
+    return resource.getrlimit(resource.RLIMIT_AS)
+
+
+def test_memory_limit_is_not_applied_when_address_space_size_is_unknown(monkeypatch, tmp_path):
+    resource = pytest.importorskip("resource")
+    monkeypatch.setattr(local_executor, "_STATM_PATH", str(tmp_path / "missing"))
+
+    succeeded, result = run_in_sandbox(read_memory_limit, {})
+
+    assert succeeded, result
+    assert result == resource.getrlimit(resource.RLIMIT_AS)
+
+
+@linux_only
+def test_lower_existing_memory_limit_is_not_raised(monkeypatch):
+    import resource
+
+    monkeypatch.setenv("EXECUTOR_MAX_MEMORY_LIMIT", "1000")
+    original_limits = resource.getrlimit(resource.RLIMIT_AS)
+    lower_soft_limit = local_executor._address_space_in_use() + 300 * MB
+    resource.setrlimit(resource.RLIMIT_AS, (lower_soft_limit, original_limits[1]))
+    try:
+        succeeded, result = run_in_sandbox(read_memory_limit, {})
+    finally:
+        resource.setrlimit(resource.RLIMIT_AS, original_limits)
+
+    assert succeeded, result
+    assert result == (lower_soft_limit, lower_soft_limit)

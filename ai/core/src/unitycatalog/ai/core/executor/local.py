@@ -4,7 +4,7 @@ import logging
 import multiprocessing
 import multiprocessing.connection
 import traceback
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 try:
     import resource
@@ -31,6 +31,8 @@ from unitycatalog.ai.core.executor.common import (
 
 _logger = logging.getLogger(__name__)
 
+_STATM_PATH = "/proc/self/statm"
+
 
 def _limit_resources(cpu_time_limit: int, memory_limit: int):
     """
@@ -44,7 +46,9 @@ def _limit_resources(cpu_time_limit: int, memory_limit: int):
         allocate on top of what it already holds when the limit is applied. A forked
         process inherits the whole address space of its parent, which can already be
         far larger than the limit, so an absolute cap would leave it unable to allocate
-        anything at all. The memory limit configuration will only work on Linux machines.
+        anything at all. An existing lower limit is never raised, and when the current
+        address space size cannot be read, no memory limit is applied.
+        The memory limit configuration will only work on Linux machines.
         The CPU time limit is for total CPU execution time and is not related
         to the wall-clock time. The process may still be terminated if it exceeds
         the wall-clock time limit set by the multiprocessing library, depending on
@@ -52,7 +56,8 @@ def _limit_resources(cpu_time_limit: int, memory_limit: int):
 
     Parameters:
         cpu_time_limit: Maximum CPU time in seconds.
-        memory_limit: Maximum memory in MB.
+        memory_limit: Maximum additional virtual memory in MB that the process can
+            allocate on top of the address space it holds when the limit is applied.
     """
     if resource is None:
         return
@@ -62,20 +67,33 @@ def _limit_resources(cpu_time_limit: int, memory_limit: int):
     except Exception as e:
         _logger.info("Warning: unable to set RLIMIT_CPU: %s", e)
 
+    address_space = _address_space_in_use()
+    if address_space is None:
+        _logger.info(
+            "Warning: unable to set RLIMIT_AS: cannot read the current address space size from %s",
+            _STATM_PATH,
+        )
+        return
+
     try:
-        memory_bytes = _address_space_in_use() + memory_limit * MB_CONVERSION
+        existing_limits = [
+            limit
+            for limit in resource.getrlimit(resource.RLIMIT_AS)
+            if limit != resource.RLIM_INFINITY
+        ]
+        memory_bytes = min([address_space + memory_limit * MB_CONVERSION, *existing_limits])
         resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
     except Exception as e:
         _logger.info("Warning: unable to set RLIMIT_AS: %s", e)
 
 
-def _address_space_in_use() -> int:
-    """Returns the current process's virtual memory size in bytes, or 0 when it is unknown."""
+def _address_space_in_use() -> Optional[int]:
+    """Returns the current process's virtual memory size in bytes, or None when it is unknown."""
     try:
-        with open("/proc/self/statm") as statm:
+        with open(_STATM_PATH) as statm:
             return int(statm.read().split()[0]) * resource.getpagesize()
     except (OSError, ValueError, IndexError):
-        return 0
+        return None
 
 
 def _disable_unwanted_imports():
