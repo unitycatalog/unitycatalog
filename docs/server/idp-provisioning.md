@@ -70,9 +70,10 @@ file, so stop the server before you run it, then start it again. H2 is meant for
 
 <!-- TODO(PR 3): a delete must remove the user row, so that a user created again with the same email gets a new id
 and the old SCIM tokens stay invalid. Today a delete only disables the user. -->
-To pause the IdP, disable its principal. To revoke its tokens for good, delete it (a user created again with the same
-email gets a new id). See [Give an identity provider a SCIM token](auth.md#give-an-identity-provider-a-scim-token) for
-what the token can reach.
+To pause the IdP, disable its principal. To revoke its tokens for good, delete it. This works once a delete removes the
+user: a user created again with the same email then gets a new id. Today a delete only disables the user, so creating it
+again gets 409. See [Give an identity provider a SCIM token](auth.md#give-an-identity-provider-a-scim-token) for what
+the token can reach.
 
 Treat the token like a password. Anyone who holds it can create and change the users and groups that the IdP owns.
 
@@ -147,7 +148,8 @@ owns](auth.md#users-and-groups-an-identity-provider-owns).
   the IdP, so a user the admin created by hand is not adopted by Okta; Okta tries to create it and gets a `409`.
 <!-- TODO(PR 3): a delete must remove the user row; today it only disables the user, so Okta's create gets 409. -->
 - **Existing users.** Users that existed before you upgraded belong to `admin`. To move such a user under Okta, delete
-  the user in Unity Catalog and let Okta create it again. Then grant its privileges again.
+  the user in Unity Catalog, let Okta create it again, and grant its privileges again. This works once a delete removes
+  the user; today a delete only disables it, so Okta's create gets 409.
 
 A group has two member lists: the members the IdP pushed, and the members an admin added. A user is a member if it is
 in either. When Okta pushes a group, it changes only its own list, so a member that an admin added stays after the
