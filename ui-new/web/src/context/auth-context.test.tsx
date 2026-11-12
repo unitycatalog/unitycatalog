@@ -193,6 +193,9 @@ describe("AuthProvider", () => {
         let cookie = false;
         let first = true;
         let meCalls = 0;
+        // The page-load /scim2/Me stays in flight until the test releases it, after the sign-in has cancelled it.
+        let releasePageLoadMe: () => void = () => {};
+        const pageLoadMeHeld = new Promise<void>((resolve) => (releasePageLoadMe = resolve));
         call.mockImplementation(async (input: { path: string; token: string }) => {
           if (input.path.endsWith("/auth/tokens")) {
             cookie = exchange.httpStatus === 200;
@@ -204,7 +207,7 @@ describe("AuthProvider", () => {
           const signedIn = input.token || cookie;
           if (first) {
             first = false;
-            await new Promise((r) => setTimeout(r, 100));
+            await pageLoadMeHeld;
           }
           return signedIn
             ? { httpStatus: 200, ok: true, body: JSON.stringify({ displayName: "Ada" }) }
@@ -220,9 +223,11 @@ describe("AuthProvider", () => {
         });
         await waitFor(() => expect(meCalls).toBe(1));
 
-        await act(async () => {
-          await result.current.signInWithOkta(tokens);
-        });
+        // The second /scim2/Me is the sign-in's refetch, which runs after it cancelled the page-load one.
+        const signIn = result.current.signInWithOkta(tokens);
+        await waitFor(() => expect(meCalls).toBe(2));
+        releasePageLoadMe();
+        await signIn;
 
         expect(client.getQueryData(CURRENT_USER_QUERY_KEY)).toEqual({ displayName: "Ada" });
         expect(meCalls).toBe(2);
