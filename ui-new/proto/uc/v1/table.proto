@@ -97,6 +97,12 @@ message GetTableResponse {
 // native update operation for this surface, so the UI contract exposes create
 // and delete only.
 message CreateTableRequest {
+  option (buf.validate.message).cel = {
+    id: "create_table.unique_column_names"
+    message: "column names must be unique ignoring case"
+    expression: "this.columns.all(column, this.columns.filter(other, other.name.lowerAscii() == column.name.lowerAscii()).size() == 1)"
+  };
+
   SchemaObjectRef table = 1 [(buf.validate.field).required = true];
   DataSourceFormat data_source_format = 2 [(buf.validate.field).enum = {
     defined_only: true

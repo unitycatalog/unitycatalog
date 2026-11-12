@@ -9,21 +9,20 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
 
 - `web/` — Bun + Vite + React 19 SPA. shadcn/ui on Tailwind v4, TanStack Router
   (file-based) + TanStack Query, connect-web + connect-query.
-- `server/` — Rust axum bridge. One Connect RPC (`uc.v1.UnityProxyService/Call`,
-  a generic UC REST passthrough), plus `/config`, `/healthz`, and the built SPA.
-- `proto/` — the implemented generic proxy plus typed catalog-domain RPC
-  contracts. `buf.gen.yaml` generates TS clients into `web/src/gen`
-  (`bun run generate`, run from this directory).
+- `server/` — Rust axum bridge. Typed domain Connect services translate to UC
+  REST; `UnityProxyService/Call` remains for control-plane endpoints. It also
+  serves `/config`, `/healthz`, and the built SPA.
+- `proto/` — typed catalog-domain RPCs plus the generic control-plane proxy.
+  `buf.gen.yaml` generates TS clients into `web/src/gen` (`bun run generate`
+  from `web/`).
 
 ## Principles
 
-1. The bridge currently remains a thin, generic REST passthrough. The typed
-   domain services are contract-only until the stacked Rust implementation
-   change; do not add per-endpoint handlers to the protobuf-contract change.
-   The one non-obvious behavior is cookie handling: it forwards the browser's
-   `Cookie` to UC and copies UC's `Set-Cookie` back onto the same-origin
-   response, because the auth realm now sits on the bridge's origin. Preserve
-   that when typed handlers are implemented.
+1. Domain reads and mutations use the generated Connect services in
+   `server/src/services/`; keep their translation to UC REST explicit and
+   narrow. The generic proxy is reserved for auth, SCIM, and permissions.
+   Both paths forward `Cookie` and `Authorization`; the generic auth path also
+   copies UC's `Set-Cookie` onto the same-origin response.
 2. Auth mirrors the legacy `ui/`: cookie-based token-exchange (`/auth/tokens`,
    `ext=cookie`) + SCIM `/scim2/Me`, with an auth-disabled mode. Provider
    enablement is runtime via `/config`, not build-time env.
@@ -46,8 +45,9 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
   in `server/src/proxy.rs` to match (fields use proto3 JSON camelCase).
 - Change a typed domain contract: edit the matching file under
   `proto/uc/v1/`, keep its `buf.validate` rules aligned with the UC API, then
-  run `buf lint` and `bun run generate`. Rust handlers are implemented in the
-  stacked follow-up, using `protovalidate-buffa`.
+  run `buf lint` and `bun run generate`. Update the translation in
+  `server/src/services/` or `server/src/mapping.rs`; `server/build.rs` generates
+  Connect and `protovalidate-buffa` code at compile time.
 - Add a page: add a typed hook in `web/src/hooks`, a page in `web/src/pages`, and
   a file route in `web/src/routes/_authed/**` that reads params and renders it.
 
