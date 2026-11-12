@@ -61,13 +61,7 @@ public class GroupCli {
         output = patchGroup(groupsApi, json, "add", "members", memberValue(json));
         break;
       case REMOVE_MEMBER:
-        output =
-            patchGroup(
-                groupsApi,
-                json,
-                "remove",
-                "members[value eq \"" + json.getString(CliParams.MEMBER.getServerParam()) + "\"]",
-                null);
+        output = patchGroup(groupsApi, json, "remove", memberFilter(json), null);
         break;
       default:
         printEntityHelp(GROUP);
@@ -122,6 +116,10 @@ public class GroupCli {
 
   private static List<Map<String, String>> memberValue(JSONObject json) {
     return List.of(Map.of("value", json.getString(CliParams.MEMBER.getServerParam())));
+  }
+
+  private static String memberFilter(JSONObject json) {
+    return "members[value eq \"" + json.getString(CliParams.MEMBER.getServerParam()) + "\"]";
   }
 
   /** Sends one SCIM PATCH operation (RFC 7644, section 3.5.2) and returns the changed group. */
