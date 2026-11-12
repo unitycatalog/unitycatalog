@@ -8,15 +8,19 @@ Unity Catalog stores a Python function as its body, without the `def` line. The 
 the one a top-level function with 4-space indentation gets when its body is dedented as a
 whole: statements start at column `4 - k`, and the lines of multi-line string literals sit `k`
 columns left of where they were written, where `k` is at most 4 and at most the leading spaces
-of any nonempty string line. Empty string lines stay empty, as they do under `textwrap.dedent`.
-A Databricks body has the same relation between code and string lines, indented further. A
-reader puts the statements at `PRIMARY_INDENT` and moves the nonempty string lines by the same
-number of columns, which restores their values for every body in that layout.
+of any string line that is not blank. Blank string lines, empty or whitespace-only, stay as
+written, because moving them left could empty them and an empty line cannot be moved back. A
+Databricks body has the same relation between code and string lines, indented further. A
+reader puts the statements at `PRIMARY_INDENT` and moves the string lines that are not blank by
+the same number of columns, which restores their values for every body in that layout.
 """
 
 import io
+import logging
 import os
 import tokenize
+
+_logger = logging.getLogger(__name__)
 
 PRIMARY_INDENT = " " * 4
 
@@ -47,13 +51,14 @@ def classify_lines(code: str) -> tuple[set[int], set[int]]:
     continue a statement (inside brackets or after a backslash) may sit at any column, so they
     must not decide the margin. A statement that is only a string, such as a docstring, is not
     reported as string lines: its value is never used by the code, and `inspect.cleandoc`
-    removes its indentation, so it is laid out like the code around it. Code that does not
-    tokenize cannot compile either, so it is treated as having no string lines and every
+    removes its indentation, so it is laid out like the code around it. This holds for f-strings
+    too, which Python 3.12 tokenizes in parts and earlier versions as one string. Code that does
+    not tokenize cannot compile either, so it is treated as having no string lines and every
     nonblank line as a statement line.
     """
     string_lines = set()
     statement_lines = set()
-    open_string_lines = []
+    open_strings = []
     at_statement_start = True
     string_statement_lines = range(0)
     try:
@@ -69,14 +74,21 @@ def classify_lines(code: str) -> tuple[set[int], set[int]]:
                 statement_lines.add(token.start[0] - 1)
                 at_statement_start = False
             if token.type in _STRING_START_TOKENS:
-                open_string_lines.append(token.start[0])
-            elif token.type in _STRING_END_TOKENS:
-                string_lines.update(range(open_string_lines.pop(), token.end[0]))
-            elif token.type == tokenize.STRING and starts_statement:
-                string_statement_lines = range(token.start[0], token.end[0])
+                open_strings.append((token.start[0], starts_statement))
+                continue
+            if token.type in _STRING_END_TOKENS:
+                first_row, is_string_statement = open_strings.pop()
             elif token.type == tokenize.STRING:
-                string_lines.update(range(token.start[0], token.end[0]))
-    except (tokenize.TokenError, SyntaxError):
+                first_row, is_string_statement = token.start[0], starts_statement
+            else:
+                continue
+            rows = range(first_row, token.end[0])
+            if is_string_statement:
+                string_statement_lines = rows
+            else:
+                string_lines.update(rows)
+    except (tokenize.TokenError, SyntaxError) as error:
+        _logger.debug("Laying out code that does not tokenize without string lines: %s", error)
         return set(), {index for index, line in enumerate(code.split("\n")) if line.strip()}
     return string_lines, statement_lines
 
@@ -89,9 +101,19 @@ def _leading_spaces(line: str) -> int:
     return len(line) - len(line.lstrip(" "))
 
 
-def _is_empty(line: str) -> bool:
-    """Whether a line has no characters before its line break, which may be `\\r\\n`."""
-    return line in ("", "\r")
+def _movable_string_lines(lines: list[str], string_lines: set[int]) -> set[int]:
+    """The string lines that are not blank, which are the ones the layout moves."""
+    return {index for index in string_lines if lines[index].strip()}
+
+
+def _string_shift_limit(lines: list[str], movable_lines: set[int]) -> int:
+    """
+    How many columns `movable_lines` can all move left without losing characters, or
+    `len(PRIMARY_INDENT)` if there are none.
+    """
+    return min(
+        (_leading_spaces(lines[index]) for index in movable_lines), default=len(PRIMARY_INDENT)
+    )
 
 
 def _statement_margin(lines: list[str], statement_lines: set[int]) -> str:
@@ -125,15 +147,18 @@ def to_stored_body(body: str) -> str:
     """
     string_lines, _ = classify_lines(body)
     lines = body.split("\n")
-    shift = min(
-        [len(PRIMARY_INDENT)]
-        + [_leading_spaces(lines[index]) for index in string_lines if not _is_empty(lines[index])]
-    )
+    movable_lines = _movable_string_lines(lines, string_lines)
+    shift = min(len(PRIMARY_INDENT), _string_shift_limit(lines, movable_lines))
     code_indent = PRIMARY_INDENT[shift:]
-    return "\n".join(
-        line[shift:] if index in string_lines else code_indent + line if line.strip() else ""
-        for index, line in enumerate(lines)
-    )
+
+    def stored_line(index: int, line: str) -> str:
+        if index in movable_lines:
+            return line[shift:]
+        if index in string_lines:
+            return line
+        return code_indent + line if line.strip() else ""
+
+    return "\n".join(stored_line(index, line) for index, line in enumerate(lines))
 
 
 def to_databricks_body(body: str, indent_unit: int) -> str:
@@ -156,26 +181,21 @@ def to_databricks_body(body: str, indent_unit: int) -> str:
 def shift_stored_body(body: str) -> str:
     """
     Move a stored body so that its statements start at `PRIMARY_INDENT`, and move its string
-    lines by the same number of columns, never past their own leading spaces. This restores
-    string values for OSS and Databricks bodies alike.
+    lines by the same number of columns. String lines move left only as far as all of them can
+    without losing characters, which keeps their relative indentation. This restores string
+    values for OSS and Databricks bodies alike.
     """
     string_lines, statement_lines = classify_lines(body)
     lines = body.split("\n")
+    movable_lines = _movable_string_lines(lines, string_lines)
     margin = _statement_margin(lines, statement_lines)
-    shift = len(PRIMARY_INDENT) - len(margin)
+    shift = max(len(PRIMARY_INDENT) - len(margin), -_string_shift_limit(lines, movable_lines))
 
-    def shift_string_line(line: str) -> str:
-        if _is_empty(line):
+    def shifted_line(index: int, line: str) -> str:
+        if index in movable_lines:
+            return " " * shift + line if shift >= 0 else line[-shift:]
+        if index in string_lines:
             return line
-        if shift >= 0:
-            return " " * shift + line
-        return line[min(-shift, _leading_spaces(line)) :]
+        return PRIMARY_INDENT + _strip_margin(line, margin) if line.strip() else ""
 
-    return "\n".join(
-        shift_string_line(line)
-        if index in string_lines
-        else PRIMARY_INDENT + _strip_margin(line, margin)
-        if line.strip()
-        else ""
-        for index, line in enumerate(lines)
-    )
+    return "\n".join(shifted_line(index, line) for index, line in enumerate(lines))

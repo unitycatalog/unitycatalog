@@ -472,6 +472,72 @@ def test_stored_body_layout_of_top_level_function(func, stored_body):
     assert generate_function_info(func).routine_definition == stored_body
 
 
+# fmt: off
+def noted_join(name: str) -> str:
+    """
+    Joins two names.
+
+    Args:
+        name: the name
+    """
+    """A note,
+not part of the result."""
+    return """a
+    b""".join([name, name])
+
+
+def noted_join_fstring(name: str) -> str:
+    """
+    Joins two names.
+
+    Args:
+        name: the name
+    """
+    f"""A note about {name},
+not part of the result."""
+    return f"""a
+    b""".join([name, name])
+# fmt: on
+
+
+@pytest.mark.parametrize(
+    ("func", "stored_body"),
+    [
+        (
+            noted_join,
+            '"""A note,\nnot part of the result."""\nreturn """a\nb""".join([name, name])',
+        ),
+        (
+            noted_join_fstring,
+            'f"""A note about {name},\nnot part of the result."""\n'
+            'return f"""a\nb""".join([name, name])',
+        ),
+    ],
+)
+def test_string_statement_is_laid_out_with_the_code(func, stored_body):
+    assert generate_function_info(func).routine_definition == stored_body
+
+
+def test_stored_body_that_does_not_tokenize_is_indented_line_by_line(caplog):
+    function_info = FunctionInfo(
+        name="broken",
+        input_params=FunctionParameterInfos(parameters=[]),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition='x = (1,\n    2\nreturn """a\n  b',
+    )
+
+    with caplog.at_level("DEBUG", logger="unitycatalog.ai.core.utils.code_layout"):
+        definition = get_callable_definition(function_info)
+
+    assert definition == 'def broken():\n    x = (1,\n        2\n    return """a\n      b\n'
+    assert [
+        (record.levelname, record.getMessage().split(": ")[0])
+        for record in caplog.records
+        if record.name == "unitycatalog.ai.core.utils.code_layout"
+    ] == [("DEBUG", "Laying out code that does not tokenize without string lines")]
+
+
 STORED_BODY_CASES = [
     # OSS body of a string at column 0.
     (
@@ -502,6 +568,22 @@ STORED_BODY_CASES = [
     (
         '        template = """Dear {name},\nThanks."""\n        return template.format(name=name)',
         "Dear Bo,\nThanks.",
+    ),
+    # OSS body stored by main for a nested function, with string lines at different columns
+    # left of the code.
+    (
+        '        query = """\nSELECT *\n    FROM {name}\n"""\n        return query.format(name=name)',
+        "\nSELECT *\n    FROM Bo\n",
+    ),
+    # Body whose only nested block is 8 columns deep, under a comment indented by 4.
+    (
+        'if name:\n    # greet\n        return "Dear " + name\nreturn ""',
+        "Dear Bo",
+    ),
+    # Body whose only nested block is 8 columns deep, after a string line indented by 4.
+    (
+        'note = """Dear\n    {name}"""\nif name:\n        return note.format(name=name)\nreturn ""',
+        "Dear\n        Bo",
     ),
 ]
 

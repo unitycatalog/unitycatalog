@@ -164,7 +164,9 @@ class ServiceCredential:
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
     """
     Extracts the body of a function as a string without the signature or docstring,
-    dedents the code, and returns the indentation unit used in the function.
+    dedents it with `dedent_code`, and returns the indentation unit used in the function.
+    Lines inside multi-line string literals are left as written, and `to_databricks_body`
+    ignores the indentation unit for a body that has such lines.
 
     Args:
         func: The function from which to extract the body.
@@ -1228,7 +1230,7 @@ def _parse_routine_definition(routine_definition: str) -> str:
         ],
         default=0,
     )
-    indent_factor = 4 // indent_standard if indent_standard > 0 else 1
+    indent_factor = max(1, 4 // indent_standard) if indent_standard > 0 else 1
     normalized_lines = []
     for index, line in enumerate(lines):
         if index in string_lines:

@@ -113,6 +113,11 @@ def test_whitespace_only_line_inside_string_is_kept():
     assert (succeeded, result) == (True, "a\n    \nb")
 
 
+def test_source_that_does_not_tokenize_is_rejected_as_invalid():
+    with pytest.raises(ValueError, match="Invalid Python source code"):
+        run_in_sandbox_subprocess('def unterminated():\n    return """a\n', {})
+
+
 def test_non_callable_function():
     # run_in_sandbox_subprocess now expects a string containing function source.
     with pytest.raises(TypeError):

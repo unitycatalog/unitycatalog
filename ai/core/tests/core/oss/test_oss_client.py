@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import importlib.util
 import json
 import logging
 import multiprocessing
@@ -2453,6 +2454,43 @@ async def test_multiline_string_literal_survives_get_function_as_callable(
     fetched = offline_uc_client.get_function_as_callable(f"{CATALOG}.{SCHEMA}.{func.__name__}")
 
     assert fetched(**params) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("padding", "expected"),
+    [
+        ("  ", "Dear\n  \n    xBo"),
+        ("    ", "Dear\n    \n    xBo"),
+        ("        ", "Dear\n        \n    xBo"),
+    ],
+)
+async def test_whitespace_only_line_inside_string_survives_create_and_execute(
+    offline_uc_client, tmp_path, padding, expected
+):
+    module_path = tmp_path / "padded_note.py"
+    module_path.write_text(
+        "def render_padded(name: str) -> str:\n"
+        '    """\n'
+        "    Renders a note with a whitespace-only line.\n"
+        "\n"
+        "    Args:\n"
+        "        name: the recipient\n"
+        '    """\n'
+        f'    return """Dear\n{padding}\n    x""" + name\n'
+    )
+    spec = importlib.util.spec_from_file_location("padded_note", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    store_created_functions(offline_uc_client)
+    offline_uc_client.create_python_function(
+        func=module.render_padded, catalog=CATALOG, schema=SCHEMA
+    )
+
+    result = offline_uc_client.execute_function(f"{CATALOG}.{SCHEMA}.render_padded", {"name": "Bo"})
+    fetched = offline_uc_client.get_function_as_callable(f"{CATALOG}.{SCHEMA}.render_padded")
+
+    assert (result.error, result.value, fetched(name="Bo")) == (None, expected, expected)
 
 
 FALSY_RESULT_CASES = [
