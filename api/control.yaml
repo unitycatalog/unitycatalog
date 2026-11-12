@@ -334,10 +334,8 @@ components:
           type: string
         displayName:
           description: >-
-            The name of the user. On create and update the name is taken from displayName,
-            else from name.formatted, else from the name's givenName and familyName joined by a
-            space. An update with none of them keeps the current name; a create with none is
-            rejected.
+            The name of the user. If blank, the name is taken from name.formatted, else from
+            givenName and familyName. A create without any of them is rejected.
           type: string
         name:
           description: The components of the user's name.
