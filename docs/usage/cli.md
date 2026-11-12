@@ -958,7 +958,7 @@ _Optional Params:_
 bin/uc group update [options]
 ```
 
-Renames the group. The members stay as they are, and a change to them made at the same time is not lost.
+Renames the group; the members stay as they are.
 The new name must not be used by another group.
 
 _Required Params:_
