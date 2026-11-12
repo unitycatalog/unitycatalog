@@ -193,7 +193,7 @@ public class GroupRepository {
     if (userIds.isEmpty()) {
       return;
     }
-    // TODO(#PR3): a deleted user is DISABLED like a deactivated one, so it can still be added;
+    // TODO(#2207): a deleted user is DISABLED like a deactivated one, so it can still be added;
     // drop this once user delete removes the row.
     Set<UUID> found =
         new HashSet<>(
@@ -215,7 +215,7 @@ public class GroupRepository {
             });
   }
 
-  // TODO(#PR3): use UniqueViolations.flushOrAlreadyExists.
+  // TODO(#2207): use UniqueViolations.flushOrAlreadyExists.
   /**
    * Writes the pending changes now, so a taken name fails here and not at commit. Hibernate marks
    * the violation as UNIQUE on H2 and MySQL but not on PostgreSQL, so SQLSTATE 23505 (unique
