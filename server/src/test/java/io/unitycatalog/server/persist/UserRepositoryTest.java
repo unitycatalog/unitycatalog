@@ -128,7 +128,9 @@ class UserRepositoryTest {
 
     // Creating a user hits the same race.
     assertThatThrownBy(
-            () -> racing.createUser(CreateUser.builder().name("Race C").email("race-b@example.com").build()))
+            () ->
+                racing.createUser(
+                    CreateUser.builder().name("Race C").email("race-b@example.com").build()))
         .isInstanceOf(BaseException.class)
         .satisfies(
             e -> {
