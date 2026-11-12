@@ -44,7 +44,8 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial) on
  *       columns short enough for an index entry, add a column (NOT NULL only with a DEFAULT,
  *       without a key or CHECK rule), change a column's type, or drop its NOT NULL. A type change
- *       must widen the column, and no change makes a column NOT NULL ({@link #typeChangesWiden}).
+ *       must widen the column, and no change makes an existing nullable column NOT NULL ({@link
+ *       #typeChangesWiden}).
  *   <li>Each step has an effect file that lists its change ({@link #eachStepHasItsEffectFile}).
  *   <li>Every step exists for all three databases, as a versioned SQL file.
  * </ul>
@@ -191,13 +192,19 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|ALTER TABLE t ADD c INT|",
         "POSTGRESQL|CREATE INDEX i ON t (c)|",
         // PostgreSQL fails an index entry over 2,704 bytes, so a long text column is refused.
-        "POSTGRESQL|CREATE INDEX i ON t (long)|indexes t.long, whose values can be too long"
-            + " for an index entry",
-        "POSTGRESQL|CREATE INDEX i ON t (c, body)|indexes t.body, whose values can be too long"
-            + " for an index entry",
+        "POSTGRESQL|CREATE INDEX i ON t (long)|has an index key of up to 262140 bytes, over the"
+            + " 2704 bytes of an index entry",
+        "POSTGRESQL|CREATE INDEX i ON t (c, body)|has an index key of up to 8589935608 bytes,"
+            + " over the 2704 bytes of an index entry",
+        // The limit is for the whole key: two 600-character columns can hold 4,800 bytes.
+        "POSTGRESQL|CREATE INDEX i ON t (a, b)|has an index key of up to 4800 bytes, over the"
+            + " 2704 bytes of an index entry",
+        "POSTGRESQL|CREATE INDEX i ON t (a, id)|",
+        "POSTGRESQL|CREATE INDEX i ON t (data)|indexes t.data (bytea), which this test can't"
+            + " size",
         "MYSQL|CREATE INDEX i ON t (long(100))|",
-        "POSTGRESQL|CREATE INDEX i ON t (long DESC)|indexes t.long, whose values can be too long"
-            + " for an index entry",
+        "POSTGRESQL|CREATE INDEX i ON t (long DESC)|has an index key of up to 262140 bytes, over"
+            + " the 2704 bytes of an index entry",
         "POSTGRESQL|CREATE INDEX i ON t (lower(c))|indexes an expression, which this test"
             + " can't size",
         "POSTGRESQL|CREATE INDEX i ON t (missing)|indexes t.missing, which the schema before"
@@ -225,7 +232,11 @@ public class MigrationStepRulesTest {
             List.of(
                 "column t.c type=varchar size=255 nullable=YES default=null",
                 "column t.long type=varchar size=65535 nullable=YES default=null",
-                "column t.body type=text size=2147483647 nullable=YES default=null"));
+                "column t.body type=text size=2147483647 nullable=YES default=null",
+                "column t.a type=varchar size=600 nullable=YES default=null",
+                "column t.b type=varchar size=600 nullable=YES default=null",
+                "column t.id type=uuid size=2147483647 nullable=NO default=null",
+                "column t.data type=bytea size=2147483647 nullable=YES default=null"));
     assertThat(refusalOfSent(sql, kind, false, before)).isEqualTo(refusal);
   }
 
@@ -504,18 +515,61 @@ public class MigrationStepRulesTest {
   }
 
   /**
-   * PostgreSQL fails an index entry over 2,704 bytes (a third of a page), and a character can take
-   * 4 bytes, so a text column longer than this can hold values that no index entry fits.
+   * PostgreSQL fails an index entry over 2,704 bytes (a third of a page) for the whole key; MySQL's
+   * 3,072-byte limit already fails the step on an empty database. A key that fits 2,704 fits both.
    */
-  private static final long MAX_INDEXED_CHARACTERS = 2704 / 4;
+  private static final long MAX_INDEX_ENTRY_BYTES = 2704;
+
+  /** The bytes each fixed-width type, as the snapshot names it, takes in an index entry. */
+  private static final Map<String, Long> FIXED_WIDTH_BYTES =
+      Map.ofEntries(
+          Map.entry("boolean", 1L),
+          Map.entry("bool", 1L),
+          Map.entry("bit", 8L),
+          Map.entry("tinyint", 1L),
+          Map.entry("smallint", 2L),
+          Map.entry("int2", 2L),
+          Map.entry("integer", 4L),
+          Map.entry("int", 4L),
+          Map.entry("int4", 4L),
+          Map.entry("oid", 4L),
+          Map.entry("bigint", 8L),
+          Map.entry("int8", 8L),
+          Map.entry("timestamp", 8L),
+          Map.entry("datetime", 8L),
+          Map.entry("uuid", 16L));
+
+  /**
+   * The most bytes a value of {@code type} with {@code size} takes in an index entry: 4 per
+   * character for text, the size for binary; null for a type this test can't bound.
+   */
+  private static Long maxBytes(String type, long size) {
+    if (FIXED_WIDTH_BYTES.containsKey(type)) {
+      return FIXED_WIDTH_BYTES.get(type);
+    }
+    if (type.startsWith("enum")) {
+      return 2L;
+    }
+    if (type.contains("large object") || type.equals("bytea")) {
+      return null;
+    }
+    if (type.contains("char") || type.contains("text")) {
+      return 4 * size;
+    }
+    if (type.contains("binary")) {
+      return size;
+    }
+    return null;
+  }
 
   /**
    * Why rows already in the database could fail {@code index}, against the schema {@code before}
-   * the step: it indexes a text column that is too long, unless a MySQL prefix length bounds the
-   * key; or null.
+   * the step: its key can be longer than an index entry (a MySQL prefix length counts as that many
+   * characters), or it holds a type or expression this test can't bound; or null.
    */
   private static String indexedColumnProblem(CreateIndex index, SchemaSnapshot before) {
     String table = unquoted(index.getTable().getName());
+    long keyBytes = 0;
     for (Index.ColumnParams element : index.getIndex().getColumns()) {
       // JSqlParser keeps a MySQL prefix length as "(100)", a sort order as "DESC", and a
       // function's arguments (an expression) as "(c)".
@@ -523,9 +577,6 @@ public class MigrationStepRulesTest {
       if (element.columnName == null
           || !params.stream().allMatch(p -> p.matches("\\(\\d+\\)|(?i)ASC|DESC"))) {
         return "indexes an expression, which this test can't size";
-      }
-      if (params.stream().anyMatch(p -> p.startsWith("("))) {
-        continue; // the prefix length bounds the key
       }
       String column = table + "." + unquoted(element.columnName);
       Matcher line =
@@ -537,11 +588,23 @@ public class MigrationStepRulesTest {
       if (line == null) {
         return "indexes " + column + ", which the schema before the step doesn't have";
       }
-      String type = line.group(3);
-      if ((type.contains("char") || type.contains("text"))
-          && Long.parseLong(line.group(4)) > MAX_INDEXED_CHARACTERS) {
-        return "indexes " + column + ", whose values can be too long for an index entry";
+      Long bytes =
+          params.stream()
+              .filter(p -> p.startsWith("("))
+              .map(p -> 4 * Long.parseLong(p.substring(1, p.length() - 1)))
+              .findFirst()
+              .orElseGet(() -> maxBytes(line.group(3), Long.parseLong(line.group(4))));
+      if (bytes == null) {
+        return "indexes " + column + " (" + line.group(3) + "), which this test can't size";
       }
+      keyBytes += bytes;
+    }
+    if (keyBytes > MAX_INDEX_ENTRY_BYTES) {
+      return "has an index key of up to "
+          + keyBytes
+          + " bytes, over the "
+          + MAX_INDEX_ENTRY_BYTES
+          + " bytes of an index entry";
     }
     return null;
   }
