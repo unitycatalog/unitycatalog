@@ -684,3 +684,326 @@ async fn upstream_body_timeout_maps_to_deadline_exceeded() {
 
     assert_eq!(body_json(response).await["code"], "deadline_exceeded");
 }
+
+struct UcCall {
+    service: &'static str,
+    rpc: &'static str,
+    request: serde_json::Value,
+    method: &'static str,
+    path: &'static str,
+    query: &'static [(&'static str, &'static str)],
+    body: Option<serde_json::Value>,
+    response: serde_json::Value,
+}
+
+#[tokio::test]
+async fn typed_rpcs_send_the_expected_uc_requests() {
+    use serde_json::json;
+    let schema = json!({"catalogName": "main", "name": "default"});
+    let object = |name: &str| json!({"catalogName": "main", "schemaName": "default", "name": name});
+    let version = json!({"model": object("m"), "version": "3"});
+    let catalog_info = json!({"name": "main"});
+    let schema_info = json!({"name": "default", "catalog_name": "main"});
+    let uc_object =
+        |name: &str| json!({"name": name, "catalog_name": "main", "schema_name": "default"});
+    let version_info = json!({
+        "catalog_name": "main",
+        "schema_name": "default",
+        "model_name": "m",
+        "version": 3
+    });
+    let cases = [
+        UcCall {
+            service: "CatalogService",
+            rpc: "CreateCatalog",
+            request: json!({"name": "main", "comment": "c"}),
+            method: "POST",
+            path: "/catalogs",
+            query: &[],
+            body: Some(json!({"name": "main", "comment": "c"})),
+            response: catalog_info.clone(),
+        },
+        UcCall {
+            service: "CatalogService",
+            rpc: "UpdateCatalog",
+            request: json!({"catalog": {"name": "main"}, "newName": "renamed"}),
+            method: "PATCH",
+            path: "/catalogs/main",
+            query: &[],
+            body: Some(json!({"new_name": "renamed"})),
+            response: catalog_info.clone(),
+        },
+        UcCall {
+            service: "CatalogService",
+            rpc: "DeleteCatalog",
+            request: json!({"catalog": {"name": "main"}, "force": true}),
+            method: "DELETE",
+            path: "/catalogs/main",
+            query: &[("force", "true")],
+            body: None,
+            response: json!({}),
+        },
+        UcCall {
+            service: "SchemaService",
+            rpc: "ListSchemas",
+            request: json!({"catalog": {"name": "main"}, "page": {"maxResults": 5}}),
+            method: "GET",
+            path: "/schemas",
+            query: &[("catalog_name", "main"), ("max_results", "5")],
+            body: None,
+            response: json!({"schemas": [schema_info.clone()]}),
+        },
+        UcCall {
+            service: "SchemaService",
+            rpc: "GetSchema",
+            request: json!({"schema": schema.clone()}),
+            method: "GET",
+            path: "/schemas/main%2Edefault",
+            query: &[],
+            body: None,
+            response: schema_info.clone(),
+        },
+        UcCall {
+            service: "SchemaService",
+            rpc: "CreateSchema",
+            request: json!({"schema": schema.clone(), "comment": "c"}),
+            method: "POST",
+            path: "/schemas",
+            query: &[],
+            body: Some(json!({"name": "default", "catalog_name": "main", "comment": "c"})),
+            response: schema_info.clone(),
+        },
+        UcCall {
+            service: "SchemaService",
+            rpc: "UpdateSchema",
+            request: json!({"schema": schema.clone(), "newName": "renamed"}),
+            method: "PATCH",
+            path: "/schemas/main%2Edefault",
+            query: &[],
+            body: Some(json!({"new_name": "renamed"})),
+            response: schema_info.clone(),
+        },
+        UcCall {
+            service: "SchemaService",
+            rpc: "DeleteSchema",
+            request: json!({"schema": schema.clone(), "force": true}),
+            method: "DELETE",
+            path: "/schemas/main%2Edefault",
+            query: &[("force", "true")],
+            body: None,
+            response: json!({}),
+        },
+        UcCall {
+            service: "VolumeService",
+            rpc: "ListVolumes",
+            request: json!({"schema": schema.clone()}),
+            method: "GET",
+            path: "/volumes",
+            query: &[("catalog_name", "main"), ("schema_name", "default")],
+            body: None,
+            response: json!({"volumes": [uc_object("raw")]}),
+        },
+        UcCall {
+            service: "VolumeService",
+            rpc: "GetVolume",
+            request: json!({"volume": object("raw")}),
+            method: "GET",
+            path: "/volumes/main%2Edefault%2Eraw",
+            query: &[],
+            body: None,
+            response: uc_object("raw"),
+        },
+        UcCall {
+            service: "VolumeService",
+            rpc: "CreateVolume",
+            request: json!({"volume": object("raw"), "volumeType": "VOLUME_TYPE_MANAGED"}),
+            method: "POST",
+            path: "/volumes",
+            query: &[],
+            body: Some(json!({
+                "name": "raw",
+                "catalog_name": "main",
+                "schema_name": "default",
+                "volume_type": "MANAGED"
+            })),
+            response: uc_object("raw"),
+        },
+        UcCall {
+            service: "VolumeService",
+            rpc: "UpdateVolume",
+            request: json!({"volume": object("raw"), "comment": ""}),
+            method: "PATCH",
+            path: "/volumes/main%2Edefault%2Eraw",
+            query: &[],
+            body: Some(json!({"comment": ""})),
+            response: uc_object("raw"),
+        },
+        UcCall {
+            service: "FunctionService",
+            rpc: "ListFunctions",
+            request: json!({"schema": schema.clone()}),
+            method: "GET",
+            path: "/functions",
+            query: &[("catalog_name", "main"), ("schema_name", "default")],
+            body: None,
+            response: json!({"functions": [uc_object("f")]}),
+        },
+        UcCall {
+            service: "FunctionService",
+            rpc: "GetFunction",
+            request: json!({"function": object("f")}),
+            method: "GET",
+            path: "/functions/main%2Edefault%2Ef",
+            query: &[],
+            body: None,
+            response: uc_object("f"),
+        },
+        UcCall {
+            service: "FunctionService",
+            rpc: "DeleteFunction",
+            request: json!({"function": object("f")}),
+            method: "DELETE",
+            path: "/functions/main%2Edefault%2Ef",
+            query: &[],
+            body: None,
+            response: json!({}),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "ListRegisteredModels",
+            request: json!({"schema": schema.clone()}),
+            method: "GET",
+            path: "/models",
+            query: &[("catalog_name", "main"), ("schema_name", "default")],
+            body: None,
+            response: json!({"registered_models": [uc_object("m")]}),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "GetRegisteredModel",
+            request: json!({"model": object("m")}),
+            method: "GET",
+            path: "/models/main%2Edefault%2Em",
+            query: &[],
+            body: None,
+            response: uc_object("m"),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "UpdateRegisteredModel",
+            request: json!({"model": object("m"), "comment": "c"}),
+            method: "PATCH",
+            path: "/models/main%2Edefault%2Em",
+            query: &[],
+            body: Some(json!({"comment": "c"})),
+            response: uc_object("m"),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "DeleteRegisteredModel",
+            request: json!({"model": object("m"), "force": true}),
+            method: "DELETE",
+            path: "/models/main%2Edefault%2Em",
+            query: &[("force", "true")],
+            body: None,
+            response: json!({}),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "ListModelVersions",
+            request: json!({"model": object("m")}),
+            method: "GET",
+            path: "/models/main%2Edefault%2Em/versions",
+            query: &[],
+            body: None,
+            response: json!({"model_versions": [version_info.clone()]}),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "GetModelVersion",
+            request: json!({"modelVersion": version.clone()}),
+            method: "GET",
+            path: "/models/main%2Edefault%2Em/versions/3",
+            query: &[],
+            body: None,
+            response: version_info.clone(),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "CreateModelVersion",
+            request: json!({"model": object("m"), "source": "s3://bucket/m", "runId": "r1"}),
+            method: "POST",
+            path: "/models/versions",
+            query: &[],
+            body: Some(json!({
+                "model_name": "m",
+                "catalog_name": "main",
+                "schema_name": "default",
+                "source": "s3://bucket/m",
+                "run_id": "r1"
+            })),
+            response: version_info.clone(),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "UpdateModelVersion",
+            request: json!({"modelVersion": version.clone(), "comment": "c"}),
+            method: "PATCH",
+            path: "/models/main%2Edefault%2Em/versions/3",
+            query: &[],
+            body: Some(json!({"comment": "c"})),
+            response: version_info.clone(),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "FinalizeModelVersion",
+            request: json!({"modelVersion": version.clone()}),
+            method: "PATCH",
+            path: "/models/main%2Edefault%2Em/versions/3/finalize",
+            query: &[],
+            body: Some(json!({"full_name": "main.default.m", "version": 3})),
+            response: version_info.clone(),
+        },
+        UcCall {
+            service: "ModelService",
+            rpc: "DeleteModelVersion",
+            request: json!({"modelVersion": version.clone()}),
+            method: "DELETE",
+            path: "/models/main%2Edefault%2Em/versions/3",
+            query: &[],
+            body: None,
+            response: json!({}),
+        },
+    ];
+
+    for case in cases {
+        let uc = MockServer::start().await;
+        let mut mock = Mock::given(method(case.method))
+            .and(path(format!("/api/2.1/unity-catalog{}", case.path)));
+        for (key, value) in case.query {
+            mock = mock.and(query_param(*key, *value));
+        }
+        if let Some(body) = case.body {
+            mock = mock.and(body_partial_json(body));
+        }
+        mock.respond_with(ResponseTemplate::new(200).set_body_json(case.response))
+            .expect(1)
+            .mount(&uc)
+            .await;
+
+        let response = build_app(uc.uri())
+            .oneshot(rpc_request(case.service, case.rpc, case.request))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "{}/{}: {}",
+            case.service,
+            case.rpc,
+            body_json(response).await
+        );
+        uc.verify().await;
+    }
+}
