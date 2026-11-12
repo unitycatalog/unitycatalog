@@ -275,4 +275,26 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
             .volumeType(VolumeType.EXTERNAL)
             .storageLocation("/tmp/" + name));
   }
+
+  /** An update that waits for a concurrent rename of the volume misses it and changes nothing. */
+  @Test
+  public void updateRacingARenameIsNotFound() throws Exception {
+    VolumeInfo volume = createExternalVolume("update_race");
+    UUID id = UUID.fromString(volume.getVolumeId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, VolumeInfoDAO.class, id, "name", "update_race_renamed"),
+                () ->
+                    volumeOperations.updateVolume(
+                        SCHEMA_FULL_NAME + ".update_race",
+                        new UpdateVolumeRequestContent().comment("lost"))),
+        ErrorCode.NOT_FOUND,
+        "Volume not found");
+
+    VolumeInfo renamed = volumeOperations.getVolume(SCHEMA_FULL_NAME + ".update_race_renamed");
+    assertThat(renamed.getVolumeId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo(volume.getComment());
+  }
 }
