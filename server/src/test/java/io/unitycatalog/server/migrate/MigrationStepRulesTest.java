@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -44,7 +45,8 @@ import org.junit.jupiter.params.provider.CsvSource;
  *   <li>The statement is one of the changes {@link #refusal} allows, read with JSqlParser from what
  *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial) whose
  *       PostgreSQL index entry, INCLUDE columns too, fits 2,704 bytes, add a column (NOT NULL only
- *       with a DEFAULT, without a key or CHECK rule), change a column's type, or drop its NOT NULL.
+ *       with a literal DEFAULT, without a key or CHECK rule), change a column's type (each index on
+ *       the column still fitting an index entry), or drop its NOT NULL.
  *   <li>A type change widens the column, keeps its default, collation and enum or set members, and
  *       no change makes an existing nullable column NOT NULL ({@link #typeChangesWiden}). Adding a
  *       Java enum constant is supported on MySQL and H2, where the type holds the members; on
@@ -64,14 +66,26 @@ public class MigrationStepRulesTest {
 
   private static final Pattern STEP_FILE = Pattern.compile("V(\\d+)__\\w+\\.sql");
 
+  /**
+   * A default that is a literal: a number, a quoted string, or TRUE or FALSE. An expression such as
+   * {@code (NULL)}, {@code NULL::integer} or {@code abs(NULL)} can be NULL or fail on each row.
+   */
+  private static final String LITERAL = "(-?\\d+(\\.\\d+)?|'[^' ]*'|TRUE|FALSE)";
+
   /** What a MySQL MODIFY may say besides the type: nullability, and the default and collation. */
   private static final Pattern MODIFY_SPECS =
-      Pattern.compile("((NOT NULL|NULL|DEFAULT \\S+|COLLATE \\S+)( (?=\\S)|$))*");
+      Pattern.compile("((NOT NULL|NULL|DEFAULT (NULL|" + LITERAL + ")|COLLATE \\S+)( (?=\\S)|$))*");
 
-  /** What a new column may say besides its type: nullable, or NOT NULL with a default. */
+  /** What a new column may say besides its type: nullable, or NOT NULL with a literal default. */
   private static final Pattern NEW_COLUMN =
       Pattern.compile(
-          "(NULL|DEFAULT \\S+|DEFAULT (?!NULL )\\S+ NOT NULL|NOT NULL DEFAULT (?!NULL$)\\S+)?");
+          "(NULL|DEFAULT (NULL|"
+              + LITERAL
+              + ")|DEFAULT "
+              + LITERAL
+              + " NOT NULL|NOT NULL DEFAULT "
+              + LITERAL
+              + ")?");
 
   /**
    * The type changes that widen a column, by database: from the type before to the types after. The
@@ -176,13 +190,19 @@ public class MigrationStepRulesTest {
           problems.add(file + ": " + refusal + ": " + sql);
         }
       }
+      if (!step.equals(first)) {
+        for (String problem : regrownIndexes(kind, before, migrator.expected(step))) {
+          problems.add(file + ": " + problem);
+        }
+      }
     }
     assertThat(problems)
         .as(
             "Each step after the first holds one statement that creates a table, creates a plain"
                 + " index on columns short enough for an index entry, adds a column (NOT NULL only"
-                + " with a DEFAULT, without a key or CHECK rule), changes a column's type or drops"
-                + " its NOT NULL. Other changes are not supported yet; see refusal() in this test")
+                + " with a literal DEFAULT, without a key or CHECK rule), changes a column's type"
+                + " (each index on it still short enough) or drops its NOT NULL. Other changes are"
+                + " not supported yet; see refusal() in this test")
         .isEmpty();
   }
 
@@ -200,6 +220,16 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|ALTER TABLE t ADD c INT NOT NULL DEFAULT 0|",
         "POSTGRESQL|ALTER TABLE t ADD c INT DEFAULT 0 NOT NULL|",
         "POSTGRESQL|ALTER TABLE t ADD c INT DEFAULT NULL|",
+        // A default must be a literal: an expression can be NULL, or fail, on each row.
+        "POSTGRESQL|ALTER TABLE t ADD c INT DEFAULT (NULL) NOT NULL|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ADD c INT NOT NULL DEFAULT NULL::int|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ADD c INT NOT NULL DEFAULT abs(NULL)|is not an allowed change",
+        "MYSQL|ALTER TABLE t ADD c INT NOT NULL DEFAULT (abs(NULL))|is not an allowed change",
+        "H2|ALTER TABLE t ADD c INT NOT NULL DEFAULT coalesce(NULL)|is not an allowed change",
+        "MYSQL|ALTER TABLE t MODIFY c varchar(300) NULL DEFAULT (NULL)|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ADD c VARCHAR(10) NOT NULL DEFAULT 'x'|",
+        "POSTGRESQL|ALTER TABLE t ADD c BOOLEAN NOT NULL DEFAULT FALSE|",
+        "POSTGRESQL|ALTER TABLE t ADD c NUMERIC(5,2) NOT NULL DEFAULT -1.5|",
         "POSTGRESQL|ALTER TABLE t ADD c INT|",
         "POSTGRESQL|CREATE INDEX i ON t (c)|",
         // PostgreSQL fails an index entry over 2,704 bytes, so a long text column is refused.
@@ -379,6 +409,48 @@ public class MigrationStepRulesTest {
     } else {
       assertThat(found).singleElement().asString().contains(problem);
     }
+  }
+
+  /**
+   * A type change keeps each index on the column short enough for an index entry, sized with the
+   * new type; an index whose columns keep their types isn't checked again.
+   */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "type=varchar size=100|type=varchar size=100|type=int4 size=10|type=int8 size=19|",
+        // Later rows can hold the longer values.
+        "type=varchar size=100|type=varchar size=5000|type=int4 size=10|type=int4 size=10"
+            + "|up to 20024 bytes",
+        // PostgreSQL rebuilds the index for int4 to int8, and rows already there can outgrow it.
+        "type=varchar size=673|type=varchar size=673|type=int4 size=10|type=int8 size=19"
+            + "|up to 2712 bytes",
+        "type=varchar size=673|type=varchar size=673|type=int4 size=10|type=int4 size=10|"
+      })
+  void typeChangesKeepIndexEntriesShort(
+      String textBefore,
+      String textAfter,
+      String numberBefore,
+      String numberAfter,
+      String problem) {
+    List<String> index =
+        List.of("index t.k unique=false column=c#1", "index t.k unique=false column=i#2");
+    SchemaSnapshot before = snapshot(textBefore, numberBefore, index);
+    SchemaSnapshot after = snapshot(textAfter, numberAfter, index);
+    List<String> found = regrownIndexes(DatabaseKind.POSTGRESQL, before, after);
+    if (problem == null) {
+      assertThat(found).isEmpty();
+    } else {
+      assertThat(found).singleElement().asString().contains(problem);
+    }
+  }
+
+  private static SchemaSnapshot snapshot(String text, String number, List<String> index) {
+    List<String> entries = new ArrayList<>(index);
+    entries.add("column t.c " + text + " nullable=YES default=null");
+    entries.add("column t.i " + number + " nullable=YES default=null");
+    return new SchemaSnapshot(entries);
   }
 
   /**
@@ -683,34 +755,107 @@ public class MigrationStepRulesTest {
         return "indexes an expression, which this test can't size";
       }
       String column = table + "." + unquoted(element.columnName);
-      Matcher line =
-          before.entries().stream()
-              .map(entry -> COLUMN_LINE.matcher("+ " + entry))
-              .filter(m -> m.matches() && m.group(2).equals(column))
-              .findFirst()
-              .orElse(null);
+      Matcher line = columnLine(before, column);
       if (line == null) {
         return "indexes " + column + ", which the schema before the step doesn't have";
       }
-      Long bytes =
+      Long prefixBytes =
           params.stream()
               .filter(p -> p.startsWith("("))
               .map(p -> 4 * Long.parseLong(p.substring(1, p.length() - 1)))
               .findFirst()
-              .orElseGet(() -> maxBytes(kind, line.group(3), Long.parseLong(line.group(4))));
+              .orElse(null);
+      Long bytes = columnEntryBytes(kind, line, prefixBytes);
       if (bytes == null) {
         return "indexes " + column + " (" + line.group(3) + "), which this test can't size";
       }
-      indexEntryBytes += entryBytes(bytes, isVariableWidth(kind, line.group(3)));
+      indexEntryBytes += bytes;
     }
-    if (indexEntryBytes > MAX_INDEX_ENTRY_BYTES) {
-      return "has an index entry of up to "
-          + indexEntryBytes
-          + " bytes, over the "
-          + MAX_INDEX_ENTRY_BYTES
-          + " bytes PostgreSQL allows";
+    return overLimit(indexEntryBytes);
+  }
+
+  private static final Pattern INDEX_LINE =
+      Pattern.compile("index (\\S+)\\.(\\S+) unique=\\S+ column=(\\S+)#\\d+.*");
+
+  /**
+   * Why rows could outgrow an index of the schema {@code after} a step, sized with the new type of
+   * a column the step changed: PostgreSQL rebuilds the index for a type change such as int4 to
+   * int8, and later rows can hold the longer values. One entry per index; a MySQL prefix index is
+   * sized on the whole column, since the snapshot doesn't record the prefix.
+   */
+  private static List<String> regrownIndexes(
+      DatabaseKind kind, SchemaSnapshot before, SchemaSnapshot after) {
+    Set<String> changed = new HashSet<>();
+    for (String entry : after.entries()) {
+      Matcher line = COLUMN_LINE.matcher("+ " + entry);
+      if (line.matches()
+          && !before.entries().contains(entry)
+          && columnLine(before, line.group(2)) != null) {
+        changed.add(line.group(2));
+      }
     }
-    return null;
+    Map<String, List<String>> columnsByIndex = new TreeMap<>();
+    for (String entry : after.entries()) {
+      Matcher index = INDEX_LINE.matcher(entry);
+      if (index.matches()) {
+        columnsByIndex
+            .computeIfAbsent(index.group(1) + "." + index.group(2), name -> new ArrayList<>())
+            .add(index.group(1) + "." + index.group(3));
+      }
+    }
+    List<String> problems = new ArrayList<>();
+    columnsByIndex.forEach(
+        (index, columns) -> {
+          if (columns.stream().noneMatch(changed::contains)) {
+            return;
+          }
+          long indexEntryBytes = 8; // the entry's header
+          for (String column : columns) {
+            Matcher line = columnLine(after, column);
+            Long bytes = line == null ? null : columnEntryBytes(kind, line, null);
+            if (bytes == null) {
+              problems.add("index " + index + " holds " + column + ", which this test can't size");
+              return;
+            }
+            indexEntryBytes += bytes;
+          }
+          String problem = overLimit(indexEntryBytes);
+          if (problem != null) {
+            problems.add("index " + index + " " + problem);
+          }
+        });
+    return problems;
+  }
+
+  /** The column line of {@code column} ({@code table.name}) in {@code snapshot}, or null. */
+  private static Matcher columnLine(SchemaSnapshot snapshot, String column) {
+    return snapshot.entries().stream()
+        .map(entry -> COLUMN_LINE.matcher("+ " + entry))
+        .filter(m -> m.matches() && m.group(2).equals(column))
+        .findFirst()
+        .orElse(null);
+  }
+
+  /**
+   * The bytes the column of {@code line} takes in an index entry, or the {@code prefixBytes} of a
+   * MySQL prefix when not null; null for a type this test can't bound.
+   */
+  private static Long columnEntryBytes(DatabaseKind kind, Matcher line, Long prefixBytes) {
+    Long bytes =
+        prefixBytes != null
+            ? prefixBytes
+            : maxBytes(kind, line.group(3), Long.parseLong(line.group(4)));
+    return bytes == null ? null : entryBytes(bytes, isVariableWidth(kind, line.group(3)));
+  }
+
+  private static String overLimit(long indexEntryBytes) {
+    return indexEntryBytes > MAX_INDEX_ENTRY_BYTES
+        ? "has an index entry of up to "
+            + indexEntryBytes
+            + " bytes, over the "
+            + MAX_INDEX_ENTRY_BYTES
+            + " bytes PostgreSQL allows"
+        : null;
   }
 
   private static String unquoted(String name) {
