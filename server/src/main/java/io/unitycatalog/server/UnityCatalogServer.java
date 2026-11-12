@@ -461,7 +461,21 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
+  /**
+   * hadoop-client-runtime registers a relocated Woodstox that Jackson XML can't use. System
+   * properties beat META-INF/services whatever the classpath order; an operator's -D still wins.
+   */
+  public static void useWoodstoxForStax() {
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLInputFactory", "com.ctc.wstx.stax.WstxInputFactory");
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLOutputFactory", "com.ctc.wstx.stax.WstxOutputFactory");
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLEventFactory", "com.ctc.wstx.stax.WstxEventFactory");
+  }
+
   public static void main(String[] args) {
+    useWoodstoxForStax();
     OptionParser options = new OptionParser();
     options.parse(args);
     if (options.isUpgradeSchema()) {
