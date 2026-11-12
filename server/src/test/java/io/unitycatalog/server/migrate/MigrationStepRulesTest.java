@@ -26,6 +26,7 @@ import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
+import net.sf.jsqlparser.statement.create.table.Index;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -40,10 +41,10 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       changes nothing on that database. The first step, the 0.7.0 baseline, may create any table
  *       and index.
  *   <li>The statement is one of the changes {@link #refusal} allows, read with JSqlParser from what
- *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial), add a
- *       column (NOT NULL only with a DEFAULT, without a key or CHECK rule), change a column's type,
- *       or drop its NOT NULL. A type change must widen the column, and no change makes a column NOT
- *       NULL ({@link #typeChangesWiden}).
+ *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial) on
+ *       columns short enough for an index entry, add a column (NOT NULL only with a DEFAULT,
+ *       without a key or CHECK rule), change a column's type, or drop its NOT NULL. A type change
+ *       must widen the column, and no change makes a column NOT NULL ({@link #typeChangesWiden}).
  *   <li>Each step has an effect file that lists its change ({@link #eachStepHasItsEffectFile}).
  *   <li>Every step exists for all three databases, as a versioned SQL file.
  * </ul>
@@ -58,6 +59,10 @@ public class MigrationStepRulesTest {
   private static final Path EFFECTS = Path.of("server/src/main/resources/schema-effects");
 
   private static final Pattern STEP_FILE = Pattern.compile("V(\\d+)__\\w+\\.sql");
+
+  /** What a MySQL MODIFY may say besides the type: nullability, and the default and collation. */
+  private static final Pattern MODIFY_SPECS =
+      Pattern.compile("((NOT NULL|NULL|DEFAULT \\S+|COLLATE \\S+)( (?=\\S)|$))*");
 
   /** What a new column may say besides its type: nullable, or NOT NULL with a default. */
   private static final Pattern NEW_COLUMN =
@@ -142,15 +147,19 @@ public class MigrationStepRulesTest {
     List<String> problems = new ArrayList<>();
     Map<String, List<String>> sentByStep = UpgradeTestUtils.sentStatements(db);
     String first = sentByStep.keySet().iterator().next();
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    String previous = null;
     for (Map.Entry<String, List<String>> entry : sentByStep.entrySet()) {
       String step = entry.getKey();
+      SchemaSnapshot before = previous == null ? SchemaSnapshot.NONE : migrator.expected(previous);
+      previous = step;
       Path file = stepFile(kind, step);
       List<String> sent = entry.getValue();
       if (!step.equals(first) && sent.size() > 1) {
         problems.add(file + " sends " + sent.size() + " statements; a step holds one: " + sent);
       }
       for (String sql : sent) {
-        String refusal = refusalOfSent(sql, kind, step.equals(first));
+        String refusal = refusalOfSent(sql, kind, step.equals(first), before);
         if (refusal != null) {
           problems.add(file + ": " + refusal + ": " + sql);
         }
@@ -158,10 +167,10 @@ public class MigrationStepRulesTest {
     }
     assertThat(problems)
         .as(
-            "Each step after the first holds one statement that creates a table, creates an index"
-                + " that is not unique, adds a column (NOT NULL only with a DEFAULT, without a key"
-                + " or CHECK rule), changes a column's type or drops its NOT NULL. Other changes"
-                + " are not supported yet; see refusal() in this test")
+            "Each step after the first holds one statement that creates a table, creates a plain"
+                + " index on columns short enough for an index entry, adds a column (NOT NULL only"
+                + " with a DEFAULT, without a key or CHECK rule), changes a column's type or drops"
+                + " its NOT NULL. Other changes are not supported yet; see refusal() in this test")
         .isEmpty();
   }
 
@@ -181,6 +190,18 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|ALTER TABLE t ADD c INT DEFAULT NULL|",
         "POSTGRESQL|ALTER TABLE t ADD c INT|",
         "POSTGRESQL|CREATE INDEX i ON t (c)|",
+        // PostgreSQL fails an index entry over 2,704 bytes, so a long text column is refused.
+        "POSTGRESQL|CREATE INDEX i ON t (long)|indexes t.long, whose values can be too long"
+            + " for an index entry",
+        "POSTGRESQL|CREATE INDEX i ON t (c, body)|indexes t.body, whose values can be too long"
+            + " for an index entry",
+        "MYSQL|CREATE INDEX i ON t (long(100))|",
+        "POSTGRESQL|CREATE INDEX i ON t (long DESC)|indexes t.long, whose values can be too long"
+            + " for an index entry",
+        "POSTGRESQL|CREATE INDEX i ON t (lower(c))|indexes an expression, which this test"
+            + " can't size",
+        "POSTGRESQL|CREATE INDEX i ON t (missing)|indexes t.missing, which the schema before"
+            + " the step doesn't have",
         "POSTGRESQL|CREATE INDEX CONCURRENTLY i ON t (c)|creates an index CONCURRENTLY",
         "POSTGRESQL|CREATE UNIQUE INDEX i ON t (c)|creates a unique index",
         "MYSQL|CREATE FULLTEXT INDEX i ON t (c)|creates a fulltext index",
@@ -194,10 +215,18 @@ public class MigrationStepRulesTest {
         "H2|ALTER TABLE t ALTER COLUMN c CLOB|",
         "MYSQL|ALTER TABLE t ALTER COLUMN c TYPE text|is not an allowed change",
         "MYSQL|ALTER TABLE t MODIFY c mediumtext NOT NULL|",
+        "MYSQL|ALTER TABLE t MODIFY c varchar(20) NOT NULL DEFAULT 'x'|",
+        "MYSQL|ALTER TABLE t MODIFY c varchar(20) COLLATE utf8mb4_bin NULL|",
         "MYSQL|ALTER TABLE t MODIFY c INT PRIMARY KEY|is not an allowed change"
       })
   void laterStepsOnlyMakeChangesRowsCannotFail(DatabaseKind kind, String sql, String refusal) {
-    assertThat(refusalOfSent(sql, kind, false)).isEqualTo(refusal);
+    SchemaSnapshot before =
+        new SchemaSnapshot(
+            List.of(
+                "column t.c type=varchar size=255 nullable=YES default=null",
+                "column t.long type=varchar size=65535 nullable=YES default=null",
+                "column t.body type=text size=2147483647 nullable=YES default=null"));
+    assertThat(refusalOfSent(sql, kind, false, before)).isEqualTo(refusal);
   }
 
   /** Every step is a versioned SQL file, and exists for all three databases. */
@@ -259,6 +288,16 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES"
             + "|type=numeric size=10 scale=1 nullable=YES|not wider",
         "POSTGRESQL|type=int8 size=19 nullable=YES|type=int4 size=10 nullable=YES|not wider",
+        // PostgreSQL reports a numeric without precision, which holds any number, as size 0.
+        "POSTGRESQL|type=numeric size=0 scale=0 nullable=YES"
+            + "|type=numeric size=10 scale=2 nullable=YES|not wider",
+        "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES|type=numeric size=0 scale=0"
+            + " nullable=YES|",
+        // A MySQL MODIFY that does not restate the default or collation drops it.
+        "MYSQL|type=varchar size=10 nullable=NO default=x"
+            + "|type=varchar size=20 nullable=NO default=null|changes its default from x to null",
+        "MYSQL|type=varchar size=10 nullable=YES default=null collation=utf8mb4_bin"
+            + "|type=varchar size=20 nullable=YES default=null|changes its collation",
         "POSTGRESQL|type=varchar size=255 nullable=YES|type=text size=2147483647 nullable=YES|",
         "POSTGRESQL|type=varchar size=255 nullable=NO|type=varchar size=255 nullable=YES|",
         "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')"
@@ -301,12 +340,39 @@ public class MigrationStepRulesTest {
         if (problem == null) {
           problem = droppedValues(before.group(), line);
         }
+        if (problem == null) {
+          problem = changedAttribute(before.group(), line);
+        }
         if (problem != null) {
           problems.add(column.group(2) + " " + problem);
         }
       }
     }
     return problems;
+  }
+
+  /** A column line's default and collation; MySQL's MODIFY drops what it does not restate. */
+  private static final Pattern DEFAULT =
+      Pattern.compile(" default=(.*?)(?: values=| collation=| ?$)");
+
+  private static final Pattern COLLATION = Pattern.compile(" collation=(\\S+)");
+
+  /** How column line {@code after} changes or drops the default or collation of {@code before}. */
+  private static String changedAttribute(String before, String after) {
+    for (Pattern attribute : List.of(DEFAULT, COLLATION)) {
+      String from = attribute(attribute, before);
+      String to = attribute(attribute, after);
+      if (!from.equals(to)) {
+        String name = attribute == DEFAULT ? "default" : "collation";
+        return "changes its " + name + " from " + from + " to " + to;
+      }
+    }
+    return null;
+  }
+
+  private static String attribute(Pattern attribute, String line) {
+    Matcher value = attribute.matcher(line);
+    return value.find() ? value.group(1) : "none";
   }
 
   /** MySQL's enum and set members, in a column line's {@code values=}. */
@@ -325,12 +391,36 @@ public class MigrationStepRulesTest {
     return values.find() ? List.of(values.group(1).split("','")) : List.of();
   }
 
-  private static long scale(Matcher column) {
+  /** PostgreSQL reports a {@code numeric} without precision, which holds any number, as size 0. */
+  private static boolean isUnbounded(DatabaseKind kind, Matcher column) {
+    return kind == DatabaseKind.POSTGRESQL
+        && column.group(3).equals("numeric")
+        && column.group(4).equals("0");
+  }
+
+  /** The digits a number column keeps before the decimal point (size minus scale). */
+  private static long integerDigits(DatabaseKind kind, Matcher column) {
+    return isUnbounded(kind, column)
+        ? Long.MAX_VALUE
+        : Long.parseLong(column.group(4)) - scale(kind, column);
+  }
+
+  private static long scale(DatabaseKind kind, Matcher column) {
+    if (isUnbounded(kind, column)) {
+      return Long.MAX_VALUE;
+    }
     return column.group(5) == null ? 0 : Long.parseLong(column.group(5));
   }
 
-  private static String sizeAndScale(Matcher column) {
-    return column.group(4) + (column.group(5) == null ? "" : "," + column.group(5));
+  private static String shape(DatabaseKind kind, Matcher column) {
+    if (isUnbounded(kind, column)) {
+      return column.group(3);
+    }
+    return column.group(3)
+        + "("
+        + column.group(4)
+        + (column.group(5) == null ? "" : "," + column.group(5))
+        + ")";
   }
 
   /** Why the change from column line {@code before} to {@code after} narrows it, or null. */
@@ -341,30 +431,26 @@ public class MigrationStepRulesTest {
     String from = before.group(3);
     String to = after.group(3);
     boolean wider = from.equals(to) || WIDER.get(kind).getOrDefault(from, Set.of()).contains(to);
-    // A number keeps its digits before the decimal point (size minus scale) and its scale.
-    long scaleBefore = scale(before);
-    long scaleAfter = scale(after);
-    boolean fewerDigits =
-        Long.parseLong(after.group(4)) - scaleAfter < Long.parseLong(before.group(4)) - scaleBefore;
-    if (!wider || fewerDigits || scaleAfter < scaleBefore) {
+    // A number keeps its digits before the decimal point and its scale.
+    boolean fewerDigits = integerDigits(kind, after) < integerDigits(kind, before);
+    if (!wider || fewerDigits || scale(kind, after) < scale(kind, before)) {
       return "changes from "
-          + from
-          + "("
-          + sizeAndScale(before)
-          + ") to "
-          + to
-          + "("
-          + sizeAndScale(after)
-          + "), which is not wider";
+          + shape(kind, before)
+          + " to "
+          + shape(kind, after)
+          + ", which is not wider";
     }
     return null;
   }
 
   /** Why a step may not send {@code sql}, or {@code null} when it may. */
-  private static String refusalOfSent(String sql, DatabaseKind kind, boolean firstStep) {
+  private static String refusalOfSent(
+      String sql, DatabaseKind kind, boolean firstStep, SchemaSnapshot before) {
     try {
       List<Statement> parsed = parse(sql);
-      return parsed.size() != 1 ? "is not one statement" : refusal(parsed.get(0), kind, firstStep);
+      return parsed.size() != 1
+          ? "is not one statement"
+          : refusal(parsed.get(0), kind, firstStep, before);
     } catch (IllegalArgumentException e) {
       return e.getMessage();
     }
@@ -375,7 +461,8 @@ public class MigrationStepRulesTest {
    * create any table and index (other than from a query, or CONCURRENTLY); a later step only makes
    * a change that rows already in the database can't make fail.
    */
-  private static String refusal(Statement statement, DatabaseKind kind, boolean firstStep) {
+  private static String refusal(
+      Statement statement, DatabaseKind kind, boolean firstStep, SchemaSnapshot before) {
     if (statement instanceof CreateTable table) {
       return table.getSelect() == null ? null : "creates a table from a query";
     }
@@ -385,10 +472,13 @@ public class MigrationStepRulesTest {
         return "creates an index CONCURRENTLY";
       }
       String type = index.getIndex().getType();
-      if (firstStep || type == null) {
+      if (firstStep) {
         return null;
       }
-      return "creates a " + type.toLowerCase(Locale.ROOT) + " index";
+      if (type != null) {
+        return "creates a " + type.toLowerCase(Locale.ROOT) + " index";
+      }
+      return indexedColumnProblem(index, before);
     }
     if (firstStep) {
       return "the first step only creates tables and indexes";
@@ -404,11 +494,60 @@ public class MigrationStepRulesTest {
           // PostgreSQL and H2: ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE <type>, or
           // ALTER TABLE t ALTER COLUMN c DROP NOT NULL
           case ALTER -> kind != DatabaseKind.MYSQL && (changesType(change) || dropsNotNull(change));
-          // MySQL: ALTER TABLE t MODIFY c <type> [NULL | NOT NULL]
-          case MODIFY -> kind == DatabaseKind.MYSQL && columnSpecs(change).matches("(NOT )?NULL|");
+          // MySQL: ALTER TABLE t MODIFY c <type> [NULL | NOT NULL] [DEFAULT x] [COLLATE x], which
+          // must restate the column's default and collation (typeChangesWiden checks they stay)
+          case MODIFY ->
+              kind == DatabaseKind.MYSQL && columnSpecs(change).matches(MODIFY_SPECS.pattern());
           default -> false;
         };
     return allowed ? null : "is not an allowed change";
+  }
+
+  /**
+   * PostgreSQL fails an index entry over 2,704 bytes (a third of a page), and a character can take
+   * 4 bytes, so a text column longer than this can hold values that no index entry fits.
+   */
+  private static final long MAX_INDEXED_CHARACTERS = 2704 / 4;
+
+  /**
+   * Why rows already in the database could fail {@code index}, against the schema {@code before}
+   * the step: it indexes a text column that is too long, unless a MySQL prefix length bounds the
+   * key; or null.
+   */
+  private static String indexedColumnProblem(CreateIndex index, SchemaSnapshot before) {
+    String table = unquoted(index.getTable().getName());
+    for (Index.ColumnParams element : index.getIndex().getColumns()) {
+      // JSqlParser keeps a MySQL prefix length as "(100)", a sort order as "DESC", and a
+      // function's arguments (an expression) as "(c)".
+      List<String> params = element.params == null ? List.of() : element.params;
+      if (element.columnName == null
+          || !params.stream().allMatch(p -> p.matches("\\(\\d+\\)|(?i)ASC|DESC"))) {
+        return "indexes an expression, which this test can't size";
+      }
+      if (params.stream().anyMatch(p -> p.startsWith("("))) {
+        continue; // the prefix length bounds the key
+      }
+      String column = table + "." + unquoted(element.columnName);
+      Matcher line =
+          before.entries().stream()
+              .map(entry -> COLUMN_LINE.matcher("+ " + entry))
+              .filter(m -> m.matches() && m.group(2).equals(column))
+              .findFirst()
+              .orElse(null);
+      if (line == null) {
+        return "indexes " + column + ", which the schema before the step doesn't have";
+      }
+      String type = line.group(3);
+      if ((type.contains("char") || type.contains("text"))
+          && Long.parseLong(line.group(4)) > MAX_INDEXED_CHARACTERS) {
+        return "indexes " + column + ", whose values can be too long for an index entry";
+      }
+    }
+    return null;
+  }
+
+  private static String unquoted(String name) {
+    return name.replaceAll("[\"`]", "").toLowerCase(Locale.ROOT);
   }
 
   /**
