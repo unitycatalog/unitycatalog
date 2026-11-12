@@ -565,7 +565,10 @@ public final class SchemaMigrator implements AutoCloseable {
     return schema;
   }
 
-  /** Throws for a database that {@link #upgradeSchema()} must not change. */
+  /**
+   * Throws for a database that {@link #upgradeSchema()} must not change, or a build with a
+   * repeatable step.
+   */
   private void refuseIfUnsupported(SchemaState state) {
     String repeatable =
         Arrays.stream(flyway().load().info().all())
