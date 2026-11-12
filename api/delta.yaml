@@ -1004,7 +1004,13 @@ components:
           const: "set-properties"
         updates:
           type: object
-          description: Properties to set
+          description: |
+            Properties to set. On a MANAGED table, a server-derived key (delta.minReaderVersion,
+            delta.minWriterVersion, delta.feature.*, clusteringColumns,
+            delta.rowTracking.rowIdHighWaterMark, delta.lastUpdateVersion, delta.lastCommitTimestamp)
+            is rejected with a 400 InvalidParameterValueException, and a change to a required
+            catalog-managed property or io.unitycatalog.tableId that breaks the contract is rejected
+            with the same error. Resending a required property with its stored value is accepted.
           additionalProperties:
             type: string
 
@@ -1018,7 +1024,10 @@ components:
           const: "remove-properties"
         removals:
           type: array
-          description: Property keys to remove
+          description: |
+            Property keys to remove. On a MANAGED table, removing a server-derived key (see
+            set-properties) or a required catalog-managed property or io.unitycatalog.tableId is
+            rejected with a 400 InvalidParameterValueException.
           items:
             type: string
       required:

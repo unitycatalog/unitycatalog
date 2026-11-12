@@ -52,6 +52,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.hibernate.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -383,6 +384,10 @@ public final class DeltaUpdateTableMapper {
       CollectedRequest collected,
       ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
+    boolean managed = TableType.MANAGED.toString().equals(dao.getType());
+    if (managed) {
+      rejectSyntheticPropertyChanges(c);
+    }
     // set-columns is validated against the table's stored mode and properties, before this
     // request's property changes apply, and against the mode the request sets, which only enabling
     // reads. The modes are parsed only for set-columns, so an unknown mode value never blocks other
@@ -423,16 +428,16 @@ public final class DeltaUpdateTableMapper {
     c.setTableComment.ifPresent(u -> applySetTableComment(dao, u));
     c.updateSnapshotVersion.ifPresent(u -> applyUpdateSnapshotVersion(dao, properties, u));
     // Re-validate the MANAGED contract against the final post-apply state. set-protocol, or a
-    // set-/remove-properties that touches a reserved key, runs full validation; set-domain-metadata
+    // set-/remove-properties that touches a contract key, runs full validation; set-domain-metadata
     // alone only needs the DM-vs-writer-features check.
-    if (TableType.MANAGED.toString().equals(dao.getType())) {
-      boolean touchesReservedProperty = touchesReservedProperty(c);
+    if (managed) {
+      boolean touchesContractProperty = touchesContractProperty(c);
       DeltaDomainMetadataUpdates effectiveDm =
           DeltaPropertyMapper.synthesizeDomainMetadataFromProperties(properties.asMap());
       if (c.setProtocol.isPresent()) {
         UcManagedDeltaContract.validate(
             c.setProtocol.get().getProtocol(), effectiveDm, properties.asMap(), serverProperties);
-      } else if (touchesReservedProperty) {
+      } else if (touchesContractProperty) {
         UcManagedDeltaContract.validate(
             DeltaPropertyMapper.synthesizeProtocolFromProperties(properties.asMap()),
             effectiveDm,
@@ -442,7 +447,7 @@ public final class DeltaUpdateTableMapper {
         UcManagedDeltaContract.validateDomainMetadataAgainstWriterFeatures(
             DeltaPropertyMapper.extractFeaturesFromProperties(properties.asMap()), effectiveDm);
       }
-      if (touchesReservedProperty) {
+      if (touchesContractProperty) {
         UcManagedDeltaContract.validateTableIdProperty(properties.asMap(), dao.getId().toString());
       }
     }
@@ -458,13 +463,29 @@ public final class DeltaUpdateTableMapper {
     return Optional.empty();
   }
 
-  private static boolean touchesReservedProperty(CollectedUpdates c) {
+  private static Stream<String> touchedPropertyKeys(CollectedUpdates c) {
     Set<String> setKeys =
         c.setProperties.map(DeltaSetPropertiesUpdate::getUpdates).map(Map::keySet).orElse(Set.of());
     List<String> removedKeys =
         c.removeProperties.map(DeltaRemovePropertiesUpdate::getRemovals).orElse(List.of());
-    return setKeys.stream().anyMatch(UcManagedDeltaContract.RESERVED_PROPERTY_KEYS::contains)
-        || removedKeys.stream().anyMatch(UcManagedDeltaContract.RESERVED_PROPERTY_KEYS::contains);
+    return Stream.concat(setKeys.stream(), removedKeys.stream());
+  }
+
+  private static boolean touchesContractProperty(CollectedUpdates c) {
+    return touchedPropertyKeys(c).anyMatch(UcManagedDeltaContract.CONTRACT_PROPERTY_KEYS::contains);
+  }
+
+  private static void rejectSyntheticPropertyChanges(CollectedUpdates c) {
+    Optional<String> synthetic =
+        touchedPropertyKeys(c).filter(UcManagedDeltaContract::isSyntheticPropertyKey).findFirst();
+    if (synthetic.isPresent()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "MANAGED table property '"
+              + synthetic.get()
+              + "' is derived by the server and cannot be changed with set-properties or"
+              + " remove-properties.");
+    }
   }
 
   private static void applySetProperties(MutablePropertyMap properties, Map<String, String> toSet) {

@@ -161,40 +161,45 @@ public final class DeltaPropertyMapper {
   }
 
   /**
-   * Reads the {@code delta.feature.*} keys back out as a feature set. Safe to treat as
+   * Reads the {@code delta.feature.*} keys whose value is {@code supported} back out as a feature
+   * set, matching how the connector decides a table is catalog-managed. Safe to treat as
    * writer-features since the Delta spec makes every reader-feature also a writer-feature.
    */
   public static Set<String> extractFeaturesFromProperties(Map<String, String> props) {
     Set<String> features = new HashSet<>();
-    for (String key : props.keySet()) {
-      if (key.startsWith(TableProperties.FEATURE_PREFIX)) {
-        features.add(key.substring(TableProperties.FEATURE_PREFIX.length()));
+    for (Map.Entry<String, String> entry : props.entrySet()) {
+      if (entry.getKey().startsWith(TableProperties.FEATURE_PREFIX)
+          && FEATURE_SUPPORTED.equals(entry.getValue())) {
+        features.add(entry.getKey().substring(TableProperties.FEATURE_PREFIX.length()));
       }
     }
     return features;
   }
 
   /**
-   * Inverse of {@link #deriveFromProtocol}, for validating the stored state when a request changes
-   * protocol properties without {@code set-protocol}. Properties do not record which features are
-   * reader features, so every stored feature is listed as both a reader and a writer feature. A
-   * missing or non-numeric version comes back as null.
+   * Rebuilds a protocol from the stored properties for contract validation only. It is lossy:
+   * properties do not record which features are reader features, so every stored feature is listed
+   * as both a reader and a writer feature. A missing version comes back as null, and a non-numeric
+   * one is rejected with the stored value in the message.
    */
   public static DeltaProtocol synthesizeProtocolFromProperties(Map<String, String> props) {
     List<String> features = List.copyOf(extractFeaturesFromProperties(props));
     return new DeltaProtocol()
-        .minReaderVersion(parseVersion(props.get(TableProperties.MIN_READER_VERSION)))
-        .minWriterVersion(parseVersion(props.get(TableProperties.MIN_WRITER_VERSION)))
+        .minReaderVersion(parseVersion(props, TableProperties.MIN_READER_VERSION))
+        .minWriterVersion(parseVersion(props, TableProperties.MIN_WRITER_VERSION))
         .readerFeatures(features)
         .writerFeatures(features);
   }
 
-  private static Integer parseVersion(String value) {
+  private static Integer parseVersion(Map<String, String> props, String key) {
+    String value = props.get(key);
     if (value == null) return null;
     try {
       return Integer.valueOf(value);
     } catch (NumberFormatException e) {
-      return null;
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "MANAGED table property '" + key + "' must be an integer (got '" + value + "').");
     }
   }
 

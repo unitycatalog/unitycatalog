@@ -1562,6 +1562,46 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         .doesNotContainKeys(reserved.toArray(String[]::new));
   }
 
+  @Test
+  public void testSetProtocolCannotCarryChangesToProtocolProperties() throws Exception {
+    Handle h = createDeltaManaged("tbl_set_protocol_props", Map.of());
+    Map<String, String> before = loadProperties(h.name());
+    DeltaSetProtocolUpdate setProtocol =
+        new DeltaSetProtocolUpdate()
+            .protocol(
+                new DeltaProtocol()
+                    .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                    .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                    .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                    .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES));
+    String catalogManaged =
+        TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName();
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                setProtocol,
+                new DeltaRemovePropertiesUpdate().removals(List.of(catalogManaged))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        catalogManaged);
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                setProtocol,
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of(TableProperties.MIN_READER_VERSION, "1"))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        TableProperties.MIN_READER_VERSION);
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h, new DeltaSetPropertiesUpdate().updates(Map.of(catalogManaged, "disabled"))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        catalogManaged);
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
+
   private Map<String, String> loadProperties(String tableName) throws ApiException {
     return deltaTablesApi
         .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName)

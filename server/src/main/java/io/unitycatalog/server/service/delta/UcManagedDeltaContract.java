@@ -79,19 +79,38 @@ public final class UcManagedDeltaContract {
   public static final List<String> ENGINE_GENERATED_PROPERTY_KEYS = List.of();
 
   /**
-   * Stored properties that carry the contract: the fixed-value and engine-generated properties, the
-   * UC table id, the protocol versions and the required features. A request that sets or removes
-   * one of them on a MANAGED table is re-validated against the whole contract.
+   * Property keys the server derives from the protocol, the domain metadata and its own commit
+   * bookkeeping. Together with every {@code delta.feature.<name>} key (see {@link
+   * #isSyntheticPropertyKey}) they are the synthetic property keys of the managed Delta tables
+   * spec, which clients must not send in {@code set-properties} or {@code remove-properties}.
    */
-  public static final Set<String> RESERVED_PROPERTY_KEYS = buildReservedPropertyKeys();
+  public static final Set<String> SYNTHETIC_PROPERTY_KEYS =
+      Set.of(
+          TableProperties.MIN_READER_VERSION,
+          TableProperties.MIN_WRITER_VERSION,
+          TableProperties.CLUSTERING_COLUMNS,
+          TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK,
+          TableProperties.LAST_UPDATE_VERSION,
+          TableProperties.LAST_COMMIT_TIMESTAMP);
 
-  private static Set<String> buildReservedPropertyKeys() {
+  public static boolean isSyntheticPropertyKey(String key) {
+    return key != null
+        && (SYNTHETIC_PROPERTY_KEYS.contains(key)
+            || key.startsWith(TableProperties.FEATURE_PREFIX));
+  }
+
+  /**
+   * Real {@code metaData.configuration} entries that carry the contract: the fixed-value and
+   * engine-generated properties and the UC table id. A request that sets or removes one of them on
+   * a MANAGED table is re-validated against the whole contract, so resending the stored value still
+   * succeeds.
+   */
+  public static final Set<String> CONTRACT_PROPERTY_KEYS = buildContractPropertyKeys();
+
+  private static Set<String> buildContractPropertyKeys() {
     Set<String> keys = new HashSet<>(REQUIRED_FIXED_PROPERTIES.keySet());
     keys.addAll(ENGINE_GENERATED_PROPERTY_KEYS);
     keys.add(TableProperties.UC_TABLE_ID);
-    keys.add(TableProperties.MIN_READER_VERSION);
-    keys.add(TableProperties.MIN_WRITER_VERSION);
-    REQUIRED_WRITER_FEATURES.forEach(f -> keys.add(TableProperties.FEATURE_PREFIX + f));
     return Collections.unmodifiableSet(keys);
   }
 
