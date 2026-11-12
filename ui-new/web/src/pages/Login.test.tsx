@@ -144,7 +144,7 @@ describe("Login", () => {
     markOktaToken(true);
     await setUp();
     renderLogin();
-    await new Promise((r) => setTimeout(r, 50));
+    await act(async () => {});
     expect(getToken()).toBe("valid-okta-token");
     expect(assignMock).not.toHaveBeenCalled();
   });
@@ -160,7 +160,7 @@ describe("Login", () => {
       })
       .catch(() => {});
     renderLogin();
-    await new Promise((r) => setTimeout(r, 50));
+    await act(async () => {});
     expect(assignMock).not.toHaveBeenCalled();
 
     await act(async () => {
