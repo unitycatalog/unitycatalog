@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service.credential.aws;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -11,6 +13,7 @@ import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.sts.StsClient;
@@ -115,7 +118,14 @@ public interface AwsCredentialGenerator {
               .durationSeconds((int) Duration.ofHours(1).toSeconds());
       externalId.ifPresent(roleRequestBuilder::externalId);
 
-      return stsClient.assumeRole(roleRequestBuilder.build()).credentials();
+      try {
+        return stsClient.assumeRole(roleRequestBuilder.build()).credentials();
+      } catch (SdkException e) {
+        // The SDK failure is the cause, which the exception handler logs. This names the failed
+        // step more precisely than StorageExceptions' general message.
+        throw new BaseException(
+            ErrorCode.INTERNAL, "Failed to vend temporary storage credentials.", e);
+      }
     }
   }
 }

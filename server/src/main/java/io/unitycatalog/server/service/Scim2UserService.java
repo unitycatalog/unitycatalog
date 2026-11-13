@@ -236,9 +236,7 @@ public class Scim2UserService implements ScimService {
   }
 
   // With authorization disabled, every authorize() call returns true, so the owner check only
-  // means something when authorization is enabled. The refusal is a BaseException on purpose:
-  // the exception handler sends every Scim2RuntimeException with HTTP 500, and this refusal must
-  // reach the client as a real 400.
+  // means something when authorization is enabled.
   private void checkNotMetastoreOwner(User user) {
     if (!serverProperties.isAuthorizationEnabled()) {
       return;

@@ -38,8 +38,9 @@ public enum CliParams {
       "columns",
       "The columns of the table. Each column spec should be in the sql-like format  \"column_name"
           + " column_data_type\".Supported data types are BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT,"
-          + " DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL. Multiple columns"
-          + " should be separated by a comma. For example: \"id INT, name STRING\".",
+          + " DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL(p,s). A bare DECIMAL"
+          + " means DECIMAL(10,0). Multiple columns should be separated by a comma. For example:"
+          + " \"id INT, price DECIMAL(10,2)\".",
       "columns"),
   VOLUME_TYPE(
       "volume_type",

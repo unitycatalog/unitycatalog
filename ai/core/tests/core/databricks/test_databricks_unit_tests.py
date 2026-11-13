@@ -43,6 +43,7 @@ from unitycatalog.ai.core.utils.retry_utils import (
 from unitycatalog.ai.test_utils.client_utils import client  # noqa: F401
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
+    async_int_func,
     random_func_name,
 )
 
@@ -495,6 +496,26 @@ def test_create_python_function_not_callable(client: DatabricksFunctionClient):
 
     with pytest.raises(ValueError, match="The provided function is not callable"):
         client.create_python_function(func=scalar, catalog=CATALOG, schema=SCHEMA)
+
+
+def test_create_python_function_rejects_async_function(client: DatabricksFunctionClient):
+    client.create_function = MagicMock()
+
+    with pytest.raises(ValueError, match="is an async function"):
+        client.create_python_function(func=async_int_func, catalog=CATALOG, schema=SCHEMA)
+
+    client.create_function.assert_not_called()
+
+
+def test_create_wrapped_function_rejects_async_function(client: DatabricksFunctionClient):
+    client.create_function = MagicMock()
+
+    with pytest.raises(ValueError, match="is an async function"):
+        client.create_wrapped_function(
+            primary_func=async_int_func, functions=[], catalog=CATALOG, schema=SCHEMA
+        )
+
+    client.create_function.assert_not_called()
 
 
 def test_function_with_invalid_list_return_type(client: DatabricksFunctionClient):
