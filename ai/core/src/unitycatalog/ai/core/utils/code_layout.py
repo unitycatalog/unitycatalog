@@ -76,9 +76,12 @@ def classify_lines(
             elif at_statement_start and token.type not in _NON_STATEMENT_TOKENS:
                 statement_lines.add(
                     next(
-                        index
-                        for index in range(statement_start_row - 1, token.start[0])
-                        if read_with_margin or not lines[index].startswith("\\")
+                        (
+                            index
+                            for index in range(statement_start_row - 1, token.start[0])
+                            if read_with_margin or not _is_lone_backslash(lines[index])
+                        ),
+                        token.start[0] - 1,
                     )
                 )
                 at_statement_start = False
@@ -130,14 +133,43 @@ def _strip_margin(line: str, margin: str) -> str:
     return line[len(os.path.commonprefix([_leading_whitespace(line), margin])) :]
 
 
+def _is_lone_backslash(line: str) -> bool:
+    return line.rstrip("\r") == "\\"
+
+
+def _align_backslash_lines(code: str) -> str:
+    """
+    Give each line that holds only a backslash at column 0 the indentation of the next code
+    line. Python skips such a line when it indents a statement, so the code means the same, and
+    the line then keeps its statement's indentation when the margin is added back.
+    """
+    string_lines, _ = classify_lines(code)
+    lines = code.split("\n")
+
+    def next_code_indent(index: int) -> str:
+        later_code = (
+            line for line in lines[index + 1 :] if line.strip() and not _is_lone_backslash(line)
+        )
+        return _leading_whitespace(next(later_code, ""))
+
+    return "\n".join(
+        next_code_indent(index) + line
+        if _is_lone_backslash(line) and index not in string_lines
+        else line
+        for index, line in enumerate(lines)
+    )
+
+
 def dedent_code(code: str) -> str:
     """
     Like `textwrap.dedent`, but the margin comes from statement lines only, string literal
-    lines are left untouched, and comment or continuation lines that sit left of the margin
-    move only as far as column 0.
+    lines are left untouched, comment or continuation lines that sit left of the margin move
+    only as far as column 0, and lines that hold only a backslash at column 0 are aligned with
+    the code that follows them.
     """
-    string_lines, statement_lines = classify_lines(code)
-    lines = code.split("\n")
+    aligned_code = _align_backslash_lines(code)
+    string_lines, statement_lines = classify_lines(aligned_code)
+    lines = aligned_code.split("\n")
     margin = _statement_margin(lines, statement_lines)
     return "\n".join(
         line if index in string_lines else _strip_margin(line, margin) if line.strip() else ""

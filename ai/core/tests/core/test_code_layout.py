@@ -2,6 +2,7 @@ import pytest
 
 from unitycatalog.ai.core.utils.code_layout import (
     classify_lines,
+    dedent_code,
     shift_stored_body,
     to_databricks_body,
     to_stored_body,
@@ -21,6 +22,7 @@ from unitycatalog.ai.core.utils.code_layout import (
         ('x = f"""{f"y"}\n  b"""\nreturn x', {1}, {0, 2}),
         ('x = """a\r\nb"""\r\nreturn x', {1}, {0, 2}),
         ('x = (1,\n    2\nreturn """a\n  b', set(), {0, 1, 2, 3}),
+        ("x = 1\n\\", set(), {0, 1}),
     ],
     ids=[
         "column-0-backslash-start",
@@ -33,6 +35,7 @@ from unitycatalog.ai.core.utils.code_layout import (
         "nested-fstring",
         "crlf",
         "does-not-tokenize",
+        "trailing-backslash",
     ],
 )
 def test_classify_lines(code, expected_string_lines, expected_statement_lines):
@@ -51,6 +54,21 @@ def test_classify_lines_read_with_margin_counts_backslash_lines_as_indented(
     code, expected_statement_lines
 ):
     assert classify_lines(code, read_with_margin=True) == (set(), expected_statement_lines)
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (
+            "    if y:\n\\\n        return y\n\\\n    return 2",
+            "if y:\n    \\\n    return y\n\\\nreturn 2",
+        ),
+        ("    s = '''a\n\\\nb'''\n    return s", "s = '''a\n\\\nb'''\nreturn s"),
+    ],
+    ids=["code", "string"],
+)
+def test_dedent_code_aligns_column_0_backslash_lines_with_the_next_code_line(code, expected):
+    assert dedent_code(code) == expected
 
 
 @pytest.mark.parametrize(

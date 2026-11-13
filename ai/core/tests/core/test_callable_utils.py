@@ -3,6 +3,7 @@ import decimal
 import functools
 import importlib.util
 import re
+import sys
 import textwrap
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -580,6 +581,12 @@ def test_nested_function_docstring_keeps_its_value(
     assert namespace["nested_docstring"]() == nested_docstring()
 
 
+INSPECT_STOPS_AT_COLUMN_0_BACKSLASH = pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="inspect.getsource stops at a backslash line at column 0 before Python 3.12",
+)
+
+
 @pytest.mark.parametrize(
     "build_definition", [get_callable_definition, dynamically_construct_python_function]
 )
@@ -587,10 +594,20 @@ def test_nested_function_docstring_keeps_its_value(
 @pytest.mark.parametrize(
     "body",
     [
-        "    y = '''a\n  b'''\n\\\n    return y",
-        "    \\\n        y = '''a\n  b'''\n    return y",
+        pytest.param(
+            "    y = '''a\n  b'''\n\\\n    return y",
+            marks=INSPECT_STOPS_AT_COLUMN_0_BACKSLASH,
+            id="column-0-backslash-line",
+        ),
+        pytest.param(
+            "    y = '''a\n  b'''\n    if y:\n\\\n        return y\n    return ''",
+            marks=INSPECT_STOPS_AT_COLUMN_0_BACKSLASH,
+            id="column-0-backslash-line-in-a-block",
+        ),
+        pytest.param(
+            "    \\\n        y = '''a\n  b'''\n    return y", id="indented-backslash-line"
+        ),
     ],
-    ids=["column-0-backslash-line", "indented-backslash-line"],
 )
 def test_statement_after_a_backslash_line_keeps_its_block(build_definition, writer, body, tmp_path):
     module_path = tmp_path / "backslash_module.py"
