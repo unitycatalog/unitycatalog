@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import importlib.util
 import re
 import textwrap
 import warnings
@@ -518,6 +519,41 @@ def test_string_statement_is_laid_out_with_the_code(func, stored_body):
     assert generate_function_info(func).routine_definition == stored_body
 
 
+@pytest.mark.parametrize(
+    "build_definition", [get_callable_definition, dynamically_construct_python_function]
+)
+@pytest.mark.parametrize("docstring_line", ["content\n    indented", "\t" * 9 + "tabbed"])
+def test_nested_function_docstring_left_of_its_column_keeps_its_value(
+    build_definition, docstring_line, tmp_path
+):
+    module_path = tmp_path / "nested_docstring_module.py"
+    module_path.write_text(
+        "def nested_docstring() -> str:\n"
+        '    """Returns the docstring of a nested function."""\n'
+        "    def helper():\n"
+        '        """Summary.\n'
+        f"{docstring_line}\n"
+        '        """\n'
+        "    return helper.__doc__\n"
+    )
+    spec = importlib.util.spec_from_file_location("nested_docstring_module", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    nested_docstring = module.nested_docstring
+    function_info = FunctionInfo(
+        name="nested_docstring",
+        input_params=FunctionParameterInfos(parameters=[]),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition=generate_function_info(nested_docstring).routine_definition,
+    )
+    namespace = {}
+
+    exec(build_definition(function_info), namespace)
+
+    assert namespace["nested_docstring"]() == nested_docstring()
+
+
 def test_stored_body_that_does_not_tokenize_is_indented_line_by_line(caplog):
     function_info = FunctionInfo(
         name="broken",
@@ -569,8 +605,7 @@ STORED_BODY_CASES = [
         '        template = """Dear {name},\nThanks."""\n        return template.format(name=name)',
         "Dear Bo,\nThanks.",
     ),
-    # OSS body stored by main for a nested function, with string lines at different columns
-    # left of the code.
+    # OSS body of a nested function, with string lines at different columns left of the code.
     (
         '        query = """\nSELECT *\n    FROM {name}\n"""\n        return query.format(name=name)',
         "\nSELECT *\n    FROM Bo\n",
@@ -585,6 +620,8 @@ STORED_BODY_CASES = [
         'note = """Dear\n    {name}"""\nif name:\n        return note.format(name=name)\nreturn ""',
         "Dear\n        Bo",
     ),
+    # Body written by hand with a tab margin.
+    ("\tnote = '''Dear\n\t{name}'''\n\treturn note.format(name=name)", "Dear\n\tBo"),
 ]
 
 

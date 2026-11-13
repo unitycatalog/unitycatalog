@@ -49,20 +49,23 @@ def classify_lines(code: str) -> tuple[set[int], set[int]]:
 
     Only statement lines carry indentation that Python checks. Comment lines and lines that
     continue a statement (inside brackets or after a backslash) may sit at any column, so they
-    must not decide the margin. A statement that is only a string, such as a docstring, is not
-    reported as string lines: its value is never used by the code, and `inspect.cleandoc`
-    removes its indentation, so it is laid out like the code around it. This holds for f-strings
-    too, which Python 3.12 tokenizes in parts and earlier versions as one string. Code that does
-    not tokenize cannot compile either, so it is treated as having no string lines and every
-    nonblank line as a statement line.
+    must not decide the margin. A statement that is only a string, such as a docstring, is laid
+    out like the code around it when every line of it starts with the indentation of its first
+    line, as `inspect.getdoc` removes that indentation. Otherwise it is reported as string
+    lines, because a line further left would land at a different column than written. This
+    holds for f-strings too, which Python 3.12 tokenizes in parts and earlier versions as one
+    string. Code that does not tokenize cannot compile either, so it is treated as having no
+    string lines and every nonblank line as a statement line.
     """
+    readline = io.StringIO(code).readline
+    lines = code.split("\n")
     string_lines = set()
     statement_lines = set()
     open_strings = []
     at_statement_start = True
     string_statement_lines = range(0)
     try:
-        for token in tokenize.generate_tokens(io.StringIO(code).readline):
+        for token in tokenize.generate_tokens(readline):
             if string_statement_lines and token.type not in (tokenize.NL, tokenize.COMMENT):
                 if token.type != tokenize.NEWLINE:
                     string_lines.update(string_statement_lines)
@@ -74,22 +77,26 @@ def classify_lines(code: str) -> tuple[set[int], set[int]]:
                 statement_lines.add(token.start[0] - 1)
                 at_statement_start = False
             if token.type in _STRING_START_TOKENS:
-                open_strings.append((token.start[0], starts_statement))
+                open_strings.append((token.start, starts_statement))
                 continue
             if token.type in _STRING_END_TOKENS:
-                first_row, is_string_statement = open_strings.pop()
+                (first_row, column), is_string_statement = open_strings.pop()
             elif token.type == tokenize.STRING:
-                first_row, is_string_statement = token.start[0], starts_statement
+                (first_row, column), is_string_statement = token.start, starts_statement
             else:
                 continue
             rows = range(first_row, token.end[0])
-            if is_string_statement:
+            opening_indent = lines[first_row - 1][:column]
+            if is_string_statement and all(
+                lines[index].startswith(opening_indent) or not lines[index].strip()
+                for index in rows
+            ):
                 string_statement_lines = rows
             else:
                 string_lines.update(rows)
     except (tokenize.TokenError, SyntaxError) as error:
         _logger.debug("Laying out code that does not tokenize without string lines: %s", error)
-        return set(), {index for index, line in enumerate(code.split("\n")) if line.strip()}
+        return set(), {index for index, line in enumerate(lines) if line.strip()}
     return string_lines, statement_lines
 
 
@@ -183,13 +190,18 @@ def shift_stored_body(body: str) -> str:
     Move a stored body so that its statements start at `PRIMARY_INDENT`, and move its string
     lines by the same number of columns. String lines move left only as far as all of them can
     without losing characters, which keeps their relative indentation. This restores string
-    values for OSS and Databricks bodies alike.
+    values for OSS and Databricks bodies alike. A margin that contains a tab has no width in
+    columns, so string lines stay as written then.
     """
     string_lines, statement_lines = classify_lines(body)
     lines = body.split("\n")
     movable_lines = _movable_string_lines(lines, string_lines)
     margin = _statement_margin(lines, statement_lines)
-    shift = max(len(PRIMARY_INDENT) - len(margin), -_string_shift_limit(lines, movable_lines))
+    shift = (
+        0
+        if margin.strip(" ")
+        else max(len(PRIMARY_INDENT) - len(margin), -_string_shift_limit(lines, movable_lines))
+    )
 
     def shifted_line(index: int, line: str) -> str:
         if index in movable_lines:

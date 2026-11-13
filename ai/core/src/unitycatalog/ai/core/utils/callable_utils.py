@@ -1191,7 +1191,7 @@ def _parse_routine_definition(routine_definition: str) -> str:
          restores their values. The remaining steps keep those lines as they are.
       2. Determining the "standard" indent (i.e. the minimum nonzero indent, past those 4
          spaces, among the lines that start a statement).
-      3. Calculating an indent factor as int(4 / indent_standard) to scale the original
+      3. Calculating an indent factor as max(1, 4 // indent_standard) to scale the original
          indentation to a 4-space baseline.
       4. For each nonempty line outside a string literal, computing the new indent level as:
              new_indent = (original indent) * indent_factor
