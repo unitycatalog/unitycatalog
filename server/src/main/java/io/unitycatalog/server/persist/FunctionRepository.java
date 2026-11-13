@@ -1,7 +1,10 @@
 package io.unitycatalog.server.persist;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectReader;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateFunction;
@@ -36,6 +39,11 @@ public class FunctionRepository {
   private final SessionFactory sessionFactory;
   private static final PagedListingHelper<FunctionInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(FunctionInfoDAO.class);
+  private static final ObjectReader STRICT_JSON_READER =
+      JsonUtils.getInstance()
+          .reader()
+          .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+          .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION);
 
   public FunctionRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.repositories = repositories;
@@ -260,7 +268,8 @@ public class FunctionRepository {
 
   /**
    * Parses the {@code properties} of a function create request: a JSON object whose values are all
-   * strings. An absent field or a JSON {@code null} means no properties.
+   * strings, with no duplicate keys and nothing after it. An absent field or a JSON {@code null}
+   * means no properties.
    *
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for any other value
    */
@@ -270,7 +279,7 @@ public class FunctionRepository {
     }
     JsonNode node;
     try {
-      node = JsonUtils.getInstance().readTree(properties);
+      node = STRICT_JSON_READER.readTree(properties);
     } catch (JsonProcessingException e) {
       throw invalidProperties();
     }

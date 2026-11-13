@@ -127,7 +127,10 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
             "{\"a\":1}",
             "{\"a\":true}",
             "{\"a\":null}",
-            "{\"a\":{\"b\":\"c\"}}")) {
+            "{\"a\":{\"b\":\"c\"}}",
+            "{\"a\":\"b\"} x",
+            "{\"a\":\"b\"}{\"c\":\"d\"}",
+            "{\"a\":\"1\",\"a\":\"2\"}")) {
       assertApiException(
           () -> createFunction("fn_invalid", properties),
           ErrorCode.INVALID_ARGUMENT,
