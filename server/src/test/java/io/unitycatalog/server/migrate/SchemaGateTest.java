@@ -3,10 +3,14 @@ package io.unitycatalog.server.migrate;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.ByteArrayOutputStream;
@@ -18,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Properties;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -64,6 +69,38 @@ public class SchemaGateTest {
     assertThatThrownBy(() -> TestServer.startWithHibernateManagedSchema(db, storageRoot))
         .hasMessageContaining("The schema is newer than this release (version 1000");
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(upgraded);
+  }
+
+  @Test
+  void hibernateModeRefusesANewerSchemaInHibernatesDefaultSchema() {
+    DatabaseKind kind = DatabaseKind.of(db.dataSource());
+    assumeFalse(kind == DatabaseKind.MYSQL, "MySQL has no schemas within a database");
+    // The newer release's steps ran in schema ucx; the connection's own schema stays empty.
+    UpgradeTestUtils.execute(db, "CREATE SCHEMA ucx");
+    Properties inUcx = db.hibernateProperties();
+    String url = inUcx.getProperty("hibernate.connection.url");
+    inUcx.setProperty(
+        "hibernate.connection.url",
+        kind == DatabaseKind.H2
+            ? url + ";SCHEMA=UCX"
+            : url + (url.contains("?") ? "&" : "?") + "currentSchema=ucx");
+    try (HikariDataSource pool = new HikariDataSource(HibernateConfigurator.hikariConfig(inUcx))) {
+      new SchemaMigrator(pool, List.of("classpath:db/test-steps/ahead")).upgradeSchema();
+    }
+    Properties hibernateMode = db.hibernateProperties();
+    hibernateMode.setProperty("hibernate.default_schema", "ucx");
+
+    assertThatThrownBy(() -> db.openHibernateConfigurator(hibernateMode, true).close())
+        .hasMessageContaining("The schema is newer than this release (version 1000");
+  }
+
+  @Test
+  void hibernateModeChecksNothingOnADatabaseTheStepsDontSupport() {
+    // A database product the schema steps don't support, which Hibernate mode can still run on.
+    DataSource otherProduct =
+        UpgradeTestUtils.reportingProduct(db.dataSource(), "Some other database");
+
+    SchemaMigrator.refuseNewerSchema(otherProduct, db.hibernateProperties());
   }
 
   @Test

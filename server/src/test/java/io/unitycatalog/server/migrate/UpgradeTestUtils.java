@@ -10,6 +10,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -163,6 +164,34 @@ final class UpgradeTestUtils {
      * prepared}: the statement is prepared (Flyway's own queries and history records).
      */
     String beforeSending(String sql, boolean prepared) throws SQLException;
+  }
+
+  /** {@code real}, but its connections' metadata name the database product {@code product}. */
+  static DataSource reportingProduct(DataSource real, String product) {
+    return proxy(
+        DataSource.class,
+        (proxy, method, args) -> {
+          Object result = method.invoke(real, args);
+          if (!method.getName().equals("getConnection")) {
+            return result;
+          }
+          Connection connection = (Connection) result;
+          return proxy(
+              Connection.class,
+              (connectionProxy, connectionMethod, connectionArgs) -> {
+                Object created = connectionMethod.invoke(connection, connectionArgs);
+                if (!connectionMethod.getName().equals("getMetaData")) {
+                  return created;
+                }
+                DatabaseMetaData metaData = (DatabaseMetaData) created;
+                return proxy(
+                    DatabaseMetaData.class,
+                    (metaDataProxy, metaDataMethod, metaDataArgs) ->
+                        metaDataMethod.getName().equals("getDatabaseProductName")
+                            ? product
+                            : metaDataMethod.invoke(metaData, metaDataArgs));
+              });
+        });
   }
 
   /**
