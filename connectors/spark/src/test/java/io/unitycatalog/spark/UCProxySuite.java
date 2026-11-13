@@ -20,11 +20,13 @@ import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
+import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
@@ -246,6 +248,61 @@ public class UCProxySuite {
             org.mockito.ArgumentMatchers.any(),
             org.mockito.ArgumentMatchers.any(),
             /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
+  }
+
+  private Table loadPartitionedTable(DataSourceFormat format) throws Exception {
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("t_parts")
+            .tableId("table-id-t_parts")
+            .tableType(TableType.EXTERNAL)
+            .storageLocation("file:/tmp/uc/t_parts")
+            .dataSourceFormat(format)
+            .columns(
+                List.of(
+                    intColumn("a", 0, null),
+                    intColumn("p", 1, null).partitionIndex(1).comment("p note"),
+                    intColumn("b", 2, null),
+                    intColumn(
+                            "q",
+                            3,
+                            "{\"name\":\"q\",\"type\":\"integer\",\"nullable\":true,"
+                                + "\"metadata\":{\"CURRENT_DEFAULT\":\"7\"}}")
+                        .partitionIndex(0)));
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.t_parts"),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
+        .thenReturn(ucTable);
+    return proxy.loadTable(Identifier.of(NAMESPACE, "t_parts"));
+  }
+
+  private static String[] partitionColumnNames(Table table) {
+    return Arrays.stream(table.partitioning())
+        .map(transform -> transform.references()[0].fieldNames()[0])
+        .toArray(String[]::new);
+  }
+
+  @Test
+  public void testLoadNonDeltaTablePutsPartitionColumnsLast() throws Exception {
+    Table table = loadPartitionedTable(DataSourceFormat.PARQUET);
+
+    StructType schema = table.schema();
+    assertThat(schema.fieldNames()).containsExactly("a", "b", "q", "p");
+    assertThat(partitionColumnNames(table)).containsExactly("q", "p");
+    assertThat(schema.apply("p").getComment().get()).isEqualTo("p note");
+    assertThat(schema.apply("q").metadata().getString("CURRENT_DEFAULT")).isEqualTo("7");
+  }
+
+  @Test
+  public void testLoadDeltaTableKeepsUCColumnOrder() throws Exception {
+    Table table = loadPartitionedTable(DataSourceFormat.DELTA);
+
+    assertThat(table.schema().fieldNames()).containsExactly("a", "p", "b", "q");
+    assertThat(partitionColumnNames(table)).containsExactly("q", "p");
   }
 
   // -- dropTable (table surface) tests --

@@ -1027,13 +1027,16 @@ private[spark] class UCProxy(
 
   private[spark] def loadV1Table(t: UCTableInfo): Table = {
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
-    val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
-    val fields = t.getColumns.asScala.map { col =>
-      Option(col.getPartitionIndex).foreach { index =>
-        partitionCols += col.getName -> index
-      }
-      toStructField(col)
-    }.toArray
+    val columns = t.getColumns.asScala.toSeq
+    val (partitionCols, dataCols) = columns.partition(_.getPartitionIndex != null)
+    val sortedPartitionCols = partitionCols.sortBy(_.getPartitionIndex.intValue)
+    // Spark's file sources read and write a table as its data columns followed by its partition
+    // columns, the order Spark's own catalog stores. Delta takes its schema from the Delta log.
+    val fields = (if (t.getDataSourceFormat == DataSourceFormat.DELTA) {
+      columns
+    } else {
+      dataCols ++ sortedPartitionCols
+    }).map(toStructField).toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
 
@@ -1082,7 +1085,7 @@ private[spark] class UCProxy(
       provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
       createTime = t.getCreatedAt,
       tracksPartitionsInCatalog = false,
-      partitionColumnNames = partitionCols.sortBy(_._2).map(_._1).toSeq
+      partitionColumnNames = sortedPartitionCols.map(_.getName)
     )
     // Spark separates table lookup and data source resolution. To support Spark native data
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will
