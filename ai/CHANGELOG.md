@@ -13,7 +13,7 @@
 ### Change Log
 
 - Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
-- Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #<this PR>
+- Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #2223
 
 ## Unity Catalog AI 0.4.0
 
