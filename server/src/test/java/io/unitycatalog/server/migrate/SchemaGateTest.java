@@ -104,10 +104,15 @@ public class SchemaGateTest {
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
   }
 
-  @Test
-  void checkSchemaDoesNotCreateAMissingH2File(@TempDir Path conf, @TempDir Path data)
+  @ParameterizedTest
+  @CsvSource({
+    "jdbc:h2:file:{file}",
+    "jdbc:h2:file:{file};IFEXISTS=FALSE",
+    "jdbc:wrapper:h2:file:{file}",
+  })
+  void checkSchemaDoesNotCreateAMissingH2File(String url, @TempDir Path conf, @TempDir Path data)
       throws IOException {
-    writeConfiguration(conf, "jdbc:h2:file:" + data.resolve("uc"));
+    writeConfiguration(conf, url.replace("{file}", data.resolve("uc").toString()));
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
     assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(out, true, UTF_8))).isOne();
@@ -125,6 +130,10 @@ public class SchemaGateTest {
     hibernate.setProperty("hibernate.connection.url", url);
     if (url.startsWith("jdbc:h2:")) {
       hibernate.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    }
+    if (url.startsWith(SchemaMigratorTest.WrappingDriver.PREFIX)) {
+      hibernate.setProperty(
+          "hibernate.connection.driver_class", SchemaMigratorTest.WrappingDriver.class.getName());
     }
     if (url.startsWith("jdbc:h2:mem:")) {
       // Without credentials, as the server's default in-memory database: other tests in this JVM
