@@ -58,10 +58,20 @@ public class SchemaGateTest {
     }
   }
 
-  @Test
-  void hibernateModeRefusesASchemaNewerThanThisRelease() {
+  /** Also when the newer step failed, which on H2 and MySQL can leave part of its change. */
+  @ParameterizedTest
+  @CsvSource({"false", "true"})
+  void hibernateModeRefusesASchemaNewerThanThisRelease(boolean newerStepFailed) {
     // A newer release (here one with step 1000) upgraded the database.
     new SchemaMigrator(db.dataSource(), List.of("classpath:db/test-steps/ahead")).upgradeSchema();
+    if (newerStepFailed) {
+      String q = DatabaseKind.of(db.dataSource()) == DatabaseKind.MYSQL ? "`" : "\"";
+      UpgradeTestUtils.execute(
+          db,
+          ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
+                  + " WHERE %1$sversion%1$s = '1000'")
+              .formatted(q));
+    }
     // A column that Hibernate's update would add back, to tell whether it ran.
     UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs DROP COLUMN comment");
     SchemaSnapshot upgraded = SchemaSnapshot.of(db.dataSource());
@@ -92,6 +102,60 @@ public class SchemaGateTest {
 
     assertThatThrownBy(() -> db.openHibernateConfigurator(hibernateMode, true).close())
         .hasMessageContaining("The schema is newer than this release (version 1000");
+  }
+
+  /**
+   * Hibernate reads JVM system properties when its Environment class loads, so this runs in a JVM
+   * of its own, started with {@code -Dhibernate.default_schema=ucx}.
+   */
+  @Test
+  void hibernateModeRefusesANewerSchemaInADefaultSchemaFromASystemProperty(@TempDir Path dir)
+      throws Exception {
+    Process process =
+        new ProcessBuilder(
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-Dhibernate.default_schema=ucx",
+                "-cp",
+                System.getProperty("java.class.path"),
+                ForkedNewerSchemaInDefaultSchema.class.getName(),
+                dir.resolve("uc").toString())
+            .redirectErrorStream(true)
+            .start();
+    String output = new String(process.getInputStream().readAllBytes(), UTF_8);
+
+    assertThat(process.waitFor()).as(output).isZero();
+  }
+
+  /** Exits with 0 when Hibernate mode refuses a newer release's schema history in schema ucx. */
+  public static final class ForkedNewerSchemaInDefaultSchema {
+    public static void main(String[] args) {
+      Properties properties = new Properties();
+      properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+      properties.setProperty("hibernate.connection.url", "jdbc:h2:file:" + args[0]);
+      properties.setProperty("hibernate.connection.user", "sa");
+      Properties inUcx = new Properties();
+      inUcx.putAll(properties);
+      inUcx.setProperty("hibernate.connection.url", "jdbc:h2:file:" + args[0] + ";SCHEMA=UCX");
+      try (HikariDataSource pool =
+          new HikariDataSource(HibernateConfigurator.hikariConfig(properties))) {
+        try (var connection = pool.getConnection();
+            var statement = connection.createStatement()) {
+          statement.execute("CREATE SCHEMA ucx");
+        }
+      } catch (java.sql.SQLException e) {
+        throw new IllegalStateException(e);
+      }
+      try (HikariDataSource pool =
+          new HikariDataSource(HibernateConfigurator.hikariConfig(inUcx))) {
+        new SchemaMigrator(pool, List.of("classpath:db/test-steps/ahead")).upgradeSchema();
+      }
+      try (HibernateConfigurator configurator = new HibernateConfigurator(properties, true)) {
+        System.out.println("Hibernate mode started on the newer schema");
+        System.exit(1);
+      } catch (IllegalStateException e) {
+        System.exit(e.getMessage().contains("The schema is newer than this release") ? 0 : 2);
+      }
+    }
   }
 
   @Test

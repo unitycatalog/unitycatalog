@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -929,23 +930,24 @@ public final class SchemaMigrator implements AutoCloseable {
   /**
    * For {@code server.schema-management=hibernate}, before Hibernate updates the schema: throws
    * when the schema history in the schema Hibernate updates (its {@code hibernate.default_catalog}
-   * and {@code hibernate.default_schema}, else the connection's) records a step newer than this
-   * build's last, which Hibernate's update would change back. Changes nothing. When the history
-   * can't be read (for example a PostgreSQL connection without a current schema, or a database the
-   * schema steps don't support), logs that and checks nothing, since Hibernate mode doesn't need
-   * the schema steps.
+   * and {@code hibernate.default_schema} in {@code hibernateSettings}, else the connection's)
+   * records a step newer than this build's last, applied or failed, which Hibernate's update would
+   * change back. Changes nothing. When the history can't be read (for example a PostgreSQL
+   * connection without a current schema, or a database the schema steps don't support), logs that
+   * and checks nothing, since Hibernate mode doesn't need the schema steps.
    */
-  public static void refuseNewerSchema(DataSource dataSource, Properties hibernateProperties) {
-    SchemaMigrator migrator;
-    boolean newer;
+  public static void refuseNewerSchema(DataSource dataSource, Map<?, ?> hibernateSettings) {
+    String newest;
+    String latest;
     try {
-      migrator =
+      SchemaMigrator migrator =
           new SchemaMigrator(
               inHibernatesSchema(
                   dataSource,
-                  hibernateProperties.getProperty("hibernate.default_catalog"),
-                  hibernateProperties.getProperty("hibernate.default_schema")));
-      newer = migrator.state() == SchemaState.AHEAD;
+                  settingValue(hibernateSettings, "hibernate.default_catalog"),
+                  settingValue(hibernateSettings, "hibernate.default_schema")));
+      newest = migrator.newestRecordedVersion();
+      latest = migrator.latestVersion();
     } catch (RuntimeException e) {
       LOGGER.warn(
           "Could not read the schema history, so Hibernate updates the schema without checking for"
@@ -953,9 +955,37 @@ public final class SchemaMigrator implements AutoCloseable {
           e.getMessage());
       return;
     }
-    if (newer) {
-      migrator.refuseIfUnsupported(SchemaState.AHEAD);
+    if (newest != null
+        && MigrationVersion.fromVersion(newest).compareTo(MigrationVersion.fromVersion(latest))
+            > 0) {
+      throw new IllegalStateException(
+          "The schema is newer than this release (version "
+              + newest
+              + ", this release ends at "
+              + latest
+              + "). Run the newer release.");
     }
+  }
+
+  private static String settingValue(Map<?, ?> settings, String name) {
+    Object value = settings.get(name);
+    return value == null ? null : value.toString();
+  }
+
+  /**
+   * The highest version the schema history records, also of a step that failed; {@code null}
+   * without one.
+   */
+  private String newestRecordedVersion() {
+    if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
+      return null;
+    }
+    return Arrays.stream(flyway().load().info().applied())
+        .map(MigrationInfo::getVersion)
+        .filter(Objects::nonNull)
+        .max(MigrationVersion::compareTo)
+        .map(MigrationVersion::getVersion)
+        .orElse(null);
   }
 
   /**

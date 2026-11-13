@@ -105,7 +105,8 @@ public class HibernateConfigurator implements AutoCloseable {
     try {
       if (schemaManagedByHibernate) {
         // Before Hibernate's update, which would change a newer release's schema back.
-        SchemaMigrator.refuseNewerSchema(dataSource, hibernateProperties);
+        // Read from the settings Hibernate reads, JVM system properties too.
+        SchemaMigrator.refuseNewerSchema(dataSource, settings);
       }
       this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
     } catch (Throwable t) {
