@@ -2,11 +2,15 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.AwsIamRoleRequest;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.ListCredentialsResponse;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -41,6 +45,13 @@ public class CredentialRepository {
 
   public CredentialInfo addCredential(CreateCredentialRequest createCredentialRequest) {
     ValidationUtils.validateSqlObjectName(createCredentialRequest.getName());
+    List<CredentialType> cloudIdentities =
+        validateCloudIdentities(
+            createCredentialRequest.getAwsIamRole(),
+            createCredentialRequest.getAzureServicePrincipal(),
+            createCredentialRequest.getGcpServiceAccountKey());
+    ValidationUtils.checkArgument(
+        cloudIdentities.size() == 1, "Exactly one of %s must be set.", CLOUD_IDENTITY_FIELDS);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     CredentialDAO dao = CredentialDAO.from(createCredentialRequest, callerId);
     return TransactionManager.executeWithTransaction(
@@ -113,6 +124,13 @@ public class CredentialRepository {
 
   public CredentialInfo updateCredential(String name, UpdateCredentialRequest updateCredential) {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    List<CredentialType> cloudIdentities =
+        validateCloudIdentities(
+            updateCredential.getAwsIamRole(),
+            updateCredential.getAzureServicePrincipal(),
+            updateCredential.getGcpServiceAccountKey());
+    ValidationUtils.checkArgument(
+        cloudIdentities.size() <= 1, "At most one of %s may be set.", CLOUD_IDENTITY_FIELDS);
 
     return TransactionManager.executeWithTransaction(
         sessionFactory,
@@ -132,8 +150,25 @@ public class CredentialRepository {
             }
             existingCredential.setName(updateCredential.getNewName());
           }
-          if (updateCredential.getAwsIamRole() != null) {
-            existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
+          if (!cloudIdentities.isEmpty()) {
+            // External locations bind a credential to URLs of its cloud, so the cloud is fixed.
+            CredentialType existingType = existingCredential.getCredentialType();
+            ValidationUtils.checkArgument(
+                cloudIdentities.get(0) == existingType,
+                "Storage credential '%s' holds %s and cannot be changed to %s.",
+                name,
+                existingType.getApiField(),
+                cloudIdentities.get(0).getApiField());
+            switch (existingType) {
+              case AWS_IAM_ROLE ->
+                  existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
+              case AZURE_SERVICE_PRINCIPAL ->
+                  existingCredential.setAzureServicePrincipal(
+                      updateCredential.getAzureServicePrincipal());
+              case GCP_SERVICE_ACCOUNT_KEY ->
+                  existingCredential.setGcpServiceAccountKey(
+                      updateCredential.getGcpServiceAccountKey());
+            }
           }
           if (updateCredential.getComment() != null) {
             existingCredential.setComment(updateCredential.getComment());
@@ -190,5 +225,45 @@ public class CredentialRepository {
 
   private Optional<String> getAwsS3MasterRoleArn() {
     return Optional.ofNullable(serverProperties.get(ServerProperties.Property.AWS_MASTER_ROLE_ARN));
+  }
+
+  private static final String CLOUD_IDENTITY_FIELDS =
+      "aws_iam_role, azure_service_principal or gcp_service_account_key";
+
+  /**
+   * The cloud identities a request carries, each checked for the fields the vendor needs. The
+   * generated models do not enforce required fields, so a missing field would otherwise surface
+   * only when a credential is vended.
+   */
+  private static List<CredentialType> validateCloudIdentities(
+      AwsIamRoleRequest awsIamRole,
+      AzureServicePrincipalRequest azureServicePrincipal,
+      GcpServiceAccountKeyRequest gcpServiceAccountKey) {
+    List<CredentialType> types = new ArrayList<>();
+    if (awsIamRole != null) {
+      checkNotBlank(awsIamRole.getRoleArn(), "aws_iam_role.role_arn");
+      types.add(CredentialType.AWS_IAM_ROLE);
+    }
+    if (azureServicePrincipal != null) {
+      checkNotBlank(azureServicePrincipal.getDirectoryId(), "azure_service_principal.directory_id");
+      checkNotBlank(
+          azureServicePrincipal.getApplicationId(), "azure_service_principal.application_id");
+      checkNotBlank(
+          azureServicePrincipal.getClientSecret(), "azure_service_principal.client_secret");
+      types.add(CredentialType.AZURE_SERVICE_PRINCIPAL);
+    }
+    if (gcpServiceAccountKey != null) {
+      checkNotBlank(gcpServiceAccountKey.getEmail(), "gcp_service_account_key.email");
+      checkNotBlank(
+          gcpServiceAccountKey.getPrivateKeyId(), "gcp_service_account_key.private_key_id");
+      checkNotBlank(gcpServiceAccountKey.getPrivateKey(), "gcp_service_account_key.private_key");
+      types.add(CredentialType.GCP_SERVICE_ACCOUNT_KEY);
+    }
+    return types;
+  }
+
+  private static void checkNotBlank(String value, String field) {
+    ValidationUtils.checkArgument(
+        value != null && !value.isBlank(), "%s must not be empty.", field);
   }
 }

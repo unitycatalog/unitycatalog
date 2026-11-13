@@ -356,7 +356,13 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.NAME),
-                          List.of(CliParams.COMMENT, CliParams.AWS_IAM_ROLE_ARN)));
+                          List.of(
+                              CliParams.COMMENT,
+                              CliParams.AWS_IAM_ROLE_ARN,
+                              CliParams.AZURE_DIRECTORY_ID,
+                              CliParams.AZURE_APPLICATION_ID,
+                              CliParams.AZURE_CLIENT_SECRET,
+                              CliParams.GCP_SERVICE_ACCOUNT_KEY_FILE)));
                   put(
                       LIST,
                       new CliOptions(
@@ -367,7 +373,13 @@ public class CliUtils {
                       new CliOptions(
                           List.of(CliParams.NAME),
                           List.of(
-                              CliParams.NEW_NAME, CliParams.COMMENT, CliParams.AWS_IAM_ROLE_ARN)));
+                              CliParams.NEW_NAME,
+                              CliParams.COMMENT,
+                              CliParams.AWS_IAM_ROLE_ARN,
+                              CliParams.AZURE_DIRECTORY_ID,
+                              CliParams.AZURE_APPLICATION_ID,
+                              CliParams.AZURE_CLIENT_SECRET,
+                              CliParams.GCP_SERVICE_ACCOUNT_KEY_FILE)));
                   put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });

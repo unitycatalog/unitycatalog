@@ -3,14 +3,22 @@ package io.unitycatalog.cli.credential;
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.unitycatalog.cli.BaseCliOperations;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.AzureServicePrincipalRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.credential.CredentialOperations;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class CliCredentialOperations extends BaseCliOperations implements CredentialOperations {
@@ -27,11 +35,11 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add("--comment");
       argsList.add(createCredentialRequest.getComment());
     }
-    if (createCredentialRequest.getAwsIamRole() != null
-        && createCredentialRequest.getAwsIamRole().getRoleArn() != null) {
-      argsList.add("--aws_iam_role_arn");
-      argsList.add(createCredentialRequest.getAwsIamRole().getRoleArn());
-    }
+    addCloudIdentityArgs(
+        argsList,
+        createCredentialRequest.getAwsIamRole(),
+        createCredentialRequest.getAzureServicePrincipal(),
+        createCredentialRequest.getGcpServiceAccountKey());
     return execute(CredentialInfo.class, "create", argsList);
   }
 
@@ -63,11 +71,11 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add("--comment");
       argsList.add(updateCredentialRequest.getComment());
     }
-    if (updateCredentialRequest.getAwsIamRole() != null
-        && updateCredentialRequest.getAwsIamRole().getRoleArn() != null) {
-      argsList.add("--aws_iam_role_arn");
-      argsList.add(updateCredentialRequest.getAwsIamRole().getRoleArn());
-    }
+    addCloudIdentityArgs(
+        argsList,
+        updateCredentialRequest.getAwsIamRole(),
+        updateCredentialRequest.getAzureServicePrincipal(),
+        updateCredentialRequest.getGcpServiceAccountKey());
     return executeUpdate(
         CredentialInfo.class,
         /* catchEmptyUpdateCliException= */ true,
@@ -83,5 +91,50 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add(force.get().toString());
     }
     execute(Void.class, "delete", argsList);
+  }
+
+  private void addCloudIdentityArgs(
+      List<String> argsList,
+      AwsIamRoleRequest awsIamRole,
+      AzureServicePrincipalRequest servicePrincipal,
+      GcpServiceAccountKeyRequest serviceAccountKey) {
+    if (awsIamRole != null && awsIamRole.getRoleArn() != null) {
+      argsList.add("--aws_iam_role_arn");
+      argsList.add(awsIamRole.getRoleArn());
+    }
+    if (servicePrincipal != null) {
+      addIfSet(argsList, "--azure_directory_id", servicePrincipal.getDirectoryId());
+      addIfSet(argsList, "--azure_application_id", servicePrincipal.getApplicationId());
+      addIfSet(argsList, "--azure_client_secret", servicePrincipal.getClientSecret());
+    }
+    if (serviceAccountKey != null) {
+      argsList.add("--gcp_service_account_key_file");
+      argsList.add(writeServiceAccountKeyFile(serviceAccountKey).toString());
+    }
+  }
+
+  private static void addIfSet(List<String> argsList, String option, String value) {
+    if (value != null) {
+      argsList.add(option);
+      argsList.add(value);
+    }
+  }
+
+  /** Writes the key in the JSON layout the GCP console downloads, which is what the CLI reads. */
+  private Path writeServiceAccountKeyFile(GcpServiceAccountKeyRequest key) {
+    try {
+      Path file = Files.createTempFile("uc-cli-test-service-account-key", ".json");
+      file.toFile().deleteOnExit();
+      objectMapper.writeValue(
+          file.toFile(),
+          Map.of(
+              "type", "service_account",
+              "client_email", key.getEmail(),
+              "private_key_id", key.getPrivateKeyId(),
+              "private_key", key.getPrivateKey()));
+      return file;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 }

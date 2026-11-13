@@ -35,7 +35,7 @@ import lombok.SneakyThrows;
  *
  * <ul>
  *   <li><b>AWS</b> - IAM Role-based credentials
- *   <li><b>Azure</b> - Not implemented yet.
+ *   <li><b>Azure</b> - Service principal credentials
  *   <li><b>GCP</b> - Not implemented yet.
  * </ul>
  */

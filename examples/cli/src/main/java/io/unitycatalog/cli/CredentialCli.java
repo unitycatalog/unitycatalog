@@ -3,18 +3,25 @@ package io.unitycatalog.cli;
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.AzureServicePrincipalRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.client.model.ListCredentialsResponse;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
+import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import org.apache.commons.cli.CommandLine;
@@ -63,6 +70,57 @@ public class CredentialCli {
     }
   }
 
+  private static Optional<AzureServicePrincipalRequest> extractAzureServicePrincipal(
+      JSONObject json) {
+    List<CliParams> params =
+        List.of(
+            CliParams.AZURE_DIRECTORY_ID,
+            CliParams.AZURE_APPLICATION_ID,
+            CliParams.AZURE_CLIENT_SECRET);
+    if (params.stream().noneMatch(param -> json.has(param.getServerParam()))) {
+      return Optional.empty();
+    }
+    if (!params.stream().allMatch(param -> json.has(param.getServerParam()))) {
+      throw new CliException(
+          "--azure_directory_id, --azure_application_id and --azure_client_secret must be set"
+              + " together.");
+    }
+    return Optional.of(
+        new AzureServicePrincipalRequest()
+            .directoryId(json.getString(CliParams.AZURE_DIRECTORY_ID.getServerParam()))
+            .applicationId(json.getString(CliParams.AZURE_APPLICATION_ID.getServerParam()))
+            .clientSecret(json.getString(CliParams.AZURE_CLIENT_SECRET.getServerParam())));
+  }
+
+  /** Reads the key out of a service account key JSON file, as downloaded from the GCP console. */
+  private static Optional<GcpServiceAccountKeyRequest> extractGcpServiceAccountKey(
+      JSONObject json) {
+    if (!json.has(CliParams.GCP_SERVICE_ACCOUNT_KEY_FILE.getServerParam())) {
+      return Optional.empty();
+    }
+    String path = json.getString(CliParams.GCP_SERVICE_ACCOUNT_KEY_FILE.getServerParam());
+    JsonNode keyFile;
+    try {
+      keyFile = new ObjectMapper().readTree(new File(path));
+    } catch (IOException e) {
+      throw new CliException("Cannot read the service account key file " + path, e);
+    }
+    return Optional.of(
+        new GcpServiceAccountKeyRequest()
+            .email(requiredKeyField(keyFile, "client_email", path))
+            .privateKeyId(requiredKeyField(keyFile, "private_key_id", path))
+            .privateKey(requiredKeyField(keyFile, "private_key", path)));
+  }
+
+  private static String requiredKeyField(JsonNode keyFile, String field, String path) {
+    JsonNode value = keyFile.get(field);
+    if (value == null || !value.isTextual()) {
+      throw new CliException(
+          String.format("%s is not a service account key file: it has no %s.", path, field));
+    }
+    return value.asText();
+  }
+
   private static String createCredential(CredentialsApi credentialsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     CreateCredentialRequest createCredentialRequest =
@@ -70,7 +128,9 @@ public class CredentialCli {
             .name(json.getString(CliParams.NAME.getServerParam()))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
             .purpose(CredentialPurpose.STORAGE)
-            .awsIamRole(extractAwsIamRole(json).orElse(null));
+            .awsIamRole(extractAwsIamRole(json).orElse(null))
+            .azureServicePrincipal(extractAzureServicePrincipal(json).orElse(null))
+            .gcpServiceAccountKey(extractGcpServiceAccountKey(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.createCredential(createCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }
@@ -101,7 +161,9 @@ public class CredentialCli {
         new UpdateCredentialRequest()
             .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
-            .awsIamRole(extractAwsIamRole(json).orElse(null));
+            .awsIamRole(extractAwsIamRole(json).orElse(null))
+            .azureServicePrincipal(extractAzureServicePrincipal(json).orElse(null))
+            .gcpServiceAccountKey(extractGcpServiceAccountKey(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.updateCredential(name, updateCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }
