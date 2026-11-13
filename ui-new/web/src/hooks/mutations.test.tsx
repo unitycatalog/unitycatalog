@@ -376,19 +376,21 @@ describe("domain mutation hooks", () => {
     expect(client.getQueryState(detailKey)?.isInvalidated).toBe(true);
   });
 
-  function useRenameHooks() {
+  function useParentHooks() {
     return {
-      catalog: useUpdateCatalog(),
-      schema: useUpdateSchema(),
-      model: useUpdateModel(),
+      updateCatalog: useUpdateCatalog(),
+      deleteCatalog: useDeleteCatalog(),
+      updateSchema: useUpdateSchema(),
+      deleteSchema: useDeleteSchema(),
+      updateModel: useUpdateModel(),
+      deleteModel: useDeleteModel(),
     };
   }
-  type RenameCase = {
+  type ParentHooks = ReturnType<typeof useParentHooks>;
+  type ParentCase = {
     parent: string;
-    update: (
-      hooks: ReturnType<typeof useRenameHooks>,
-      newName?: string,
-    ) => Promise<unknown>;
+    update: (hooks: ParentHooks, newName?: string) => Promise<unknown>;
+    remove: (hooks: ParentHooks) => Promise<unknown>;
     descendants: DescMethodUnary[];
     unrelated: DescMethodUnary[];
   };
@@ -405,11 +407,13 @@ describe("domain mutation hooks", () => {
     "/api/2.1/unity-catalog/permissions/table/old.default.obj",
   );
   const currentUser = callKey("/api/1.0/unity-control/scim2/Me");
-  const renames: RenameCase[] = [
+  const parents: ParentCase[] = [
     {
       parent: "catalog",
       update: (h, newName) =>
-        h.catalog.mutateAsync({ catalog: { name: "old" }, newName }),
+        h.updateCatalog.mutateAsync({ catalog: { name: "old" }, newName }),
+      remove: (h) =>
+        h.deleteCatalog.mutateAsync({ catalog: { name: "old" }, force: true }),
       descendants: [
         SchemaService.method.listSchemas,
         SchemaService.method.getSchema,
@@ -424,9 +428,14 @@ describe("domain mutation hooks", () => {
     {
       parent: "schema",
       update: (h, newName) =>
-        h.schema.mutateAsync({
+        h.updateSchema.mutateAsync({
           schema: { catalogName: "main", name: "old" },
           newName,
+        }),
+      remove: (h) =>
+        h.deleteSchema.mutateAsync({
+          schema: { catalogName: "main", name: "old" },
+          force: true,
         }),
       descendants: [
         TableService.method.listTables,
@@ -441,7 +450,9 @@ describe("domain mutation hooks", () => {
     },
     {
       parent: "model",
-      update: (h, newName) => h.model.mutateAsync({ model: object, newName }),
+      update: (h, newName) =>
+        h.updateModel.mutateAsync({ model: object, newName }),
+      remove: (h) => h.deleteModel.mutateAsync({ model: object }),
       descendants: [
         ModelService.method.listModelVersions,
         ModelService.method.getModelVersion,
@@ -450,43 +461,55 @@ describe("domain mutation hooks", () => {
     },
   ];
 
-  // Caches a result for every case key, runs the update, and returns a
+  // Caches a result for every case key, runs the mutation, and returns a
   // reader for whether a key was marked stale.
-  async function updateCached(rename: RenameCase, newName?: string) {
+  async function mutateCached(
+    parent: ParentCase,
+    run: (hooks: ParentHooks) => Promise<unknown>,
+  ) {
     const client = makeQueryClient();
-    const keys = [...rename.descendants, ...rename.unrelated].map(methodKey);
+    const keys = [...parent.descendants, ...parent.unrelated].map(methodKey);
     for (const key of [...keys, grants, currentUser]) {
       client.setQueryData(key, {});
     }
-    const { result } = renderHookWithProviders(useRenameHooks, { client });
+    const { result } = renderHookWithProviders(useParentHooks, { client });
     await act(async () => {
-      await rename.update(result.current, newName);
+      await run(result.current);
     });
     return (key: QueryKey) => client.getQueryState(key)?.isInvalidated;
   }
 
-  it.each(renames)(
-    "renaming a $parent marks its descendants and grants stale",
-    async (rename) => {
-      const isStale = await updateCached(rename, "new");
+  it.each(
+    parents.flatMap((parent) => [
+      {
+        ...parent,
+        change: "renaming",
+        run: (h: ParentHooks) => parent.update(h, "new"),
+      },
+      { ...parent, change: "deleting", run: parent.remove },
+    ]),
+  )(
+    "$change a $parent marks its descendants and grants stale",
+    async (parent) => {
+      const isStale = await mutateCached(parent, parent.run);
 
-      for (const method of rename.descendants) {
+      for (const method of parent.descendants) {
         expect(isStale(methodKey(method)), method.name).toBe(true);
       }
       expect(isStale(grants)).toBe(true);
-      for (const method of rename.unrelated) {
+      for (const method of parent.unrelated) {
         expect(isStale(methodKey(method)), method.name).toBe(false);
       }
       expect(isStale(currentUser)).toBe(false);
     },
   );
 
-  it.each(renames)(
+  it.each(parents)(
     "editing a $parent keeps its descendants cached",
-    async (rename) => {
-      const isStale = await updateCached(rename);
+    async (parent) => {
+      const isStale = await mutateCached(parent, (h) => parent.update(h));
 
-      for (const method of rename.descendants) {
+      for (const method of parent.descendants) {
         expect(isStale(methodKey(method)), method.name).toBe(false);
       }
       expect(isStale(grants)).toBe(false);

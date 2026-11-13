@@ -7,13 +7,18 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { ModelService } from "@/gen/uc/v1/model_pb";
-import { objectFullName, splitFullName } from "@/lib/uc";
+import { splitFullName } from "@/lib/uc";
 import {
   collectAllPages,
   useInvalidateMethod,
   useMarkDescendantsStale,
 } from "@/hooks/query";
-import { useMarkPermissionsStale } from "@/hooks/permissions";
+
+// A model's versions live under its name, so a rename or delete strands them.
+const MODEL_DESCENDANTS = [
+  ModelService.method.listModelVersions,
+  ModelService.method.getModelVersion,
+];
 
 export function useListModels(
   catalogName: string,
@@ -128,10 +133,7 @@ export function useUpdateModel() {
     ModelService.method.getRegisteredModel,
     { refetch: false },
   );
-  const markDescendantsStale = useMarkDescendantsStale([
-    ModelService.method.listModelVersions,
-    ModelService.method.getModelVersion,
-  ]);
+  const markDescendantsStale = useMarkDescendantsStale(MODEL_DESCENDANTS);
   return useMutation(ModelService.method.updateRegisteredModel, {
     onSuccess: (_response, request) => {
       invalidateList();
@@ -153,15 +155,12 @@ export function useDeleteModel() {
     ModelService.method.getRegisteredModel,
     { refetch: false },
   );
-  const markPermissionsStale = useMarkPermissionsStale();
+  const markDescendantsStale = useMarkDescendantsStale(MODEL_DESCENDANTS);
   return useMutation(ModelService.method.deleteRegisteredModel, {
-    onSuccess: (_response, request) => {
+    onSuccess: () => {
       invalidateList();
       markDetailStale();
-      markPermissionsStale({
-        type: "registered_model",
-        fullName: objectFullName(request.model),
-      });
+      markDescendantsStale();
     },
   });
 }
