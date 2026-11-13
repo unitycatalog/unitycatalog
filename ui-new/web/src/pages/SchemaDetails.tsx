@@ -32,33 +32,41 @@ import EditMetadataAction from "@/components/EditMetadataAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// ObjectSection lists one kind of schema object. It shows the list query's
+// loading and error states, so a failed request is not mistaken for "None".
 function ObjectSection({
   title,
   Icon,
   color,
+  query,
   count,
   children,
 }: {
   title: string;
   Icon: LucideIcon;
   color: string;
+  query: { isLoading: boolean; error: Error | null };
   count: number;
   children: ReactNode;
 }) {
+  const loaded = !query.isLoading && !query.error;
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <Icon className={`h-4 w-4 ${color}`} />
-          {title} ({count})
+          {title}
+          {loaded && ` (${count})`}
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {count === 0 ? (
-          <p className="text-sm text-muted-foreground">None.</p>
-        ) : (
-          <ul className="divide-y">{children}</ul>
-        )}
+        <QueryState isLoading={query.isLoading} error={query.error}>
+          {count === 0 ? (
+            <p className="text-sm text-muted-foreground">None.</p>
+          ) : (
+            <ul className="divide-y">{children}</ul>
+          )}
+        </QueryState>
       </CardContent>
     </Card>
   );
@@ -143,6 +151,7 @@ export default function SchemaDetails({
                   title="Tables"
                   Icon={TableIcon}
                   color="text-chart-2"
+                  query={tables}
                   count={tables.data?.tables?.length ?? 0}
                 >
                   {(tables.data?.tables ?? []).map((t) => (
@@ -162,6 +171,7 @@ export default function SchemaDetails({
                   title="Metric views"
                   Icon={ChartNoAxesCombined}
                   color="text-chart-5"
+                  query={views}
                   count={views.data?.views.length ?? 0}
                 >
                   {(views.data?.views ?? []).map((view) => (
@@ -181,6 +191,7 @@ export default function SchemaDetails({
                   title="Volumes"
                   Icon={HardDrive}
                   color="text-chart-4"
+                  query={volumes}
                   count={volumes.data?.volumes?.length ?? 0}
                 >
                   {(volumes.data?.volumes ?? []).map((v) => (
@@ -200,6 +211,7 @@ export default function SchemaDetails({
                   title="Functions"
                   Icon={FunctionSquare}
                   color="text-chart-3"
+                  query={functions}
                   count={functions.data?.functions?.length ?? 0}
                 >
                   {(functions.data?.functions ?? []).map((f) => (
@@ -219,6 +231,7 @@ export default function SchemaDetails({
                   title="Models"
                   Icon={Box}
                   color="text-chart-1"
+                  query={models}
                   count={models.data?.models.length ?? 0}
                 >
                   {(models.data?.models ?? []).map((m) => (

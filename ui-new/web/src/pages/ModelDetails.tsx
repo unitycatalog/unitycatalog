@@ -145,51 +145,57 @@ export default function ModelDetails({
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">
-                    Versions ({versionList.length})
+                    Versions
+                    {versions.data && ` (${versionList.length})`}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {versionList.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No versions.
-                    </p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Version</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Created</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {versionList.map((v) => (
-                          <TableRow key={String(v.version)}>
-                            <TableCell className="font-medium">
-                              <Link
-                                to="/catalog/$catalog/$schema/model/$model/version/$version"
-                                params={{
-                                  catalog,
-                                  schema,
-                                  model,
-                                  version: String(v.version),
-                                }}
-                                className="hover:text-chart-1"
-                              >
-                                v{v.version}
-                              </Link>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {ModelVersionStatus[v.status] || "—"}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {formatTimestamp(v.audit?.createdAt)}
-                            </TableCell>
+                  <QueryState
+                    isLoading={versions.isLoading}
+                    error={versions.error}
+                  >
+                    {versionList.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No versions.
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Version</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Created</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
+                        </TableHeader>
+                        <TableBody>
+                          {versionList.map((v) => (
+                            <TableRow key={String(v.version)}>
+                              <TableCell className="font-medium">
+                                <Link
+                                  to="/catalog/$catalog/$schema/model/$model/version/$version"
+                                  params={{
+                                    catalog,
+                                    schema,
+                                    model,
+                                    version: String(v.version),
+                                  }}
+                                  className="hover:text-chart-1"
+                                >
+                                  v{v.version}
+                                </Link>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {ModelVersionStatus[v.status] || "—"}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {formatTimestamp(v.audit?.createdAt)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </QueryState>
                 </CardContent>
               </Card>
             </TabsContent>

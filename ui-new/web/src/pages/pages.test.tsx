@@ -266,6 +266,36 @@ describe("ModelDetails", () => {
   });
 });
 
+describe("object lists", () => {
+  it.each([
+    {
+      page: "SchemaDetails",
+      ui: <SchemaDetails catalog="main" schema="default" />,
+      path: "/api/2.1/unity-catalog/tables",
+    },
+    {
+      page: "CatalogDetails",
+      ui: <CatalogDetails catalog="main" />,
+      path: "/api/2.1/unity-catalog/schemas",
+    },
+    {
+      page: "ModelDetails",
+      ui: <ModelDetails catalog="main" schema="default" model="mdl" />,
+      path: "/api/2.1/unity-catalog/models/main.default.mdl/versions",
+    },
+  ])("$page shows a failed list instead of an empty one", async (list) => {
+    const failing: UcHandler = (call) =>
+      call.path === list.path
+        ? { httpStatus: 500, ok: false, body: "" }
+        : handler(call);
+    renderWithProviders(list.ui, { handler: failing });
+
+    // The in-memory transport reports the handler's failure as an internal error.
+    const errors = await screen.findAllByText("[internal] internal error");
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});
+
 describe("ModelVersionDetails", () => {
   afterEach(() => {
     auth.current = undefined;

@@ -102,33 +102,41 @@ export default function CatalogDetails({ catalog }: { catalog: string }) {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">
-                    Schemas ({schemas.data?.schemas?.length ?? 0})
+                    Schemas
+                    {schemas.data && ` (${schemas.data.schemas.length})`}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {(schemas.data?.schemas ?? []).length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No schemas.</p>
-                  ) : (
-                    <ul className="divide-y">
-                      {(schemas.data?.schemas ?? []).map((s) => (
-                        <li key={s.name}>
-                          <Link
-                            to="/catalog/$catalog/$schema"
-                            params={{ catalog, schema: s.name }}
-                            className="flex items-center gap-2 py-2 hover:text-chart-1"
-                          >
-                            <Database className="h-4 w-4 text-chart-4" />
-                            <span className="font-medium">{s.name}</span>
-                            {s.comment && (
-                              <span className="truncate text-sm text-muted-foreground">
-                                — {s.comment}
-                              </span>
-                            )}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <QueryState
+                    isLoading={schemas.isLoading}
+                    error={schemas.error}
+                  >
+                    {(schemas.data?.schemas ?? []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No schemas.
+                      </p>
+                    ) : (
+                      <ul className="divide-y">
+                        {(schemas.data?.schemas ?? []).map((s) => (
+                          <li key={s.name}>
+                            <Link
+                              to="/catalog/$catalog/$schema"
+                              params={{ catalog, schema: s.name }}
+                              className="flex items-center gap-2 py-2 hover:text-chart-1"
+                            >
+                              <Database className="h-4 w-4 text-chart-4" />
+                              <span className="font-medium">{s.name}</span>
+                              {s.comment && (
+                                <span className="truncate text-sm text-muted-foreground">
+                                  — {s.comment}
+                                </span>
+                              )}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </QueryState>
                 </CardContent>
               </Card>
             </TabsContent>
