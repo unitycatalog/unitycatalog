@@ -92,6 +92,14 @@ pub async fn call_handler(
             "serverUrl is not supported",
         );
     }
+    // The browser's Authorization header is the one source of a bearer token.
+    if !req.token.is_empty() {
+        return connect_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_argument",
+            "token is not supported; send an Authorization header",
+        );
+    }
 
     let method = if req.method.is_empty() {
         reqwest::Method::GET
@@ -136,10 +144,6 @@ pub async fn call_handler(
         if let Some(value) = headers.get(&name) {
             rb = rb.header(name, value);
         }
-    }
-    // Optional explicit bearer token (paste-token style); usually empty.
-    if !req.token.is_empty() {
-        rb = rb.bearer_auth(&req.token);
     }
     if !req.json_body.is_empty() {
         let content_type = if req.content_type.is_empty() {

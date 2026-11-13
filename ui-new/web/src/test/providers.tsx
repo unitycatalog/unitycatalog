@@ -27,7 +27,6 @@ export type UcHandler = (call: {
   path: string;
   query: { key: string; value: string }[];
   jsonBody: string;
-  token: string;
   contentType: string;
 }) => UcReply;
 
@@ -44,7 +43,6 @@ export function makeTransport(handler: UcHandler = okAll): Transport {
           path: req.path,
           query: req.query.map((kv) => ({ key: kv.key, value: kv.value })),
           jsonBody: req.jsonBody,
-          token: req.token,
           contentType: req.contentType,
         });
         return {
@@ -71,7 +69,6 @@ function registerDomainServices(service: ServiceRegistrar, handler: UcHandler) {
       path,
       query,
       jsonBody: "",
-      token: "",
       contentType: "",
     });
     if (!reply.ok)

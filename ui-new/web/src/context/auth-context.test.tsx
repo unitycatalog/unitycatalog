@@ -110,8 +110,8 @@ describe("AuthProvider", () => {
   it("signInWithAccessToken stores the token and authenticates via bearer", async () => {
     stubConfig({ authEnabled: true });
     // A user is only returned when a bearer token is forwarded.
-    call.mockImplementation(async (input: { token: string }) =>
-      input.token
+    call.mockImplementation(async () =>
+      getToken()
         ? {
             httpStatus: 200,
             ok: true,
@@ -277,8 +277,8 @@ describe("AuthProvider", () => {
 
   it("keeps the runtime config across a sign-in and sign-out", async () => {
     stubConfig({ authEnabled: true });
-    call.mockImplementation(async (input: { path: string; token: string }) =>
-      input.token || input.path.endsWith("/auth/logout")
+    call.mockImplementation(async (input: { path: string }) =>
+      getToken() || input.path.endsWith("/auth/logout")
         ? {
             httpStatus: 200,
             ok: true,
@@ -311,9 +311,9 @@ describe("AuthProvider", () => {
       "first-jwt": deferred(),
       "second-jwt": deferred(),
     };
-    call.mockImplementation(async (input: { token: string }) =>
-      input.token in replies
-        ? replies[input.token].promise
+    call.mockImplementation(async () =>
+      getToken() in replies
+        ? replies[getToken()].promise
         : { httpStatus: 401, ok: false, body: "" },
     );
     const { result } = renderHook(() => useAuth(), { wrapper });

@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 describe("ucCall", () => {
-  it("forwards method, path, query, and the active bearer token", async () => {
+  it("forwards method, path, and query, leaving the token to the header", async () => {
     setToken("jwt-1");
     call.mockResolvedValue({ httpStatus: 200, body: "{}", ok: true });
 
@@ -35,7 +35,8 @@ describe("ucCall", () => {
     const arg = call.mock.calls[0][0];
     expect(arg.method).toBe("GET");
     expect(arg.path).toBe("/api/2.1/unity-catalog/catalogs");
-    expect(arg.token).toBe("jwt-1");
+    // The transport sends the token as an Authorization header instead.
+    expect(arg.token).toBeUndefined();
     // Empty query values are dropped.
     expect(arg.query).toEqual([{ key: "catalog_name", value: "main" }]);
     expect(arg.jsonBody).toBe("");

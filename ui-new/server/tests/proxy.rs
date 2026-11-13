@@ -175,6 +175,49 @@ async fn call_rejects_client_selected_upstream() {
 }
 
 #[tokio::test]
+async fn call_rejects_a_body_token() {
+    let app = build_app("http://127.0.0.1:1".to_string());
+    let resp = app
+        .oneshot(call_request(serde_json::json!({
+            "token": "jwt",
+            "method": "GET",
+            "path": "/api/1.0/unity-control/scim2/Me"
+        })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(body_json(resp).await["code"], "invalid_argument");
+}
+
+#[tokio::test]
+async fn call_sends_one_authorization_header() {
+    let uc = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/1.0/unity-control/scim2/Me"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let mut req = call_request(serde_json::json!({
+        "method": "GET",
+        "path": "/api/1.0/unity-control/scim2/Me"
+    }));
+    req.headers_mut()
+        .insert(header::AUTHORIZATION, "Bearer jwt".parse().unwrap());
+    let resp = build_app(uc.uri()).oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let received = uc.received_requests().await.unwrap();
+    let values: Vec<_> = received[0]
+        .headers
+        .get_all("authorization")
+        .iter()
+        .collect();
+    assert_eq!(values, ["Bearer jwt"]);
+}
+
+#[tokio::test]
 async fn call_rejects_typed_domain_bypass() {
     let app = build_app("http://127.0.0.1:1".to_string());
     let resp = app
