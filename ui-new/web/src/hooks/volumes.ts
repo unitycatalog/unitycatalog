@@ -27,14 +27,18 @@ export function useListVolumes(
       cardinality: "finite",
     }),
     enabled: enabled && !!catalogName && !!schemaName,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       collectAllPages(
-        (pageToken) =>
-          client.listVolumes({
-            ...input,
-            page: pageToken ? { pageToken } : undefined,
-          }),
+        (pageToken, requestSignal) =>
+          client.listVolumes(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
         "volumes",
+        signal,
       ),
   });
 }

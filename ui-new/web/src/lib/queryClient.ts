@@ -20,18 +20,30 @@ export function createQueryClient(): QueryClient {
   });
 }
 
-// markStale marks matching queries stale without fetching the idle ones. A read
-// already in flight is cancelled and sent again instead: left alone, it could
-// finish after the mark, clear it, and cache data from before the change as
-// fresh. Sending it again keeps a query on screen from staying pending.
-export function markStale(queryClient: QueryClient, filters: QueryFilters) {
-  const inFlight = queryClient
-    .getQueryCache()
-    .findAll({ ...filters, fetchStatus: "fetching" });
+// markStale marks matching queries stale without fetching idle ones. An in-flight
+// read is cancelled, marked stale again after cancellation restores its state,
+// and resent so it cannot cache pre-change data as fresh. Callers may also ask
+// to refetch active queries that were not already in flight.
+export async function markStale(
+  queryClient: QueryClient,
+  filters: QueryFilters,
+  { refetchActive = false }: { refetchActive?: boolean } = {},
+) {
+  const cache = queryClient.getQueryCache();
+  const inFlight = cache.findAll({ ...filters, fetchStatus: "fetching" });
+  const toRefetch = new Set([
+    ...inFlight,
+    ...(refetchActive ? cache.findAll({ ...filters, type: "active" }) : []),
+  ]);
+
   void queryClient.invalidateQueries({ ...filters, refetchType: "none" });
-  if (inFlight.length === 0) return;
-  const predicate = (query: Query) => inFlight.includes(query);
-  void queryClient
-    .cancelQueries({ predicate })
-    .then(() => queryClient.refetchQueries({ predicate }));
+  if (inFlight.length > 0) {
+    const predicate = (query: Query) => inFlight.includes(query);
+    await queryClient.cancelQueries({ predicate });
+    // Cancellation reverts query state, so restore invalidation before retrying.
+    void queryClient.invalidateQueries({ predicate, refetchType: "none" });
+  }
+  await queryClient.refetchQueries({
+    predicate: (query) => toRefetch.has(query),
+  });
 }

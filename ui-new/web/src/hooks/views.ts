@@ -27,14 +27,18 @@ export function useListViews(
       cardinality: "finite",
     }),
     enabled: enabled && !!catalogName && !!schemaName,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       collectAllPages(
-        (pageToken) =>
-          client.listViews({
-            ...input,
-            page: pageToken ? { pageToken } : undefined,
-          }),
+        (pageToken, requestSignal) =>
+          client.listViews(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
         "views",
+        signal,
       ),
   });
 }

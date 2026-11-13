@@ -27,14 +27,18 @@ export function useListFunctions(
       cardinality: "finite",
     }),
     enabled: enabled && !!catalogName && !!schemaName,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       collectAllPages(
-        (pageToken) =>
-          client.listFunctions({
-            ...input,
-            page: pageToken ? { pageToken } : undefined,
-          }),
+        (pageToken, requestSignal) =>
+          client.listFunctions(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
         "functions",
+        signal,
       ),
   });
 }

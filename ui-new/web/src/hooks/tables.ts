@@ -27,14 +27,18 @@ export function useListTables(
       cardinality: "finite",
     }),
     enabled: enabled && !!catalogName && !!schemaName,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       collectAllPages(
-        (pageToken) =>
-          client.listTables({
-            ...input,
-            page: pageToken ? { pageToken } : undefined,
-          }),
+        (pageToken, requestSignal) =>
+          client.listTables(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
         "tables",
+        signal,
       ),
   });
 }

@@ -36,14 +36,18 @@ export function useListModels(
       cardinality: "finite",
     }),
     enabled: enabled && !!catalogName && !!schemaName,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       collectAllPages(
-        (pageToken) =>
-          client.listRegisteredModels({
-            ...input,
-            page: pageToken ? { pageToken } : undefined,
-          }),
+        (pageToken, requestSignal) =>
+          client.listRegisteredModels(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
         "models",
+        signal,
       ),
   });
 }
@@ -73,14 +77,18 @@ export function useListModelVersions(fullName: string) {
       cardinality: "finite",
     }),
     enabled: !!catalogName && !!schemaName && !!name,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       collectAllPages(
-        (pageToken) =>
-          client.listModelVersions({
-            ...input,
-            page: pageToken ? { pageToken } : undefined,
-          }),
+        (pageToken, requestSignal) =>
+          client.listModelVersions(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
         "versions",
+        signal,
       ),
   });
 }

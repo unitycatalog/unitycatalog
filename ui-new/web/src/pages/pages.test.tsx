@@ -6,8 +6,9 @@ import { ModelService, ModelVersionStatus } from "@/gen/uc/v1/model_pb";
 
 vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"));
 
-const { toastError, auth } = vi.hoisted(() => ({
+const { toastError, toastInfo, auth } = vi.hoisted(() => ({
   toastError: vi.fn(),
+  toastInfo: vi.fn(),
   auth: {
     current: undefined as
       | { authEnabled: boolean; currentUser: { userName: string } | null }
@@ -19,7 +20,10 @@ vi.mock("@/context/auth-context", () => ({
 }));
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
-  return { ...actual, toast: { ...actual.toast, error: toastError } };
+  return {
+    ...actual,
+    toast: { ...actual.toast, error: toastError, info: toastInfo },
+  };
 });
 
 import { renderWithProviders, type UcHandler } from "@/test/providers";
@@ -299,6 +303,8 @@ describe("object lists", () => {
 describe("ModelVersionDetails", () => {
   afterEach(() => {
     auth.current = undefined;
+    toastError.mockClear();
+    toastInfo.mockClear();
   });
 
   it("renders version metadata", async () => {
@@ -315,16 +321,19 @@ describe("ModelVersionDetails", () => {
   });
 
   // Renders a pending version created by ada@example.com whose finalize fails.
-  function renderPendingVersion() {
+  function renderPendingVersion(comment = "") {
+    const updateModelVersion = vi.fn(() => ({}));
     const transport = createRouterTransport(({ service }) => {
       service(ModelService, {
         getModelVersion: () => ({
           modelVersion: {
             version: 1n,
+            comment,
             status: ModelVersionStatus.PENDING_REGISTRATION,
             audit: { createdBy: "ada@example.com" },
           },
         }),
+        updateModelVersion,
         finalizeModelVersion: () => {
           throw new ConnectError(
             "only the creator can finalize",
@@ -342,6 +351,7 @@ describe("ModelVersionDetails", () => {
       />,
       { transport },
     );
+    return updateModelVersion;
   }
 
   it.each([
@@ -370,6 +380,49 @@ describe("ModelVersionDetails", () => {
       scenario.shown,
     );
   });
+
+  it.each(["", "existing comment"])(
+    "does not submit an unchanged model-version comment (%s)",
+    async (comment) => {
+      const updateModelVersion = renderPendingVersion(comment);
+      await screen.findAllByText("PENDING_REGISTRATION");
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Edit comment" }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(updateModelVersion).not.toHaveBeenCalled();
+      expect(toastInfo).toHaveBeenCalledWith("No changes to save.");
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    },
+  );
+
+  it.each(["edited comment", ""])(
+    "submits a changed model-version comment (%s)",
+    async (comment) => {
+      const updateModelVersion = renderPendingVersion("existing comment");
+      await screen.findAllByText("PENDING_REGISTRATION");
+      await userEvent.click(
+        screen.getByRole("button", { name: "Edit comment" }),
+      );
+      const input = screen.getByRole("textbox", { name: "Comment" });
+      await userEvent.clear(input);
+      if (comment) await userEvent.type(input, comment);
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(updateModelVersion).toHaveBeenCalledOnce());
+      expect(updateModelVersion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          comment,
+          modelVersion: expect.objectContaining({ version: 1n }),
+        }),
+        expect.anything(),
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      );
+    },
+  );
 
   it("reports a failed finalize and re-enables the button", async () => {
     renderPendingVersion();

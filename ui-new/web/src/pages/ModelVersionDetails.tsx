@@ -41,7 +41,8 @@ export default function ModelVersionDetails({
   const finalizeVersion = useFinalizeModelVersion();
   const parsedVersion = parseModelVersion(version);
   const status = data ? ModelVersionStatus[data.status] : undefined;
-  // With auth enabled, UC lets only the version's creator finalize it.
+  // This UI hint trusts bridge /config; UC remains authoritative if its auth
+  // settings disagree with the bridge's.
   const auth = useOptionalAuth();
   const canFinalize =
     !auth?.authEnabled ||
@@ -67,12 +68,14 @@ export default function ModelVersionDetails({
                 title="Update model version"
                 triggerLabel="Edit comment"
                 submitLabel="Save"
-                onSubmit={(form) =>
-                  updateVersion.mutateAsync({
-                    modelVersion,
-                    comment: String(form.get("comment")),
-                  })
-                }
+                onSubmit={(form) => {
+                  const comment = String(form.get("comment"));
+                  if (comment === (data?.comment ?? "")) {
+                    toast.info("No changes to save.");
+                    return Promise.resolve(false);
+                  }
+                  return updateVersion.mutateAsync({ modelVersion, comment });
+                }}
               >
                 <FormField id="model-version-edit-comment" label="Comment">
                   <Input

@@ -15,21 +15,26 @@ export async function collectAllPages<
     readonly unknown[]
   >,
 >(
-  fetchPage: (pageToken: string) => Promise<Response>,
+  fetchPage: (pageToken: string, signal: AbortSignal) => Promise<Response>,
   itemKey: Key,
+  signal: AbortSignal,
 ): Promise<Response> {
   const seen = new Set<string>();
-  const first = await fetchPage("");
+  signal.throwIfAborted();
+  const first = await fetchPage("", signal);
+  signal.throwIfAborted();
   const items = [...(first[itemKey] as readonly unknown[])];
   let response = first;
   let pageToken = response.page?.nextPageToken ?? "";
 
   while (pageToken) {
+    signal.throwIfAborted();
     if (seen.has(pageToken)) {
       throw new Error("Unity Catalog returned a repeated page token");
     }
     seen.add(pageToken);
-    response = await fetchPage(pageToken);
+    response = await fetchPage(pageToken, signal);
+    signal.throwIfAborted();
     items.push(...(response[itemKey] as readonly unknown[]));
     pageToken = response.page?.nextPageToken ?? "";
   }
@@ -42,10 +47,10 @@ export async function collectAllPages<
 }
 
 // useInvalidateMethod returns a callback that marks every cached result of the
-// method stale and refetches the ones on screen. With `refetch: false` it only
-// marks them stale: use that for a deleted or renamed entity, whose old name
-// would fail to load while its page navigates away, but must not be served
-// from cache on a later visit.
+// method stale and refetches active queries. With `refetch: false`, only reads
+// already in flight are restarted. Use that for a deleted or renamed entity,
+// whose old name would fail to load while its page navigates away, but must not
+// be served from cache on a later visit.
 export function useInvalidateMethod<
   Input extends DescMessage,
   Output extends DescMessage,
@@ -56,8 +61,7 @@ export function useInvalidateMethod<
       schema: method,
       cardinality: undefined,
     });
-    if (refetch) void queryClient.invalidateQueries({ queryKey });
-    else markStale(queryClient, { queryKey });
+    void markStale(queryClient, { queryKey }, { refetchActive: refetch });
   };
 }
 

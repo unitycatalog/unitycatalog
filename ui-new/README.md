@@ -8,9 +8,12 @@ auth-disabled mode).
 It can also create, edit, and delete them. Every object type has a create
 dialog, metadata can be edited wherever UC supports updates, and delete asks
 the user to type the object's name. The UI offers these actions to everyone and
-leaves authorization to UC, which reports a refusal as an error toast. The one
-exception is finalizing a pending model version: UC allows only the version's
-creator to do that, so the UI shows the button only to them.
+leaves authorization to UC, which reports a refusal as an error toast. When the
+bridge's `/config` reports auth enabled, the UI offers Finalize only when the
+current SCIM username matches the version's creator; with auth disabled, it
+offers the action. This is a UI hint: UC remains authoritative, and a mismatch
+between bridge and server auth settings can still result in an authorization
+error toast.
 
 - `web/` — the SPA: [Bun](https://bun.com/) + Vite + React 19, [shadcn/ui](https://ui.shadcn.com/)
   on [Tailwind CSS](https://tailwindcss.com/) v4, [TanStack Router](https://tanstack.com/router)
@@ -118,7 +121,7 @@ The bridge then serves the SPA and the RPCs from one origin on `PORT` (default
 | `GOOGLE_CLIENT_ID` | _(empty)_ | Enables the Google sign-in button |
 | `OKTA_AUTH_ENABLED` | `false` | Advertise Okta as enabled |
 | `KEYCLOAK_AUTH_ENABLED` | `false` | Advertise Keycloak as enabled |
-| `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated, each a bare `scheme://host[:port]`; other entries are logged and skipped); empty = same-origin only |
+| `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated, each must exactly match the browser's serialized `Origin`—no trailing slash or explicit default port; other entries are logged and skipped); empty = same-origin only |
 | `WEB_DIST` | `../web/dist` | Built SPA directory to serve |
 
 ## Test

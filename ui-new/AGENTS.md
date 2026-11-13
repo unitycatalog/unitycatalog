@@ -39,6 +39,15 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
    `web/src/routeTree.gen.ts` (TanStack router). Change the proto or the routes,
    then regenerate.
 
+## Write actions and authorization
+
+Create, edit, and delete actions are offered by the UI without pre-checking
+permissions; Unity Catalog remains authoritative, and the UI must surface its
+refusals. For pending model-version Finalize, `/config` controls the UI hint:
+when auth is enabled, show it only when the current SCIM username matches
+`audit.createdBy`; when auth is disabled, offer it. Bridge and server auth
+settings can differ, so UC may still reject the operation.
+
 ## Common tasks
 
 - Change the bridge contract: edit `proto/uc/v1/proxy.proto`, run

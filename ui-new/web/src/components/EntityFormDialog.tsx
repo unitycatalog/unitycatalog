@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -26,15 +26,22 @@ export default function EntityFormDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const openSequence = useRef(0);
+
+  const changeOpen = (nextOpen: boolean) => {
+    if (nextOpen) openSequence.current += 1;
+    setOpen(nextOpen);
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const sequence = openSequence.current;
     setSaving(true);
     try {
       const result = await onSubmit(new FormData(event.currentTarget));
       if (result === false) return;
       toast.success(`${title} complete`);
-      setOpen(false);
+      if (openSequence.current === sequence) setOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : `${title} failed`);
     } finally {
@@ -43,7 +50,7 @@ export default function EntityFormDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="h-4 w-4" />

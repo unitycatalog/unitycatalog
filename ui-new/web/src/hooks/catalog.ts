@@ -27,13 +27,15 @@ export function useListCatalogs() {
       transport,
       cardinality: "finite",
     }),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       collectAllPages(
-        (pageToken) =>
-          client.listCatalogs({
-            page: pageToken ? { pageToken } : undefined,
-          }),
+        (pageToken, requestSignal) =>
+          client.listCatalogs(
+            { page: pageToken ? { pageToken } : undefined },
+            { signal: requestSignal },
+          ),
         "catalogs",
+        signal,
       ),
   });
 }

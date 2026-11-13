@@ -49,6 +49,44 @@ function deferred() {
   return { promise, resolve };
 }
 
+// A UC with one session cookie, applied like a browser applies Set-Cookie: when
+// the reply arrives. A provider exchange signs in as its id token's name, logout
+// clears the cookie, and /scim2/Me answers for the cookie the request carried.
+// `hold` delays the next reply to a request key until the test resolves it.
+function fakeCookieUc() {
+  const held = new Map<string, ReturnType<typeof deferred>>();
+  const uc = {
+    cookie: "",
+    requests: [] as string[],
+    hold(key: string) {
+      const reply = deferred();
+      held.set(key, reply);
+      return reply;
+    },
+  };
+  call.mockImplementation(async (input: { path: string; jsonBody: string }) => {
+    const key = input.path.endsWith("/auth/tokens")
+      ? `exchange:${new URLSearchParams(input.jsonBody).get("subject_token")}`
+      : input.path.endsWith("/auth/logout")
+        ? "logout"
+        : "me";
+    uc.requests.push(key);
+    const sentWith = uc.cookie;
+    const pending = held.get(key);
+    held.delete(key);
+    const reply = pending ? await pending.promise : OK;
+    if (!reply.ok) return reply;
+    if (key === "me") {
+      return sentWith
+        ? { ...OK, body: JSON.stringify({ displayName: sentWith }) }
+        : UNAUTHORIZED;
+    }
+    uc.cookie = key === "logout" ? "" : key.slice("exchange:".length);
+    return reply;
+  });
+  return uc;
+}
+
 beforeEach(() => call.mockReset());
 afterEach(() => vi.restoreAllMocks());
 
@@ -367,42 +405,237 @@ describe("AuthProvider", () => {
     expect(getToken()).toBe("");
   });
 
-  it("ends a provider session that a sign-out superseded during its exchange", async () => {
+  it("sends a sign-out only after the provider exchange it supersedes", async () => {
     stubConfig({ authEnabled: true });
-    const exchange = deferred();
-    call.mockImplementation(async (input: { path: string }) => {
-      if (input.path.endsWith("/auth/tokens")) return exchange.promise;
-      if (input.path.endsWith("/auth/logout")) return OK;
-      return UNAUTHORIZED;
-    });
+    const uc = fakeCookieUc();
+    const exchange = uc.hold("exchange:Ada");
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
-    const logouts = () =>
-      call.mock.calls.filter(([input]) => input.path.endsWith("/auth/logout"))
-        .length;
 
     let login!: Promise<void>;
+    let logout!: Promise<void>;
     act(() => {
-      login = result.current.loginWithToken("google-id-token");
+      login = result.current.loginWithToken("Ada");
+    });
+    await waitFor(() => expect(uc.requests).toContain("exchange:Ada"));
+    act(() => {
+      logout = result.current.logout();
+    });
+    expect(uc.requests).not.toContain("logout");
+    await act(async () => {
+      exchange.resolve(OK);
+      await Promise.all([login, logout]);
+    });
+
+    expect(uc.requests.filter((r) => r !== "me")).toEqual([
+      "exchange:Ada",
+      "logout",
+    ]);
+    expect(uc.cookie).toBe("");
+    expect(result.current.authenticating).toBe(false);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.currentUser).toBeNull();
+  });
+
+  it("applies overlapping provider exchanges in call order", async () => {
+    stubConfig({ authEnabled: true });
+    const uc = fakeCookieUc();
+    const ada = uc.hold("exchange:Ada");
+    const bob = uc.hold("exchange:Bob");
+    const shown: (string | undefined)[] = [];
+    const { result } = renderHook(
+      () => {
+        const auth = useAuth();
+        shown.push(auth.currentUser?.displayName);
+        return auth;
+      },
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.loginWithToken("Ada");
+    });
+    await waitFor(() => expect(uc.requests).toContain("exchange:Ada"));
+    act(() => {
+      second = result.current.loginWithToken("Bob");
+    });
+    // The newer reply is ready first, but its request waits for the older one.
+    await act(async () => {
+      bob.resolve(OK);
+      await bob.promise;
+    });
+    expect(uc.requests).not.toContain("exchange:Bob");
+    await act(async () => {
+      ada.resolve(OK);
+      await Promise.all([first, second]);
+    });
+
+    expect(uc.requests).toEqual(["me", "exchange:Ada", "exchange:Bob", "me"]);
+    expect(uc.cookie).toBe("Bob");
+    expect(result.current.currentUser?.displayName).toBe("Bob");
+    expect(shown).not.toContain("Ada");
+  });
+
+  it("does not publish the user of a sign-in superseded during verification", async () => {
+    stubConfig({ authEnabled: true });
+    const uc = fakeCookieUc();
+    const client = makeQueryClient();
+    const cached: unknown[] = [];
+    client.getQueryCache().subscribe(({ query }) => {
+      if (query.queryKey[0] === CURRENT_USER_QUERY_KEY[0]) {
+        cached.push(query.state.data);
+      }
+    });
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <Providers client={client}>
+          <AuthProvider>{children}</AuthProvider>
+        </Providers>
+      ),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const adaVerified = uc.hold("me");
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.loginWithToken("Ada");
+    });
+    await waitFor(() => expect(result.current.authenticating).toBe(true));
+    act(() => {
+      second = result.current.loginWithToken("Bob");
     });
     await act(async () => {
-      await result.current.logout();
-      exchange.resolve(OK);
+      adaVerified.resolve(OK);
+      await Promise.all([first, second]);
+    });
+
+    expect(uc.requests).toEqual([
+      "me",
+      "exchange:Ada",
+      "me",
+      "exchange:Bob",
+      "me",
+    ]);
+    expect(result.current.currentUser?.displayName).toBe("Bob");
+    expect(cached).not.toContainEqual({ displayName: "Ada" });
+  });
+
+  it("starts a provider sign-in only after a pending sign-out", async () => {
+    stubConfig({ authEnabled: true });
+    const uc = fakeCookieUc();
+    uc.cookie = "Old";
+    const logoutReply = uc.hold("logout");
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() =>
+      expect(result.current.currentUser?.displayName).toBe("Old"),
+    );
+
+    let logout!: Promise<void>;
+    let superseded!: Promise<void>;
+    let login!: Promise<void>;
+    act(() => {
+      logout = result.current.logout();
+      superseded = result.current.loginWithToken("Ada");
+      login = result.current.loginWithToken("Bob");
+    });
+    await waitFor(() => expect(uc.requests).toContain("logout"));
+    expect(uc.requests).not.toContain("exchange:Bob");
+    await act(async () => {
+      logoutReply.resolve(OK);
+      await Promise.all([logout, superseded, login]);
+    });
+
+    // A sign-in superseded before it started never creates a session.
+    expect(uc.requests).toEqual(["me", "logout", "exchange:Bob", "me"]);
+    expect(uc.cookie).toBe("Bob");
+    expect(result.current.currentUser?.displayName).toBe("Bob");
+  });
+
+  it("reconciles the cookie identity when a newer provider exchange fails", async () => {
+    stubConfig({ authEnabled: true });
+    const uc = fakeCookieUc();
+    uc.cookie = "Old";
+    const ada = uc.hold("exchange:Ada");
+    const bob = uc.hold("exchange:Bob");
+    const client = makeQueryClient();
+    client.setQueryData(["private-catalog-data"], { owner: "Old" });
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <Providers client={client}>
+          <AuthProvider>{children}</AuthProvider>
+        </Providers>
+      ),
+    });
+    await waitFor(() =>
+      expect(result.current.currentUser?.displayName).toBe("Old"),
+    );
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.loginWithToken("Ada");
+    });
+    await waitFor(() => expect(uc.requests).toContain("exchange:Ada"));
+    expect(result.current.loading).toBe(true);
+    expect(result.current.currentUser).toBeNull();
+    act(() => {
+      second = result.current.loginWithToken("Bob");
+    });
+    const rejected = expect(second).rejects.toThrow("HTTP 500");
+    await act(async () => {
+      bob.resolve({ httpStatus: 500, ok: false, body: "{}" });
+      ada.resolve(OK);
+      await first;
+      await rejected;
+    });
+
+    expect(uc.cookie).toBe("Ada");
+    await waitFor(() =>
+      expect(result.current.currentUser?.displayName).toBe("Ada"),
+    );
+    expect(client.getQueryData(["private-catalog-data"])).toBeUndefined();
+  });
+
+  it("runs queued sign-ins after a sign-out that fails", async () => {
+    stubConfig({ authEnabled: true });
+    const uc = fakeCookieUc();
+    const logoutReply = uc.hold("logout");
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let logout!: Promise<void>;
+    let login!: Promise<void>;
+    act(() => {
+      logout = result.current.logout();
+      login = result.current.loginWithToken("Ada");
+    });
+    const loggedOut = expect(logout).rejects.toThrow("HTTP 500");
+    await act(async () => {
+      logoutReply.resolve({ httpStatus: 500, ok: false, body: "{}" });
+      await loggedOut;
       await login;
     });
 
-    await waitFor(() => expect(logouts()).toBe(2));
-    expect(result.current.authenticating).toBe(false);
-    expect(result.current.currentUser).toBeNull();
+    expect(uc.cookie).toBe("Ada");
+    expect(result.current.currentUser?.displayName).toBe("Ada");
   });
 
   it("lets a sign-in that starts during a sign-out keep its session", async () => {
     stubConfig({ authEnabled: true });
     const logoutReply = deferred();
+    const logoutTokens: string[] = [];
     call.mockImplementation(async (input: { path: string }) => {
-      if (input.path.endsWith("/auth/logout")) return logoutReply.promise;
+      if (input.path.endsWith("/auth/logout")) {
+        logoutTokens.push(getToken());
+        return logoutReply.promise;
+      }
       return getToken() ? ADA : UNAUTHORIZED;
     });
+    setToken("old-jwt");
     const client = makeQueryClient();
     const { result } = renderHook(() => useAuth(), {
       wrapper: ({ children }: { children: ReactNode }) => (
@@ -414,18 +647,20 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     let logout!: Promise<void>;
+    let signIn!: Promise<void>;
     act(() => {
       logout = result.current.logout();
+      signIn = result.current.signInWithAccessToken("jwt-xyz");
     });
-    await act(async () => {
-      await result.current.signInWithAccessToken("jwt-xyz");
-    });
+    await waitFor(() => expect(logoutTokens).toHaveLength(1));
     await act(async () => {
       logoutReply.resolve(OK);
-      await logout;
+      await Promise.all([logout, signIn]);
     });
 
-    // The late sign-out leaves the new session's token and cached user alone.
+    // The sign-out ends the old token's session, then the newer sign-in keeps
+    // its token and cached user.
+    expect(logoutTokens).toEqual(["old-jwt"]);
     expect(getToken()).toBe("jwt-xyz");
     expect(client.getQueryData(CURRENT_USER_QUERY_KEY)).toMatchObject({
       displayName: "Ada",

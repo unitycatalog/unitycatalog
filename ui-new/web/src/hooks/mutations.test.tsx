@@ -17,6 +17,7 @@ import {
   useCreateCatalog,
   useDeleteCatalog,
   useGetCatalog,
+  useListCatalogs,
   useUpdateCatalog,
 } from "@/hooks/catalog";
 import {
@@ -245,6 +246,45 @@ describe("domain mutation hooks", () => {
     });
 
     await waitFor(() => expect(requests.count).toBe(2));
+  });
+
+  it("restarts an initial list read when a catalog is created", async () => {
+    type Reply = { catalogs: { name: string }[] };
+    const replies = [
+      Promise.withResolvers<Reply>(),
+      Promise.withResolvers<Reply>(),
+    ];
+    let reads = 0;
+    const transport = createRouterTransport(({ service }) => {
+      service(CatalogService, {
+        listCatalogs: () => replies[reads++].promise,
+        createCatalog: () => ({}),
+      });
+    });
+    const { result } = renderHookWithProviders(
+      () => ({ list: useListCatalogs(), create: useCreateCatalog() }),
+      { transport },
+    );
+    await waitFor(() => expect(reads).toBe(1));
+
+    await act(async () => {
+      await result.current.create.mutateAsync({ name: "new" });
+    });
+    await waitFor(() => expect(reads).toBe(2));
+    await act(async () => {
+      replies[0].resolve({ catalogs: [{ name: "old" }] });
+    });
+    expect(result.current.list.data).toBeUndefined();
+
+    await act(async () => {
+      replies[1].resolve({ catalogs: [{ name: "old" }, { name: "new" }] });
+    });
+    await waitFor(() =>
+      expect(
+        result.current.list.data?.catalogs.map(({ name }) => name),
+      ).toEqual(["old", "new"]),
+    );
+    expect(reads).toBe(2);
   });
 
   it("does not cache a read that was in flight during a delete as fresh", async () => {

@@ -33,8 +33,8 @@ type RouteParams = {
 
 // CatalogTree is the persistent left-hand navigation: a lazily expanded
 // catalog > schema tree where each schema fans out into grouped securable
-// sections (Tables, Volumes, Functions, Models). Nodes deep-link to detail
-// routes; the active node + expansion are derived from the current route params.
+// sections (Tables, Metric views, Volumes, Functions, and Models). Nodes deep-link
+// to detail routes; the active node + expansion come from the current route params.
 export default function CatalogTree() {
   const params = useParams({ strict: false }) as RouteParams;
   const catalogs = useListCatalogs();

@@ -5,15 +5,7 @@ vi.mock("@/lib/transport", () => ({
 }));
 
 import { proxyClient } from "@/lib/transport";
-import {
-  prettyJson,
-  splitFullName,
-  ucCall,
-  ucJson,
-  UCError,
-  withListTablesQuery,
-  LIST_TABLES_QUERY,
-} from "@/lib/uc";
+import { prettyJson, splitFullName, ucCall, ucJson, UCError } from "@/lib/uc";
 import { setToken } from "@/lib/session";
 
 const call = proxyClient.call as unknown as Mock;
@@ -93,13 +85,6 @@ describe("ucJson", () => {
 describe("helpers", () => {
   it("UCError message includes status", () => {
     expect(new UCError(500, "boom").message).toContain("500");
-  });
-
-  it("withListTablesQuery merges the omit flags", () => {
-    expect(withListTablesQuery({ catalog_name: "c" })).toEqual({
-      ...LIST_TABLES_QUERY,
-      catalog_name: "c",
-    });
   });
 
   it("splitFullName returns every part, with empty strings for missing ones", () => {

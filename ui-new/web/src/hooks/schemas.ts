@@ -40,14 +40,18 @@ export function useListSchemas(catalogName: string, enabled = true) {
       cardinality: "finite",
     }),
     enabled: enabled && !!catalogName,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       collectAllPages(
-        (pageToken) =>
-          client.listSchemas({
-            ...input,
-            page: pageToken ? { pageToken } : undefined,
-          }),
+        (pageToken, requestSignal) =>
+          client.listSchemas(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
         "schemas",
+        signal,
       ),
   });
 }

@@ -5,19 +5,6 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 export const UC_API_PREFIX = "/api/2.1/unity-catalog";
 export const UC_AUTH_API_PREFIX = "/api/1.0/unity-control";
 
-/** Skips per-table column/property hydration on GET /tables list. */
-export const LIST_TABLES_QUERY = {
-  omit_columns: "true",
-  omit_properties: "true",
-} as const;
-
-/** Merge {@link LIST_TABLES_QUERY} into a GET /tables list query. */
-export function withListTablesQuery(
-  query: Record<string, string | undefined>,
-): Record<string, string | undefined> {
-  return { ...LIST_TABLES_QUERY, ...query };
-}
-
 export type RawResult = {
   httpStatus: number;
   ok: boolean;
