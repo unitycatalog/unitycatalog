@@ -597,7 +597,7 @@ def test_stored_body_that_does_not_tokenize_is_indented_line_by_line(caplog):
         (record.levelname, record.getMessage().split(": ")[0])
         for record in caplog.records
         if record.name == "unitycatalog.ai.core.utils.code_layout"
-    ] == [("DEBUG", "Laying out code that does not tokenize without string lines")]
+    ] == [("WARNING", "Laying out code that does not tokenize without string lines")]
 
 
 STORED_BODY_CASES = [
@@ -648,6 +648,8 @@ STORED_BODY_CASES = [
     ),
     # Body written by hand with a tab margin.
     ("\tnote = '''Dear\n\t{name}'''\n\treturn note.format(name=name)", "Dear\n\tBo"),
+    # Body written by hand whose first statement starts with a line continuation.
+    ('\\\n    if name:\n    return "Dear " + name', "Dear Bo"),
 ]
 
 

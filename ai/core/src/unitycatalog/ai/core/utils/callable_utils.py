@@ -1225,11 +1225,13 @@ def _parse_routine_definition(routine_definition: str) -> str:
          and reformatting the line with that indent after the 4 spaces.
 
     NB:
-      - The methodology assumes that the smallest nonzero indent found in the block
-        represents the "unit" of indentation in the original text.
-      - If such an indent is found, the indent_factor scales all indentations so that the
-        unit becomes 4 spaces. For example, if the original unit is 2 spaces, the factor will
-        be 2 (i.e. 4 / 2), converting a 2-space indent to 4 spaces and a 6-space indent to 12 spaces.
+      - The methodology assumes that the smallest nonzero indent past the 4-space margin among
+        the lines that start a statement represents the "unit" of indentation in the original
+        text.
+      - If such an indent is found, the indent_factor scales all indentations so that a unit
+        smaller than 4 spaces becomes 4 spaces. For example, if the original unit is 2 spaces,
+        the factor will be 2 (i.e. 4 // 2), converting a 2-space indent to 4 spaces and a
+        6-space indent to 12 spaces. A unit of 4 spaces or more gives a factor of 1.
       - If no nonzero indent is found (i.e. baseline is 0), the indent_factor defaults to 1,
         and every nonempty line outside a string literal is given a fixed indent of 4 spaces.
       - This approach preserves the relative indentation of nested blocks while standardizing
