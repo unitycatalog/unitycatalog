@@ -1068,7 +1068,16 @@ private[spark] class UCProxy(
       enableServerSidePlanningConfig(identifier)
     }
 
-    val storageProperties = (t.getProperties.asScala.toMap ++ extraSerdeProps).asJava
+    val isDelta = t.getDataSourceFormat == DataSourceFormat.DELTA
+    // Delta tables keep all UC properties as storage properties, unchanged (Delta reads
+    // UC_TABLE_ID_KEY there). Other formats split them like Spark's session catalog: OPTIONS become
+    // reader and writer options, everything else is a table property.
+    val (tableProperties, dataSourceOptions) = if (isDelta) {
+      (Map.empty[String, String], t.getProperties.asScala.toMap)
+    } else {
+      splitOptionsFromTableProperties(t.getProperties.asScala.toMap)
+    }
+    val storageProperties = (dataSourceOptions ++ extraSerdeProps).asJava
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -1080,6 +1089,8 @@ private[spark] class UCProxy(
         locationUri, storageProperties),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
+      properties = tableProperties,
+      comment = if (isDelta) None else Option(t.getComment),
       createTime = t.getCreatedAt,
       tracksPartitionsInCatalog = false,
       partitionColumnNames = partitionCols.sortBy(_._2).map(_._1).toSeq
@@ -1088,6 +1099,17 @@ private[spark] class UCProxy(
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will
     // resolve the data source and create scan node later.
     asV1Table(sparkTable)
+  }
+
+  /**
+   * Spark stores each `OPTIONS (...)` entry twice, bare and with the `option.` prefix. Returns the
+   * table properties without either copy of an option, and the options with the prefix removed.
+   */
+  private def splitOptionsFromTableProperties(
+      properties: Map[String, String]): (Map[String, String], Map[String, String]) = {
+    val (prefixed, bare) = properties.partition(_._1.startsWith(TableCatalog.OPTION_PREFIX))
+    val options = prefixed.map { case (k, v) => k.stripPrefix(TableCatalog.OPTION_PREFIX) -> v }
+    (bare -- options.keys, options)
   }
 
   private[spark] def toStructField(col: ColumnInfo): StructField =
