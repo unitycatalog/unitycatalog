@@ -2,32 +2,57 @@ package io.unitycatalog.server.service.credential.azure;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
+/**
+ * Vends user delegation SAS tokens for ADLS. A path under an external location is vended as its
+ * credential's service principal; any other path uses the {@code adls.*} configuration of its
+ * storage account.
+ */
 public class AzureCredentialVendor {
   private final Map<String, ADLSStorageConfig> adlsConfigurations;
   private final Map<NormalizedURL, AzureCredentialGenerator> credGenerators =
       new ConcurrentHashMap<>();
+  private final Function<AzureServicePrincipalRequest, AzureCredentialGenerator>
+      servicePrincipalGenerators;
 
   public AzureCredentialVendor(ServerProperties serverProperties) {
+    this(
+        serverProperties,
+        servicePrincipal ->
+            new AzureCredentialGenerator.DatalakeCredentialGenerator(
+                servicePrincipal.getDirectoryId(),
+                servicePrincipal.getApplicationId(),
+                servicePrincipal.getClientSecret()));
+  }
+
+  /**
+   * @param servicePrincipalGenerators makes the generator for a credential's service principal;
+   *     tests pass one that does not call Azure
+   */
+  public AzureCredentialVendor(
+      ServerProperties serverProperties,
+      Function<AzureServicePrincipalRequest, AzureCredentialGenerator> servicePrincipalGenerators) {
     this.adlsConfigurations = serverProperties.getAdlsConfigurations();
+    this.servicePrincipalGenerators = servicePrincipalGenerators;
   }
 
   public AzureCredential vendAzureCredential(CredentialContext ctx) {
-    ctx.getCredentialDAO()
-        .ifPresent(
-            c -> {
-              throw new BaseException(
-                  ErrorCode.UNIMPLEMENTED,
-                  "Storage credential/external location for Azure is not supported yet.");
-            });
+    // A credential's generator is made on every vend, as the AWS vendor assumes the role on every
+    // vend, so a changed service principal applies to the next request.
     AzureCredentialGenerator generator =
-        credGenerators.computeIfAbsent(ctx.getStorageBase(), this::createAzureCredentialGenerator);
-
+        ctx.getCredentialDAO()
+            .map(dao -> servicePrincipalGenerators.apply(dao.getAzureServicePrincipal()))
+            .orElseGet(
+                () ->
+                    credGenerators.computeIfAbsent(
+                        ctx.getStorageBase(), this::createAzureCredentialGenerator));
     return generator.generate(ctx);
   }
 

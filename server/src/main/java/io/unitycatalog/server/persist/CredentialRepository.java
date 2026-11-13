@@ -2,22 +2,29 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.ListCredentialsResponse;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -41,6 +48,7 @@ public class CredentialRepository {
 
   public CredentialInfo addCredential(CreateCredentialRequest createCredentialRequest) {
     ValidationUtils.validateSqlObjectName(createCredentialRequest.getName());
+    validateCloudIdentity(createCredentialRequest);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     CredentialDAO dao = CredentialDAO.from(createCredentialRequest, callerId);
     return TransactionManager.executeWithTransaction(
@@ -133,6 +141,13 @@ public class CredentialRepository {
             existingCredential.setName(updateCredential.getNewName());
           }
           if (updateCredential.getAwsIamRole() != null) {
+            // setAwsIamRole also changes the type, which would turn an Azure or GCS credential
+            // into an AWS one under the external locations that use it.
+            ValidationUtils.checkArgument(
+                existingCredential.getCredentialType() == CredentialType.AWS_IAM_ROLE,
+                "Storage credential '%s' is not an AWS IAM role credential, so aws_iam_role cannot"
+                    + " be set on it.",
+                name);
             existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
           }
           if (updateCredential.getComment() != null) {
@@ -186,6 +201,57 @@ public class CredentialRepository {
     query.setParameter("value", credentialId);
     query.setMaxResults(1);
     return query.uniqueResult();
+  }
+
+  /**
+   * Checks that a create request carries exactly one cloud identity and that every field of it is
+   * set. The generated models do not enforce required fields, and nothing calls the cloud at create
+   * time, so without this an incomplete identity would only fail when a credential is first vended.
+   */
+  private static void validateCloudIdentity(CreateCredentialRequest request) {
+    long identities =
+        Stream.of(
+                request.getAwsIamRole(),
+                request.getAzureServicePrincipal(),
+                request.getGcpServiceAccountKey())
+            .filter(Objects::nonNull)
+            .count();
+    ValidationUtils.checkArgument(
+        identities == 1,
+        "Exactly one of aws_iam_role, azure_service_principal or gcp_service_account_key must be"
+            + " set.");
+    if (request.getAwsIamRole() != null) {
+      checkNotBlank(request.getAwsIamRole().getRoleArn(), "aws_iam_role.role_arn");
+    }
+    AzureServicePrincipalRequest servicePrincipal = request.getAzureServicePrincipal();
+    if (servicePrincipal != null) {
+      checkNotBlank(servicePrincipal.getDirectoryId(), "azure_service_principal.directory_id");
+      checkNotBlank(servicePrincipal.getApplicationId(), "azure_service_principal.application_id");
+      checkNotBlank(servicePrincipal.getClientSecret(), "azure_service_principal.client_secret");
+    }
+    GcpServiceAccountKeyRequest key = request.getGcpServiceAccountKey();
+    if (key != null) {
+      checkNotBlank(key.getEmail(), "gcp_service_account_key.email");
+      checkNotBlank(key.getPrivateKeyId(), "gcp_service_account_key.private_key_id");
+      checkNotBlank(key.getPrivateKey(), "gcp_service_account_key.private_key");
+      checkPrivateKeyLoads(key);
+    }
+  }
+
+  private static void checkNotBlank(String value, String field) {
+    ValidationUtils.checkArgument(
+        value != null && !value.isBlank(), "%s must not be empty.", field);
+  }
+
+  /** Loads the key as the GCS vendor does when it vends with it. */
+  private static void checkPrivateKeyLoads(GcpServiceAccountKeyRequest key) {
+    try {
+      GcpCredentialVendor.credentialsOf(key);
+    } catch (IOException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "gcp_service_account_key.private_key is not a PEM-encoded PKCS#8 private key.");
+    }
   }
 
   private Optional<String> getAwsS3MasterRoleArn() {

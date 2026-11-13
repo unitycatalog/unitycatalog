@@ -10,17 +10,22 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.AzureServicePrincipalRequest;
+import io.unitycatalog.client.model.AzureServicePrincipalResponse;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
+import io.unitycatalog.client.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -107,6 +112,61 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     credentialOperations.deleteCredential(NEW_CREDENTIAL_NAME, Optional.empty());
     assertThatThrownBy(() -> credentialOperations.getCredential(NEW_CREDENTIAL_NAME))
         .isInstanceOf(ApiException.class);
+  }
+
+  @Test
+  public void testAzureServicePrincipalCredential() throws ApiException {
+    CredentialInfo credentialInfo =
+        credentialOperations.createCredential(
+            new CreateCredentialRequest()
+                .name(CREDENTIAL_NAME)
+                .comment(COMMENT)
+                .purpose(CredentialPurpose.STORAGE)
+                .azureServicePrincipal(
+                    new AzureServicePrincipalRequest()
+                        .directoryId("11111111-1111-1111-1111-111111111111")
+                        .applicationId("22222222-2222-2222-2222-222222222222")
+                        .clientSecret("azure-client-secret")));
+    assertThat(credentialInfo.getName()).isEqualTo(CREDENTIAL_NAME);
+    assertThat(credentialInfo.getComment()).isEqualTo(COMMENT);
+    assertThat(credentialInfo.getPurpose()).isEqualTo(CredentialPurpose.STORAGE);
+    assertThat(credentialInfo.getAzureServicePrincipal())
+        .isEqualTo(
+            new AzureServicePrincipalResponse()
+                .directoryId("11111111-1111-1111-1111-111111111111")
+                .applicationId("22222222-2222-2222-2222-222222222222"));
+    assertThat(credentialInfo.getAwsIamRole()).isNull();
+    assertThat(credentialInfo.getGcpServiceAccountKey()).isNull();
+
+    assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(credentialInfo);
+    assertThat(credentialOperations.listCredentials(Optional.empty(), CredentialPurpose.STORAGE))
+        .containsExactly(credentialInfo);
+  }
+
+  @Test
+  public void testGcpServiceAccountKeyCredential() throws ApiException {
+    CredentialInfo credentialInfo =
+        credentialOperations.createCredential(
+            new CreateCredentialRequest()
+                .name(CREDENTIAL_NAME)
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServiceAccountKey(
+                    new GcpServiceAccountKeyRequest()
+                        .email("uc@project.iam.gserviceaccount.com")
+                        .privateKeyId("0123456789abcdef")
+                        .privateKey(TestUtils.generatePkcs8PrivateKeyPem())));
+    assertThat(credentialInfo.getName()).isEqualTo(CREDENTIAL_NAME);
+    assertThat(credentialInfo.getGcpServiceAccountKey())
+        .isEqualTo(
+            new GcpServiceAccountKeyResponse()
+                .email("uc@project.iam.gserviceaccount.com")
+                .privateKeyId("0123456789abcdef"));
+    assertThat(credentialInfo.getAwsIamRole()).isNull();
+    assertThat(credentialInfo.getAzureServicePrincipal()).isNull();
+
+    assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(credentialInfo);
+    assertThat(credentialOperations.listCredentials(Optional.empty(), CredentialPurpose.STORAGE))
+        .containsExactly(credentialInfo);
   }
 
   @Test
