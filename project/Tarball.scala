@@ -57,7 +57,8 @@ object Tarball {
         IO.copyDirectory(scriptsDir, outputDir / "bin")
         // Copy the etc files to the output directory, with the new sample database
         IO.copyDirectory(etcDir, outputDir / "etc")
-        IO.delete((outputDir / "etc" / "db" * "h2db.*").get)
+        // A local sample database, and what a killed sample database build leaves behind.
+        IO.delete((outputDir / "etc" / "db" * ("h2db.*" || "building-*")).get)
         IO.copyFile(sampleDatabase, outputDir / "etc" / "db" / "h2db.mv.db")
 
         // Create the tarball

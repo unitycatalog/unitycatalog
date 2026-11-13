@@ -633,7 +633,7 @@ public class SchemaMigratorTest {
    * pool set up by data source class.
    */
   @ParameterizedTest
-  @CsvSource({"PLAIN", "IFEXISTS_FALSE", "DATA_SOURCE_URL"})
+  @CsvSource({"PLAIN", "IFEXISTS_FALSE", "DATA_SOURCE_URL", "WRAPPED"})
   void serverRefusesToStartOnAMissingH2FileWithoutCreatingIt(String form, @TempDir Path dir) {
     Properties properties = db.hibernateProperties();
     java.util.function.Consumer<String> setUrl =
@@ -646,6 +646,13 @@ public class SchemaMigratorTest {
             case "IFEXISTS_FALSE" -> {
               properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
               properties.setProperty("hibernate.connection.url", url + ";IFEXISTS=FALSE");
+            }
+            case "WRAPPED" -> {
+              properties.setProperty(
+                  "hibernate.connection.driver_class", WrappingDriver.class.getName());
+              properties.setProperty(
+                  "hibernate.connection.url",
+                  WrappingDriver.PREFIX + url.substring("jdbc:".length()));
             }
             default -> {
               properties.remove("hibernate.connection.url");
