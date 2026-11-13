@@ -236,14 +236,15 @@ public class Scim2UserService implements ScimService {
   }
 
   // With authorization disabled, every authorize() call returns true, so the owner check only
-  // means something when authorization is enabled.
+  // means something when authorization is enabled. Only the user's own OWNER grant counts: a user
+  // who owns the metastore through a group can go, since the group keeps owning it.
   private void checkNotMetastoreOwner(User user) {
     if (!serverProperties.isAuthorizationEnabled()) {
       return;
     }
     UUID metastoreId = metastoreRepository.getMetastoreId();
     UUID userId = UUID.fromString(user.getId());
-    if (authorizer.authorize(userId, METASTORE, metastoreId, Privileges.OWNER)) {
+    if (authorizer.listAuthorizations(userId, metastoreId).contains(Privileges.OWNER)) {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           "The metastore owner can't be deleted or deactivated: " + user.getEmail());

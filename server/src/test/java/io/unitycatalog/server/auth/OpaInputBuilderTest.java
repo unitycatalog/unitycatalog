@@ -22,6 +22,8 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.GroupDAO;
+import io.unitycatalog.server.persist.dao.GroupMemberDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.MetastoreDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
@@ -206,7 +208,40 @@ public class OpaInputBuilderTest {
                     Map.of(
                         "id", user.getId().toString(),
                         "email", user.getEmail(),
-                        "external_id", "subject-123")));
+                        "external_id", "subject-123",
+                        "groups", List.of())));
+  }
+
+  @Test
+  void includesTheGroupsOfThePrincipal() {
+    GroupDAO engineers =
+        GroupDAO.builder().id(UUID.randomUUID()).name("engineers").externalId("okta-1").build();
+    GroupDAO analysts = GroupDAO.builder().id(UUID.randomUUID()).name("analysts").build();
+    GroupDAO others = GroupDAO.builder().id(UUID.randomUUID()).name("others").build();
+    UserDAO otherUser =
+        UserDAO.builder().id(UUID.randomUUID()).name("Other").email("other@example.com").build();
+    persist(engineers, analysts, others, otherUser);
+    persist(
+        new GroupMemberDAO(engineers.getId(), user.getId()),
+        new GroupMemberDAO(analysts.getId(), user.getId()),
+        new GroupMemberDAO(others.getId(), otherUser.getId()));
+
+    assertThat(
+            inputBuilder
+                .build(user.getId(), CATALOG, catalog.getId(), Privileges.USE_CATALOG)
+                .at("/input/principal/groups"))
+        .isEqualTo(
+            JsonUtils.getInstance()
+                .valueToTree(
+                    List.of(
+                        Map.of("id", analysts.getId().toString(), "name", "analysts"),
+                        Map.of(
+                            "id",
+                            engineers.getId().toString(),
+                            "name",
+                            "engineers",
+                            "external_id",
+                            "okta-1"))));
   }
 
   @Test
@@ -269,7 +304,13 @@ public class OpaInputBuilderTest {
                         "input",
                         Map.of(
                             "principal",
-                            Map.of("id", user.getId().toString(), "email", user.getEmail()),
+                            Map.of(
+                                "id",
+                                user.getId().toString(),
+                                "email",
+                                user.getEmail(),
+                                "groups",
+                                List.of()),
                             "privilege",
                             "CREATE_TABLE",
                             "resource",

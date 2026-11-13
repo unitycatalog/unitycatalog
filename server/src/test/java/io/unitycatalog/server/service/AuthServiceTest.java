@@ -44,6 +44,9 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
   private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final String EMPTY_RESPONSE = "{}";
+  private static final String SCIM_PATH = "/api/1.0/unity-control/scim2/";
+  private static final String CATALOGS_PATH = "/api/2.1/unity-catalog/catalogs";
+  private static final String PERMISSIONS_PATH = "/api/2.1/unity-catalog/permissions/catalog/sales";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private WebClient client;
@@ -382,6 +385,82 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(error.get("error_code").asText()).as(description).isEqualTo("INVALID_ARGUMENT");
     assertThat(error.has("access_token")).as(description).isFalse();
     assertThat(error.has("stack_trace")).as(description).isFalse();
+  }
+
+  /**
+   * A grant made to a group by name reaches its members through sign-in: a member's exchanged token
+   * is allowed and a non-member's is denied; once the member is removed from the group, the same
+   * token is denied on the next request. The grant listing names the group.
+   */
+  @Test
+  public void testGroupGrantFollowsMembershipAfterSignIn() throws Exception {
+    String admin = securityContext.getServiceToken();
+    String aliceId = scimCreate("Users", userJson("alice@example.com"));
+    scimCreate("Users", userJson("bob@example.com"));
+    String groupId =
+        scimCreate(
+            "Groups", "{\"displayName\":\"eng\",\"members\":[{\"value\":\"" + aliceId + "\"}]}");
+    assertThat(call(admin, HttpMethod.POST, CATALOGS_PATH, "{\"name\":\"sales\"}").status())
+        .isEqualTo(HttpStatus.OK);
+    String grant = "{\"changes\":[{\"principal\":\"eng\",\"add\":[\"USE CATALOG\"]}]}";
+    AggregatedHttpResponse granted = call(admin, HttpMethod.PATCH, PERMISSIONS_PATH, grant);
+    assertThat(granted.status()).as(granted.contentUtf8()).isEqualTo(HttpStatus.OK);
+
+    String alice = signIn("alice@example.com");
+    String bob = signIn("bob@example.com");
+    String getCatalog = CATALOGS_PATH + "/sales";
+    assertThat(call(alice, HttpMethod.GET, getCatalog, null).status()).isEqualTo(HttpStatus.OK);
+    assertThat(call(bob, HttpMethod.GET, getCatalog, null).status())
+        .isEqualTo(HttpStatus.FORBIDDEN);
+
+    String removeAlice =
+        "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":"
+            + "[{\"op\":\"remove\",\"path\":\"members[value eq \\\""
+            + aliceId
+            + "\\\"]\"}]}";
+    assertThat(call(admin, HttpMethod.PATCH, SCIM_PATH + "Groups/" + groupId, removeAlice).status())
+        .isEqualTo(HttpStatus.OK);
+    assertThat(call(alice, HttpMethod.GET, getCatalog, null).status())
+        .isEqualTo(HttpStatus.FORBIDDEN);
+
+    JsonNode listing =
+        MAPPER.readTree(call(admin, HttpMethod.GET, PERMISSIONS_PATH, null).contentUtf8());
+    assertThat(listing.get("privilege_assignments"))
+        .isEqualTo(MAPPER.readTree("[{\"principal\":\"eng\",\"privileges\":[\"USE CATALOG\"]}]"));
+  }
+
+  private static String userJson(String email) {
+    return "{\"displayName\":\"test\",\"emails\":[{\"value\":\"" + email + "\",\"primary\":true}]}";
+  }
+
+  /** Creates a SCIM resource as the admin and returns its id. */
+  private String scimCreate(String resource, String body) throws IOException {
+    AggregatedHttpResponse response =
+        call(securityContext.getServiceToken(), HttpMethod.POST, SCIM_PATH + resource, body);
+    assertThat(response.status()).as(response.contentUtf8()).isEqualTo(HttpStatus.CREATED);
+    return MAPPER.readTree(response.contentUtf8()).get("id").asText();
+  }
+
+  /** Signs in through the test identity provider and returns the UC access token. */
+  private String signIn(String email) throws IOException {
+    AggregatedHttpResponse response =
+        exchangeToken(
+            createIdentityToken(
+                email, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId));
+    assertThat(response.status()).as(response.contentUtf8()).isEqualTo(HttpStatus.OK);
+    return MAPPER.readTree(response.contentUtf8()).get("access_token").asText();
+  }
+
+  private AggregatedHttpResponse call(String token, HttpMethod method, String path, String body) {
+    RequestHeaders headers =
+        RequestHeaders.builder(method, path)
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + token)
+            .build();
+    return client
+        .execute(headers, body == null ? HttpData.empty() : HttpData.ofUtf8(body))
+        .aggregate()
+        .join();
   }
 
   @Test

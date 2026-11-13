@@ -10,6 +10,7 @@ import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
+import io.unitycatalog.server.auth.GroupMembershipAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.OpaAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -40,6 +41,7 @@ import io.unitycatalog.server.service.MetastoreService;
 import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.PermissionService;
 import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.Scim2GroupService;
 import io.unitycatalog.server.service.Scim2SelfService;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.StagingTableService;
@@ -350,6 +352,7 @@ public class UnityCatalogServer implements AutoCloseable {
         try {
           UnityCatalogAuthorizer backend;
           if (serverProperties.isOpaAuthorizationEnabled()) {
+            // The policy decides group access itself: the OPA input carries the user's groups.
             LOGGER.info("Using OPA for authorization decisions.");
             backend =
                 new OpaAuthorizer(
@@ -358,7 +361,7 @@ public class UnityCatalogServer implements AutoCloseable {
                     serverProperties.getOpaDecisionUrl(),
                     serverProperties.getOpaResponseTimeout());
           } else {
-            backend = authorizer;
+            backend = new GroupMembershipAuthorizer(authorizer, repositories.getGroupRepository());
           }
           UnityCatalogAuthorizer effective =
               Optional.ofNullable(auditor).map(a -> a.wrap(backend)).orElse(backend);
@@ -397,6 +400,7 @@ public class UnityCatalogServer implements AutoCloseable {
     armeriaServerBuilder
         .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
         .annotate("scim2/Users", new Scim2UserService(authorizer, repositories, serverProperties))
+        .annotate("scim2/Groups", new Scim2GroupService(authorizer, repositories))
         .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
         .annotate("permissions", new PermissionService(authorizer, repositories, serverProperties))
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))

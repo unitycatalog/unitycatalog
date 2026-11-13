@@ -36,6 +36,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.GroupDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
@@ -69,6 +70,7 @@ import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.hibernate.query.SelectionQuery;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,6 +105,11 @@ class OpaAuthorizerTest {
                 .email("alice@example.com")
                 .externalId("subject-123")
                 .build());
+    // The principal has no groups.
+    SelectionQuery<GroupDAO> noGroups = mock();
+    when(noGroups.setParameter(eq("userId"), any())).thenReturn(noGroups);
+    when(noGroups.list()).thenReturn(List.of());
+    when(session.createSelectionQuery(any(String.class), eq(GroupDAO.class))).thenReturn(noGroups);
     when(session.get(TableInfoDAO.class, table))
         .thenReturn(TableInfoDAO.builder().id(table).name("orders").schemaId(schema).build());
     when(session.get(SchemaInfoDAO.class, schema))
@@ -161,7 +168,8 @@ class OpaAuthorizerTest {
                 .readTree(
                     """
                     {"input": {
-                      "principal": {"id": "%s", "email": "alice@example.com", "external_id": "subject-123"},
+                      "principal": {"id": "%s", "email": "alice@example.com", "external_id": "subject-123",
+                        "groups": []},
                       "privilege": "SELECT",
                       "resource": {"id": "%s", "type": "TABLE", "name": "orders", "parents": [
                         {"id": "%s", "type": "SCHEMA", "name": "reports"},
