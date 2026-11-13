@@ -13,7 +13,7 @@ import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PropertiesCard from "@/components/PropertiesCard";
 import PermissionsPanel from "@/components/PermissionsPanel";
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import DeleteAction from "@/components/DeleteAction";
 import EntityFormDialog from "@/components/EntityFormDialog";
 import FormField from "@/components/FormField";
 import EditMetadataAction from "@/components/EditMetadataAction";
@@ -74,10 +74,9 @@ export default function CatalogDetails({ catalog }: { catalog: string }) {
                 <Input id="schema-comment" name="comment" />
               </FormField>
             </EntityFormDialog>
-            <OwnerDeleteAction
+            <DeleteAction
               entityName={catalog}
               entityType="catalog"
-              owner={data?.audit?.owner}
               onDelete={() =>
                 deleteCatalog.mutateAsync({
                   catalog: { name: catalog },

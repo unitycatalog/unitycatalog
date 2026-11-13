@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import {
   useDeleteModelVersion,
   useFinalizeModelVersion,
-  useGetModel,
   useGetModelVersion,
   parseModelVersion,
   useUpdateModelVersion,
@@ -15,7 +14,7 @@ import EntityHeader from "@/components/EntityHeader";
 import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import DeleteAction from "@/components/DeleteAction";
 import EntityFormDialog from "@/components/EntityFormDialog";
 import FormField from "@/components/FormField";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,7 +35,6 @@ export default function ModelVersionDetails({
   const navigate = useNavigate();
   const fullName = `${catalog}.${schema}.${model}`;
   const { data, isLoading, error } = useGetModelVersion(fullName, version);
-  const parentModel = useGetModel(fullName);
   const deleteVersion = useDeleteModelVersion();
   const updateVersion = useUpdateModelVersion();
   const finalizeVersion = useFinalizeModelVersion();
@@ -95,10 +93,9 @@ export default function ModelVersionDetails({
                   Finalize
                 </Button>
               )}
-              <OwnerDeleteAction
+              <DeleteAction
                 entityName={version}
                 entityType="model version"
-                owner={parentModel.data?.audit?.owner}
                 onDelete={() => deleteVersion.mutateAsync({ modelVersion })}
                 onDeleted={() =>
                   navigate({

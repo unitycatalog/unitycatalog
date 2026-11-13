@@ -14,7 +14,7 @@ import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PermissionsPanel from "@/components/PermissionsPanel";
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import DeleteAction from "@/components/DeleteAction";
 import EntityFormDialog from "@/components/EntityFormDialog";
 import FormField from "@/components/FormField";
 import EditMetadataAction from "@/components/EditMetadataAction";
@@ -109,10 +109,9 @@ export default function ModelDetails({
                 <Input id="model-version-comment" name="comment" />
               </FormField>
             </EntityFormDialog>
-            <OwnerDeleteAction
+            <DeleteAction
               entityName={model}
               entityType="registered model"
-              owner={data?.audit?.owner}
               onDelete={() =>
                 deleteModel.mutateAsync({
                   model: {

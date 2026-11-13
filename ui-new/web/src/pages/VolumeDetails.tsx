@@ -12,7 +12,7 @@ import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PermissionsPanel from "@/components/PermissionsPanel";
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import DeleteAction from "@/components/DeleteAction";
 import EditMetadataAction from "@/components/EditMetadataAction";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -66,10 +66,9 @@ export default function VolumeDetails({
                 }
               }}
             />
-            <OwnerDeleteAction
+            <DeleteAction
               entityName={volume}
               entityType="volume"
-              owner={data?.audit?.owner}
               onDelete={() =>
                 deleteVolume.mutateAsync({
                   volume: {

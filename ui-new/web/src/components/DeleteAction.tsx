@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useOptionalAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,28 +14,24 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-export default function OwnerDeleteAction({
+// DeleteAction asks the user to type the entity name before deleting it. Like
+// Edit and Create, it is shown to everyone: UC decides who may delete, through
+// ownership, MANAGE, or a parent's ownership, which the UI cannot work out
+// itself. A refusal shows in the error toast.
+export default function DeleteAction({
   entityName,
   entityType,
-  owner,
   onDelete,
   onDeleted,
 }: {
   entityName: string;
   entityType: string;
-  owner?: string;
   onDelete: () => Promise<unknown>;
   onDeleted?: () => void;
 }) {
-  const auth = useOptionalAuth();
   const [open, setOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
-  const isOwner =
-    !!auth &&
-    (!auth.authEnabled || (!!owner && auth.currentUser?.userName === owner));
-
-  if (!isOwner) return null;
 
   const setDialogOpen = (nextOpen: boolean) => {
     setConfirmation("");

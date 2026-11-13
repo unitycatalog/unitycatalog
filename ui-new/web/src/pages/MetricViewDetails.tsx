@@ -8,7 +8,7 @@ import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PermissionsPanel from "@/components/PermissionsPanel";
 import PropertiesCard from "@/components/PropertiesCard";
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import DeleteAction from "@/components/DeleteAction";
 import ColumnsTable from "@/components/ColumnsTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,10 +36,9 @@ export default function MetricViewDetails({
         schema={schema}
         badges={["METRIC VIEW"]}
         actions={
-          <OwnerDeleteAction
+          <DeleteAction
             entityName={view}
             entityType="metric view"
-            owner={data?.audit?.owner}
             onDelete={() =>
               deleteView.mutateAsync({
                 view: { catalogName: catalog, schemaName: schema, name: view },

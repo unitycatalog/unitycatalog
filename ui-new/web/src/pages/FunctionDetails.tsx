@@ -8,7 +8,7 @@ import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PermissionsPanel from "@/components/PermissionsPanel";
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import DeleteAction from "@/components/DeleteAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -44,10 +44,9 @@ export default function FunctionDetails({
         schema={schema}
         badges={["FUNCTION"]}
         actions={
-          <OwnerDeleteAction
+          <DeleteAction
             entityName={ucFunction}
             entityType="function"
-            owner={data?.audit?.owner}
             onDelete={() =>
               deleteFunction.mutateAsync({
                 function: {

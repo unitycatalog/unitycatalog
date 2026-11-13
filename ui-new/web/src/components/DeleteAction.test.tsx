@@ -2,28 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const { auth, toast } = vi.hoisted(() => ({
-  auth: {
-    authEnabled: true,
-    currentUser: { userName: "owner@example.com" } as {
-      userName: string;
-    } | null,
-  },
+const { toast } = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock("sonner", () => ({ toast }));
 
-vi.mock("@/context/auth-context", () => ({
-  useOptionalAuth: () => auth,
-}));
+import DeleteAction from "@/components/DeleteAction";
 
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
-
-describe("OwnerDeleteAction", () => {
+describe("DeleteAction", () => {
   beforeEach(() => {
-    auth.authEnabled = true;
-    auth.currentUser = { userName: "owner@example.com" };
     toast.success.mockReset();
     toast.error.mockReset();
   });
@@ -39,13 +27,12 @@ describe("OwnerDeleteAction", () => {
     );
   }
 
-  it("requires the owner to enter the exact entity name", async () => {
+  it("lets anyone delete once they enter the exact entity name", async () => {
     const onDelete = vi.fn().mockResolvedValue(undefined);
     render(
-      <OwnerDeleteAction
+      <DeleteAction
         entityName="events"
         entityType="table"
-        owner="owner@example.com"
         onDelete={onDelete}
       />,
     );
@@ -65,68 +52,12 @@ describe("OwnerDeleteAction", () => {
     await waitFor(() => expect(onDelete).toHaveBeenCalledOnce());
   });
 
-  it.each([
-    {
-      when: "auth is disabled",
-      authEnabled: false,
-      user: null,
-      owner: undefined,
-      visible: true,
-    },
-    {
-      when: "the user owns it",
-      authEnabled: true,
-      user: "owner@example.com",
-      owner: "owner@example.com",
-      visible: true,
-    },
-    {
-      when: "another user owns it",
-      authEnabled: true,
-      user: "other@example.com",
-      owner: "owner@example.com",
-      visible: false,
-    },
-    {
-      when: "the owner is unknown",
-      authEnabled: true,
-      user: "owner@example.com",
-      owner: undefined,
-      visible: false,
-    },
-    {
-      when: "nobody is signed in",
-      authEnabled: true,
-      user: null,
-      owner: "owner@example.com",
-      visible: false,
-    },
-  ])(
-    "shows delete only to the owner: $when",
-    ({ authEnabled, user, owner, visible }) => {
-      auth.authEnabled = authEnabled;
-      auth.currentUser = user ? { userName: user } : null;
-      render(
-        <OwnerDeleteAction
-          entityName="events"
-          entityType="table"
-          owner={owner}
-          onDelete={vi.fn()}
-        />,
-      );
-      expect(screen.queryByRole("button", { name: "Delete" }) !== null).toBe(
-        visible,
-      );
-    },
-  );
-
   it("closes, reports success, and calls onDeleted after deleting", async () => {
     const onDeleted = vi.fn();
     render(
-      <OwnerDeleteAction
+      <DeleteAction
         entityName="events"
         entityType="table"
-        owner="owner@example.com"
         onDelete={vi.fn().mockResolvedValue(undefined)}
         onDeleted={onDeleted}
       />,
@@ -142,10 +73,9 @@ describe("OwnerDeleteAction", () => {
   it("keeps the dialog open and shows the error when delete fails", async () => {
     const onDeleted = vi.fn();
     render(
-      <OwnerDeleteAction
+      <DeleteAction
         entityName="events"
         entityType="table"
-        owner="owner@example.com"
         onDelete={vi.fn().mockRejectedValue(new Error("PERMISSION_DENIED"))}
         onDeleted={onDeleted}
       />,
@@ -163,10 +93,9 @@ describe("OwnerDeleteAction", () => {
 
   it("clears confirmation after cancellation", async () => {
     render(
-      <OwnerDeleteAction
+      <DeleteAction
         entityName="events"
         entityType="table"
-        owner="owner@example.com"
         onDelete={vi.fn()}
       />,
     );
@@ -187,10 +116,9 @@ describe("OwnerDeleteAction", () => {
 
   it("keeps focus in the dialog and returns it to the trigger on Escape", async () => {
     render(
-      <OwnerDeleteAction
+      <DeleteAction
         entityName="events"
         entityType="table"
-        owner="owner@example.com"
         onDelete={vi.fn()}
       />,
     );

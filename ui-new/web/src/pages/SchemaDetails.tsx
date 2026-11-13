@@ -26,7 +26,7 @@ import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PropertiesCard from "@/components/PropertiesCard";
 import PermissionsPanel from "@/components/PermissionsPanel";
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import DeleteAction from "@/components/DeleteAction";
 import CreateSchemaObjectAction from "@/components/CreateSchemaObjectAction";
 import EditMetadataAction from "@/components/EditMetadataAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -111,10 +111,9 @@ export default function SchemaDetails({
               }}
             />
             <CreateSchemaObjectAction catalog={catalog} schema={schema} />
-            <OwnerDeleteAction
+            <DeleteAction
               entityName={schema}
               entityType="schema"
-              owner={data?.audit?.owner}
               onDelete={() =>
                 deleteSchema.mutateAsync({
                   schema: { catalogName: catalog, name: schema },

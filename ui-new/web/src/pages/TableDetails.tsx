@@ -9,7 +9,7 @@ import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PropertiesCard from "@/components/PropertiesCard";
 import PermissionsPanel from "@/components/PermissionsPanel";
-import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import DeleteAction from "@/components/DeleteAction";
 import ColumnsTable from "@/components/ColumnsTable";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,10 +41,9 @@ export default function TableDetails({
         schema={schema}
         badges={badges}
         actions={
-          <OwnerDeleteAction
+          <DeleteAction
             entityName={table}
             entityType="table"
-            owner={data?.audit?.owner}
             onDelete={() =>
               deleteTable.mutateAsync({
                 table: {
