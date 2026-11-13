@@ -109,9 +109,15 @@ creating an Azure or GCS Credential (see [Upgrading the database schema](../serv
 The server's schema update at startup does not change the existing columns that these Credentials
 need.
 
-!!! note
-    Unity Catalog cannot vend temporary credentials from an Azure or GCS Credential yet. A request
-    for a path under an external location that uses one fails with `UNIMPLEMENTED`.
+For a path under an external location that uses the Credential, the server signs in as its
+identity on each request and returns a temporary credential limited to that path:
+
+- **Azure:** a user delegation SAS token that expires after one hour. The service principal needs a
+  role on the storage account that can create a user delegation key and allows the access asked
+  for: Storage Blob Data Reader for reads, or Storage Blob Data Contributor for reads and writes.
+- **GCS:** a short-lived OAuth token, downscoped to the path. The service account needs
+  `roles/storage.objectViewer` on the bucket for reads, or `roles/storage.objectAdmin` for reads
+  and writes.
 
 ### List Credentials
 

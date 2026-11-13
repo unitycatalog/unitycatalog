@@ -224,4 +224,16 @@ public class CredentialDAO extends IdentifiableDAO {
   public AwsIamRoleResponse getAwsIamRoleResponse() {
     return parseCredential(CredentialType.AWS_IAM_ROLE, AwsIamRoleResponse.class);
   }
+
+  /** The service principal, client secret included, that the server signs in to Azure as. */
+  public AzureServicePrincipalRequest getAzureServicePrincipal() {
+    return parseCredential(
+        CredentialType.AZURE_SERVICE_PRINCIPAL, AzureServicePrincipalRequest.class);
+  }
+
+  /** The service account key, private key included, that the server signs in to Google with. */
+  public GcpServiceAccountKeyRequest getGcpServiceAccountKey() {
+    return parseCredential(
+        CredentialType.GCP_SERVICE_ACCOUNT_KEY, GcpServiceAccountKeyRequest.class);
+  }
 }

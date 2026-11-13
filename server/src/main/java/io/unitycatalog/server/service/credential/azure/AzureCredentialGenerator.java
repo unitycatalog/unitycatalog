@@ -40,11 +40,16 @@ public interface AzureCredentialGenerator {
     private final TokenCredential tokenCredential;
 
     public DatalakeCredentialGenerator(ADLSStorageConfig config) {
+      this(config.getTenantId(), config.getClientId(), config.getClientSecret());
+    }
+
+    /** Signs in as the service principal with this client secret. */
+    public DatalakeCredentialGenerator(String tenantId, String clientId, String clientSecret) {
       this.tokenCredential =
           new ClientSecretCredentialBuilder()
-              .tenantId(config.getTenantId())
-              .clientId(config.getClientId())
-              .clientSecret(config.getClientSecret())
+              .tenantId(tenantId)
+              .clientId(clientId)
+              .clientSecret(clientSecret)
               .build();
     }
 

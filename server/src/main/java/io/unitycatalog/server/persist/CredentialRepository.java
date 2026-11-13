@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist;
 
-import com.google.auth.oauth2.ServiceAccountCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AzureServicePrincipalRequest;
@@ -14,6 +13,7 @@ import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -243,15 +243,10 @@ public class CredentialRepository {
         value != null && !value.isBlank(), "%s must not be empty.", field);
   }
 
-  /** Loads the key the way Google's client library does when it signs in with it. */
+  /** Loads the key as the GCS vendor does when it vends with it. */
   private static void checkPrivateKeyLoads(GcpServiceAccountKeyRequest key) {
     try {
-      ServiceAccountCredentials.fromPkcs8(
-          /* clientId= */ null,
-          key.getEmail(),
-          key.getPrivateKey(),
-          key.getPrivateKeyId(),
-          /* scopes= */ null);
+      GcpCredentialVendor.credentialsOf(key);
     } catch (IOException e) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
