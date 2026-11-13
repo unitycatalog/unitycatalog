@@ -197,6 +197,34 @@ public class SchemaMigratorTest {
   }
 
   @Test
+  void refusesARepeatableStepBeforeChangingTheDatabase() {
+    SchemaMigrator migrator =
+        new SchemaMigrator(db.dataSource(), List.of("classpath:db/test-steps/repeatable"));
+
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("This build has a repeatable schema step")
+        .hasMessageContaining("R__test_only_step.sql");
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void refusesAHistoryRepeatableStepAsAnUnknownStep() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    // What another build that had a repeatable step leaves in the history.
+    UpgradeTestUtils.execute(
+        db,
+        ("INSERT INTO %1$suc_schema_history%1$s (%1$sinstalled_rank%1$s, %1$sversion%1$s,"
+                + " %1$sdescription%1$s, %1$stype%1$s, %1$sscript%1$s, %1$schecksum%1$s,"
+                + " %1$sinstalled_by%1$s, %1$sexecution_time%1$s, %1$ssuccess%1$s)"
+                + " VALUES (100, NULL, 'other', 'SQL', 'R__other.sql', 1, 'uc', 0, true)")
+            .formatted(identifierQuote(db.dataSource())));
+
+    assertThatThrownBy(new SchemaMigrator(db.dataSource())::upgradeSchema)
+        .hasMessageContaining("schema history does not match")
+        .hasMessageNotContaining("This build has a repeatable schema step");
+  }
+
+  @Test
   void refusesASchemaNewerThanThisRelease() {
     new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());

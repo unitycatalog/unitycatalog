@@ -1,7 +1,9 @@
+import asyncio
+import functools
 import logging
 import uuid
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, NamedTuple, Optional
+from typing import Any, AsyncIterator, Callable, Generator, NamedTuple, Optional
 
 from databricks.sdk.service.catalog import (
     ColumnTypeName,
@@ -261,3 +263,50 @@ def wrap_func_with_doc(a: int, b: str) -> str:
     func2 = str_func_with_doc(b)
 
     return f"{func1} {func2}"
+
+
+async def async_int_func(a: int) -> int:
+    """
+    An async function that takes an integer and returns an integer.
+
+    Args:
+        a: An integer.
+
+    Returns:
+        An integer.
+    """
+    return a + 10
+
+
+async def async_int_gen(a: int) -> AsyncIterator[int]:
+    """
+    An async generator function that yields the integers from 0 up to an integer.
+
+    Args:
+        a: An integer.
+
+    Yields:
+        An integer.
+    """
+    for i in range(a):
+        yield i
+
+
+def run_sync(async_func):
+    @functools.wraps(async_func)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(async_func(*args, **kwargs))
+
+    return wrapper
+
+
+async_int_func_partial = functools.partial(async_int_func, 1)
+
+ASYNC_FUNCTION_ERROR = (
+    "Function '{}' is an async function. Async functions are not supported in Unity Catalog. "
+    "Define it with a regular 'def' instead of 'async def'."
+)
+ASYNC_WRAPPER_ERROR = (
+    "Function '{}' wraps an async function. Async functions are not supported in Unity Catalog. "
+    "Define the wrapped function with a regular 'def' instead of 'async def'."
+)

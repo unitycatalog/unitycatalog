@@ -24,7 +24,7 @@ When using the `UnitycatalogFunctionClient` be aware of the following points:
 - **Asynchronous and Synchronous Operations**: Offers both async and sync methods, allowing flexibility based on the application's concurrency requirements.
 - **Function Management**: Simplifies the process of creating, retrieving, listing, executing, and deleting UC functions.
 - **Integration with GenAI**: Supports the registration of UC functions as tools for Generative AI agents, enabling intelligent tool calling within AI-driven workflows.
-- **Type Validation and Caching**: Ensures that function parameters and return types adhere to defined schemas and caches function executions for optimized performance.
+- **Type Validation and Caching**: Ensures that function parameters and return types adhere to defined schemas and caches the callable built for each function, rebuilding it when the function definition changes.
 - **Wrapped Function Creation**: Registers wrapped functions by in-lining helper functions into a primary function’s definition. The primary function serves as the interface for function execution while helper functions are bundled into the definition, promoting modular design and ease of deployment.
 
 ### Using the UnityCatalog Functions Client
@@ -139,6 +139,7 @@ In order to make a Python callable recognizable to the Unity Catalog functions d
 1. The function must use type hints in both the signature and the return of the function.
 2. A Google-style docstring must be used. A description of the function is required and descriptions of the parameters are strongly recommended for proper use by GenAI agents.
 3. Dependent libraries must be imported within the body of the function. Imports outside of the function will not be resolvable when executing otherwise.
+4. The function you register must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around an `async def`, is rejected when you create it. This rule is about the function you register, not the client. The async client methods such as `create_python_function_async` still take a regular `def`.
 
 Below, we show a proper function definition (with type hints and docstring) that is then used to register the function to Unity Catalog using the async API for creating functions.
 
@@ -217,6 +218,8 @@ wrapped_function = uc_client.create_wrapped_function(
 ```
 
 This API in-lines the helper functions (`a` and `b`) into the primary function (`wrapper`) so that they are part of the same function definition stored in Unity Catalog.
+
+The primary function must be a regular `def`. A helper can be an `async def` as long as the primary function runs it, for example with `asyncio.run`.
 
 #### Testing a function
 
@@ -648,13 +651,18 @@ These configurations can be controlled by setting the following environment vari
 | Environment Variable          | Default Value | Description                                             |
 |-------------------------------|---------------|---------------------------------------------------------|
 | `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
-| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
+| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum Virtual Memory the callable can add to process  |
 | `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
 | `EXECUTOR_DISALLOWED_MODULES` | (see below)   | A list of blocked library imports                       |
 
 Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
 the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
 than the wall clock execution time.
+
+The memory limit applies to the virtual memory that the callable allocates on top of what the sandbox process inherits
+from your application when it is forked, so the callable gets the same allowance no matter how much memory your application
+already uses. The `"local"` mode of the `DatabricksFunctionClient` runs the callable in a fresh subprocess instead, and there
+the limit caps the whole virtual memory of that subprocess.
 
 There are restrictions in which packages can be imported for use within a sandbox environment.
 

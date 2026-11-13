@@ -78,6 +78,10 @@ public class CliTableOperations extends BaseCliOperations implements TableOperat
     return execute(TableInfo.class, "get", List.of("--full_name", tableFullName));
   }
 
+  public void writeTable(String tableFullName) throws ApiException {
+    execute(Void.class, "write", List.of("--full_name", tableFullName));
+  }
+
   @Override
   public void deleteTable(String tableFullName) throws ApiException {
     execute(Void.class, "delete", List.of("--full_name", tableFullName));

@@ -1,3 +1,4 @@
+import re
 import textwrap
 
 import pydantic
@@ -9,7 +10,10 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_wrapped_sql_function_body,
 )
 from unitycatalog.ai.core.utils.callable_utils_oss import generate_wrapped_function_info
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.test_utils.function_utils import (
+    ASYNC_FUNCTION_ERROR,
+    async_int_func,
     int_func_no_doc,
     int_func_with_doc,
     str_func_no_doc,
@@ -39,6 +43,19 @@ def test_extract_wrapped_functions():
     assert function_content_with_doc == (
         'def int_func_with_doc(a: int) -> int:\n    """\n    A function that takes an integer and returns an integer.\n\n    Args:\n        a: An integer.\n\n    Returns:\n        An integer.\n    """\n    return a + 10\n\n'
         'def str_func_with_doc(b: str) -> str:\n    """\n    A function that takes a string and returns a string.\n\n    Args:\n        b: A string.\n\n    Returns:\n        A string.\n    """\n    return f"str value: {b}"\n'
+    )
+
+
+def test_extract_wrapped_functions_keeps_multiline_string_in_nested_function():
+    def render_letter(name):
+        template = """Dear {name},
+Thanks.
+"""
+        return template.format(name=name)
+
+    assert extract_wrapped_functions([render_letter]) == (
+        'def render_letter(name):\n    template = """Dear {name},\nThanks.\n"""\n'
+        "    return template.format(name=name)\n"
     )
 
 
@@ -95,26 +112,26 @@ def test_generated_wrapped_function_info_with_doc():
         == """
 def int_func_with_doc(a: int) -> int:
     \"\"\"
-    A function that takes an integer and returns an integer.
+A function that takes an integer and returns an integer.
 
-    Args:
-        a: An integer.
+Args:
+    a: An integer.
 
-    Returns:
-        An integer.
-    \"\"\"
+Returns:
+    An integer.
+\"\"\"
     return a + 10
 
 def str_func_with_doc(b: str) -> str:
     \"\"\"
-    A function that takes a string and returns a string.
+A function that takes a string and returns a string.
 
-    Args:
-        b: A string.
+Args:
+    b: A string.
 
-    Returns:
-        A string.
-    \"\"\"
+Returns:
+    A string.
+\"\"\"
     return f"str value: {b}"
 
 func1 = int_func_with_doc(a)
@@ -178,26 +195,26 @@ def test_generate_wrapped_sql_function_body_with_doc():
         AS $$
             def int_func_with_doc(a: int) -> int:
                 \"\"\"
-                A function that takes an integer and returns an integer.
+            A function that takes an integer and returns an integer.
 
-                Args:
-                    a: An integer.
+            Args:
+                a: An integer.
 
-                Returns:
-                    An integer.
-                \"\"\"
+            Returns:
+                An integer.
+            \"\"\"
                 return a + 10
 
             def str_func_with_doc(b: str) -> str:
                 \"\"\"
-                A function that takes a string and returns a string.
+            A function that takes a string and returns a string.
 
-                Args:
-                    b: A string.
+            Args:
+                b: A string.
 
-                Returns:
-                    A string.
-                \"\"\"
+            Returns:
+                A string.
+            \"\"\"
                 return f"str value: {b}"
 
             func1 = int_func_with_doc(a)
@@ -212,3 +229,48 @@ def test_generate_wrapped_sql_function_body_with_doc():
     ).strip()
 
     assert wrapped_sql_body_with_doc == expected
+
+
+@pytest.mark.parametrize(
+    "generate",
+    [
+        generate_wrapped_function_info,
+        lambda primary_func, functions: generate_wrapped_sql_function_body(
+            primary_func, functions, "test_catalog", "test_schema"
+        ),
+    ],
+    ids=["generate_wrapped_function_info", "generate_wrapped_sql_function_body"],
+)
+def test_wrapped_async_primary_function_is_rejected(generate):
+    with pytest.raises(ValueError, match=re.escape(ASYNC_FUNCTION_ERROR.format("async_int_func"))):
+        generate(async_int_func, [int_func_no_doc, str_func_no_doc])
+
+
+def run_async_helper(a: int) -> int:
+    """
+    Runs an async helper from a regular function.
+
+    Args:
+        a: An integer.
+    """
+    import asyncio
+
+    return asyncio.run(async_int_func(a))
+
+
+def _load_stored_function(body: str):
+    return load_function_from_string(
+        "def run_async_helper(a: int) -> int:\n" + textwrap.indent(body, "    "),
+        register_function=False,
+    )
+
+
+def test_async_helper_run_by_regular_primary_is_stored_and_runs():
+    oss_body = generate_wrapped_function_info(run_async_helper, [async_int_func]).routine_definition
+    sql_statement = generate_wrapped_sql_function_body(
+        run_async_helper, [async_int_func], "test_catalog", "test_schema"
+    )
+    sql_body = sql_statement.split("AS $$\n", 1)[1].rsplit("\n$$", 1)[0]
+
+    assert _load_stored_function(oss_body)(1) == 11
+    assert _load_stored_function(textwrap.dedent(sql_body))(1) == 11
