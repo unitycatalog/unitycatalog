@@ -1,8 +1,16 @@
 # Unity Catalog UI (ui-new)
 
 A rebuild of the Unity Catalog web UI as a same-origin SPA backed by a small Rust
-bridge. It browses catalogs, schemas, tables, volumes, functions, and models, and
-supports the existing cookie-based auth (or an auth-disabled mode).
+bridge. It browses catalogs, schemas, tables, volumes, functions, registered
+models, and metric views, and supports the existing cookie-based auth (or an
+auth-disabled mode).
+
+It can also create, edit, and delete them. Every object type has a create
+dialog, metadata can be edited wherever UC supports updates, and delete asks
+the user to type the object's name. The UI offers these actions to everyone and
+leaves authorization to UC, which reports a refusal as an error toast. The one
+exception is finalizing a pending model version: UC allows only the version's
+creator to do that, so the UI shows the button only to them.
 
 - `web/` — the SPA: [Bun](https://bun.com/) + Vite + React 19, [shadcn/ui](https://ui.shadcn.com/)
   on [Tailwind CSS](https://tailwindcss.com/) v4, [TanStack Router](https://tanstack.com/router)
@@ -22,11 +30,15 @@ Browser SPA  --Connect (same-origin)-->  Rust bridge  --REST-->  UC Java server
              <--Set-Cookie propagated--               <--------
 ```
 
-The bridge being same-origin removes CORS. Auth stays cookie-based (the current
-ui's model): the SPA calls `POST /auth/tokens` (token-exchange, `ext=cookie`) and
-`GET /scim2/Me` through the passthrough; the bridge forwards the browser's cookie
-to UC and copies UC's `Set-Cookie` back onto the (same-origin) response, so the
-session lands in the browser. `GET /config` tells the SPA whether auth is enabled
+Serving the SPA from the bridge's origin means no CORS is needed by default;
+`ALLOWED_ORIGINS` enables it for a SPA served elsewhere. Auth stays cookie-based
+(the current ui's model): the SPA calls `POST /auth/tokens` (token-exchange,
+`ext=cookie`) and `GET /scim2/Me` through the passthrough. The bridge forwards
+the browser's cookie, `Authorization` header, and `X-Requested-With` header to UC,
+and copies UC's `Set-Cookie` back onto the (same-origin) response, so the session
+lands in the browser. UC's CSRF check requires `X-Requested-With:
+XMLHttpRequest` on cookie-authenticated writes, so the SPA sends it on every
+request. `GET /config` tells the SPA whether auth is enabled
 and which providers to show — the runtime replacement for the old build-time
 `REACT_APP_*_AUTH_ENABLED` flags.
 
@@ -106,7 +118,7 @@ The bridge then serves the SPA and the RPCs from one origin on `PORT` (default
 | `GOOGLE_CLIENT_ID` | _(empty)_ | Enables the Google sign-in button |
 | `OKTA_AUTH_ENABLED` | `false` | Advertise Okta as enabled |
 | `KEYCLOAK_AUTH_ENABLED` | `false` | Advertise Keycloak as enabled |
-| `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated); empty = same-origin only |
+| `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated, each a bare `scheme://host[:port]`; other entries are logged and skipped); empty = same-origin only |
 | `WEB_DIST` | `../web/dist` | Built SPA directory to serve |
 
 ## Test
