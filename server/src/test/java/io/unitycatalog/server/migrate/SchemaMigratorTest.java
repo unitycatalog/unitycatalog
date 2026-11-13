@@ -453,13 +453,19 @@ public class SchemaMigratorTest {
         migrator.upgradeSchema();
         migrator = new SchemaMigrator(db.dataSource());
       }
+      case SCHEMA_DIFFERS -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+      }
     }
 
     assertThatThrownBy(migrator::requireCurrentSchema)
         .hasMessageContaining(
-            database == NotCurrent.AHEAD
-                ? "newer than this release"
-                : "bin/start-uc-server --upgrade-schema");
+            switch (database) {
+              case AHEAD -> "newer than this release";
+              case SCHEMA_DIFFERS -> "unexpected column uc_catalogs.extra ";
+              default -> "bin/start-uc-server --upgrade-schema";
+            });
   }
 
   /** Databases the server refuses to start on, for a release that ends at step 1000. */
@@ -473,7 +479,9 @@ public class SchemaMigratorTest {
     /** Step 2 is not recorded, below the recorded step 1000. */
     STEP_MISSING_BELOW,
     /** The database is at step 1000 and the release ends at step 2. */
-    AHEAD
+    AHEAD,
+    /** The history records step 1000, but the schema has a column no step adds. */
+    SCHEMA_DIFFERS
   }
 
   @Test
@@ -618,6 +626,24 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> SchemaMigrator.fromHibernateProperties(properties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("H2 in server mode is not supported");
+  }
+
+  @Test
+  void serverRefusesToStartOnAMissingH2FileWithoutCreatingIt(@TempDir Path dir) {
+    Properties properties = db.hibernateProperties();
+    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    properties.setProperty("hibernate.connection.url", "jdbc:h2:file:" + dir + "/typo");
+
+    assertThatThrownBy(() -> SchemaMigrator.requireH2DatabaseExists(properties))
+        .hasMessageContaining("H2 database file that hibernate.connection.url names is not found");
+    assertThat(dir).isEmptyDirectory();
+
+    // An existing file passes.
+    properties.setProperty("hibernate.connection.url", "jdbc:h2:file:" + dir + "/uc");
+    try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(properties)) {
+      migrator.upgradeSchema();
+    }
+    SchemaMigrator.requireH2DatabaseExists(properties);
   }
 
   @Test
