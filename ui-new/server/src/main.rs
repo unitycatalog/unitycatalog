@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tracing_subscriber::EnvFilter;
 use uc_ui_bridge::{app, AppState, Config};
@@ -22,7 +23,10 @@ async fn main() {
     );
 
     let state = AppState {
-        http: reqwest::Client::new(),
+        http: reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("failed to build HTTP client"),
         config: Arc::new(config),
     };
 

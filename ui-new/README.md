@@ -8,10 +8,12 @@ supports the existing cookie-based auth (or an auth-disabled mode).
   on [Tailwind CSS](https://tailwindcss.com/) v4, [TanStack Router](https://tanstack.com/router)
   (file-based) + [TanStack Query](https://tanstack.com/query), talking [Connect](https://connectrpc.com/docs/web/getting-started/)
   to the bridge via [connect-query](https://connectrpc.com/docs/web/query/).
-- `server/` — the bridge: a Rust [axum](https://docs.rs/axum) service exposing one
-  Connect RPC (`uc.v1.UnityProxyService/Call`, a generic UC REST passthrough), a
-  runtime `/config`, `/healthz`, and (in prod) the built SPA.
-- `proto/` — the Connect service definition; `buf.gen.yaml` generates the TS client.
+- `server/` — the bridge: a Rust [axum](https://docs.rs/axum) service exposing
+  typed Connect services for each catalog domain, the allowlisted
+  `UnityProxyService/Call` used by control-plane and permissions calls,
+  `/config`, `/healthz`, and (in prod) the built SPA.
+- `proto/` — the typed domain services plus the generic control/permissions proxy;
+  `buf.gen.yaml` generates the TypeScript clients.
 
 ## Architecture
 
@@ -28,27 +30,48 @@ session lands in the browser. `GET /config` tells the SPA whether auth is enable
 and which providers to show — the runtime replacement for the old build-time
 `REACT_APP_*_AUTH_ENABLED` flags.
 
+## Typed domain RPC contract
+
+The protobuf package defines typed services for catalogs, schemas, tables,
+volumes, functions, registered models and model versions, and metric views.
+The bridge generates the Rust Connect services from these contracts, enforces
+their `buf.validate` rules with
+[protovalidate-buffa](https://docs.rs/protovalidate-buffa/latest/protovalidate_buffa/)
+before calling UC, and translates each typed request to the UC REST API.
+See [issue #1888](https://github.com/unitycatalog/unitycatalog/issues/1888) for
+the design.
+
+`UnityProxyService/Call` remains for auth, SCIM, and permissions endpoints that
+are outside these domain contracts. Generated files under `web/src/gen/` and
+Cargo's `OUT_DIR` are reproducible and must not be edited by hand.
+
 ## Prerequisites
 
 - Bun 1.3+
 - Rust (stable) / cargo
+- Buf (or `bun install` in `web/`, which installs the local Buf CLI used by the
+  Rust build script)
 - A running Unity Catalog server (default `http://localhost:8080` — see the repo
   root `README.md` and `bin/start-uc-server`).
 
 ## Develop
 
-Two processes. The bridge proxies to UC; Vite serves the SPA and proxies
+Install and generate once, then run two processes. The bridge proxies to UC;
+Vite serves the SPA and proxies
 `/uc.v1.*`, `/config`, and `/healthz` to the bridge.
 
 ```bash
+# One-time setup
+cd ui-new/web
+bun install
+bun run generate
+
 # Terminal 1 — the Rust bridge (listens on :8081, proxies to UC on :8080)
 cd ui-new/server
 UC_SERVER=http://localhost:8080 cargo run
 
 # Terminal 2 — the SPA dev server (listens on :5173, proxies RPCs to :8081)
 cd ui-new/web
-bun install
-bun run generate   # buf: proto -> src/gen (also runs in build)
 bun run dev
 ```
 

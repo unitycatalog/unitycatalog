@@ -6,7 +6,6 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.ServerProperties.Property;
-import java.nio.file.Path;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -32,8 +31,6 @@ public abstract class BaseAccessControlCRUDTest extends BaseCRUDTest {
   @Override
   public void setUp() {
     super.setUp();
-
-    Path configurationFolder = Path.of("etc", "conf");
 
     securityConfiguration = new SecurityConfiguration(configurationFolder);
     securityContext =

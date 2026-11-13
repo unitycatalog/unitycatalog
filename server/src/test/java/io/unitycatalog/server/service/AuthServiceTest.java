@@ -23,6 +23,7 @@ import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.security.KeyPairGenerator;
@@ -51,6 +52,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     observabilityEnabled = true;
+    // BaseServerTest turns stack traces on; use the default (off) to check none leak to callers.
+    serverProperties.remove(Property.INCLUDE_STACK_TRACE_IN_ERROR.getKey());
   }
 
   @BeforeEach
@@ -378,10 +381,11 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     JsonNode error = MAPPER.readTree(response.contentUtf8());
     assertThat(error.get("error_code").asText()).as(description).isEqualTo("INVALID_ARGUMENT");
     assertThat(error.has("access_token")).as(description).isFalse();
+    assertThat(error.has("stack_trace")).as(description).isFalse();
   }
 
   @Test
-  public void testScimDuplicateUserReturnsValidJson() throws Exception {
+  public void testScimErrorsReturnTheirStatusAsValidJson() throws Exception {
     String scimUsersPath = "/api/1.0/unity-control/scim2/Users";
     String userJson =
         "{\"displayName\":\"test\",\"emails\":[{\"value\":\"scim-dup@test.com\",\"primary\":true}]}";
@@ -409,13 +413,13 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     // Second create triggers Scim2RuntimeException wrapping ResourceConflictException
     AggregatedHttpResponse second =
         client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
-    assertThat(second.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    assertThat(second.status()).isEqualTo(HttpStatus.CONFLICT);
     TestUtils.assertHttpRequestMetric(
         serverConfig,
         observabilityServerConfig,
         "io.unitycatalog.server.service.Scim2UserService",
         "createScimUser",
-        HttpStatus.INTERNAL_SERVER_ERROR.code(),
+        HttpStatus.CONFLICT.code(),
         1.0);
 
     // Verify the SCIM error response is a valid JSON object (not double-serialized)
@@ -427,6 +431,14 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(json.get("status").asText()).isEqualTo("409");
     assertThat(json.has("detail")).isTrue();
     assertThat(json.get("detail").asText()).contains("already exists");
+
+    // A different SCIM error keeps its own status rather than collapsing to 409
+    String noPrimaryEmailJson =
+        "{\"displayName\":\"test\",\"emails\":[{\"value\":\"scim-np@test.com\",\"primary\":false}]}";
+    AggregatedHttpResponse noPrimary =
+        client.execute(headers, HttpData.ofUtf8(noPrimaryEmailJson)).aggregate().join();
+    assertThat(noPrimary.status()).isEqualTo(HttpStatus.PRECONDITION_FAILED);
+    assertThat(MAPPER.readTree(noPrimary.contentUtf8()).get("status").asText()).isEqualTo("412");
   }
 
   @Test

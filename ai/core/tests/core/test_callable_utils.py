@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import functools
 import re
 import textwrap
 import warnings
@@ -26,6 +27,14 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_parameter_defaults,
 )
 from unitycatalog.ai.core.utils.type_utils import SQL_TYPE_TO_PYTHON_TYPE_MAPPING
+from unitycatalog.ai.test_utils.function_utils import (
+    ASYNC_FUNCTION_ERROR,
+    ASYNC_WRAPPER_ERROR,
+    async_int_func,
+    async_int_func_partial,
+    async_int_gen,
+    run_sync,
+)
 from unitycatalog.client.models import FunctionInfo, FunctionParameterInfos
 
 # ---------------------------
@@ -2551,3 +2560,48 @@ def test_dependencies_reject_backslash(dependency):
 )
 def test_identifiers_are_quoted_verbatim(identifier, expected):
     assert construct_credentials_statement([identifier]) == f"\nCREDENTIALS ({expected})"
+
+
+@pytest.mark.parametrize(
+    "generate",
+    [
+        lambda func: generate_sql_function_body(func, "test_catalog", "test_schema"),
+        generate_function_info,
+    ],
+    ids=["generate_sql_function_body", "generate_function_info"],
+)
+@pytest.mark.parametrize(
+    ("func", "expected_error"),
+    [
+        (async_int_func, ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (async_int_gen, ASYNC_FUNCTION_ERROR.format("async_int_gen")),
+        (staticmethod(async_int_func), ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (classmethod(async_int_func), ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (async_int_func_partial, ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (run_sync(async_int_func), ASYNC_WRAPPER_ERROR.format("async_int_func")),
+        (
+            functools.partial(run_sync(async_int_func), 1),
+            ASYNC_WRAPPER_ERROR.format("async_int_func"),
+        ),
+    ],
+    ids=[
+        "coroutine",
+        "async_generator",
+        "staticmethod_of_coroutine",
+        "classmethod_of_coroutine",
+        "partial_of_coroutine",
+        "sync_wrapper_of_coroutine",
+        "partial_of_sync_wrapper_of_coroutine",
+    ],
+)
+def test_async_function_is_rejected(generate, func, expected_error):
+    with pytest.raises(ValueError, match=re.escape(expected_error)):
+        generate(func)
+
+
+def test_async_function_is_rejected_before_other_validation():
+    async def undocumented(a: int) -> int:
+        return a
+
+    with pytest.raises(ValueError, match=re.escape(ASYNC_FUNCTION_ERROR.format("undocumented"))):
+        generate_function_info(undocumented)

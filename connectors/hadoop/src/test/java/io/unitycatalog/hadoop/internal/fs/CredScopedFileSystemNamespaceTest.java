@@ -30,7 +30,7 @@ class CredScopedFileSystemNamespaceTest {
   private static FileSystem initDelegate(URI uri, Configuration conf) throws Exception {
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(uri, conf);
-    return fs.getDelegate();
+    return fs.getRawFileSystem();
   }
 
   private static Configuration tableConf() {

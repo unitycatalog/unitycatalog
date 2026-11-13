@@ -22,7 +22,16 @@ public class CliTableOperations extends BaseCliOperations implements TableOperat
   public TableInfo createTable(CreateTable createTableRequest) throws ApiException {
     StringBuilder columns = new StringBuilder();
     for (ColumnInfo column : createTableRequest.getColumns()) {
-      columns.append(column.getName()).append(" ").append(column.getTypeName().name()).append(",");
+      columns.append(column.getName()).append(" ").append(column.getTypeName().name());
+      if (column.getTypePrecision() != null) {
+        columns
+            .append("(")
+            .append(column.getTypePrecision())
+            .append(",")
+            .append(column.getTypeScale())
+            .append(")");
+      }
+      columns.append(",");
     }
     columns.deleteCharAt(columns.length() - 1);
 
@@ -67,6 +76,10 @@ public class CliTableOperations extends BaseCliOperations implements TableOperat
   @Override
   public TableInfo getTable(String tableFullName) throws ApiException {
     return execute(TableInfo.class, "get", List.of("--full_name", tableFullName));
+  }
+
+  public void writeTable(String tableFullName) throws ApiException {
+    execute(Void.class, "write", List.of("--full_name", tableFullName));
   }
 
   @Override

@@ -44,14 +44,14 @@ No authorization required
 
 Delete a credential
 
-    Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+    Deletes a credential from the metastore. The caller must be a metastore admin, the credential owner, or have MANAGE on the credential.
 
 ### Parameters
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| Name of the credential. | [default to null] |
-| **force** | **Boolean**| Force deletion even if there are dependent external locations. | [optional] [default to null] |
+| **force** | **Boolean**| Force deletion even if there are dependent external locations. The dependent external locations are kept, and they have no credential until they are updated with a new credential_name. | [optional] [default to null] |
 
 ### Return type
 
@@ -128,7 +128,7 @@ No authorization required
 
 Update a credential
 
-    Updates a credential.
+    Updates a credential. The caller must be a metastore admin, the credential owner, or have MANAGE on the credential.
 
 ### Parameters
 
