@@ -516,6 +516,43 @@ def test_param_info_to_pydantic_type_invalid_json():
     assert "Default: not-json-value" in result.description
 
 
+def test_param_info_to_pydantic_type_with_binary_literal_default():
+    param_info = FunctionParameterInfo(
+        name="bytes_param",
+        type_name="BINARY",
+        type_text="binary",
+        position=0,
+        parameter_default="X'0102'",
+        type_json='{"name":"bytes_param","type":"binary","nullable":true,"metadata":{}}',
+    )
+
+    result = param_info_to_pydantic_type(param_info)
+
+    # The schema default must be the bytes value execution would use, not
+    # the raw X'...' string that the previous json.loads-only parsing kept
+    assert result.default == b"\x01\x02"
+    assert isinstance(result.default, bytes)
+    assert "Default: X'0102'" in result.description
+
+
+def test_param_info_to_pydantic_type_with_quoted_string_default():
+    param_info = FunctionParameterInfo(
+        name="str_param",
+        type_name="STRING",
+        type_text="string",
+        position=0,
+        parameter_default="'default'",
+        type_json='{"name":"str_param","type":"string","nullable":true,"metadata":{}}',
+    )
+
+    result = param_info_to_pydantic_type(param_info)
+
+    # The schema default matches execution: the stored quotes are SQL
+    # literal syntax, not part of the value
+    assert result.default == "default"
+    assert "Default: 'default'" in result.description
+
+
 def test_process_function_parameter_defaults_with_null():
     func_info = FunctionInfo(
         catalog_name="catalog",
