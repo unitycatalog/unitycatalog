@@ -15,10 +15,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
@@ -117,6 +119,40 @@ public class ExternalTableMetadataTest extends BaseSparkIntegrationTest {
         .containsExactly(RowFactory.create(1, "a"), RowFactory.create(2, "b"));
     assertThat(sql("SHOW TBLPROPERTIES %s ('header')", TABLE))
         .containsExactly(RowFactory.create("header", "true"));
+  }
+
+  @Test
+  public void testCsvOptionsApplyToWrites() throws IOException {
+    sql(
+        "CREATE TABLE %s (i INT, s STRING) USING CSV OPTIONS (Header 'true', delimiter ';')"
+            + " LOCATION '%s'",
+        TABLE, dataDir.getAbsolutePath());
+    sql("INSERT INTO %s VALUES (1, 'a')", TABLE);
+
+    assertThat(writtenCsvLines()).containsExactly("i;s", "1;a");
+  }
+
+  @Test
+  public void testCsvHeaderTablePropertyIsNotAWriterOption() throws IOException {
+    sql(
+        "CREATE TABLE %s (i INT, s STRING) USING CSV TBLPROPERTIES ('header' = 'true')"
+            + " LOCATION '%s'",
+        TABLE, dataDir.getAbsolutePath());
+    sql("INSERT INTO %s VALUES (1, 'a')", TABLE);
+
+    assertThat(writtenCsvLines()).containsExactly("1,a");
+  }
+
+  private List<String> writtenCsvLines() throws IOException {
+    try (Stream<Path> files = Files.list(dataDir.toPath())) {
+      List<Path> csvFiles =
+          files
+              .filter(f -> f.getFileName().toString().startsWith("part-"))
+              .filter(f -> f.getFileName().toString().endsWith(".csv"))
+              .collect(Collectors.toList());
+      assertThat(csvFiles).hasSize(1);
+      return Files.readAllLines(csvFiles.get(0), StandardCharsets.UTF_8);
+    }
   }
 
   @Test

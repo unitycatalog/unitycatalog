@@ -1070,12 +1070,14 @@ private[spark] class UCProxy(
 
     val isDelta = t.getDataSourceFormat == DataSourceFormat.DELTA
     // Delta tables keep all UC properties as storage properties, unchanged (Delta reads
-    // UC_TABLE_ID_KEY there). Other formats split them like Spark's session catalog: OPTIONS become
-    // reader and writer options, everything else is a table property.
+    // UC_TABLE_ID_KEY there), and take their comment and table properties from the Delta log.
+    // Other formats split them like Spark's session catalog: OPTIONS become reader and writer
+    // options, everything else is a table property.
     val (tableProperties, dataSourceOptions) = if (isDelta) {
       (Map.empty[String, String], t.getProperties.asScala.toMap)
     } else {
-      splitOptionsFromTableProperties(t.getProperties.asScala.toMap)
+      (UCTableProperties.tablePropertiesWithoutOptions(t.getProperties).asScala.toMap,
+        UCTableProperties.dataSourceOptions(t.getProperties).asScala.toMap)
     }
     val storageProperties = (dataSourceOptions ++ extraSerdeProps).asJava
     val sparkTable = CatalogTable(
@@ -1099,17 +1101,6 @@ private[spark] class UCProxy(
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will
     // resolve the data source and create scan node later.
     asV1Table(sparkTable)
-  }
-
-  /**
-   * Spark stores each `OPTIONS (...)` entry twice, bare and with the `option.` prefix. Returns the
-   * table properties without either copy of an option, and the options with the prefix removed.
-   */
-  private def splitOptionsFromTableProperties(
-      properties: Map[String, String]): (Map[String, String], Map[String, String]) = {
-    val (prefixed, bare) = properties.partition(_._1.startsWith(TableCatalog.OPTION_PREFIX))
-    val options = prefixed.map { case (k, v) => k.stripPrefix(TableCatalog.OPTION_PREFIX) -> v }
-    (bare -- options.keys, options)
   }
 
   private[spark] def toStructField(col: ColumnInfo): StructField =
