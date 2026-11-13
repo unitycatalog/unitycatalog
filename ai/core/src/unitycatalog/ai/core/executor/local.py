@@ -175,14 +175,14 @@ def _receive_result(
     finally:
         process.join()
     exit_code = process.exitcode
-    if read_error is not None:
-        return False, UNREADABLE_RESULT_MESSAGE_TEMPLATE.format(
-            exit_code=exit_code, error=read_error
-        )
     if result is not None:
         return result
     if exit_code is not None and exit_code < 0:
         return False, TERMINATED_MESSAGE_TEMPLATE.format(signal_num=-exit_code)
+    if read_error is not None:
+        return False, UNREADABLE_RESULT_MESSAGE_TEMPLATE.format(
+            exit_code=exit_code, error=read_error
+        )
     return False, EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE.format(exit_code=exit_code)
 
 
@@ -198,7 +198,7 @@ async def run_in_sandbox_async(
     Executes a Python callable in a sandboxed subprocess using multiprocessing.
     Specific core Python modules are restricted to prevent unwanted behavior.
     The function is executed with a timeout and resource limits for CPU and memory.
-    The function's result or any exception's full stack trace is returned.
+    The function's result, or a description of the failure, is returned.
 
     On a timeout, the process is terminated and the thread reading its result
     finishes once the process is gone. Known limitation: if the process dies partway

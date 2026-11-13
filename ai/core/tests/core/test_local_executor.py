@@ -5,6 +5,7 @@ import logging
 import mmap
 import multiprocessing
 import os
+import signal
 import struct
 import sys
 import time
@@ -348,22 +349,47 @@ def test_unpicklable_result_reports_the_pickling_error():
     assert "pickle" in result.lower()
 
 
-def write_partial_result_frame_and_exit(sender):
+def write_partial_result_frame(sender):
+    # The length header promises 100 bytes and only 7 follow, so recv() hits EOF mid-frame.
     os.write(sender.fileno(), struct.pack("!i", 100) + b"partial")
+
+
+def write_partial_result_frame_and_exit(sender):
+    write_partial_result_frame(sender)
     os._exit(0)
 
 
-def test_partial_result_is_reported_as_unreadable():
+def write_partial_result_frame_and_get_killed(sender):
+    write_partial_result_frame(sender)
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        (
+            write_partial_result_frame_and_exit,
+            "exited with code 0, but its result could not be read: OSError",
+        ),
+        (
+            write_partial_result_frame_and_get_killed,
+            f"terminated with a signal {int(signal.SIGKILL)}.",
+        ),
+    ],
+    ids=["exit", "killed"],
+)
+@pytest.mark.skipif(not local_executor.is_sandbox_supported(), reason="Needs the fork start method")
+def test_partial_result_is_reported_with_how_the_process_ended(target, expected):
     ctx = multiprocessing.get_context("fork")
     receiver, sender = ctx.Pipe(duplex=False)
-    process = ctx.Process(target=write_partial_result_frame_and_exit, args=(sender,))
+    process = ctx.Process(target=target, args=(sender,))
     process.start()
     sender.close()
 
     succeeded, result = local_executor._receive_result(receiver, process)
 
     assert not succeeded
-    assert "exited with code 0, but its result could not be read: OSError" in result
+    assert expected in result
 
 
 def fail_to_unpickle():
