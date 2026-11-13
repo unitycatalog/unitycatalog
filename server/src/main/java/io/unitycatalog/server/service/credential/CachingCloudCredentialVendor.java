@@ -5,6 +5,8 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.StorageCredentialCacheMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -19,7 +21,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import lombok.SneakyThrows;
@@ -31,7 +32,7 @@ import lombok.SneakyThrows;
  * binding before calling it, so only the cloud vend is skipped; the binding is re-read on every
  * request.
  *
- * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}. It is served until
+ * <p>An entry is keyed by {@code (locations, privileges, credential binding)}. It is served until
  * {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where {@code vendTime} is read
  * before the cloud call; a static credential with no expiry is bounded by the max age alone.
  * Callers always receive a copy, so they cannot change a cached credential.
@@ -129,14 +130,24 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   }
 
   /**
-   * The resolved credential binding. Changing the role or external ID of a location's credential
-   * changes the key, so credentials cached under the previous binding are never reused.
+   * The resolved credential binding: the cloud identity a storage credential vends with, and what
+   * qualifies it. Changing either on a location's credential changes the key, so credentials cached
+   * under the previous binding are never reused. Per-bucket config vends have no credential DAO, so
+   * their binding fields are null.
+   *
+   * <ul>
+   *   <li>AWS IAM role: the role ARN, qualified by the external ID.
+   *   <li>Azure service principal: the application ID, qualified by the directory ID. A rotated
+   *       client secret keeps the binding; SAS tokens already issued do not depend on it.
+   *   <li>GCP service account key: the service account email, qualified by the private key ID.
+   * </ul>
    */
   private record Key(
       List<NormalizedURL> locations,
       Set<CredentialContext.Privilege> privileges,
-      String roleArn,
-      String externalId) {
+      CredentialDAO.CredentialType credentialType,
+      String identity,
+      String qualifier) {
     Key {
       // AWS and GCP scope a credential to every location in the context, so the key has them all.
       locations = List.copyOf(locations);
@@ -144,15 +155,44 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
     }
 
     static Key of(CredentialContext context) {
-      // Per-bucket config vends have no credential DAO, so both role fields are null. AWS IAM role
-      // is the only DB-backed credential type today; a new type must add its binding to the key.
-      Optional<AwsIamRoleResponse> awsIamRole =
-          context.getCredentialDAO().map(CredentialDAO::getAwsIamRoleResponse);
-      return new Key(
-          context.getLocations(),
-          context.getPrivileges(),
-          awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(null),
-          awsIamRole.map(AwsIamRoleResponse::getExternalId).orElse(null));
+      return context
+          .getCredentialDAO()
+          .map(credential -> of(context, credential))
+          .orElseGet(
+              () -> new Key(context.getLocations(), context.getPrivileges(), null, null, null));
+    }
+
+    private static Key of(CredentialContext context, CredentialDAO credential) {
+      CredentialDAO.CredentialType type = credential.getCredentialType();
+      return switch (type) {
+        case AWS_IAM_ROLE -> {
+          AwsIamRoleResponse role = credential.getAwsIamRoleResponse();
+          yield new Key(
+              context.getLocations(),
+              context.getPrivileges(),
+              type,
+              role.getRoleArn(),
+              role.getExternalId());
+        }
+        case AZURE_SERVICE_PRINCIPAL -> {
+          AzureServicePrincipalRequest servicePrincipal = credential.getAzureServicePrincipal();
+          yield new Key(
+              context.getLocations(),
+              context.getPrivileges(),
+              type,
+              servicePrincipal.getApplicationId(),
+              servicePrincipal.getDirectoryId());
+        }
+        case GCP_SERVICE_ACCOUNT_KEY -> {
+          GcpServiceAccountKeyRequest key = credential.getGcpServiceAccountKey();
+          yield new Key(
+              context.getLocations(),
+              context.getPrivileges(),
+              type,
+              key.getEmail(),
+              key.getPrivateKeyId());
+        }
+      };
     }
   }
 

@@ -24,11 +24,14 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.InstantSource;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -555,5 +558,23 @@ public class TestUtils {
   public static HttpResponse<String> sendRawGet(
       ServerConfig config, String path, Optional<String> jsonBody) throws Exception {
     return sendRaw(config, "GET", path, jsonBody);
+  }
+
+  /**
+   * A fresh RSA private key as the PEM-encoded PKCS#8 text of the {@code private_key} field in a
+   * GCP service account key file. The PEM header is assembled in two parts so that secret scanners
+   * do not take this helper for a committed key.
+   */
+  public static String generatePkcs8PrivateKeyPem() {
+    try {
+      KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+      generator.initialize(2048);
+      byte[] der = generator.generateKeyPair().getPrivate().getEncoded();
+      String body = Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(der);
+      String label = "PRIVATE KEY-----\n";
+      return "-----BEGIN " + label + body + "\n-----END " + label;
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
   }
 }

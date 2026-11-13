@@ -10,6 +10,7 @@ import com.azure.storage.file.datalake.implementation.util.DataLakeSasImplUtil;
 import com.azure.storage.file.datalake.models.UserDelegationKey;
 import com.azure.storage.file.datalake.sas.DataLakeServiceSasSignatureValues;
 import com.azure.storage.file.datalake.sas.PathSasPermission;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.OffsetDateTime;
 import java.util.Set;
@@ -40,12 +41,32 @@ public interface AzureCredentialGenerator {
     private final TokenCredential tokenCredential;
 
     public DatalakeCredentialGenerator(ADLSStorageConfig config) {
-      this.tokenCredential =
-          new ClientSecretCredentialBuilder()
-              .tenantId(config.getTenantId())
-              .clientId(config.getClientId())
-              .clientSecret(config.getClientSecret())
-              .build();
+      this(
+          clientSecretCredential(
+              config.getTenantId(), config.getClientId(), config.getClientSecret()));
+    }
+
+    DatalakeCredentialGenerator(TokenCredential tokenCredential) {
+      this.tokenCredential = tokenCredential;
+    }
+
+    /** Signs in as the service principal of a storage credential. */
+    public static DatalakeCredentialGenerator forServicePrincipal(
+        AzureServicePrincipalRequest servicePrincipal) {
+      return new DatalakeCredentialGenerator(
+          clientSecretCredential(
+              servicePrincipal.getDirectoryId(),
+              servicePrincipal.getApplicationId(),
+              servicePrincipal.getClientSecret()));
+    }
+
+    private static TokenCredential clientSecretCredential(
+        String tenantId, String clientId, String clientSecret) {
+      return new ClientSecretCredentialBuilder()
+          .tenantId(tenantId)
+          .clientId(clientId)
+          .clientSecret(clientSecret)
+          .build();
     }
 
     @Override
