@@ -13,6 +13,7 @@
 # GitHub Actions and Workflows
 /.github/actions/ @tdas @yili-db @TimothyW553
 /.github/workflows/ @tdas @yili-db @TimothyW553
+/.github/omnigent/ @tdas @yili-db @TimothyW553
 
 # Misc
 /.gitignore @tdas @yili-db @TimothyW553
