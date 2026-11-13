@@ -294,6 +294,11 @@ class TestParseTypeDirect:
         assert len(dt.fields) == 1
         assert dt.fields[0].name == "zip"
 
+    @pytest.mark.parametrize("cls", [DeltaPrimitiveType, DeltaDecimalType, DeltaArrayType,
+                                     DeltaMapType, DeltaStructType, DeltaStructField])
+    def test_from_dict_none(self, cls):
+        assert cls.from_dict(None) is None
+
 
 class TestTypeToDictDirect:
     """Direct unit tests for _type_to_dict -- serialization logic without going through the wire."""

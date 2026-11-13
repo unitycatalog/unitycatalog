@@ -99,6 +99,8 @@ def _field_to_dict(sf):
 # Patch class methods
 @classmethod
 def _patched_dt_from_dict(cls, obj):
+    if obj is None:
+        return None
     return _parse_type(obj)
 
 
