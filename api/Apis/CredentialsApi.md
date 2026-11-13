@@ -17,7 +17,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Create a credential
 
-    Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+    Creates a new storage credential. Its cloud identity is the one of **aws_iam_role**, **azure_service_principal** or **gcp_service_account_key** that is set; exactly one must be.
 
 ### Parameters
 

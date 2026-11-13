@@ -57,6 +57,50 @@ storage access role trust in `unity_catalog_iam_arn`, additionally with an `exte
 trust relationship must check. Please refer to [Deploy for AWS](../server/aws.md) on how to properly
 configure both roles to make it working.
 
+Here's how to create a Credential for Azure storage (ADLS Gen2) from a Microsoft Entra ID service
+principal.
+
+```sh
+bin/uc credential create \
+  --name <name> # (1) \
+  --azure_directory_id <directory_id> # (2) \
+  --azure_application_id <application_id> # (3) \
+  --azure_client_secret <client_secret> # (4)
+```
+
+1. `name`: The name of the Credential.
+2. `azure_directory_id`: The directory (tenant) ID of the service principal.
+3. `azure_application_id`: The application (client) ID of the service principal.
+4. `azure_client_secret`: A client secret of the service principal.
+
+The three Azure flags must be given together.
+
+Here's how to create a Credential for Google Cloud Storage from a service account key.
+
+```sh
+bin/uc credential create \
+  --name <name> # (1) \
+  --gcp_service_account_key_file /path/to/key.json # (2)
+```
+
+1. `name`: The name of the Credential.
+2. `gcp_service_account_key_file`: The JSON key file of the service account, as downloaded from
+   Google Cloud. The CLI sends its `client_email`, `private_key_id` and `private_key`.
+
+The server stores the client secret or private key, and never returns it: `get` and `list` show
+only the directory and application IDs, or the service account email and key ID. Creating the
+Credential does not contact Azure or Google Cloud, so a wrong secret or missing storage access only
+shows when the Credential is used.
+
+On a database that an earlier release set up, run `bin/start-uc-server --upgrade-schema` before
+creating an Azure or GCS Credential (see [Upgrading the database schema](../server/upgrades.md)).
+The server's schema update at startup does not change the existing columns that these Credentials
+need.
+
+!!! note
+    Unity Catalog cannot vend temporary credentials from an Azure or GCS Credential yet. A request
+    for a path under an external location that uses one fails with `UNIMPLEMENTED`.
+
 ### List Credentials
 
 Here's how to list Credentials contained in a Unity Catalog instance.
@@ -104,6 +148,10 @@ bin/uc external_location create \
 1. `name`: The name of the credential.
 2. `url`: The URL of the storage location. Example: s3://my-bucket/path
 3. `credential_name`: The name of the credential to be associated with.
+
+The credential must be for the URL's cloud: an AWS IAM role for `s3://`, an Azure service principal
+for `abfs://` and `abfss://`, and a GCS service account key for `gs://`. Otherwise the create, or an
+update of the URL or credential, fails with `INVALID_ARGUMENT`. Local paths accept any credential.
 
 ### List External Location
 
