@@ -53,7 +53,8 @@ public class OptionParser {
             .desc(
                 "Upgrade the database's schema to this release, or set up an empty database, then"
                     + " exit: 0 on success, 1 if not. Stop every server of the previous release"
-                    + " first; after a failure, fix the cause it names and run it again.")
+                    + " first; after a failure, fix the cause it names (or restore the backup, see"
+                    + " docs/server/upgrades.md) and run it again.")
             .build());
     options.addOptionGroup(schemaCommands);
     options.addOption(

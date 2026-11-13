@@ -140,7 +140,9 @@ public class SchemaMigratorTest {
     /** The failed step is a newer release's, which this build doesn't have. */
     NEWER_RELEASES_STEP,
     /** The schema is neither the one before the failed step nor the one after it. */
-    SCHEMA_NEITHER_BEFORE_NOR_AFTER
+    SCHEMA_NEITHER_BEFORE_NOR_AFTER,
+    /** The failed step is below the recorded version, so it is not one that the run retries. */
+    FAILED_BELOW_THE_RECORDED_VERSION
   }
 
   @ParameterizedTest
@@ -168,6 +170,16 @@ public class SchemaMigratorTest {
         UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
         UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
         message = "so schema step 1000 can't run";
+      }
+      case FAILED_BELOW_THE_RECORDED_VERSION -> {
+        UpgradeTestUtils.execute(
+            db, historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = true WHERE"));
+        UpgradeTestUtils.execute(
+            db,
+            ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
+                    + " WHERE %1$sversion%1$s = '2'")
+                .formatted(identifierQuote(db.dataSource())));
+        message = "Detected failed migration to version 2";
       }
     }
 
@@ -264,26 +276,63 @@ public class SchemaMigratorTest {
     assertThat(problems).isEmpty();
   }
 
-  @Test
-  void rerunsTheFirstStepWhenItsRunStoppedPartWay() {
-    // What a first install that stopped in step 1 leaves on H2 and MySQL: some of its tables.
+  /**
+   * A first install that stopped in step 1 leaves some of its tables on H2 and MySQL, and on H2 and
+   * PostgreSQL may lack an index that the step creates in a statement of its own: the rerun
+   * completes it. A table without one of its parts is not what a stopped run leaves, and step 1
+   * can't add it, so the run refuses and keeps the failed record.
+   */
+  @ParameterizedTest
+  @CsvSource({
+    "DROP TABLE uc_volumes, true",
+    "ALTER TABLE uc_catalogs DROP COLUMN comment, false",
+    "ALTER TABLE uc_columns DROP CONSTRAINT FK1xslfe25li3uopodup6mylm3l, false",
+    "SEPARATE_INDEX, true",
+    "PRIMARY_KEY, false"
+  })
+  void rerunsTheFirstStepWhenItsRunStoppedPartWay(String change, boolean completes) {
     UpgradeTestUtils.migrateTo(db, "1");
-    UpgradeTestUtils.execute(db, "DROP TABLE uc_volumes");
+    DatabaseKind kind = DatabaseKind.of(db.dataSource());
+    UpgradeTestUtils.execute(
+        db,
+        switch (change) {
+          case "SEPARATE_INDEX" ->
+              kind == DatabaseKind.MYSQL
+                  ? "DROP INDEX idx_name ON uc_tables"
+                  : "DROP INDEX idx_name";
+          case "PRIMARY_KEY" ->
+              kind == DatabaseKind.POSTGRESQL
+                  ? "ALTER TABLE uc_catalogs DROP CONSTRAINT uc_catalogs_pkey"
+                  : "ALTER TABLE uc_catalogs DROP PRIMARY KEY";
+          default ->
+              kind == DatabaseKind.MYSQL
+                  ? change.replace("DROP CONSTRAINT", "DROP FOREIGN KEY")
+                  : change;
+        });
     UpgradeTestUtils.execute(
         db,
         "UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE %1$sversion%1$s = '1'"
             .formatted(identifierQuote(db.dataSource())));
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
 
-    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
-    assertThat(SchemaSnapshot.of(db.dataSource()))
-        .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+    // On MySQL, step 1 creates every index inside its table's statement.
+    if (completes && !(change.equals("SEPARATE_INDEX") && kind == DatabaseKind.MYSQL)) {
+      assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+      assertThat(SchemaSnapshot.of(db.dataSource()))
+          .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+    } else {
+      assertThatThrownBy(migrator::upgradeSchema)
+          .hasMessageContaining("neither the schema of version 0 nor that of version 1");
+      assertThat(failedRecords()).isOne();
+    }
   }
 
   /**
    * Adopting a database at the last step's schema stopped at the history record of step 1, 2 or
    * 1000 of a build with three steps: after Flyway created the history table, with the steps before
-   * that one recorded. The rerun records the remaining steps.
+   * that one recorded. The rerun records the remaining steps. {@code stoppedRecord} counts the
+   * inserts into the history table that the watched pool sees, and each is a step's record: the
+   * rerun records {@code stoppedRecord - 1} steps fewer than the build has.
    */
   @ParameterizedTest
   @CsvSource({"1", "2", "3"})
