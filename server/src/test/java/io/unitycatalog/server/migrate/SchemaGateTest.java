@@ -54,6 +54,19 @@ public class SchemaGateTest {
   }
 
   @Test
+  void hibernateModeRefusesASchemaNewerThanThisRelease() {
+    // A newer release (here one with step 1000) upgraded the database.
+    new SchemaMigrator(db.dataSource(), List.of("classpath:db/test-steps/ahead")).upgradeSchema();
+    // A column that Hibernate's update would add back, to tell whether it ran.
+    UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs DROP COLUMN comment");
+    SchemaSnapshot upgraded = SchemaSnapshot.of(db.dataSource());
+
+    assertThatThrownBy(() -> TestServer.startWithHibernateManagedSchema(db, storageRoot))
+        .hasMessageContaining("The schema is newer than this release (version 1000");
+    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(upgraded);
+  }
+
+  @Test
   void databaseHibernateSetUpCanSwitchBackToTheSteps() {
     try (TestServer server = TestServer.startWithHibernateManagedSchema(db, storageRoot)) {
       // Hibernate created the tables, and no schema step recorded anything.

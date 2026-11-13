@@ -4,6 +4,7 @@ import static io.unitycatalog.server.utils.ServerProperties.DB_PASSWORD_KEY;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -102,6 +103,10 @@ public class HibernateConfigurator implements AutoCloseable {
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
+      if (schemaManagedByHibernate) {
+        // Before Hibernate's update, which would change a newer release's schema back.
+        SchemaMigrator.refuseNewerSchema(dataSource);
+      }
       this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
     } catch (Throwable t) {
       dataSource.close();

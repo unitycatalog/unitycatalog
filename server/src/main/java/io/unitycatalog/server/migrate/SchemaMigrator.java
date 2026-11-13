@@ -884,6 +884,26 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
+   * For {@code server.schema-management=hibernate}, before Hibernate updates the schema: throws
+   * when the schema history records a step newer than this build's last, which Hibernate's update
+   * would change back. Changes nothing. When the configuration doesn't let the schema history be
+   * read (for example a PostgreSQL connection without a current schema), logs that and checks
+   * nothing, since Hibernate mode doesn't need the schema steps' settings.
+   */
+  public static void refuseNewerSchema(DataSource dataSource) {
+    SchemaMigrator migrator;
+    try {
+      migrator = new SchemaMigrator(dataSource);
+    } catch (IllegalStateException e) {
+      LOGGER.warn("Could not check for a schema newer than this release: {}", e.getMessage());
+      return;
+    }
+    if (migrator.state() == SchemaState.AHEAD) {
+      migrator.refuseIfUnsupported(SchemaState.AHEAD);
+    }
+  }
+
+  /**
    * Throws for a database that {@link #upgradeSchema()} must not change, or a build with a
    * repeatable step.
    */
