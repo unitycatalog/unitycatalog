@@ -24,7 +24,7 @@ When using the `UnitycatalogFunctionClient` be aware of the following points:
 - **Asynchronous and Synchronous Operations**: Offers both async and sync methods, allowing flexibility based on the application's concurrency requirements.
 - **Function Management**: Simplifies the process of creating, retrieving, listing, executing, and deleting UC functions.
 - **Integration with GenAI**: Supports the registration of UC functions as tools for Generative AI agents, enabling intelligent tool calling within AI-driven workflows.
-- **Type Validation and Caching**: Ensures that function parameters and return types adhere to defined schemas and caches function executions for optimized performance.
+- **Type Validation and Caching**: Ensures that function parameters and return types adhere to defined schemas and caches the callable built for each function, rebuilding it when the function definition changes.
 - **Wrapped Function Creation**: Registers wrapped functions by in-lining helper functions into a primary function’s definition. The primary function serves as the interface for function execution while helper functions are bundled into the definition, promoting modular design and ease of deployment.
 
 ### Using the UnityCatalog Functions Client
