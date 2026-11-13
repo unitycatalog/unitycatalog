@@ -27,7 +27,7 @@ The Unity Catalog (UC) function client is a core component of the Unity Catalog 
 - **Comprehensive Function Management**: Easily create, retrieve, list, execute, and delete UC functions.
 - **Wrapped Function Support**: In addition to standard single-function creation, you can create *wrapped functions* that in-line additional helper functions within a function's definition to simplify code reuse and modularity.
 - **Integration with GenAI**: Seamlessly integrate UC functions as tools within Generative AI agents, enhancing intelligent automation workflows.
-- **Type Safety and Caching**: Enforce strict type validation and utilize caching mechanisms to optimize performance and reduce redundant executions.
+- **Type Safety and Caching**: Enforce strict type validation, and cache the callable built for each function, rebuilding it when the function definition changes.
 
 #### Caveats
 
@@ -47,6 +47,9 @@ When using the `UnitycatalogFunctionClient` for UC, be mindful of the following 
 - **Function Overwriting**:
     - The `create_function`, `create_function_async`, `create_wrapped_function` and `create_wrapped_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
     - **Warning**: Overwriting functions can disrupt workflows that depend on existing function definitions. Use this feature judiciously and ensure that overwriting is intentional.
+- **No Async Primary Functions**:
+    - The function passed to `create_python_function`, or as `primary_func` to `create_wrapped_function`, must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around one, raises a `ValueError`.
+    - Helpers passed to `create_wrapped_function` through `functions` can be `async def`, as long as the primary function runs them, for example with `asyncio.run`.
 - **Type Validation and Compatibility**:
     - The client performs strict type validation based on the defined schemas. Ensure that your function parameters and return types adhere to the expected types to prevent execution errors.
 

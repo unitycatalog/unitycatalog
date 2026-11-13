@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.StorageExceptions;
 import io.unitycatalog.server.exception.TransactionRollbackException;
 import java.util.Optional;
 import org.hibernate.Session;
@@ -157,6 +158,9 @@ public class TransactionManager {
     LOGGER.debug(errorMessage, e);
     if (e instanceof BaseException baseException) {
       return baseException;
+    }
+    if (StorageExceptions.isStorageFailure(e)) {
+      return StorageExceptions.toGeneralError(e);
     }
     ErrorCode errorCode = DatabaseErrors.errorCode(sessionFactory, e).orElse(ErrorCode.INTERNAL);
     return new BaseException(errorCode, errorMessage + ": " + e.getMessage(), e);
