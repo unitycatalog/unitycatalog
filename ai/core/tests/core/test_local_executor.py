@@ -371,10 +371,7 @@ def write_partial_result_frame_and_get_killed(sender):
             write_partial_result_frame_and_exit,
             "exited with code 0, but its result could not be read: OSError",
         ),
-        (
-            write_partial_result_frame_and_get_killed,
-            f"terminated with a signal {int(signal.SIGKILL)}.",
-        ),
+        (write_partial_result_frame_and_get_killed, "terminated with a signal 9."),
     ],
     ids=["exit", "killed"],
 )
@@ -388,27 +385,35 @@ def test_partial_result_is_reported_with_how_the_process_ended(target, expected)
 
     succeeded, result = local_executor._receive_result(receiver, process)
 
+    assert process.exitcode is not None
     assert not succeeded
     assert expected in result
 
 
-def fail_to_unpickle():
-    raise ValueError("cannot rebuild this object")
+def fail_to_unpickle(error_type):
+    raise error_type("cannot rebuild this object")
 
 
 class UnpicklableInParent:
+    def __init__(self, error_type):
+        self.error_type = error_type
+
     def __reduce__(self):
-        return fail_to_unpickle, ()
+        return fail_to_unpickle, (self.error_type,)
 
 
-def test_result_that_cannot_be_unpickled_is_reported_as_unreadable():
+@pytest.mark.parametrize("error_type", [ValueError, EOFError])
+def test_result_that_cannot_be_unpickled_is_reported_as_unreadable(error_type):
     def unreadable_result():
-        return UnpicklableInParent()
+        return UnpicklableInParent(error_type)
 
     succeeded, result = run_in_sandbox(unreadable_result, {})
 
     assert not succeeded
-    assert "its result could not be read: ValueError: cannot rebuild this object" in result
+    assert (
+        f"exited with code 0, but its result could not be read: "
+        f"{error_type.__name__}: cannot rebuild this object" in result
+    )
 
 
 def test_process_exiting_without_result_reports_its_exit_code():
@@ -435,19 +440,22 @@ def test_memory_limit_is_not_applied_when_address_space_size_is_unknown(
     resource = pytest.importorskip("resource")
     monkeypatch.setattr(local_executor, "_STATM_PATH", str(tmp_path / "missing"))
     original_limits = resource.getrlimit(resource.RLIMIT_AS)
-    original_cpu_limits = resource.getrlimit(resource.RLIMIT_CPU)
+    limited_resources = []
 
-    try:
-        with caplog.at_level(logging.INFO, logger=local_executor.__name__):
-            local_executor._limit_resources(cpu_time_limit=resource.RLIM_INFINITY, memory_limit=1)
-        limits_after_call = resource.getrlimit(resource.RLIMIT_AS)
-    finally:
-        resource.setrlimit(resource.RLIMIT_CPU, original_cpu_limits)
-        resource.setrlimit(resource.RLIMIT_AS, original_limits)
+    with (
+        monkeypatch.context() as patched,
+        caplog.at_level(logging.INFO, logger=local_executor.__name__),
+    ):
+        patched.setattr(
+            local_executor.resource,
+            "setrlimit",
+            lambda limited_resource, limits: limited_resources.append(limited_resource),
+        )
+        local_executor._limit_resources(cpu_time_limit=resource.RLIM_INFINITY, memory_limit=1)
     succeeded, result = run_in_sandbox(read_memory_limit, {})
 
     assert "cannot read the current address space size" in caplog.text
-    assert limits_after_call == original_limits
+    assert resource.RLIMIT_AS not in limited_resources
     assert succeeded, result
     assert result == original_limits
 

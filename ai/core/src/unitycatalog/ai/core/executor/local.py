@@ -3,6 +3,7 @@ import builtins
 import logging
 import multiprocessing
 import multiprocessing.connection
+import pickle
 import traceback
 from typing import Any, Callable, Optional
 
@@ -162,18 +163,25 @@ def _receive_result(
     sending anything, or sends something that cannot be read, the returned error
     describes how it exited.
     """
+    payload = None
     read_error = None
     try:
         with receiver:
             multiprocessing.connection.wait([receiver, process.sentinel])
-            result = receiver.recv() if receiver.poll() else None
+            if receiver.poll():
+                payload = receiver.recv_bytes()
     except EOFError:
-        result = None
+        pass
     except Exception as e:
-        result = None
         read_error = f"{type(e).__name__}: {e}"
     finally:
         process.join()
+    result = None
+    if payload is not None:
+        try:
+            result = pickle.loads(payload)
+        except Exception as e:
+            read_error = f"{type(e).__name__}: {e}"
     exit_code = process.exitcode
     if result is not None:
         return result
