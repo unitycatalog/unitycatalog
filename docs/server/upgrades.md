@@ -8,7 +8,8 @@ Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` 
 `hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
 
 The server doesn't change the schema when it starts. It starts only on a database at the schema
-version of its release whose schema history passes Flyway's checks. Otherwise it refuses to start
+version of its release whose schema history passes Flyway's checks and whose schema is the one its
+release's steps build. Otherwise it refuses to start
 and tells you to run `bin/start-uc-server --upgrade-schema`. The one exception is an in-memory
 database (`server.env=test`, or a `jdbc:h2:mem:` URL), which only the server's own process can
 reach: the server sets up its schema at start.
@@ -182,12 +183,18 @@ Messages that the server prints when it refuses to start, and that `--check-sche
 `The database schema differs from the schema of version <m>:`
 : Followed by the differences, as above. The schema history records this release's last version,
   but the schema is not the one this release's steps build: something changed it outside the steps.
-  Undo those changes or restore the backup, then run the command again. A `missing index` line can
+  Undo those changes or restore the backup, then run the command again. The server prints this
+  message too, and doesn't start until the schema matches. A `missing index` line can
   end with a note that another table's index already has that name: on PostgreSQL and H2, index
   names are unique within a schema, so the step skipped Unity Catalog's index but is recorded as
   applied. Renaming the other index and running the command again does not create it; follow the
   note: restore the backup (on a new install, drop the `uc_*` tables and `uc_schema_history`),
   rename the other index or give Unity Catalog its own schema, then run the command again.
+
+`The H2 database file that hibernate.connection.url names is not found.`
+: The server refuses to start on an H2 database file that does not exist, and doesn't create it.
+  Check `hibernate.connection.url` in `etc/conf/hibernate.properties`. For a new install, run
+  `bin/start-uc-server --upgrade-schema`, which sets up the database there, then start the server.
 
 `The database's schema history does not match this release's schema steps: <reasons>`
 : Flyway's check of `uc_schema_history` failed, for example because a recorded step differs from

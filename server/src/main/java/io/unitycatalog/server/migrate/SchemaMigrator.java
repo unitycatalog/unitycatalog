@@ -218,16 +218,18 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
-   * connects, and a check must change nothing.
+   * connects, and a check must change nothing. Returns whether the URL names an H2 file database.
    */
-  private static void openH2OnlyIfItExists(Properties hibernateProperties) {
+  private static boolean openH2OnlyIfItExists(Properties hibernateProperties) {
     String url = hibernateProperties.getProperty("hibernate.connection.url");
     String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
-    if (lower.startsWith("jdbc:h2:")
-        && !isH2InMemory(lower)
-        && setting(lower, "ifexists") == null) {
+    if (!lower.startsWith("jdbc:h2:") || isH2InMemory(lower)) {
+      return false;
+    }
+    if (setting(lower, "ifexists") == null) {
       hibernateProperties.setProperty("hibernate.connection.url", url + ";IFEXISTS=TRUE");
     }
+    return true;
   }
 
   /** Whether H2 failed to open {@code e}'s database because it does not exist. */
@@ -528,9 +530,9 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * For server start, which changes nothing: throws unless the database is at this build's last
-   * step and Flyway's validation passes (no failed step, edited step or step missing below the
-   * recorded version). The message names the command that brings the database there. Takes no run
-   * lock.
+   * step, Flyway's validation passes (no failed step, edited step or step missing below the
+   * recorded version), and the schema is the one the steps' effect files add up to. The message
+   * names what brings the database there. Takes no run lock.
    */
   public void requireCurrentSchema() {
     SchemaState state = state();
@@ -561,6 +563,32 @@ public final class SchemaMigrator implements AutoCloseable {
               + ". Run bin/start-uc-server --check-schema to see what an upgrade would do; "
               + upgrade,
           e);
+    }
+    requireLastStepsSchema(", then start the server");
+  }
+
+  /**
+   * For server start, before Hibernate connects, which creates a missing H2 database file: throws
+   * when {@code hibernateProperties} names an H2 database file that does not exist, so that a
+   * mistyped path is not taken for a new database.
+   */
+  public static void requireH2DatabaseExists(Properties hibernateProperties) {
+    Properties properties = new Properties();
+    properties.putAll(hibernateProperties);
+    if (!openH2OnlyIfItExists(properties)) {
+      return;
+    }
+    try (SchemaMigrator ignored = fromHibernateProperties(properties)) {
+      // Opening it is the check.
+    } catch (RuntimeException e) {
+      if (isH2DatabaseNotFound(e)) {
+        throw new IllegalStateException(
+            "The H2 database file that hibernate.connection.url names is not found. Check the"
+                + " configuration; to set up a new database there, run bin/start-uc-server"
+                + " --upgrade-schema, then start the server.",
+            e);
+      }
+      throw e;
     }
   }
 
@@ -923,6 +951,14 @@ public final class SchemaMigrator implements AutoCloseable {
           "The database schema is " + state + "; this release needs version " + latestVersion());
     }
     requireValidHistory(false);
+    requireLastStepsSchema("");
+  }
+
+  /**
+   * Throws unless the schema is the one that the steps' effect files add up to for this build's
+   * last step, naming the differences and then {@code then}.
+   */
+  private void requireLastStepsSchema(String then) {
     SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
     SchemaSnapshot expected = expected(latestVersion());
     if (!schema.equals(expected)) {
@@ -931,7 +967,9 @@ public final class SchemaMigrator implements AutoCloseable {
               + latestVersion()
               + ":\n"
               + differences(schema, expected)
-              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup.");
+              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup"
+              + then
+              + ".");
     }
   }
 
