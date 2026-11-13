@@ -1,5 +1,6 @@
 package io.unitycatalog.server.utils;
 
+import com.linecorp.armeria.client.Endpoint;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TableType;
@@ -112,6 +113,32 @@ public class ServerProperties {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
             String.format("Invalid URL '%s' for property '%s': %s", value, key, e.getMessage()));
+      }
+    }
+  }
+
+  /** Validator for OPA decision URLs that does not expose their values in errors. */
+  private static class OpaDecisionUrlValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      String invalidUrlMessage =
+          key + " must be an absolute HTTP or HTTPS URL without credentials or a fragment";
+      try {
+        URL url = new URL(value);
+        url.toURI();
+        if (!("http".equalsIgnoreCase(url.getProtocol())
+                || "https".equalsIgnoreCase(url.getProtocol()))
+            || url.getHost().isEmpty()
+            || url.getUserInfo() != null
+            || url.getRef() != null
+            || url.getPort() == 0
+            || url.getPort() > 65535) {
+          throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage);
+        }
+        Endpoint.parse(url.getAuthority());
+      } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+        // Parser errors can contain credentials from the URL.
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage);
       }
     }
   }
@@ -263,6 +290,11 @@ public class ServerProperties {
     SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
     AUTHORIZATION_ENABLED(
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
+    AUTHORIZATION_PROVIDER(
+        "server.authorization.provider", "casbin", new EnumValidator(true, "casbin", "opa")),
+    OPA_DECISION_URL("server.authorization.opa.decision-url", new OpaDecisionUrlValidator()),
+    OPA_RESPONSE_TIMEOUT(
+        "server.authorization.opa.response-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
     STRICT_PRIVILEGE_CHECKS_ENABLED(
         "server.authorization.strict-privilege-checks", "true", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
@@ -382,9 +414,11 @@ public class ServerProperties {
    * initialization to fail fast if any property has an invalid value. It also validates any
    * override value from system property and env if set.
    *
+   * <p>Call this after changing properties and before creating server resources.
+   *
    * @throws BaseException if any property value is invalid
    */
-  private void validateProperties() {
+  public void validateProperties() {
     for (Property property : Property.values()) {
       String value = get(property);
       if (value == null) {
@@ -395,6 +429,24 @@ public class ServerProperties {
     }
     validateAuthAllowlistConfiguration();
     validateStorageCleanupConfiguration();
+    validateOpaConfiguration();
+  }
+
+  private void validateOpaConfiguration() {
+    if (!isOpaAuthorizationEnabled()) {
+      return;
+    }
+    if (!isAuthorizationEnabled()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization=enable is required when server.authorization.provider=opa");
+    }
+    if (getOpaDecisionUrl() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization.opa.decision-url is required when"
+              + " server.authorization.provider=opa");
+    }
   }
 
   private void validateStorageCleanupConfiguration() {
@@ -666,6 +718,21 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  /** Whether OPA is selected for privilege decisions. */
+  public boolean isOpaAuthorizationEnabled() {
+    return "opa".equalsIgnoreCase(get(Property.AUTHORIZATION_PROVIDER));
+  }
+
+  /** Returns the configured OPA decision URL, or null when unset. */
+  public String getOpaDecisionUrl() {
+    return get(Property.OPA_DECISION_URL);
+  }
+
+  /** Response timeout for each OPA call, not the complete UC request. */
+  public Duration getOpaResponseTimeout() {
+    return Duration.parse(get(Property.OPA_RESPONSE_TIMEOUT));
   }
 
   /** Whether permission checks use the stricter rules instead of the previous rules. */

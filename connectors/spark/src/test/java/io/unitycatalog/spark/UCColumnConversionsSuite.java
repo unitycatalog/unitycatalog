@@ -3,9 +3,15 @@ package io.unitycatalog.spark;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.stream.Stream;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.MetadataBuilder;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Unit tests for the Spark V2 {@code Column} &lt;-&gt; UC {@code ColumnInfo.type_json} round-trip
@@ -59,5 +65,87 @@ public class UCColumnConversionsSuite {
     assertThatThrownBy(() -> parse(json))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Expected boolean `nullable`");
+  }
+
+  private static String typeJsonWithMetadata(String metadataJson) {
+    return "{\"name\":\"b\",\"type\":\"integer\",\"nullable\":true,\"metadata\":"
+        + metadataJson
+        + "}";
+  }
+
+  @Test
+  public void testMetadataOfReadsTypeJsonMetadata() {
+    String json = typeJsonWithMetadata("{\"CURRENT_DEFAULT\":\"42\",\"EXISTS_DEFAULT\":\"42\"}");
+    Metadata expected =
+        new MetadataBuilder()
+            .putString("CURRENT_DEFAULT", "42")
+            .putString("EXISTS_DEFAULT", "42")
+            .build();
+    assertThat(UCColumnConversions.metadataOf("b", json)).isEqualTo(expected);
+  }
+
+  @Test
+  public void testMetadataOfDropsDeltaColumnMappingKeys() {
+    String json =
+        typeJsonWithMetadata(
+            "{\"delta.columnMapping.id\":3,"
+                + "\"delta.columnMapping.physicalName\":\"col-5f1c\","
+                + "\"delta.columnMapping.nested.ids\":{\"b.element\":4},"
+                + "\"delta.columnMappingMode\":\"kept\","
+                + "\"__CHAR_VARCHAR_TYPE_STRING\":\"varchar(3)\","
+                + "\"CURRENT_DEFAULT\":\"'x'\"}");
+    Metadata expected =
+        new MetadataBuilder()
+            .putString("delta.columnMappingMode", "kept")
+            .putString("__CHAR_VARCHAR_TYPE_STRING", "varchar(3)")
+            .putString("CURRENT_DEFAULT", "'x'")
+            .build();
+    assertThat(UCColumnConversions.metadataOf("b", json)).isEqualTo(expected);
+  }
+
+  @Test
+  public void testMetadataOfReadsNonStringValues() {
+    String json =
+        typeJsonWithMetadata(
+            "{\"n\":7,\"d\":1.5,\"flag\":true,\"tags\":[\"x\",\"y\"],\"nested\":{\"k\":\"v\"}}");
+    Metadata expected =
+        new MetadataBuilder()
+            .putLong("n", 7)
+            .putDouble("d", 1.5)
+            .putBoolean("flag", true)
+            .putStringArray("tags", new String[] {"x", "y"})
+            .putMetadata("nested", new MetadataBuilder().putString("k", "v").build())
+            .build();
+    assertThat(UCColumnConversions.metadataOf("b", json)).isEqualTo(expected);
+  }
+
+  static Stream<Arguments> typeJsonWithoutMetadata() {
+    return Stream.of(
+        Arguments.of("null type_json", null),
+        Arguments.of("empty type_json", ""),
+        Arguments.of("missing metadata", "{\"name\":\"b\",\"type\":\"integer\"}"),
+        Arguments.of("empty metadata", typeJsonWithMetadata("{}")),
+        Arguments.of("null metadata", typeJsonWithMetadata("null")),
+        Arguments.of("string metadata", typeJsonWithMetadata("\"x\"")),
+        Arguments.of("array metadata", typeJsonWithMetadata("[1]")));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("typeJsonWithoutMetadata")
+  public void testMetadataOfAbsentMetadataIsEmpty(String description, String typeJson) {
+    assertThat(UCColumnConversions.metadataOf("b", typeJson)).isEqualTo(Metadata.empty());
+  }
+
+  @Test
+  public void testMetadataOfMalformedTypeJsonIsEmpty() {
+    assertThat(UCColumnConversions.metadataOf("b", "{not json")).isEqualTo(Metadata.empty());
+  }
+
+  @Test
+  public void testMetadataOfUnrepresentableMetadataIsEmpty() {
+    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("{\"mixed\":[1,\"a\"]}")))
+        .isEqualTo(Metadata.empty());
+    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("{\"nested\":[[1]]}")))
+        .isEqualTo(Metadata.empty());
   }
 }
