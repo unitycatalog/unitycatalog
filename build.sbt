@@ -155,7 +155,7 @@ lazy val commonSettings = Seq(
   },
   
   assembly / test := {}
-)
+) ++ TestParallelization.settings
 
 lazy val log4jProcessSettings = Seq(
   libraryDependencies ++= Seq(
@@ -501,6 +501,8 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
       // The upgrade tests run older releases, whose servers read Vert.x's version file at start.
       "io.vertx" % "vertx-core" % "4.5.34" % Test,
+      // Reads the schema steps' SQL in MigrationStepRulesTest (Apache-2.0 or LGPL-2.1; tests only).
+      "com.github.jsqlparser" % "jsqlparser" % "5.4" % Test,
 
       // Integration testing
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
@@ -921,8 +923,12 @@ lazy val root = (project in file("."))
     name := s"$artifactNamePrefix",
     createTarballSettings(),
     commonSettings,
-    rootReleaseSettings
+    rootReleaseSettings,
+    // dev/run-tests.py keeps its log and suite durations here, also across a `clean` in the run.
+    cleanKeepFiles ++= Seq(target.value / "test-logs", target.value / "test-durations.csv"),
   )
+
+TestParallelization.globalSettings
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.

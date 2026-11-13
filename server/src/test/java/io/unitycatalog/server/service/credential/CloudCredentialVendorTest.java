@@ -28,6 +28,7 @@ import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialGene
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -40,6 +41,8 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
@@ -128,12 +131,32 @@ public class CloudCredentialVendorTest {
                     .region(S3_REGION)
                     .awsRoleArn(ROLE_ARN)
                     .build()));
-    awsCredentialVendor = new AwsCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
-    assertThatThrownBy(
-            () ->
-                vendCredential("s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
-        .isInstanceOf(StsException.class);
+    // A mocked STS client: an error response from STS, and a failure to reach it. Either is the
+    // cause of a general error, which the exception handler logs.
+    for (SdkException failure :
+        List.<SdkException>of(
+            StsException.builder().message("not authorized").statusCode(403).build(),
+            SdkClientException.create("Unable to connect to sts.us-west-2.amazonaws.com"))) {
+      StsClient stsClient = Mockito.mock(StsClient.class);
+      when(stsClient.assumeRole(any(AssumeRoleRequest.class))).thenThrow(failure);
+      StsClientBuilder stsClientBuilder = Mockito.mock(StsClientBuilder.class);
+      when(stsClientBuilder.region(any())).thenReturn(stsClientBuilder);
+      when(stsClientBuilder.credentialsProvider(any())).thenReturn(stsClientBuilder);
+      when(stsClientBuilder.build()).thenReturn(stsClient);
+      credentialsOperations =
+          new CloudCredentialVendor(
+              new AwsCredentialVendor(serverProperties, () -> stsClientBuilder), null, null);
+      assertThatThrownBy(
+              () ->
+                  vendCredential(
+                      "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
+          .as(failure.getClass().getSimpleName())
+          .isInstanceOf(BaseException.class)
+          .hasMessage("Failed to vend temporary storage credentials.")
+          .hasCause(failure)
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.INTERNAL);
+    }
   }
 
   @Test

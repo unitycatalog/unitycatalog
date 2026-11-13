@@ -52,6 +52,14 @@ TERMINATED_MESSAGE_TEMPLATE = (
     "and has no functional use in Mac OSX or Windows.\n"
 )
 
+EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE = (
+    "The function execution process exited with code {exit_code} before it could report a result. "
+    "This can happen when the function exits the process itself, or when the process runs out of "
+    "memory while reporting its result or error. If the function needs more memory, increase the "
+    "EXECUTOR_MAX_MEMORY_LIMIT environment variable. Any error raised in the process was written to "
+    "its standard error output.\n"
+)
+
 IMPORT_DISALLOWED_MESSAGE_TEMPLATE = (
     "The import of module '{module_name}' is restricted. {import_disallowed_message}"
 )

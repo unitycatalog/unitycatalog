@@ -27,6 +27,7 @@ from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
+    async_int_func,
     int_func_no_doc,
     int_func_with_doc,
     random_func_name,
@@ -1501,6 +1502,38 @@ async def test_create_python_function_not_callable(uc_client):
 
     with pytest.raises(ValueError, match="The provided function is not callable"):
         uc_client.create_python_function(func=scalar, catalog=CATALOG, schema=SCHEMA)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_create_python_function_rejects_async_function(mocked_store_client, use_async):
+    with pytest.raises(ValueError, match="is an async function"):
+        if use_async:
+            await mocked_store_client.create_python_function_async(
+                func=async_int_func, catalog=CATALOG, schema=SCHEMA
+            )
+        else:
+            mocked_store_client.create_python_function(
+                func=async_int_func, catalog=CATALOG, schema=SCHEMA
+            )
+
+    mocked_store_client.uc.functions_client.create_function.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_create_wrapped_function_rejects_async_function(mocked_store_client, use_async):
+    with pytest.raises(ValueError, match="is an async function"):
+        if use_async:
+            await mocked_store_client.create_wrapped_function_async(
+                primary_func=async_int_func, functions=[], catalog=CATALOG, schema=SCHEMA
+            )
+        else:
+            mocked_store_client.create_wrapped_function(
+                primary_func=async_int_func, functions=[], catalog=CATALOG, schema=SCHEMA
+            )
+
+    mocked_store_client.uc.functions_client.create_function.assert_not_called()
 
 
 @pytest.mark.asyncio
