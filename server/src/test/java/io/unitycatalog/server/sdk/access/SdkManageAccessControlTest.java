@@ -391,6 +391,25 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
         () ->
             new FunctionsApi(manager)
                 .updateFunction(FUNCTION, new UpdateFunction().owner(PRINCIPAL_1)));
+    String locationOwner =
+        new ExternalLocationsApi(adminApiClient).getExternalLocation(LOCATION, false).getOwner();
+    assertPermissionDenied(
+        () ->
+            new ExternalLocationsApi(manager)
+                .updateExternalLocation(LOCATION, new UpdateExternalLocation().owner(PRINCIPAL_2)));
+    assertThat(
+            new ExternalLocationsApi(adminApiClient)
+                .getExternalLocation(LOCATION, false)
+                .getOwner())
+        .isEqualTo(locationOwner);
+    String credentialOwner =
+        new CredentialsApi(adminApiClient).getCredential(CREDENTIAL).getOwner();
+    assertPermissionDenied(
+        () ->
+            new CredentialsApi(manager)
+                .updateCredential(CREDENTIAL, new UpdateCredentialRequest().owner(PRINCIPAL_2)));
+    assertThat(new CredentialsApi(adminApiClient).getCredential(CREDENTIAL).getOwner())
+        .isEqualTo(credentialOwner);
 
     for (Target target : targets.subList(2, targets.size())) {
       grantPermissions(PRINCIPAL_1, target.type(), target.name(), Privileges.MANAGE);

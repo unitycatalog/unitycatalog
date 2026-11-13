@@ -144,6 +144,12 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     }
   }
 
+  /**
+   * Reloads this instance's policy after an ownership update. On failure, permission checks deny
+   * every user, including metastore admins, until a reload succeeds. A denied request retries the
+   * reload even when policy refresh is disabled. The caller receives the failure even if the
+   * ownership update already committed.
+   */
   @Override
   public void reloadAuthorizations() {
     reloadLock.writeLock().lock();
