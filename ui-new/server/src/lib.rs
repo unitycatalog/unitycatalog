@@ -98,10 +98,7 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
     if origins.is_empty() {
         return None;
     }
-    let parsed: Vec<HeaderValue> = origins
-        .iter()
-        .filter_map(|o| o.parse::<HeaderValue>().ok())
-        .collect();
+    let parsed: Vec<HeaderValue> = origins.iter().filter_map(|o| cors_origin(o)).collect();
     Some(
         CorsLayer::new()
             .allow_origin(parsed)
@@ -114,4 +111,38 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
             ])
             .allow_credentials(true),
     )
+}
+
+/// Browsers send a bare serialized origin (`scheme://host[:port]`), so any
+/// other entry, such as one with a trailing slash, can never match. Such
+/// entries are logged and skipped, so a typo shows up in the logs instead of
+/// silently rejecting every cross-origin call.
+fn cors_origin(entry: &str) -> Option<HeaderValue> {
+    let is_origin =
+        reqwest::Url::parse(entry).is_ok_and(|url| url.origin().ascii_serialization() == entry);
+    let value = is_origin.then(|| entry.parse().ok()).flatten();
+    if value.is_none() {
+        tracing::warn!(
+            entry,
+            "ignoring an ALLOWED_ORIGINS entry that is not a bare origin"
+        );
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn cors_origin_accepts_only_bare_origins() {
+        for (entry, accepted) in [
+            ("http://localhost:5173", true),
+            ("https://ui.example.com", true),
+            ("http://localhost:5173/", false),
+            ("https://ui.example.com:443", false),
+            ("localhost:5173", false),
+            ("*", false),
+        ] {
+            assert_eq!(super::cors_origin(entry).is_some(), accepted, "{entry}");
+        }
+    }
 }
