@@ -41,13 +41,14 @@ export default function Login() {
     // Enter can fire while a verification is in flight; the button cannot.
     if (isVerifyingToken) return;
     setError(null);
-    if (!pastedToken.trim()) {
+    const token = pastedToken.trim();
+    if (!token) {
       setError("Paste a JWT access token.");
       return;
     }
     setIsVerifyingToken(true);
     try {
-      await signInWithAccessToken(pastedToken);
+      await signInWithAccessToken(token);
     } catch (e) {
       const message =
         e instanceof Error ? e.message : "Token verification failed.";

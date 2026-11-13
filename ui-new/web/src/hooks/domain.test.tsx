@@ -11,6 +11,7 @@ import {
   useGetModelVersion,
   useListModelVersions,
   useListModels,
+  parseModelVersion,
 } from "@/hooks/models";
 import { useGetView, useListViews } from "@/hooks/views";
 
@@ -75,6 +76,24 @@ async function expectData<T>(hook: () => { data?: T; isSuccess: boolean }) {
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   return result.current.data;
 }
+
+describe("parseModelVersion", () => {
+  it.each([
+    ["1", 1n],
+    ["42", 42n],
+    [7, 7n],
+    ["0", undefined],
+    ["02", undefined],
+    ["0x2", undefined],
+    [" 2", undefined],
+    ["+2", undefined],
+    ["-1", undefined],
+    ["1.5", undefined],
+    ["", undefined],
+  ])("parses %j as %s", (version, expected) => {
+    expect(parseModelVersion(version)).toBe(expected);
+  });
+});
 
 describe("domain read hooks", () => {
   it("useListCatalogs / useGetCatalog", async () => {

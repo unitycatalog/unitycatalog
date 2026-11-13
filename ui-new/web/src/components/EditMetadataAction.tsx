@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import EntityFormDialog from "@/components/EntityFormDialog";
 import FormField from "@/components/FormField";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,8 @@ export default function EditMetadataAction({
           comment: newComment !== (comment ?? "") ? newComment : undefined,
         };
         if (changes.newName === undefined && changes.comment === undefined) {
+          // Keep the dialog open, but say why Save did nothing.
+          toast.info("No changes to save.");
           return Promise.resolve(false);
         }
         return onSubmit(changes);

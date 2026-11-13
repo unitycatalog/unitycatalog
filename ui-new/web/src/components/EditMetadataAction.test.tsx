@@ -1,6 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+const { toastInfo } = vi.hoisted(() => ({ toastInfo: vi.fn() }));
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+  return { ...actual, toast: { ...actual.toast, info: toastInfo } };
+});
+
 import EditMetadataAction from "@/components/EditMetadataAction";
 
 it("submits only changed metadata", async () => {
@@ -37,6 +44,7 @@ it("does not submit unchanged metadata", async () => {
 
   expect(onSubmit).not.toHaveBeenCalled();
   expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(toastInfo).toHaveBeenCalledWith("No changes to save.");
 });
 
 it("submits an empty comment to clear existing metadata", async () => {

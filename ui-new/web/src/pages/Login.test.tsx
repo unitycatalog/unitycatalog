@@ -116,4 +116,16 @@ describe("Login", () => {
 
     expect(signInWithAccessToken).toHaveBeenCalledTimes(1);
   });
+
+  it("trims a pasted token once and signs in with the trimmed value", async () => {
+    render(<Login />);
+
+    await userEvent.type(
+      screen.getByLabelText("JWT access token"),
+      "  jwt-abc  ",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Use token/ }));
+
+    expect(signInWithAccessToken).toHaveBeenCalledWith("jwt-abc");
+  });
 });

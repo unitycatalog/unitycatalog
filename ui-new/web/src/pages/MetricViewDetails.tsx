@@ -97,7 +97,7 @@ export default function MetricViewDetails({
                         label: "Updated",
                         value: formatTimestamp(data?.audit?.updatedAt),
                       },
-                      { label: "Table ID", value: data?.id || "—" },
+                      { label: "Metric view ID", value: data?.id || "—" },
                     ]}
                   />
                 </CardContent>

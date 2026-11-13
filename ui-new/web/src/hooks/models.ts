@@ -104,13 +104,12 @@ export function useGetModelVersion(fullName: string, version: number | string) {
   );
 }
 
+// parseModelVersion accepts only a canonical positive version number. BigInt
+// alone would also take "0x2", " 2", "+2", and "02", so one version would be
+// reachable under several URLs.
 export function parseModelVersion(version: number | string) {
-  try {
-    const parsed = BigInt(version);
-    return parsed > 0n ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
+  const text = String(version);
+  return /^[1-9]\d*$/.test(text) ? BigInt(text) : undefined;
 }
 
 export function useCreateModel() {
