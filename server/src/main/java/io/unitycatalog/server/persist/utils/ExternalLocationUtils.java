@@ -289,8 +289,8 @@ public class ExternalLocationUtils {
    *
    * @param url the storage path to find credentials for (e.g., s3://bucket/path/to/data)
    * @return the storage credential if an external location covers this path, empty otherwise
-   * @throws BaseException with FAILED_PRECONDITION if multiple external locations cover the path
-   *     (invalid state) or if the credential referenced by the external location does not exist
+   * @throws BaseException with INTERNAL if multiple external locations cover the path (invalid
+   *     state), or if the credential referenced by the external location was deleted
    */
   public Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(NormalizedURL url) {
     return TransactionManager.executeWithTransaction(
@@ -334,7 +334,10 @@ public class ExternalLocationUtils {
     if (credentialDAO == null) {
       throw new BaseException(
           ErrorCode.INTERNAL,
-          String.format("Credential %s for '%s' not found.", credentialId, url));
+          String.format(
+              "The storage credential for '%s' no longer exists. Update the external location "
+                  + "that covers this path with a new credential.",
+              url));
     }
     return Optional.of(credentialDAO);
   }

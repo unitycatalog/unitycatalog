@@ -8,6 +8,7 @@ from unitycatalog.ai.core.utils.callable_utils import (
     extract_function_metadata,
     extract_wrapped_functions,
 )
+from unitycatalog.ai.core.utils.code_layout import to_stored_body
 
 if TYPE_CHECKING:
     from unitycatalog.client.models import FunctionParameterInfo
@@ -56,7 +57,7 @@ def generate_function_info(func: Callable[..., Any]) -> FunctionInfoDefinition:
 
     return FunctionInfoDefinition(
         callable_name=metadata.func_name,
-        routine_definition=metadata.function_body,
+        routine_definition=to_stored_body(metadata.function_body),
         data_type=metadata.base_return_type_name,
         full_data_type=metadata.sql_return_type,
         parameters=parameters,
@@ -92,7 +93,7 @@ def generate_wrapped_function_info(
 
     return FunctionInfoDefinition(
         callable_name=primary_metadata.func_name,
-        routine_definition=primary_metadata.function_body,
+        routine_definition=to_stored_body(primary_metadata.function_body),
         data_type=primary_metadata.base_return_type_name,
         full_data_type=primary_metadata.sql_return_type,
         parameters=parameters,

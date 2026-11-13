@@ -6,7 +6,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import textwrap
 from typing import Any
 
 import cloudpickle
@@ -21,6 +20,7 @@ from unitycatalog.ai.core.executor.common import (
     NO_OUTPUT_MESSAGE,
     TIMEOUT_ERROR_MESSAGE,
 )
+from unitycatalog.ai.core.utils.code_layout import dedent_code
 
 _logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def _extract_function_name(function_source: str) -> str:
     using the ast module.
     """
     try:
-        module_ast = ast.parse(textwrap.dedent(function_source))
+        module_ast = ast.parse(function_source)
     except SyntaxError as e:
         raise ValueError("Invalid Python source code") from e
 
@@ -46,8 +46,8 @@ def _generate_runner_script(function_source: str, cpu_time_limit: int, memory_li
     Generates a Python runner script that sets resource limits and embeds the function's source code
     directly into the script that will be executed in a subprocess.
     """
+    function_source = dedent_code(function_source)
     function_name = _extract_function_name(function_source)
-    function_source = textwrap.dedent(function_source)
     script = f"""
 import sys, base64, cloudpickle, json, traceback, asyncio, os
 
@@ -91,7 +91,7 @@ def main():
 if __name__ == "__main__":
     main()
 """
-    return textwrap.dedent(script)
+    return script
 
 
 _logger = logging.getLogger(__name__)
