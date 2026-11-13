@@ -875,9 +875,10 @@ Let’s look at a visualization of our current tables:
 
 See this page to learn more about the difference between external and managed Unity Catalog tables.
 
-In a partitioned Parquet, ORC, JSON, CSV, Avro or text table, Spark puts the partition columns after the other columns,
-in `PARTITIONED BY` order, as Spark's built-in catalog does. So `DESCRIBE TABLE` and `SELECT *` list them last, and
-`INSERT INTO ... VALUES` without a column list takes the values in that order. Delta tables keep the declared order.
+In a partitioned table of a file-source format (Parquet, ORC, JSON, CSV, Avro or text), Spark puts the partition columns
+after the other columns, in `PARTITIONED BY` order, as Spark's built-in catalog does. So `DESCRIBE TABLE` and `SELECT *`
+list them last, and `INSERT INTO ... VALUES` without a column list takes the values in that order. Tables of other
+formats, such as Delta and Iceberg, keep the declared order.
 
 ## Spark write data to path
 

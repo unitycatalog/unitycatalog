@@ -38,6 +38,8 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import scala.Option;
 import scala.jdk.javaapi.CollectionConverters;
 
@@ -291,9 +293,13 @@ public class UCProxySuite {
         .toArray(String[]::new);
   }
 
-  @Test
-  public void testLoadNonDeltaTablePutsPartitionColumnsLast() throws Exception {
-    Table table = loadPartitionedTable(DataSourceFormat.PARQUET);
+  @ParameterizedTest
+  @EnumSource(
+      value = DataSourceFormat.class,
+      names = {"PARQUET", "ORC", "JSON", "CSV", "AVRO", "TEXT"})
+  public void testLoadFileSourceTablePutsPartitionColumnsLast(DataSourceFormat format)
+      throws Exception {
+    Table table = loadPartitionedTable(format);
 
     StructType schema = table.schema();
     assertThat(schema.fieldNames()).containsExactly("a", "b", "q", "p");
@@ -302,9 +308,13 @@ public class UCProxySuite {
     assertThat(schema.apply("q").metadata().getString("CURRENT_DEFAULT")).isEqualTo("7");
   }
 
-  @Test
-  public void testLoadDeltaTableKeepsUCColumnOrder() throws Exception {
-    Table table = loadPartitionedTable(DataSourceFormat.DELTA);
+  @ParameterizedTest
+  @EnumSource(
+      value = DataSourceFormat.class,
+      names = {"DELTA", "ICEBERG"})
+  public void testLoadNonFileSourceTableKeepsUCColumnOrder(DataSourceFormat format)
+      throws Exception {
+    Table table = loadPartitionedTable(format);
 
     assertThat(table.schema().fieldNames()).containsExactly("a", "p", "b", "q");
     assertThat(partitionColumnNames(table)).containsExactly("q", "p");

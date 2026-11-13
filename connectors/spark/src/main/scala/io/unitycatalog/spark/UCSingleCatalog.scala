@@ -749,6 +749,14 @@ object UCSingleCatalog {
   // before it reaches the vend site in `UCProxy.loadV1Table`.
   private[spark] val WRITE_INTENT = ThreadLocal.withInitial[Boolean](() => false)
 
+  private[spark] val FILE_SOURCE_FORMATS: Set[DataSourceFormat] = Set(
+    DataSourceFormat.PARQUET,
+    DataSourceFormat.ORC,
+    DataSourceFormat.JSON,
+    DataSourceFormat.CSV,
+    DataSourceFormat.AVRO,
+    DataSourceFormat.TEXT)
+
   /**
    * UC external locations and the temporary path-credentials API use canonical lowercase
    * `s3://` URLs on the server. Hadoop clients may reference the same storage as `s3a://`
@@ -1031,11 +1039,11 @@ private[spark] class UCProxy(
     val (partitionCols, dataCols) = columns.partition(_.getPartitionIndex != null)
     val sortedPartitionCols = partitionCols.sortBy(_.getPartitionIndex.intValue)
     // Spark's file sources read and write a table as its data columns followed by its partition
-    // columns, the order Spark's own catalog stores. Delta takes its schema from the Delta log.
-    val fields = (if (t.getDataSourceFormat == DataSourceFormat.DELTA) {
-      columns
-    } else {
+    // columns, the order Spark's own catalog stores. Other formats keep the declared order.
+    val fields = (if (UCSingleCatalog.FILE_SOURCE_FORMATS.contains(t.getDataSourceFormat)) {
       dataCols ++ sortedPartitionCols
+    } else {
+      columns
     }).map(toStructField).toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
