@@ -364,7 +364,9 @@ def conf_stamps():
     """
     paths = []
     for depth in range(3):
-        paths += glob.glob(os.path.join(ROOT, *["*"] * depth, "etc", "conf", "*"))
+        for conf in glob.glob(os.path.join(ROOT, *["*"] * depth, "etc", "conf")):
+            # listdir, not glob("*"), so hidden files count too.
+            paths += [os.path.join(conf, name) for name in os.listdir(conf)]
     return {os.path.relpath(path, ROOT): os.path.getmtime(path) for path in paths
             if os.path.isfile(path)}
 
