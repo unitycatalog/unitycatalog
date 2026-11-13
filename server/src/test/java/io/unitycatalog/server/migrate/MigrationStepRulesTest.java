@@ -23,11 +23,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.expression.StringValue;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.operators.relational.InExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.alter.AlterOperation;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
+import net.sf.jsqlparser.statement.create.table.CheckConstraint;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
 import org.junit.jupiter.api.Test;
@@ -47,11 +53,14 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial) whose
  *       PostgreSQL index entry, INCLUDE columns too, fits 2,704 bytes, add a column (NOT NULL only
  *       with a literal DEFAULT, without a key or CHECK rule), change a column's type (each index on
- *       the column still fitting an index entry), or drop its NOT NULL.
+ *       the column still fitting an index entry), drop its NOT NULL, or, on PostgreSQL, replace a
+ *       CHECK rule that lists a column's values with one that lists more ({@link
+ *       #isCheckReplacement}).
  *   <li>A type change widens the column, keeps its default, collation and enum or set members, and
- *       no change makes an existing nullable column NOT NULL ({@link #typeChangesWiden}). Adding a
- *       Java enum constant is supported on MySQL and H2, where the type holds the members; on
- *       PostgreSQL it means replacing a CHECK constraint, which no allowed change does yet.
+ *       no change makes an existing nullable column NOT NULL ({@link #typeChangesWiden}). A CHECK
+ *       rule's replacement keeps every value it allowed ({@link #checksKeepTheirValues}). So a Java
+ *       enum constant can be added on every database: on MySQL and H2 the column's type holds the
+ *       members, on PostgreSQL its CHECK rule does.
  *   <li>Each step has an effect file that lists its change ({@link #eachStepHasItsEffectFile}).
  *   <li>Every step exists for all three databases, as a versioned SQL file.
  * </ul>
@@ -107,6 +116,7 @@ public class MigrationStepRulesTest {
           DatabaseKind.MYSQL,
           Map.of(
               "varchar", Set.of("text", "mediumtext", "longtext"),
+              "tinytext", Set.of("text", "mediumtext", "longtext"),
               "text", Set.of("mediumtext", "longtext"),
               "mediumtext", Set.of("longtext"),
               "smallint", Set.of("int", "bigint"),
@@ -202,8 +212,9 @@ public class MigrationStepRulesTest {
             "Each step after the first holds one statement that creates a table, creates a plain"
                 + " index on columns short enough for an index entry, adds a column (NOT NULL only"
                 + " with a literal DEFAULT, without a key or CHECK rule), changes a column's type"
-                + " (each index on it still short enough) or drops its NOT NULL. Other changes are"
-                + " not supported yet; see refusal() in this test")
+                + " (each index on it still short enough), drops its NOT NULL or, on PostgreSQL,"
+                + " replaces a CHECK rule that lists a column's values. Other changes are not"
+                + " supported yet; see refusal() in this test")
         .isEmpty();
   }
 
@@ -280,6 +291,20 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c SET NOT NULL|is not an allowed change",
         "POSTGRESQL|ALTER TABLE t ADD UNIQUE (c)|is not an allowed change",
         "POSTGRESQL|ALTER TABLE t ADD CONSTRAINT k CHECK (c > 0)|is not an allowed change",
+        // Replacing the CHECK rule that lists a column's values adds an enum constant on
+        // PostgreSQL; checksKeepTheirValues checks the new rule keeps the old values.
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT k, ADD CONSTRAINT k CHECK (c IN ('A', 'B'))|",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT k, ADD CONSTRAINT k2 CHECK (c IN ('A'))"
+            + "|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT k, ADD CONSTRAINT k CHECK (c > 0)"
+            + "|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT k, ADD CONSTRAINT k CHECK (c NOT IN ('A'))"
+            + "|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT k, ADD CONSTRAINT k CHECK (c IN (1, 2))"
+            + "|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT k|is not an allowed change",
+        "MYSQL|ALTER TABLE t DROP CONSTRAINT k, ADD CONSTRAINT k CHECK (c IN ('A'))"
+            + "|is not an allowed change",
         "POSTGRESQL|ALTER TABLE t DROP COLUMN c|is not an allowed change",
         "H2|ALTER TABLE t ALTER COLUMN c CLOB|",
         "MYSQL|ALTER TABLE t ALTER COLUMN c TYPE text|is not an allowed change",
@@ -359,6 +384,114 @@ public class MigrationStepRulesTest {
     assertThat(problems).isEmpty();
   }
 
+  /**
+   * A step that replaces a CHECK rule (its effect file has a {@code -} and a {@code +} line for the
+   * rule on one column) keeps every value the rule allowed: rows already in the database have them.
+   */
+  @Test
+  void checksKeepTheirValues() throws IOException {
+    assumeFalse(WRITES_EFFECTS, "checks the effect files on the next test run");
+    List<String> problems = new ArrayList<>();
+    for (DatabaseKind kind : DatabaseKind.values()) {
+      try (Stream<Path> files = Files.list(EFFECTS.resolve(kind.folder()))) {
+        for (Path file : files.toList()) {
+          for (String problem : narrowedChecks(Files.readAllLines(file))) {
+            problems.add(file + ": " + problem);
+          }
+        }
+      }
+    }
+    assertThat(problems).isEmpty();
+  }
+
+  /**
+   * CHECK rule changes, as PostgreSQL reports the rules, that rows could fail and ones they can't.
+   */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      quoteCharacter = '"',
+      value = {
+        // PostgreSQL reports c IN ('A') as an equality, and a longer list as = ANY (ARRAY[...]).
+        "(((c)::text = 'A'::text))|(((c)::text = ANY ((ARRAY['A'::character varying, 'B'::character"
+            + " varying])::text[])))|",
+        "(((c)::text = ANY ((ARRAY['A'::character varying, 'B'::character varying])::text[])))"
+            + "|(((c)::text = 'A'::text))|drops the values [B] from the CHECK rule on t.c",
+        "(((c)::text = 'A'::text))|(((d)::text = 'A'::text))|drops the CHECK rule on t.c",
+        "(((c)::text = 'A'::text))||drops the CHECK rule on t.c"
+      })
+  void checkChangesKeepTheirValues(String before, String after, String problem) {
+    List<String> lines = new ArrayList<>(List.of("- check t " + before));
+    if (after != null) {
+      lines.add("+ check t " + after);
+    }
+    List<String> found = narrowedChecks(lines);
+    if (problem == null) {
+      assertThat(found).isEmpty();
+    } else {
+      assertThat(found).singleElement().asString().isEqualTo(problem);
+    }
+  }
+
+  /** A CHECK rule line of a schema snapshot, as {@code check <table> <clause>}. */
+  private static final Pattern CHECK_LINE = Pattern.compile("([-+]) check (\\S+) (.*)");
+
+  /** The column a CHECK rule tests, as PostgreSQL reports it: {@code ((c)::text ...}. */
+  private static final Pattern CHECKED_COLUMN = Pattern.compile("\\((\\w+)\\)::");
+
+  /** A value a CHECK rule lists, as PostgreSQL reports it: {@code 'A'::text}. */
+  private static final Pattern CHECKED_VALUE = Pattern.compile("'((?:[^']|'')*)'::");
+
+  /**
+   * What the CHECK rule changes in an effect file's {@code lines} do that rows already in the
+   * database could fail: a rule dropped without a replacement on its column, or a replacement that
+   * leaves out a value.
+   */
+  private static List<String> narrowedChecks(List<String> lines) {
+    Map<String, List<String>> added = new HashMap<>();
+    List<String[]> removed = new ArrayList<>();
+    for (String line : lines) {
+      Matcher check = CHECK_LINE.matcher(line);
+      if (!check.matches()) {
+        continue;
+      }
+      String key = check.group(2) + "." + checkedColumn(check.group(3));
+      if (check.group(1).equals("+")) {
+        added.put(key, checkedValues(check.group(3)));
+      } else {
+        removed.add(new String[] {key, check.group(3)});
+      }
+    }
+    List<String> problems = new ArrayList<>();
+    for (String[] rule : removed) {
+      List<String> kept = added.get(rule[0]);
+      if (kept == null) {
+        problems.add("drops the CHECK rule on " + rule[0]);
+        continue;
+      }
+      List<String> dropped =
+          checkedValues(rule[1]).stream().filter(value -> !kept.contains(value)).toList();
+      if (!dropped.isEmpty()) {
+        problems.add("drops the values " + dropped + " from the CHECK rule on " + rule[0]);
+      }
+    }
+    return problems;
+  }
+
+  private static String checkedColumn(String clause) {
+    Matcher column = CHECKED_COLUMN.matcher(clause);
+    return column.find() ? column.group(1) : clause;
+  }
+
+  private static List<String> checkedValues(String clause) {
+    List<String> values = new ArrayList<>();
+    Matcher value = CHECKED_VALUE.matcher(clause);
+    while (value.find()) {
+      values.add(value.group(1));
+    }
+    return values;
+  }
+
   /** Column changes that rows already in the database could fail, and ones they can't. */
   @ParameterizedTest
   @CsvSource(
@@ -393,6 +526,8 @@ public class MigrationStepRulesTest {
         "MYSQL|type=varchar size=10 nullable=YES default=null collation=utf8mb4_bin"
             + "|type=varchar size=20 nullable=YES default=null|changes its collation",
         "POSTGRESQL|type=varchar size=255 nullable=YES|type=text size=2147483647 nullable=YES|",
+        "MYSQL|type=tinytext size=255 nullable=NO default=null"
+            + "|type=mediumtext size=16777215 nullable=NO default=null|",
         "POSTGRESQL|type=varchar size=255 nullable=NO|type=varchar size=255 nullable=YES|",
         "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')"
             + "|type=enum size=8 nullable=NO default=null values=enum('FUNCTION')"
@@ -651,6 +786,12 @@ public class MigrationStepRulesTest {
     if (firstStep) {
       return "the first step only creates tables and indexes";
     }
+    if (kind == DatabaseKind.POSTGRESQL
+        && statement instanceof Alter alter
+        && isCheckReplacement(alter)) {
+      // checksKeepTheirValues checks that the new rule allows every value the old one did.
+      return null;
+    }
     if (!(statement instanceof Alter alter) || alter.getAlterExpressions().size() != 1) {
       return "is not an allowed change";
     }
@@ -669,6 +810,29 @@ public class MigrationStepRulesTest {
           default -> false;
         };
     return allowed ? null : "is not an allowed change";
+  }
+
+  /**
+   * Whether {@code alter} replaces a CHECK rule with one that lists a column's values: {@code ALTER
+   * TABLE t DROP CONSTRAINT k, ADD CONSTRAINT k CHECK (c IN ('A', 'B'))}. This is how PostgreSQL
+   * adds a Java enum constant, since the rule holds the values. One statement keeps the step
+   * atomic, and the new rule fails no row as long as it keeps every old value.
+   */
+  private static boolean isCheckReplacement(Alter alter) {
+    List<AlterExpression> changes = alter.getAlterExpressions();
+    if (changes.size() != 2
+        || changes.get(0).getOperation() != AlterOperation.DROP
+        || changes.get(0).getConstraintName() == null
+        || changes.get(1).getOperation() != AlterOperation.ADD
+        || !(changes.get(1).getIndex() instanceof CheckConstraint check)
+        || !changes.get(0).getConstraintName().equals(check.getName())) {
+      return false;
+    }
+    return check.getExpression() instanceof InExpression in
+        && !in.isNot()
+        && in.getLeftExpression() instanceof Column
+        && in.getRightExpression() instanceof ExpressionList<?> values
+        && values.stream().allMatch(StringValue.class::isInstance);
   }
 
   /**
