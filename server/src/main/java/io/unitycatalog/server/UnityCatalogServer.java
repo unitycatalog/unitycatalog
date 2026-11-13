@@ -121,8 +121,10 @@ public class UnityCatalogServer implements AutoCloseable {
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
     // An injected configurator stays the caller's to close; only a self-built one is ours.
     this.ownsHibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator == null;
-    if (ownsHibernateConfigurator) {
-      // Before Hibernate connects: H2 creates a missing database file when it connects.
+    if (ownsHibernateConfigurator
+        && !unityCatalogServerBuilder.serverProperties.isSchemaManagedByHibernate()) {
+      // Before Hibernate connects: H2 creates a missing database file when it connects. In
+      // hibernate mode, Hibernate sets up a new database there, as in 0.7.0.
       SchemaMigrator.requireH2DatabaseExists(
           HibernateConfigurator.setupHibernateProperties(
               unityCatalogServerBuilder.serverProperties));
