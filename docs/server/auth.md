@@ -290,6 +290,20 @@ Set `owner` in an object's PATCH request to transfer ownership to an existing us
 function PATCH requests support only ownership changes. For views, functions, and models, a user
 can transfer ownership to themselves; a metastore admin can transfer to another user.
 
+Omit `owner` when updating other fields. In v0.3.0, credential and external location PATCH
+requests accepted `owner` but ignored it. These requests now transfer ownership when `owner`
+is set. Update clients that copy an object's old owner into PATCH requests. No database
+migration is required.
+
+The object owner and its `OWNER` grant are saved in one database transaction. After commit,
+the server reloads its local permission cache. Other server instances receive the change
+through [policy refresh](#multiple-server-instances); enable it on every instance.
+
+If the local reload fails, the request returns an error even though the transfer may have
+committed. Permission checks on this instance deny every user, including metastore admins,
+until a reload succeeds. A denied request retries the reload even when policy refresh is
+disabled. Read the owner after recovery before retrying a transfer.
+
 ### Restart the UC Server
 
 Now that the Google Authentication is configured, restart the UC Server with the following command.
