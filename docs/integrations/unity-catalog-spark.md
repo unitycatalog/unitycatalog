@@ -65,10 +65,15 @@ The following steps are required to download and configure Unity Catalog for Apa
     tar xzf spark-4.2.0-bin-hadoop3.tgz
     ```
 
-### [Optional] Configure server properties for cloud storage
+### [Optional] Configure cloud storage
 
-To have Unity Catalog work with cloud object storage as the storage location for tables, configure the
-`etc/conf/server.properties` to add configuration:
+To have Unity Catalog work with cloud object storage as the storage location for tables, create a storage credential
+and an external location for the bucket or container, as described in [Deploy for AWS](../server/aws.md),
+[Deploy for Azure](../server/azure.md) or [Deploy for GCP](../server/gcp.md). No server restart is needed.
+
+Alternatively, the legacy per-bucket settings in `etc/conf/server.properties` still work for a bucket that no
+external location covers. They need a server restart, and new deployments should use credentials and external
+locations instead:
 
 === "AWS S3"
 
@@ -107,7 +112,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 ### [Optional] Restart Unity Catalog Server
 
-If the UC Server is already started, please restart it to account for the cloud storage server properties.
+If the UC Server is already started and you changed `server.properties`, restart it to account for the new settings.
 
 ```sh
 cd unitycatalog/

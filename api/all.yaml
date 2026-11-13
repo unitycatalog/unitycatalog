@@ -2877,6 +2877,10 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleResponse'
+        azure_service_principal:
+          $ref: '#/components/schemas/AzureServicePrincipalResponse'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyResponse'
         comment:
           description: Comment associated with the credential.
           type: string
@@ -2906,6 +2910,9 @@ components:
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     CreateCredentialRequest:
+      description: |
+        Exactly one of __aws_iam_role__, __azure_service_principal__ or __gcp_service_account_key__ must be set.
+        It determines the cloud of the credential, which cannot be changed afterwards.
       type: object
       required:
         - name
@@ -2918,9 +2925,16 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
+        azure_service_principal:
+          $ref: '#/components/schemas/AzureServicePrincipalRequest'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyRequest'
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     UpdateCredentialRequest:
+      description: |
+        At most one of __aws_iam_role__, __azure_service_principal__ or __gcp_service_account_key__ may be set,
+        and it must match the cloud the credential was created with.
       type: object
       properties:
         comment:
@@ -2931,6 +2945,10 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
+        azure_service_principal:
+          $ref: '#/components/schemas/AzureServicePrincipalRequest'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyRequest'
         new_name:
           description: New name for the credential.
           type: string
@@ -2956,6 +2974,69 @@ components:
           type: string
         external_id:
           description: The external ID used in role assumption to prevent confused deputy problem.
+          type: string
+    AzureServicePrincipalRequest:
+      description: |
+        A Microsoft Entra ID service principal that has access to the storage account. The server signs in as this
+        principal to issue user delegation SAS tokens scoped to the requested path.
+      type: object
+      required:
+        - directory_id
+        - application_id
+        - client_secret
+      properties:
+        directory_id:
+          description: The directory (tenant) ID of the Microsoft Entra ID tenant that holds the application.
+          type: string
+        application_id:
+          description: The application (client) ID of the service principal.
+          type: string
+        client_secret:
+          description: The client secret of the service principal. The server never returns it.
+          type: string
+    AzureServicePrincipalResponse:
+      type: object
+      required:
+        - directory_id
+        - application_id
+      properties:
+        directory_id:
+          description: The directory (tenant) ID of the Microsoft Entra ID tenant that holds the application.
+          type: string
+        application_id:
+          description: The application (client) ID of the service principal.
+          type: string
+    GcpServiceAccountKeyRequest:
+      description: |
+        A key of a GCP service account that has access to the bucket. The server signs in as this service account to
+        issue OAuth tokens downscoped to the requested path. The fields match __client_email__, __private_key_id__
+        and __private_key__ of the service account key JSON file.
+      type: object
+      required:
+        - email
+        - private_key_id
+        - private_key
+      properties:
+        email:
+          description: The email of the service account.
+          type: string
+        private_key_id:
+          description: The ID of the private key.
+          type: string
+        private_key:
+          description: The private key in PEM (PKCS#8) format. The server never returns it.
+          type: string
+    GcpServiceAccountKeyResponse:
+      type: object
+      required:
+        - email
+        - private_key_id
+      properties:
+        email:
+          description: The email of the service account.
+          type: string
+        private_key_id:
+          description: The ID of the private key.
           type: string
     ListCredentialsResponse:
       type: object

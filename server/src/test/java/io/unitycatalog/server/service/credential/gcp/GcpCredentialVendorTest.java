@@ -14,14 +14,21 @@ import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.AwsIamRoleRequest;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -181,5 +188,70 @@ public class GcpCredentialVendorTest {
 
     IOException failure = catchThrowableOfType(IOException.class, credentials::refreshAccessToken);
     assertThat(GcpCredentialVendor.credentialError(failure).getErrorCode()).isEqualTo(expected);
+  }
+
+  private static final GcpServiceAccountKeyRequest SERVICE_ACCOUNT_KEY =
+      new GcpServiceAccountKeyRequest()
+          .email("uc@my-project.iam.gserviceaccount.com")
+          .privateKeyId("0123456789abcdef0123456789abcdef01234567")
+          .privateKey("key");
+
+  private final List<GcpServiceAccountKeyRequest> signedInWith = new ArrayList<>();
+
+  // No gcs.* configuration, so the bucket is reachable only through a storage credential.
+  private final GcpCredentialVendor storageCredentialVendor =
+      new GcpCredentialVendor(
+          new ServerProperties(new Properties()),
+          key -> {
+            signedInWith.add(key);
+            return ctx -> new AccessToken("token-for-" + key.getEmail(), null);
+          });
+
+  private static CredentialContext context(Optional<CredentialDAO> credential) {
+    return CredentialContext.create(
+        NormalizedURL.from("gs://test-bucket/team/data"),
+        Set.of(CredentialContext.Privilege.SELECT),
+        credential);
+  }
+
+  private static CredentialDAO credential(Consumer<CredentialDAO> setIdentity) {
+    CredentialDAO credential = CredentialDAO.builder().id(UUID.randomUUID()).name("cred").build();
+    setIdentity.accept(credential);
+    return credential;
+  }
+
+  @Test
+  public void testVendsWithTheServiceAccountKeyOfTheStorageCredential() {
+    CredentialDAO credential = credential(c -> c.setGcpServiceAccountKey(SERVICE_ACCOUNT_KEY));
+
+    AccessToken token = storageCredentialVendor.vendGcpCredential(context(Optional.of(credential)));
+
+    assertThat(token.getTokenValue()).isEqualTo("token-for-" + SERVICE_ACCOUNT_KEY.getEmail());
+    assertThat(signedInWith).containsExactly(SERVICE_ACCOUNT_KEY);
+  }
+
+  @Test
+  public void testRejectsAStorageCredentialOfAnotherCloud() {
+    CredentialDAO credential =
+        credential(
+            c -> c.setAwsIamRole(new AwsIamRoleRequest().roleArn("arn:aws:iam::1:role/role")));
+
+    assertThatThrownBy(
+            () -> storageCredentialVendor.vendGcpCredential(context(Optional.of(credential))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Storage credential 'cred' is not GCP_SERVICE_ACCOUNT_KEY")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(signedInWith).isEmpty();
+  }
+
+  @Test
+  public void testWithoutAStorageCredentialTheBucketMustBeConfigured() {
+    assertThatThrownBy(() -> storageCredentialVendor.vendGcpCredential(context(Optional.empty())))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Unknown GCS storage configuration for gs://test-bucket")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(signedInWith).isEmpty();
   }
 }

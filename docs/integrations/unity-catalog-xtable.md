@@ -36,8 +36,9 @@ java -jar xtable-utilities/target/incubator-xtable-utilities-0.1.0-SNAPSHOT-bund
 
 ## Configure Server Property for using S3
 
-The server config file is at the location `etc/conf/server.properties`
-For enabling server to vend AWS temporary credentials to access S3 buckets, the following parameters need to be set:
+The recommended way to let the server vend AWS temporary credentials for an S3 bucket is a storage credential and
+an external location, as described in [Deploy for AWS](../server/aws.md). Alternatively, the legacy per-bucket
+settings below in `etc/conf/server.properties` still work for a bucket that no external location covers:
 
 - `s3.bucketPath.i`: The S3 path of the bucket where the data is stored. Should be in the format `s3://<bucket-name>`.
 - `s3.accessKey.i`: The AWS access key, an identifier of temp credentials.
