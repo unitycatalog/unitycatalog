@@ -16,6 +16,7 @@ import { proxyClient } from "@/lib/transport";
 import { makeQueryClient, Providers } from "@/test/providers";
 import { AuthProvider, useAuth } from "@/context/auth-context";
 import { getToken, setToken } from "@/lib/session";
+import { CURRENT_USER_QUERY_KEY } from "@/hooks/user";
 
 const call = proxyClient.call as unknown as Mock;
 
@@ -31,6 +32,22 @@ const wrapper = ({ children }: { children: ReactNode }) => (
     <AuthProvider>{children}</AuthProvider>
   </Providers>
 );
+
+type Reply = { httpStatus: number; ok: boolean; body: string };
+const OK: Reply = { httpStatus: 200, ok: true, body: "{}" };
+const UNAUTHORIZED: Reply = { httpStatus: 401, ok: false, body: "" };
+const ADA: Reply = {
+  httpStatus: 200,
+  ok: true,
+  body: JSON.stringify({ displayName: "Ada" }),
+};
+
+// A UC reply the test releases later, to order overlapping requests.
+function deferred() {
+  let resolve!: (reply: Reply) => void;
+  const promise = new Promise<Reply>((done) => (resolve = done));
+  return { promise, resolve };
+}
 
 beforeEach(() => call.mockReset());
 afterEach(() => vi.restoreAllMocks());
@@ -301,12 +318,6 @@ describe("AuthProvider", () => {
 
   it("lets a newer token sign-in finish when it supersedes an older one", async () => {
     stubConfig({ authEnabled: true });
-    type Reply = { httpStatus: number; ok: boolean; body: string };
-    const deferred = () => {
-      let resolve!: (reply: Reply) => void;
-      const promise = new Promise<Reply>((done) => (resolve = done));
-      return { promise, resolve };
-    };
     const replies: Record<string, ReturnType<typeof deferred>> = {
       "first-jwt": deferred(),
       "second-jwt": deferred(),
@@ -339,6 +350,86 @@ describe("AuthProvider", () => {
     await waitFor(() =>
       expect(result.current.currentUser?.displayName).toBe("Ada"),
     );
+  });
+
+  it("ends a pasted-token session with its Authorization header", async () => {
+    stubConfig({ authEnabled: true });
+    // Like UC with auth enabled: logout needs the bearer token.
+    call.mockImplementation(async () => (getToken() ? ADA : UNAUTHORIZED));
+    setToken("jwt-xyz");
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(getToken()).toBe("");
+  });
+
+  it("ends a provider session that a sign-out superseded during its exchange", async () => {
+    stubConfig({ authEnabled: true });
+    const exchange = deferred();
+    call.mockImplementation(async (input: { path: string }) => {
+      if (input.path.endsWith("/auth/tokens")) return exchange.promise;
+      if (input.path.endsWith("/auth/logout")) return OK;
+      return UNAUTHORIZED;
+    });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const logouts = () =>
+      call.mock.calls.filter(([input]) => input.path.endsWith("/auth/logout"))
+        .length;
+
+    let login!: Promise<void>;
+    act(() => {
+      login = result.current.loginWithToken("google-id-token");
+    });
+    await act(async () => {
+      await result.current.logout();
+      exchange.resolve(OK);
+      await login;
+    });
+
+    await waitFor(() => expect(logouts()).toBe(2));
+    expect(result.current.authenticating).toBe(false);
+    expect(result.current.currentUser).toBeNull();
+  });
+
+  it("lets a sign-in that starts during a sign-out keep its session", async () => {
+    stubConfig({ authEnabled: true });
+    const logoutReply = deferred();
+    call.mockImplementation(async (input: { path: string }) => {
+      if (input.path.endsWith("/auth/logout")) return logoutReply.promise;
+      return getToken() ? ADA : UNAUTHORIZED;
+    });
+    const client = makeQueryClient();
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <Providers client={client}>
+          <AuthProvider>{children}</AuthProvider>
+        </Providers>
+      ),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let logout!: Promise<void>;
+    act(() => {
+      logout = result.current.logout();
+    });
+    await act(async () => {
+      await result.current.signInWithAccessToken("jwt-xyz");
+    });
+    await act(async () => {
+      logoutReply.resolve(OK);
+      await logout;
+    });
+
+    // The late sign-out leaves the new session's token and cached user alone.
+    expect(getToken()).toBe("jwt-xyz");
+    expect(client.getQueryData(CURRENT_USER_QUERY_KEY)).toMatchObject({
+      displayName: "Ada",
+    });
   });
 
   it("useAuth throws outside a provider", () => {

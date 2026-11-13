@@ -35,8 +35,9 @@ interface AuthContextValue {
   // Paste-a-token bypass: store a UC access JWT and use it as a bearer on every
   // call. Validates it against the current-user endpoint before signing in.
   signInWithAccessToken: (accessToken: string) => Promise<void>;
-  // Clears the local session, then ends the UC session. Rejects if UC could not
-  // end it, so the caller can tell the user they may still be signed in.
+  // Ends the UC session, then clears the local one even if UC could not end it.
+  // Rejects in that case, so the caller can tell the user they may still be
+  // signed in.
   logout: () => Promise<void>;
 }
 
@@ -60,9 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useLoginWithToken();
   const logoutMutation = useLogoutCurrentUser();
 
-  // Counts sign-ins and sign-outs. A token verification that a newer one
-  // superseded must not clear the token or cache that the newer one set up.
+  // Counts sign-ins and sign-outs, and records whether the latest one signed
+  // out. A sign-in or sign-out that a newer one superseded must not touch the
+  // token or cache that the newer one set up.
   const identityChanges = useRef(0);
+  const signedOut = useRef(false);
 
   // Removes every cached result that belongs to the signed-in identity. The
   // runtime config does not, so it stays and the app keeps its auth settings.
@@ -76,11 +79,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithToken = useCallback(
     async (idToken: string) => {
-      identityChanges.current += 1;
+      const change = ++identityChanges.current;
+      signedOut.current = false;
       // UC prefers a Bearer header over the session cookie, so a leftover pasted
       // token would make the new provider session fail verification.
       clearToken();
-      await loginMutation.mutateAsync(idToken);
+      try {
+        await loginMutation.mutateAsync(idToken);
+      } catch (error) {
+        if (change !== identityChanges.current) return;
+        throw error;
+      }
+      if (change !== identityChanges.current) {
+        // A sign-out ran during the exchange, whose late response may have set a
+        // session cookie anyway. End that session again, best effort.
+        if (signedOut.current) {
+          void logoutMutation.mutateAsync().catch(() => undefined);
+        }
+        return;
+      }
       clearIdentityQueries();
       setAuthenticating(true);
       try {
@@ -89,21 +106,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           queryFn: fetchCurrentUser,
           staleTime: 0,
         });
-        if (!user) {
+        if (!user && change === identityChanges.current) {
           throw new Error(
             "Login succeeded, but the session could not be verified.",
           );
         }
+      } catch (error) {
+        if (change !== identityChanges.current) return;
+        throw error;
       } finally {
-        setAuthenticating(false);
+        if (change === identityChanges.current) setAuthenticating(false);
       }
     },
-    [clearIdentityQueries, loginMutation, queryClient],
+    [clearIdentityQueries, loginMutation, logoutMutation, queryClient],
   );
 
   const signInWithAccessToken = useCallback(
     async (accessToken: string) => {
       const attempt = ++identityChanges.current;
+      signedOut.current = false;
+      setAuthenticating(false);
       setToken(accessToken);
       clearIdentityQueries();
       try {
@@ -126,13 +148,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    identityChanges.current += 1;
-    clearToken();
-    clearIdentityQueries();
+    const change = ++identityChanges.current;
+    signedOut.current = true;
+    setAuthenticating(false);
     try {
+      // Sent before the token is cleared: UC ends a pasted-token session only
+      // when the request carries its Authorization header.
       await logoutMutation.mutateAsync();
     } finally {
-      clearIdentityQueries();
+      // A sign-in that started meanwhile owns the session now.
+      if (change === identityChanges.current) {
+        clearToken();
+        clearIdentityQueries();
+      }
     }
   }, [clearIdentityQueries, logoutMutation]);
 
