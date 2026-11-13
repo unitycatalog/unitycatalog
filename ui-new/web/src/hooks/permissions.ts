@@ -4,6 +4,7 @@ import {
 } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { UnityProxyService } from "@/gen/uc/v1/proxy_pb";
+import { markStale } from "@/lib/queryClient";
 import { UC_API_PREFIX } from "@/lib/uc";
 import { useUcQuery } from "@/lib/ucQuery";
 
@@ -40,7 +41,7 @@ export function useMarkPermissionsStale() {
       ? (path: string) =>
           path === permissionsPath(securable.type, securable.fullName)
       : (path: string) => path.startsWith(PERMISSIONS_PATH);
-    void queryClient.invalidateQueries({
+    markStale(queryClient, {
       queryKey: createConnectQueryKey({
         schema: UnityProxyService.method.call,
         cardinality: undefined,
@@ -53,7 +54,6 @@ export function useMarkPermissionsStale() {
           matches(input.path)
         );
       },
-      refetchType: "none",
     });
   };
 }

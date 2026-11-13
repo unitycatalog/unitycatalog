@@ -3,6 +3,7 @@ import { act, waitFor } from "@testing-library/react";
 import type { DescMessage, DescMethodUnary } from "@bufbuild/protobuf";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { createConnectQueryKey } from "@connectrpc/connect-query";
+import { createRouterTransport } from "@connectrpc/connect";
 import { CatalogService } from "@/gen/uc/v1/catalog_pb";
 import { FunctionService } from "@/gen/uc/v1/function_pb";
 import { ModelService } from "@/gen/uc/v1/model_pb";
@@ -244,6 +245,50 @@ describe("domain mutation hooks", () => {
     });
 
     await waitFor(() => expect(requests.count).toBe(2));
+  });
+
+  it("does not cache a read that was in flight during a delete as fresh", async () => {
+    type Reply = { catalog: { name: string; comment: string } };
+    const replies = [
+      Promise.withResolvers<Reply>(),
+      Promise.withResolvers<Reply>(),
+    ];
+    let reads = 0;
+    const transport = createRouterTransport(({ service }) => {
+      service(CatalogService, {
+        getCatalog: () => replies[reads++].promise,
+        deleteCatalog: () => ({}),
+      });
+    });
+    const client = makeQueryClient();
+    const { result } = renderHookWithProviders(
+      () => ({ detail: useGetCatalog("main"), remove: useDeleteCatalog() }),
+      { client, transport },
+    );
+    await waitFor(() => expect(reads).toBe(1));
+
+    await act(async () => {
+      await result.current.remove.mutateAsync({ catalog: { name: "main" } });
+    });
+    await act(async () => {
+      replies[0].resolve({
+        catalog: { name: "main", comment: "before delete" },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // The pre-delete read was sent again, so its reply is dropped.
+    expect(reads).toBe(2);
+    expect(result.current.detail.data?.comment).toBeUndefined();
+
+    await act(async () => {
+      replies[1].resolve({
+        catalog: { name: "main", comment: "after delete" },
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.detail.data?.comment).toBe("after delete"),
+    );
   });
 
   it.each([

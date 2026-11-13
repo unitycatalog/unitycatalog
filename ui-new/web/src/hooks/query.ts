@@ -6,6 +6,7 @@ import type {
 import { createConnectQueryKey } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMarkPermissionsStale } from "@/hooks/permissions";
+import { markStale } from "@/lib/queryClient";
 
 export async function collectAllPages<
   Key extends PropertyKey,
@@ -51,13 +52,12 @@ export function useInvalidateMethod<
 >(method: DescMethodUnary<Input, Output>, { refetch = true } = {}) {
   const queryClient = useQueryClient();
   return () => {
-    void queryClient.invalidateQueries({
-      queryKey: createConnectQueryKey({
-        schema: method,
-        cardinality: undefined,
-      }),
-      refetchType: refetch ? "active" : "none",
+    const queryKey = createConnectQueryKey({
+      schema: method,
+      cardinality: undefined,
     });
+    if (refetch) void queryClient.invalidateQueries({ queryKey });
+    else markStale(queryClient, { queryKey });
   };
 }
 
@@ -74,14 +74,13 @@ export function useMarkDescendantsStale(
   const markPermissionsStale = useMarkPermissionsStale();
   return () => {
     for (const schema of descendants) {
-      void queryClient.invalidateQueries({
+      markStale(queryClient, {
         // The branches are identical, but each createConnectQueryKey overload
         // takes only a service or only a method, so the union must be narrowed.
         queryKey:
           schema.kind === "service"
             ? createConnectQueryKey({ schema, cardinality: undefined })
             : createConnectQueryKey({ schema, cardinality: undefined }),
-        refetchType: "none",
       });
     }
     markPermissionsStale();
