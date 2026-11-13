@@ -31,7 +31,9 @@ adls.storageAccountName.{{ $index }}={{ $config.storageAccountName }}
 
 {{- range $index, $config := .Values.storage.credentials.gcs }}
 gcs.bucketPath.{{ $index }}={{ $config.bucketPath }}
+{{- if $config.credentialsSecretName }}
 gcs.jsonKeyFilePath.{{ $index }}=/etc/conf/gcs-credentials-{{ $index }}.json
+{{- end }}
 {{- end }}
 {{- end }}
 

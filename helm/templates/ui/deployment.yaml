@@ -37,11 +37,15 @@ spec:
             - /bin/sh
             - -c
             - |-
-              until nc -z {{ include "unitycatalog.server.fullname" . }} {{ .Values.server.service.port }}
+              SERVER_HOST="{{ include "unitycatalog.server.fullname" . }}"
+              SERVER_PORT="{{ .Values.server.service.port }}"
+              echo "Attempting to connect to server at ${SERVER_HOST}:${SERVER_PORT}"
+              until nc -z "${SERVER_HOST}" "${SERVER_PORT}"
               do
-                echo "Waiting for server ({{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.service.port }}) to be ready..."
-                sleep 2
+              echo "Waiting for server to be ready..."
+              sleep 2
               done
+              echo "Server is ready."
       {{- with .Values.ui.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
