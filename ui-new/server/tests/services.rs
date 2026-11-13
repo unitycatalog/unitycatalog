@@ -6,7 +6,8 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 use uc_ui_bridge::{app, AppState, Config};
 use wiremock::matchers::{
-    body_partial_json, header as header_match, method, path, query_param, query_param_is_missing,
+    body_partial_json, header as header_match, header_exists, method, path, query_param,
+    query_param_is_missing,
 };
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -74,6 +75,34 @@ async fn list_catalogs_forwards_auth_and_pagination() {
     assert_eq!(json["catalogs"][0]["name"], "main");
     assert_eq!(json["catalogs"][0]["audit"]["owner"], "owner@example.com");
     assert_eq!(json["page"]["nextPageToken"], "later");
+}
+
+#[tokio::test]
+async fn typed_rpcs_do_not_add_the_csrf_header() {
+    // UC's CSRF check relies on the header coming only from the browser.
+    let uc = MockServer::start().await;
+    Mock::given(header_exists("x-requested-with"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&uc)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/2.1/unity-catalog/catalogs/main"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let response = build_app(uc.uri())
+        .oneshot(rpc_request(
+            "CatalogService",
+            "DeleteCatalog",
+            serde_json::json!({"catalog": {"name": "main"}}),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

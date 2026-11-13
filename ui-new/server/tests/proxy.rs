@@ -5,7 +5,7 @@ use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt; // for `oneshot`
 use uc_ui_bridge::{app, AppState, Config};
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{header_exists, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn test_config(uc_server: String) -> Config {
@@ -172,6 +172,33 @@ async fn call_rejects_client_selected_upstream() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let json = body_json(resp).await;
     assert_eq!(json["code"], "invalid_argument");
+}
+
+#[tokio::test]
+async fn call_does_not_add_the_csrf_header() {
+    // UC's CSRF check relies on the header coming only from the browser.
+    let uc = MockServer::start().await;
+    Mock::given(header_exists("x-requested-with"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&uc)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/1.0/unity-control/auth/logout"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let resp = build_app(uc.uri())
+        .oneshot(call_request(serde_json::json!({
+            "method": "POST",
+            "path": "/api/1.0/unity-control/auth/logout"
+        })))
+        .await
+        .unwrap();
+
+    assert_eq!(body_json(resp).await["httpStatus"], 200);
 }
 
 #[tokio::test]
@@ -345,28 +372,35 @@ async fn healthz_ok() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
-#[tokio::test]
-async fn cors_preflight_allows_the_csrf_header() {
-    let app = app(AppState {
+fn cors_app() -> axum::Router {
+    app(AppState {
         http: reqwest::Client::new(),
         config: Arc::new(Config {
             allowed_origins: vec!["http://localhost:5173".to_string()],
             ..test_config("http://127.0.0.1:1".to_string())
         }),
-    });
-    let resp = app
+    })
+}
+
+async fn preflight(origin: &str) -> axum::response::Response<Body> {
+    cors_app()
         .oneshot(
             Request::builder()
                 .method("OPTIONS")
                 .uri("/uc.v1.CatalogService/DeleteCatalog")
-                .header(header::ORIGIN, "http://localhost:5173")
+                .header(header::ORIGIN, origin)
                 .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
                 .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "x-requested-with")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+}
+
+#[tokio::test]
+async fn cors_preflight_allows_the_csrf_header() {
+    let resp = preflight("http://localhost:5173").await;
     let allowed = resp
         .headers()
         .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
@@ -374,4 +408,13 @@ async fn cors_preflight_allows_the_csrf_header() {
         .to_str()
         .unwrap();
     assert!(allowed.contains("x-requested-with"), "{allowed}");
+}
+
+#[tokio::test]
+async fn cors_preflight_rejects_an_unlisted_origin() {
+    let resp = preflight("https://attacker.example").await;
+    assert!(resp
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        .is_none());
 }
