@@ -32,6 +32,7 @@ class OpaInputBuilder {
     this.sessionFactory = sessionFactory;
   }
 
+  /** Builds an input envelope that must be bound to a privilege before it is sent. */
   ObjectNode build(UUID principalId, SecurableType resourceType, UUID resourceId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,

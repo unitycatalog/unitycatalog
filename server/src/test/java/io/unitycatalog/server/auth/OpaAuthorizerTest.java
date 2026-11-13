@@ -220,8 +220,14 @@ class OpaAuthorizerTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"false,{}", "true,{}", "false,not json", "true,not json"})
-  void opaFailureStopsMultiPrivilegeChecks(boolean requireAll, String invalidReply) {
+  @CsvSource({
+    "false,{},OPA response must contain a boolean result.allow",
+    "true,{},OPA response must contain a boolean result.allow",
+    "false,not json,Could not get an authorization decision from OPA",
+    "true,not json,Could not get an authorization decision from OPA"
+  })
+  void opaFailureStopsMultiPrivilegeChecks(
+      boolean requireAll, String invalidReply, String expectedMessage) {
     reply =
         request ->
             request.at("/input/privilege").asText().equals("OWNER")
@@ -233,11 +239,7 @@ class OpaAuthorizerTest {
             BaseException.class);
     assertThat(error).isNotNull();
     assertThat(error.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
-    assertThat(error)
-        .hasMessage(
-            invalidReply.equals("{}")
-                ? "OPA response must contain a boolean result.allow"
-                : "Could not get an authorization decision from OPA");
+    assertThat(error).hasMessage(expectedMessage);
     assertPrivileges("OWNER", "SELECT");
     assertMetadataReadOnce();
   }
@@ -426,13 +428,14 @@ class OpaAuthorizerTest {
     try {
       Configurator.setLevel(logger.getName(), Level.WARN);
       logger.addAppender(appender);
-      assertThat(authorizer.authorize(principal, TABLE, table, SELECT)).isFalse();
+      assertThat(authorizer.authorizeAny(principal, TABLE, table, OWNER, SELECT)).isFalse();
       assertThat(requests).isEmpty();
+      assertThat(warnings.toString().lines().toList()).hasSize(1);
       assertThat(warnings.toString())
           .contains(
               "WARN Authorization check denied",
               "principal=" + principal,
-              "privileges=[SELECT]",
+              "privileges=[OWNER, SELECT]",
               "resource=table " + table,
               "CatalogInfoDAO " + catalog);
     } finally {
