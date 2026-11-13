@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -413,12 +414,13 @@ public final class SchemaMigrator implements AutoCloseable {
   /**
    * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, brings the database to
    * this build's schema one step at a time, and checks that it ends with the schema of the last
-   * step. If the schema history is valid, the record of a step that failed is deleted first, so
-   * that the step is tried again. Before each pending step the whole schema is compared with the
-   * steps' effect files ({@code schema-effects/<database>}): it must be the schema before the step,
-   * so the step runs, or after it (a run stopped before Flyway recorded the step), so the step is
-   * recorded without running; otherwise the run stops, changing nothing more. This also sets up an
-   * empty database, and adopts a database without schema history when its schema is exactly that of
+   * step. Before each pending step the whole schema is compared with the steps' effect files
+   * ({@code schema-effects/<database>}): it must be the schema before the step, so the step runs,
+   * or after it (a run stopped before Flyway recorded the step) or after this build's last step (an
+   * adoption that stopped part way), so the step is recorded without running; otherwise the run
+   * stops, changing nothing more. Once the schema check accepts a step, its record as a failed step
+   * (MySQL and H2 keep one) is deleted, so that the step is tried again. This also sets up an empty
+   * database, and adopts a database without schema history when its schema is exactly that of
    * {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's last step (every
    * step is recorded without running). On PostgreSQL and MySQL, a second run at the same time waits
    * for the first. Returns the number of steps it ran or recorded.
@@ -426,14 +428,14 @@ public final class SchemaMigrator implements AutoCloseable {
   public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
       refuseIfUnsupported(state());
-      // Before the records of failed steps go, so that a run that refuses leaves the history as is.
       requireValidHistory(true);
-      deleteFailedSteps();
       boolean adopted = hasLastStepsSchemaWithoutHistory();
       int changed = 0;
       for (String step : pendingSteps()) {
         SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
         boolean record = adopted || !runs(step, schema);
+        // Only once the schema check passed, so that a run that refuses leaves the history as is.
+        deleteFailedRecord(step);
         MigrateResult result =
             flyway()
                 .baselineOnMigrate(true)
@@ -563,7 +565,8 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * Whether pending {@code step} runs on a database with {@code schema}: true when the schema is
-   * the one before the step, false when it already has the step's change, and for a first step
+   * the one before the step, false when it already has the step's change or is the schema of this
+   * build's last step (an adoption that stopped after recording some steps), and for a first step
    * whose earlier run stopped part way (the schema history exists and holds part of its schema)
    * true, since the first step skips what is already there.
    *
@@ -576,7 +579,7 @@ public final class SchemaMigrator implements AutoCloseable {
     if (schema.equals(before)) {
       return true;
     }
-    if (schema.equals(after)) {
+    if (schema.equals(after) || schema.equals(expected(latestVersion()))) {
       return false;
     }
     if (previous.equals(EMPTY_BASELINE_VERSION)
@@ -653,32 +656,26 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Deletes the schema history's records of steps that failed (MySQL and H2 keep one), so that the
-   * step is checked and tried again. Plain SQL: Flyway's repair would also rewrite the other
-   * records' checksums.
+   * Deletes the schema history's record of {@code step} as a failed step, if it has one, so that
+   * the step is tried again. Plain SQL: Flyway's repair would also rewrite the other records'
+   * checksums.
    */
-  private void deleteFailedSteps() {
+  private void deleteFailedRecord(String step) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
       return;
     }
-    try (Connection connection = dataSource.getConnection();
-        Statement statement = connection.createStatement()) {
+    try (Connection connection = dataSource.getConnection()) {
       // The caller's pool may not commit by itself, and a rollback would keep the record.
       connection.setAutoCommit(true);
       String q = connection.getMetaData().getIdentifierQuoteString();
-      List<String> failed = new ArrayList<>();
-      try (ResultSet rs =
-          statement.executeQuery(
-              "SELECT %1$sversion%1$s FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false"
+      try (PreparedStatement delete =
+          connection.prepareStatement(
+              "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
                   .formatted(q, HISTORY_TABLE))) {
-        while (rs.next()) {
-          failed.add(rs.getString(1));
+        delete.setString(1, step);
+        if (delete.executeUpdate() > 0) {
+          LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
         }
-      }
-      if (!failed.isEmpty()) {
-        statement.executeUpdate(
-            "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false".formatted(q, HISTORY_TABLE));
-        LOGGER.info("Deleted the record of failed schema steps {}; they are checked again", failed);
       }
     } catch (SQLException e) {
       throw new IllegalStateException(
@@ -689,21 +686,25 @@ public final class SchemaMigrator implements AutoCloseable {
   /**
    * Throws unless Flyway's validation of the schema history passes: no failed step, no edited step
    * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
-   * recorded version may be pending and a step may have failed: the upgrade runs them.
+   * recorded version may be pending and may have failed: the upgrade runs them. A failed step that
+   * is not one of this build's pending steps, such as a newer release's, is still refused.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
       return;
     }
     FluentConfiguration configuration = flyway();
+    Set<String> retried = upgrading ? Set.copyOf(pendingSteps()) : Set.of();
     if (upgrading) {
       configuration.ignoreMigrationPatterns("*:pending");
     }
     String errors =
         configuration.load().validateWithResult().invalidMigrations.stream()
-            .map(m -> m.errorDetails)
-            .filter(e -> !(upgrading && e.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION))
-            .map(e -> e.errorMessage)
+            .filter(
+                m ->
+                    !(m.errorDetails.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION
+                        && retried.contains(m.version)))
+            .map(m -> m.errorDetails.errorMessage)
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
       throw new IllegalStateException(
