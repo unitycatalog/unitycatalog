@@ -14,6 +14,7 @@ import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
@@ -137,6 +138,9 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
 
     // Delete with force should succeed
     credentialOperations.deleteCredential(credentialWithExternalLocationName, Optional.of(true));
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME))
+        .returns(URL, ExternalLocationInfo::getUrl)
+        .returns(null, ExternalLocationInfo::getCredentialName);
     // Clean up the external location
     externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME, Optional.of(true));
 

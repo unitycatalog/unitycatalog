@@ -1,6 +1,9 @@
 import datetime
 import decimal
+import functools
+import importlib.util
 import re
+import sys
 import textwrap
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -20,13 +23,22 @@ from unitycatalog.ai.core.utils.callable_utils import (
     format_default_value,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
+    get_callable_definition,
 )
 from unitycatalog.ai.core.utils.callable_utils_oss import generate_function_info
 from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_parameter_defaults,
 )
 from unitycatalog.ai.core.utils.type_utils import SQL_TYPE_TO_PYTHON_TYPE_MAPPING
-from unitycatalog.client.models import FunctionInfo, FunctionParameterInfos
+from unitycatalog.ai.test_utils.function_utils import (
+    ASYNC_FUNCTION_ERROR,
+    ASYNC_WRAPPER_ERROR,
+    async_int_func,
+    async_int_func_partial,
+    async_int_gen,
+    run_sync,
+)
+from unitycatalog.client.models import FunctionInfo, FunctionParameterInfo, FunctionParameterInfos
 
 # ---------------------------
 # Tests for Simple Functions and Docstrings
@@ -357,6 +369,362 @@ AS $$
 $$;
     """
     assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_multiline_string_literal():
+    def render_letter(name: str) -> str:
+        """
+        Renders a letter.
+
+        Args:
+            name: the recipient
+        """
+        template = """Dear {name},
+Thanks.
+"""
+        return template.format(name=name)
+
+    sql_body = generate_sql_function_body(render_letter, "test_catalog", "test_schema")
+
+    expected_sql = '''
+CREATE FUNCTION `test_catalog`.`test_schema`.`render_letter`(name STRING COMMENT 'the recipient')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'Renders a letter.'
+AS $$
+    template = """Dear {name},
+Thanks.
+"""
+    return template.format(name=name)
+$$;
+    '''
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_two_space_function_with_multiline_string_literal():
+    # fmt: off
+    def render_note(name: str) -> str:
+      """
+      Renders a note.
+
+      Args:
+          name: the recipient
+      """
+      note = """Hi {name},
+Bye.
+"""
+      return note.format(name=name)
+    # fmt: on
+
+    sql_body = generate_sql_function_body(render_note, "test_catalog", "test_schema")
+    body = sql_body.split("AS $$\n")[1].split("\n$$;")[0]
+    function_info = FunctionInfo(
+        name="render_note",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="name", type_text="STRING", type_name="STRING", type_json="", position=0
+                )
+            ]
+        ),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition=body,
+    )
+    namespace = {}
+
+    exec(get_callable_definition(function_info), namespace)
+
+    assert body == '    note = """Hi {name},\nBye.\n"""\n    return note.format(name=name)'
+    assert namespace["render_note"]("Bo") == "Hi Bo,\nBye.\n"
+
+
+def stored_letter(name: str) -> str:
+    """
+    Renders a letter.
+
+    Args:
+        name: the recipient
+    """
+    template = """Dear {name},
+Thanks.
+"""
+    return template.format(name=name)
+
+
+def stored_query(name: str) -> str:
+    """
+    Renders a query.
+
+    Args:
+        name: the table
+    """
+    query = """
+        SELECT *
+        FROM {name}
+    """
+    return query.format(name=name)
+
+
+@pytest.mark.parametrize(
+    ("func", "stored_body"),
+    [
+        (
+            stored_letter,
+            '    template = """Dear {name},\nThanks.\n"""\n    return template.format(name=name)',
+        ),
+        (
+            stored_query,
+            'query = """\n    SELECT *\n    FROM {name}\n"""\nreturn query.format(name=name)',
+        ),
+    ],
+)
+def test_stored_body_layout_of_top_level_function(func, stored_body):
+    assert generate_function_info(func).routine_definition == stored_body
+
+
+# fmt: off
+def noted_join(name: str) -> str:
+    """
+    Joins two names.
+
+    Args:
+        name: the name
+    """
+    """A note,
+not part of the result."""
+    return """a
+    b""".join([name, name])
+
+
+def noted_join_fstring(name: str) -> str:
+    """
+    Joins two names.
+
+    Args:
+        name: the name
+    """
+    f"""A note about {name},
+not part of the result."""
+    return f"""a
+    b""".join([name, name])
+# fmt: on
+
+
+@pytest.mark.parametrize(
+    ("func", "stored_body"),
+    [
+        (
+            noted_join,
+            '    """A note,\nnot part of the result."""\n    return """a\n    b""".join([name, name])',
+        ),
+        (
+            noted_join_fstring,
+            '    f"""A note about {name},\nnot part of the result."""\n'
+            '    return f"""a\n    b""".join([name, name])',
+        ),
+    ],
+)
+def test_string_statement_keeps_its_lines_as_written(func, stored_body):
+    assert generate_function_info(func).routine_definition == stored_body
+
+
+def generated_body(func, writer):
+    if writer == "oss":
+        return generate_function_info(func).routine_definition
+    sql_body = generate_sql_function_body(func, "test_catalog", "test_schema")
+    return sql_body.split("AS $$\n")[1].split("\n$$;")[0]
+
+
+@pytest.mark.parametrize(
+    "build_definition", [get_callable_definition, dynamically_construct_python_function]
+)
+@pytest.mark.parametrize("writer", ["oss", "databricks"])
+@pytest.mark.parametrize(
+    "docstring_line",
+    [
+        "content\n    indented",
+        "    content",
+        "      content\n  more",
+        "            content\n                more",
+        "\t" * 9 + "tabbed",
+    ],
+)
+def test_nested_function_docstring_keeps_its_value(
+    build_definition, writer, docstring_line, tmp_path
+):
+    module_path = tmp_path / "nested_docstring_module.py"
+    module_path.write_text(
+        "def nested_docstring() -> str:\n"
+        '    """Returns the docstring of a nested function."""\n'
+        "    def helper():\n"
+        '        """Summary.\n'
+        f"{docstring_line}\n"
+        '        """\n'
+        "    return helper.__doc__\n"
+    )
+    spec = importlib.util.spec_from_file_location("nested_docstring_module", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    nested_docstring = module.nested_docstring
+    function_info = FunctionInfo(
+        name="nested_docstring",
+        input_params=FunctionParameterInfos(parameters=[]),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition=generated_body(nested_docstring, writer),
+    )
+    namespace = {}
+
+    exec(build_definition(function_info), namespace)
+
+    assert namespace["nested_docstring"]() == nested_docstring()
+
+
+INSPECT_STOPS_AT_COLUMN_0_BACKSLASH = pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="inspect.getsource stops at a backslash line at column 0 before Python 3.12",
+)
+
+
+@pytest.mark.parametrize(
+    "build_definition", [get_callable_definition, dynamically_construct_python_function]
+)
+@pytest.mark.parametrize("writer", ["oss", "databricks"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(
+            "    y = '''a\n  b'''\n\\\n    return y",
+            marks=INSPECT_STOPS_AT_COLUMN_0_BACKSLASH,
+            id="column-0-backslash-line",
+        ),
+        pytest.param(
+            "    y = '''a\n  b'''\n    if y:\n\\\n        return y\n    return ''",
+            marks=INSPECT_STOPS_AT_COLUMN_0_BACKSLASH,
+            id="column-0-backslash-line-in-a-block",
+        ),
+        pytest.param(
+            "    \\\n        y = '''a\n  b'''\n    return y", id="indented-backslash-line"
+        ),
+    ],
+)
+def test_statement_after_a_backslash_line_keeps_its_block(build_definition, writer, body, tmp_path):
+    module_path = tmp_path / "backslash_module.py"
+    module_path.write_text(f'def backslash_line() -> str:\n    """Returns a string."""\n{body}\n')
+    spec = importlib.util.spec_from_file_location("backslash_module", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    function_info = FunctionInfo(
+        name="backslash_line",
+        input_params=FunctionParameterInfos(parameters=[]),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition=generated_body(module.backslash_line, writer),
+    )
+    namespace = {}
+
+    exec(build_definition(function_info), namespace)
+
+    assert namespace["backslash_line"]() == "a\n  b"
+
+
+def test_stored_body_that_does_not_tokenize_is_indented_line_by_line(caplog):
+    function_info = FunctionInfo(
+        name="broken",
+        input_params=FunctionParameterInfos(parameters=[]),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition='x = (1,\n    2\nreturn """a\n  b',
+    )
+
+    with caplog.at_level("DEBUG", logger="unitycatalog.ai.core.utils.code_layout"):
+        definition = get_callable_definition(function_info)
+
+    assert definition == 'def broken():\n    x = (1,\n        2\n    return """a\n      b\n'
+    assert [
+        (record.levelname, record.getMessage().split(": ")[0])
+        for record in caplog.records
+        if record.name == "unitycatalog.ai.core.utils.code_layout"
+    ] == [("WARNING", "Laying out code that does not tokenize without string lines")]
+
+
+STORED_BODY_CASES = [
+    # OSS body of a string at column 0.
+    (
+        '    template = """Dear {name},\nThanks.\n"""\n    return template.format(name=name)',
+        "Dear Bo,\nThanks.\n",
+    ),
+    # OSS body of a string indented like the code, with an empty line inside the string.
+    (
+        'template = """Dear {name},\n\n    Thanks.\n"""\nreturn template.format(name=name)',
+        "Dear Bo,\n\n        Thanks.\n    ",
+    ),
+    # OSS body of a string indented like the code.
+    (
+        'template = """Dear {name},\n    Thanks.\n"""\nreturn template.format(name=name)',
+        "Dear Bo,\n        Thanks.\n    ",
+    ),
+    # Databricks body of a string indented like the code.
+    (
+        '    template = """Dear {name},\n        Thanks.\n    """\n    return template.format(name=name)',
+        "Dear Bo,\n        Thanks.\n    ",
+    ),
+    # Databricks body of a string at column 0, with string lines indented like the body.
+    (
+        '        template = """Dear {name},\n    Thanks.\n    """\n        return template.format(name=name)',
+        "Dear Bo,\nThanks.\n",
+    ),
+    # Body written by hand, with a string line left of where the shift would move it.
+    (
+        '        template = """Dear {name},\nThanks."""\n        return template.format(name=name)',
+        "Dear Bo,\nThanks.",
+    ),
+    # OSS body of a nested function, with string lines at different columns left of the code.
+    (
+        '        query = """\nSELECT *\n    FROM {name}\n"""\n        return query.format(name=name)',
+        "\nSELECT *\n    FROM Bo\n",
+    ),
+    # Body whose only nested block is 8 columns deep, under a comment indented by 4.
+    (
+        'if name:\n    # greet\n        return "Dear " + name\nreturn ""',
+        "Dear Bo",
+    ),
+    # Body whose only nested block is 8 columns deep, after a string line indented by 4.
+    (
+        'note = """Dear\n    {name}"""\nif name:\n        return note.format(name=name)\nreturn ""',
+        "Dear\n        Bo",
+    ),
+    # Body written by hand with a tab margin.
+    ("\tnote = '''Dear\n\t{name}'''\n\treturn note.format(name=name)", "Dear\n\tBo"),
+    # Body written by hand whose first statement starts with a line continuation.
+    ('\\\n    if name:\n    return "Dear " + name', "Dear Bo"),
+]
+
+
+@pytest.mark.parametrize(
+    "build_definition", [get_callable_definition, dynamically_construct_python_function]
+)
+@pytest.mark.parametrize(("stored_body", "expected"), STORED_BODY_CASES)
+def test_multiline_string_literal_survives_stored_body(build_definition, stored_body, expected):
+    function_info = FunctionInfo(
+        name="render_letter",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="name", type_text="STRING", type_name="STRING", type_json="", position=0
+                )
+            ]
+        ),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition=stored_body,
+    )
+    namespace = {}
+
+    exec(build_definition(function_info), namespace)
+
+    assert namespace["render_letter"]("Bo") == expected
 
 
 def test_function_with_class():
@@ -2222,6 +2590,17 @@ test_cases = [
     ("\treturn a + b", "    return a + b"),
     # 10. All flush left.
     ("return a + b", "    return a + b"),
+    # 11. Lines inside a multi-line string move with the code, and trailing spaces on its
+    # opening line are kept.
+    (
+        '        x = """Dear  \n      Bo\n    """\n        return x',
+        '    x = """Dear  \n  Bo\n"""\n    return x',
+    ),
+    # 12. Comment and continuation lines left of the statements do not set the margin.
+    (
+        "    x = 1 + \\\n  2\n# note\n    return x",
+        "    x = 1 + \\\n    2\n    # note\n    return x",
+    ),
 ]
 
 
@@ -2551,3 +2930,48 @@ def test_dependencies_reject_backslash(dependency):
 )
 def test_identifiers_are_quoted_verbatim(identifier, expected):
     assert construct_credentials_statement([identifier]) == f"\nCREDENTIALS ({expected})"
+
+
+@pytest.mark.parametrize(
+    "generate",
+    [
+        lambda func: generate_sql_function_body(func, "test_catalog", "test_schema"),
+        generate_function_info,
+    ],
+    ids=["generate_sql_function_body", "generate_function_info"],
+)
+@pytest.mark.parametrize(
+    ("func", "expected_error"),
+    [
+        (async_int_func, ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (async_int_gen, ASYNC_FUNCTION_ERROR.format("async_int_gen")),
+        (staticmethod(async_int_func), ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (classmethod(async_int_func), ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (async_int_func_partial, ASYNC_FUNCTION_ERROR.format("async_int_func")),
+        (run_sync(async_int_func), ASYNC_WRAPPER_ERROR.format("async_int_func")),
+        (
+            functools.partial(run_sync(async_int_func), 1),
+            ASYNC_WRAPPER_ERROR.format("async_int_func"),
+        ),
+    ],
+    ids=[
+        "coroutine",
+        "async_generator",
+        "staticmethod_of_coroutine",
+        "classmethod_of_coroutine",
+        "partial_of_coroutine",
+        "sync_wrapper_of_coroutine",
+        "partial_of_sync_wrapper_of_coroutine",
+    ],
+)
+def test_async_function_is_rejected(generate, func, expected_error):
+    with pytest.raises(ValueError, match=re.escape(expected_error)):
+        generate(func)
+
+
+def test_async_function_is_rejected_before_other_validation():
+    async def undocumented(a: int) -> int:
+        return a
+
+    with pytest.raises(ValueError, match=re.escape(ASYNC_FUNCTION_ERROR.format("undocumented"))):
+        generate_function_info(undocumented)

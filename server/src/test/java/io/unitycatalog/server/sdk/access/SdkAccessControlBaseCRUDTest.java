@@ -282,7 +282,7 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
    * configuration.
    *
    * <p>This method creates tokens the same way the production system does, using RSA512 algorithm
-   * with the keys from etc/conf directory.
+   * with the keys from the test's configuration folder.
    *
    * @param subject The subject (email) for the JWT token
    * @return A JWT token string signed with the actual RSA private key

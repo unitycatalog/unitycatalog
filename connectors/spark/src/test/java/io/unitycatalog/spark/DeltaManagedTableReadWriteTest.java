@@ -7,7 +7,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
@@ -18,8 +21,10 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -314,6 +319,46 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
     assertThatThrownBy(() -> sql("ALTER TABLE %s RENAME COLUMN i TO renamed_i", fullTableName))
         .hasMessageContaining("ALTER TABLE RENAME COLUMN");
+  }
+
+  /**
+   * Loading a managed Delta table hands UC's stored column metadata, such as Delta's {@code
+   * __CHAR_VARCHAR_TYPE_STRING}, to the V1 table that {@code UCProxy.toStructField} builds and
+   * {@code DeltaCatalog} replaces, but leaves out the {@code delta.columnMapping.*} keys the Delta
+   * log owns. Reads, writes, comments and VARCHAR length checks must behave as before.
+   */
+  @Test
+  @EnabledIf("canUpdateColumnsToUC")
+  @SuppressWarnings("deprecation")
+  public void testLoadManagedDeltaTableWithStoredColumnMetadata() throws Exception {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setTableName(TEST_TABLE)
+                .setColumns(
+                    List.of(Pair.of("i", "INT"), Pair.of("s", "VARCHAR(3) COMMENT 'note'"))));
+    ColumnInfo storedColumn = loadTableInfo(fullTableName).getColumns().get(1);
+    JsonNode stored = new ObjectMapper().readTree(storedColumn.getTypeJson()).get("metadata");
+    assertThat(stored.get("__CHAR_VARCHAR_TYPE_STRING").asText()).isEqualTo("varchar(3)");
+    assertThat(stored.has("delta.columnMapping.id")).isTrue();
+
+    UCProxy proxy =
+        ((UCSingleCatalog) session.sessionState().catalogManager().catalog(CATALOG_NAME)).ucProxy();
+    Metadata loaded = proxy.toStructField(storedColumn).metadata();
+    assertThat(loaded.getString("__CHAR_VARCHAR_TYPE_STRING")).isEqualTo("varchar(3)");
+    assertThat(loaded.contains("delta.columnMapping.id")).isFalse();
+    assertThat(loaded.contains("delta.columnMapping.physicalName")).isFalse();
+
+    sql("INSERT INTO %s VALUES (1, 'abc')", fullTableName);
+
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "abc"));
+    assertThat(session.table(fullTableName).schema().apply("s").getComment().get())
+        .isEqualTo("note");
+    assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 'abcd')", fullTableName))
+        .hasStackTraceContaining("char/varchar type length limitation");
   }
 
   @Test
