@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Code, ConnectError, createRouterTransport } from "@connectrpc/connect";
@@ -6,7 +6,17 @@ import { ModelService, ModelVersionStatus } from "@/gen/uc/v1/model_pb";
 
 vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"));
 
-const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+const { toastError, auth } = vi.hoisted(() => ({
+  toastError: vi.fn(),
+  auth: {
+    current: undefined as
+      | { authEnabled: boolean; currentUser: { userName: string } | null }
+      | undefined,
+  },
+}));
+vi.mock("@/context/auth-context", () => ({
+  useOptionalAuth: () => auth.current,
+}));
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
   return { ...actual, toast: { ...actual.toast, error: toastError } };
@@ -257,6 +267,10 @@ describe("ModelDetails", () => {
 });
 
 describe("ModelVersionDetails", () => {
+  afterEach(() => {
+    auth.current = undefined;
+  });
+
   it("renders version metadata", async () => {
     renderWithProviders(
       <ModelVersionDetails
@@ -270,13 +284,15 @@ describe("ModelVersionDetails", () => {
     expect(await screen.findByText("s3://m")).toBeInTheDocument();
   });
 
-  it("reports a failed finalize and re-enables the button", async () => {
+  // Renders a pending version created by ada@example.com whose finalize fails.
+  function renderPendingVersion() {
     const transport = createRouterTransport(({ service }) => {
       service(ModelService, {
         getModelVersion: () => ({
           modelVersion: {
             version: 1n,
             status: ModelVersionStatus.PENDING_REGISTRATION,
+            audit: { createdBy: "ada@example.com" },
           },
         }),
         finalizeModelVersion: () => {
@@ -296,6 +312,37 @@ describe("ModelVersionDetails", () => {
       />,
       { transport },
     );
+  }
+
+  it.each([
+    { when: "auth is disabled", authEnabled: false, user: null, shown: true },
+    {
+      when: "the creator is signed in",
+      authEnabled: true,
+      user: "ada@example.com",
+      shown: true,
+    },
+    {
+      when: "another user is signed in",
+      authEnabled: true,
+      user: "bob@example.com",
+      shown: false,
+    },
+  ])("offers Finalize only to the creator: $when", async (scenario) => {
+    auth.current = {
+      authEnabled: scenario.authEnabled,
+      currentUser: scenario.user ? { userName: scenario.user } : null,
+    };
+    renderPendingVersion();
+
+    await screen.findAllByText("PENDING_REGISTRATION");
+    expect(screen.queryByRole("button", { name: "Finalize" }) !== null).toBe(
+      scenario.shown,
+    );
+  });
+
+  it("reports a failed finalize and re-enables the button", async () => {
+    renderPendingVersion();
 
     const finalize = await screen.findByRole("button", { name: "Finalize" });
     await userEvent.click(finalize);

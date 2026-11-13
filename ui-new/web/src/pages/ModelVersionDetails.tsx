@@ -1,6 +1,7 @@
 import { Box } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { useOptionalAuth } from "@/context/auth-context";
 import {
   useDeleteModelVersion,
   useFinalizeModelVersion,
@@ -40,6 +41,12 @@ export default function ModelVersionDetails({
   const finalizeVersion = useFinalizeModelVersion();
   const parsedVersion = parseModelVersion(version);
   const status = data ? ModelVersionStatus[data.status] : undefined;
+  // With auth enabled, UC lets only the version's creator finalize it.
+  const auth = useOptionalAuth();
+  const canFinalize =
+    !auth?.authEnabled ||
+    (!!data?.audit?.createdBy &&
+      auth.currentUser?.userName === data.audit.createdBy);
   const modelVersion = {
     model: { catalogName: catalog, schemaName: schema, name: model },
     version: parsedVersion ?? 0n,
@@ -75,24 +82,25 @@ export default function ModelVersionDetails({
                   />
                 </FormField>
               </EntityFormDialog>
-              {data?.status === ModelVersionStatus.PENDING_REGISTRATION && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={finalizeVersion.isPending}
-                  onClick={() =>
-                    finalizeVersion.mutate(
-                      { modelVersion },
-                      {
-                        onError: (error) =>
-                          toast.error(`Finalize failed: ${error.message}`),
-                      },
-                    )
-                  }
-                >
-                  Finalize
-                </Button>
-              )}
+              {data?.status === ModelVersionStatus.PENDING_REGISTRATION &&
+                canFinalize && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={finalizeVersion.isPending}
+                    onClick={() =>
+                      finalizeVersion.mutate(
+                        { modelVersion },
+                        {
+                          onError: (error) =>
+                            toast.error(`Finalize failed: ${error.message}`),
+                        },
+                      )
+                    }
+                  >
+                    Finalize
+                  </Button>
+                )}
               <DeleteAction
                 entityName={version}
                 entityType="model version"
