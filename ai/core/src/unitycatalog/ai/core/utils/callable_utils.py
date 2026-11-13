@@ -1,5 +1,6 @@
 import ast
 import datetime
+import functools
 import inspect
 import json
 import re
@@ -159,6 +160,31 @@ class ServiceCredential:
     name: str
     alias: Optional[str] = None
     is_default: bool = False
+
+
+def _reject_async_function(func: Callable[..., Any]) -> None:
+    """
+    Raises a ValueError if the function, or the function it wraps, is defined with `async def`.
+
+    Unity Catalog runs a stored function body as the body of a regular `def`, so a coroutine
+    or async generator function cannot be stored.
+
+    Args:
+        func: The function to check.
+    """
+    named = func.func if isinstance(func, functools.partial) else func
+    original = inspect.unwrap(named)
+    if not (inspect.iscoroutinefunction(original) or inspect.isasyncgenfunction(original)):
+        return
+    if original is named:
+        problem, target = "is an async function", "it"
+    else:
+        problem, target = "wraps an async function", "the wrapped function"
+    name = getattr(named, "__name__", repr(func))
+    raise ValueError(
+        f"Function '{name}' {problem}. Async functions are not supported in Unity "
+        f"Catalog. Define {target} with a regular 'def' instead of 'async def'."
+    )
 
 
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
@@ -746,6 +772,7 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
     """
 
     func = unwrap_function(func)
+    _reject_async_function(func)
     func_name = func.__name__
     signature = inspect.signature(func)
     type_hints = get_type_hints(func)

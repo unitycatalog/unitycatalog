@@ -61,6 +61,10 @@ class BaseFunctionClient(ABC):
 
         Returns:
             The UC function information metadata for the configured UC implementation.
+
+        Raises:
+            ValueError: If `func` is not a valid function to register, for example if it is defined
+                with `async def`.
         """
 
     @abstractmethod
@@ -85,6 +89,10 @@ class BaseFunctionClient(ABC):
 
         Returns:
             The UC function information metadata for the configured UC implementation.
+
+        Raises:
+            ValueError: If `primary_func` or `functions` are not valid to register, for example if
+                `primary_func` is defined with `async def`.
         """
 
     @abstractmethod
