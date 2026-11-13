@@ -34,10 +34,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
@@ -285,6 +288,22 @@ public class HibernateConfigurator implements AutoCloseable {
     }
     return hibernateProperties;
   }
+
+  /**
+   * {@code url} lower-cased with the names a wrapping driver puts before {@code h2:} left out
+   * ({@code jdbc:p6spy:h2:...} gives {@code jdbc:h2:...}), or {@code null} when it is not an H2
+   * URL.
+   */
+  public static String h2Url(String url) {
+    if (url == null) {
+      return null;
+    }
+    Matcher h2 = H2_URL.matcher(url.toLowerCase(Locale.ROOT));
+    return h2.matches() ? "jdbc:h2:" + h2.group(1) : null;
+  }
+
+  private static final Pattern H2_URL =
+      Pattern.compile("jdbc:(?:[a-z0-9_.-]+:)*?h2:(.*)", Pattern.DOTALL);
 
   /**
    * Takes the database password from the environment ({@code UC_HIBERNATE_CONNECTION_PASSWORD})

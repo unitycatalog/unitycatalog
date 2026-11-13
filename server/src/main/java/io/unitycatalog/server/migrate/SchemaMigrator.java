@@ -213,22 +213,35 @@ public final class SchemaMigrator implements AutoCloseable {
    * jdbc:h2:.}.
    */
   private static boolean isH2InMemory(String url) {
-    return url.startsWith("jdbc:h2:mem:") || url.matches("jdbc:h2:\\.(;.*)?");
+    String h2 = HibernateConfigurator.h2Url(url);
+    return h2 != null && (h2.startsWith("jdbc:h2:mem:") || h2.matches("jdbc:h2:\\.(;.*)?"));
   }
 
   /**
    * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
-   * connects, and a check must change nothing.
+   * connects, and a check must change nothing. Sets {@code IFEXISTS=TRUE} on each H2 file URL the
+   * pool may use ({@code hibernate.connection.url}, or the data source class's URL property), also
+   * behind a wrapping driver, replacing an {@code IFEXISTS} the URL sets. Returns whether there was
+   * one.
    */
-  private static void openH2OnlyIfItExists(Properties hibernateProperties) {
-    String url = hibernateProperties.getProperty("hibernate.connection.url");
-    String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
-    if (lower.startsWith("jdbc:h2:")
-        && !isH2InMemory(lower)
-        && setting(lower, "ifexists") == null) {
-      hibernateProperties.setProperty("hibernate.connection.url", url + ";IFEXISTS=TRUE");
+  private static boolean openH2OnlyIfItExists(Properties hibernateProperties) {
+    boolean h2File = false;
+    for (String key : hibernateProperties.stringPropertyNames()) {
+      boolean urlSetting =
+          key.equals("hibernate.connection.url")
+              || (key.startsWith(HIKARI_DATA_SOURCE)
+                  && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("url"));
+      String url = hibernateProperties.getProperty(key);
+      if (urlSetting && HibernateConfigurator.h2Url(url) != null && !isH2InMemory(url)) {
+        hibernateProperties.setProperty(
+            key, url.replaceAll("(?i);\\s*ifexists\\s*=[^;]*", "") + ";IFEXISTS=TRUE");
+        h2File = true;
+      }
     }
+    return h2File;
   }
+
+  private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
 
   /** Whether H2 failed to open {@code e}'s database because it does not exist. */
   private static boolean isH2DatabaseNotFound(Throwable e) {
