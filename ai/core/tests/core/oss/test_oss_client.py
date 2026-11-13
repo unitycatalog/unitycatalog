@@ -1625,26 +1625,26 @@ async def test_create_wrapped_function_async_with_doc(uc_client: UnitycatalogFun
     expected_definition = textwrap.dedent("""\
         def int_func_with_doc(a: int) -> int:
             \"\"\"
-            A function that takes an integer and returns an integer.
+        A function that takes an integer and returns an integer.
 
-            Args:
-                a: An integer.
+        Args:
+            a: An integer.
 
-            Returns:
-                An integer.
-            \"\"\"
+        Returns:
+            An integer.
+        \"\"\"
             return a + 10
 
         def str_func_with_doc(b: str) -> str:
             \"\"\"
-            A function that takes a string and returns a string.
+        A function that takes a string and returns a string.
 
-            Args:
-                b: A string.
+        Args:
+            b: A string.
 
-            Returns:
-                A string.
-            \"\"\"
+        Returns:
+            A string.
+        \"\"\"
             return f"str value: {b}"
 
         func1 = int_func_with_doc(a)

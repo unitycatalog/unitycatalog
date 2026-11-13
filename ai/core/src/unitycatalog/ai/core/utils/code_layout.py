@@ -49,54 +49,32 @@ def classify_lines(code: str) -> tuple[set[int], set[int]]:
 
     Only statement lines carry indentation that Python checks. Comment lines and lines that
     continue a statement (inside brackets or after a backslash) may sit at any column, so they
-    must not decide the margin. A statement that is only a string, such as a docstring, is laid
-    out like the code around it when every line of it starts with the indentation of its first
-    line, as `inspect.getdoc` removes that indentation. Otherwise it is reported as string
-    lines, because a line further left would land at a different column than written. This
-    holds for f-strings too, which Python 3.12 tokenizes in parts and earlier versions as one
-    string. Code that does not tokenize cannot compile either, so it is treated as having no
-    string lines and every nonblank line as a statement line.
+    must not decide the margin. Docstrings are string lines like any other string, because
+    `__doc__` reads their value. Python 3.12 tokenizes f-strings in parts and earlier versions
+    as one string, and both give the same rows. Code that does not tokenize cannot compile
+    either, so it is treated as having no string lines and every nonblank line as a statement
+    line.
     """
-    readline = io.StringIO(code).readline
-    lines = code.split("\n")
     string_lines = set()
     statement_lines = set()
-    open_strings = []
+    open_string_rows = []
     at_statement_start = True
-    string_statement_lines = range(0)
     try:
-        for token in tokenize.generate_tokens(readline):
-            if string_statement_lines and token.type not in (tokenize.NL, tokenize.COMMENT):
-                if token.type != tokenize.NEWLINE:
-                    string_lines.update(string_statement_lines)
-                string_statement_lines = range(0)
-            starts_statement = at_statement_start and token.type not in _NON_STATEMENT_TOKENS
+        for token in tokenize.generate_tokens(io.StringIO(code).readline):
             if token.type == tokenize.NEWLINE:
                 at_statement_start = True
-            elif starts_statement:
+            elif at_statement_start and token.type not in _NON_STATEMENT_TOKENS:
                 statement_lines.add(token.start[0] - 1)
                 at_statement_start = False
             if token.type in _STRING_START_TOKENS:
-                open_strings.append((token.start, starts_statement))
-                continue
-            if token.type in _STRING_END_TOKENS:
-                (first_row, column), is_string_statement = open_strings.pop()
+                open_string_rows.append(token.start[0])
+            elif token.type in _STRING_END_TOKENS:
+                string_lines.update(range(open_string_rows.pop(), token.end[0]))
             elif token.type == tokenize.STRING:
-                (first_row, column), is_string_statement = token.start, starts_statement
-            else:
-                continue
-            rows = range(first_row, token.end[0])
-            opening_indent = lines[first_row - 1][:column]
-            if is_string_statement and all(
-                lines[index].startswith(opening_indent) or not lines[index].strip()
-                for index in rows
-            ):
-                string_statement_lines = rows
-            else:
-                string_lines.update(rows)
+                string_lines.update(range(token.start[0], token.end[0]))
     except (tokenize.TokenError, SyntaxError) as error:
         _logger.debug("Laying out code that does not tokenize without string lines: %s", error)
-        return set(), {index for index, line in enumerate(lines) if line.strip()}
+        return set(), {index for index, line in enumerate(code.split("\n")) if line.strip()}
     return string_lines, statement_lines
 
 

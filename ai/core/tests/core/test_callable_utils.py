@@ -506,25 +506,42 @@ not part of the result."""
     [
         (
             noted_join,
-            '"""A note,\nnot part of the result."""\nreturn """a\nb""".join([name, name])',
+            '    """A note,\nnot part of the result."""\n    return """a\n    b""".join([name, name])',
         ),
         (
             noted_join_fstring,
-            'f"""A note about {name},\nnot part of the result."""\n'
-            'return f"""a\nb""".join([name, name])',
+            '    f"""A note about {name},\nnot part of the result."""\n'
+            '    return f"""a\n    b""".join([name, name])',
         ),
     ],
 )
-def test_string_statement_is_laid_out_with_the_code(func, stored_body):
+def test_string_statement_keeps_its_lines_as_written(func, stored_body):
     assert generate_function_info(func).routine_definition == stored_body
+
+
+def generated_body(func, writer):
+    if writer == "oss":
+        return generate_function_info(func).routine_definition
+    sql_body = generate_sql_function_body(func, "test_catalog", "test_schema")
+    return sql_body.split("AS $$\n")[1].split("\n$$;")[0]
 
 
 @pytest.mark.parametrize(
     "build_definition", [get_callable_definition, dynamically_construct_python_function]
 )
-@pytest.mark.parametrize("docstring_line", ["content\n    indented", "\t" * 9 + "tabbed"])
-def test_nested_function_docstring_left_of_its_column_keeps_its_value(
-    build_definition, docstring_line, tmp_path
+@pytest.mark.parametrize("writer", ["oss", "databricks"])
+@pytest.mark.parametrize(
+    "docstring_line",
+    [
+        "content\n    indented",
+        "    content",
+        "      content\n  more",
+        "            content\n                more",
+        "\t" * 9 + "tabbed",
+    ],
+)
+def test_nested_function_docstring_keeps_its_value(
+    build_definition, writer, docstring_line, tmp_path
 ):
     module_path = tmp_path / "nested_docstring_module.py"
     module_path.write_text(
@@ -545,7 +562,7 @@ def test_nested_function_docstring_left_of_its_column_keeps_its_value(
         input_params=FunctionParameterInfos(parameters=[]),
         full_data_type="STRING",
         routine_body="EXTERNAL",
-        routine_definition=generate_function_info(nested_docstring).routine_definition,
+        routine_definition=generated_body(nested_docstring, writer),
     )
     namespace = {}
 
