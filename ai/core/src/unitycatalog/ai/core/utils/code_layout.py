@@ -63,11 +63,12 @@ def classify_lines(
     string_lines = set()
     statement_lines = set()
     open_string_rows = []
+    readline = io.StringIO(code).readline
     lines = code.split("\n")
     at_statement_start = True
     statement_start_row = 1
     try:
-        for token in tokenize.generate_tokens(io.StringIO(code).readline):
+        for token in tokenize.generate_tokens(readline):
             if token.type in (tokenize.NEWLINE, tokenize.NL) and (
                 at_statement_start or token.type == tokenize.NEWLINE
             ):
