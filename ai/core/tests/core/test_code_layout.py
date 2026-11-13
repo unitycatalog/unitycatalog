@@ -11,8 +11,9 @@ from unitycatalog.ai.core.utils.code_layout import (
 @pytest.mark.parametrize(
     ("code", "expected_string_lines", "expected_statement_lines"),
     [
-        ("\\\n    if True:\n    return 1", set(), {0, 2}),
-        ("# note\n\n\\\n    x = 1\nreturn x", set(), {2, 4}),
+        ("\\\n    if True:\n        return 1", set(), {1, 2}),
+        ("  \\\n    x = 1\n  return x", set(), {0, 2}),
+        ("# note\n\n\\\n    x = 1\nreturn x", set(), {3, 4}),
         ("x = (1,\n  2)\n# note\nreturn x", set(), {0, 3}),
         ('x = """a\n  b\n"""\nreturn x', {1, 2}, {0, 3}),
         ('"""A docstring\non two lines."""\nreturn 1', {1}, {0, 2}),
@@ -22,8 +23,9 @@ from unitycatalog.ai.core.utils.code_layout import (
         ('x = (1,\n    2\nreturn """a\n  b', set(), {0, 1, 2, 3}),
     ],
     ids=[
-        "backslash-start",
-        "backslash-start-after-comment-and-blank",
+        "column-0-backslash-start",
+        "indented-backslash-start",
+        "column-0-backslash-start-after-comment-and-blank",
         "bracket-continuation",
         "string",
         "docstring",
@@ -35,6 +37,20 @@ from unitycatalog.ai.core.utils.code_layout import (
 )
 def test_classify_lines(code, expected_string_lines, expected_statement_lines):
     assert classify_lines(code) == (expected_string_lines, expected_statement_lines)
+
+
+@pytest.mark.parametrize(
+    ("code", "expected_statement_lines"),
+    [
+        ("\\\n    if True:\n    return 1", {0, 2}),
+        ("# note\n\n\\\n    x = 1\nreturn x", {2, 4}),
+    ],
+    ids=["column-0-backslash-start", "column-0-backslash-start-after-comment-and-blank"],
+)
+def test_classify_lines_read_with_margin_counts_backslash_lines_as_indented(
+    code, expected_statement_lines
+):
+    assert classify_lines(code, read_with_margin=True) == (set(), expected_statement_lines)
 
 
 @pytest.mark.parametrize(

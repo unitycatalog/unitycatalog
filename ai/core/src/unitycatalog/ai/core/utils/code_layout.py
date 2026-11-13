@@ -42,15 +42,19 @@ _NON_STATEMENT_TOKENS = {
 }
 
 
-def classify_lines(code: str, failure_log_level: int = logging.DEBUG) -> tuple[set[int], set[int]]:
+def classify_lines(
+    code: str, failure_log_level: int = logging.DEBUG, read_with_margin: bool = False
+) -> tuple[set[int], set[int]]:
     """
     Return the 0-based indices of the lines that continue a string literal opened on an
     earlier line, and of the lines that start a statement.
 
     Only statement lines carry indentation that Python checks. Python takes it from the first
-    line of the statement, which is the backslash line when a statement starts with a line
-    continuation. Comment lines and lines that continue a statement (inside brackets or after a
-    backslash) may sit at any column, so they must not decide the margin. Docstrings are string lines like any other string, because
+    line of the statement, except that a line holding only a backslash at column 0 is skipped
+    and the next line decides. Set `read_with_margin` for a stored body, which the reader
+    indents as a whole, so that such a line counts as indented. Comment lines and lines that
+    continue a statement (inside brackets or after a backslash) may sit at any column, so they
+    must not decide the margin. Docstrings are string lines like any other string, because
     `__doc__` reads their value. Python 3.12 tokenizes f-strings in parts and earlier versions
     as one string, and both give the same rows. Code that does not tokenize cannot compile
     either, so it is treated as having no string lines and every nonblank line as a statement
@@ -59,6 +63,7 @@ def classify_lines(code: str, failure_log_level: int = logging.DEBUG) -> tuple[s
     string_lines = set()
     statement_lines = set()
     open_string_rows = []
+    lines = code.split("\n")
     at_statement_start = True
     statement_start_row = 1
     try:
@@ -69,7 +74,13 @@ def classify_lines(code: str, failure_log_level: int = logging.DEBUG) -> tuple[s
                 at_statement_start = True
                 statement_start_row = token.end[0] + 1
             elif at_statement_start and token.type not in _NON_STATEMENT_TOKENS:
-                statement_lines.add(statement_start_row - 1)
+                statement_lines.add(
+                    next(
+                        index
+                        for index in range(statement_start_row - 1, token.start[0])
+                        if read_with_margin or not lines[index].startswith("\\")
+                    )
+                )
                 at_statement_start = False
             if token.type in _STRING_START_TOKENS:
                 open_string_rows.append(token.start[0])
@@ -83,7 +94,7 @@ def classify_lines(code: str, failure_log_level: int = logging.DEBUG) -> tuple[s
             "Laying out code that does not tokenize without string lines: %s",
             error,
         )
-        return set(), {index for index, line in enumerate(code.split("\n")) if line.strip()}
+        return set(), {index for index, line in enumerate(lines) if line.strip()}
     return string_lines, statement_lines
 
 
@@ -162,8 +173,8 @@ def to_databricks_body(body: str, indent_unit: int) -> str:
     Databricks runs this text, so string lines stay where they were written, and only the code
     is indented. A body with multi-line strings is indented by `PRIMARY_INDENT`, the margin at
     which `shift_stored_body` reads those string lines back unchanged. Any other body keeps the
-    indentation unit of the function's source, so its SQL stays the same as before string lines
-    were handled.
+    indentation unit of the function's source, so its SQL keeps the function's own
+    indentation.
     """
     string_lines, _ = classify_lines(body)
     indent = PRIMARY_INDENT if string_lines else " " * indent_unit
@@ -175,16 +186,18 @@ def to_databricks_body(body: str, indent_unit: int) -> str:
 
 def shift_stored_body(body: str) -> str:
     """
-    Move a stored body so that its statements start at `PRIMARY_INDENT`, and move its string
-    lines by the same number of columns. String lines move left only as far as all of them can
-    without losing characters, which keeps their relative indentation. This restores string
-    values for bodies written by `to_stored_body` or `to_databricks_body`, and by the writers
-    before them. In a body written by hand with a margin other than 4 spaces, string lines move
-    by the difference. A margin that contains a tab has no width in columns, so string lines
-    stay as written then. A body that does not tokenize is logged as a warning, since it was
-    read from storage.
+    Move a stored body so that its statements start at `PRIMARY_INDENT`, and move its string lines
+    by the same number of columns. String lines move left only as far as all of them can without
+    losing characters, which keeps their relative indentation. This restores string values for
+    bodies written by `to_stored_body` or `to_databricks_body`, and for bodies whose string lines
+    were dedented together with the code. In a body written by hand with a margin other than 4
+    spaces, string lines move by the difference. A margin that contains a tab has no width in
+    columns, so string lines stay as written then. A body that does not tokenize is logged as a
+    warning, since it was read from storage.
     """
-    string_lines, statement_lines = classify_lines(body, failure_log_level=logging.WARNING)
+    string_lines, statement_lines = classify_lines(
+        body, failure_log_level=logging.WARNING, read_with_margin=True
+    )
     lines = body.split("\n")
     movable_lines = _movable_string_lines(lines, string_lines)
     margin = _statement_margin(lines, statement_lines)

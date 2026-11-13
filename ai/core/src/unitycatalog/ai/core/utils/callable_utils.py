@@ -83,10 +83,12 @@ class FunctionBodyExtractor(ast.NodeVisitor):
         if not body:
             return
 
+        source_lines = self.source_code.splitlines(keepends=True)
         start_lineno = body[0].lineno
+        while start_lineno > 1 and source_lines[start_lineno - 2].strip() == "\\":
+            start_lineno -= 1
         end_lineno = body[-1].end_lineno
 
-        source_lines = self.source_code.splitlines(keepends=True)
         function_body_lines = source_lines[start_lineno - 1 : end_lineno]
 
         self.function_body = dedent_code("".join(function_body_lines)).rstrip("\n")

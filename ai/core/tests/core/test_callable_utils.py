@@ -580,6 +580,38 @@ def test_nested_function_docstring_keeps_its_value(
     assert namespace["nested_docstring"]() == nested_docstring()
 
 
+@pytest.mark.parametrize(
+    "build_definition", [get_callable_definition, dynamically_construct_python_function]
+)
+@pytest.mark.parametrize("writer", ["oss", "databricks"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    y = '''a\n  b'''\n\\\n    return y",
+        "    \\\n        y = '''a\n  b'''\n    return y",
+    ],
+    ids=["column-0-backslash-line", "indented-backslash-line"],
+)
+def test_statement_after_a_backslash_line_keeps_its_block(build_definition, writer, body, tmp_path):
+    module_path = tmp_path / "backslash_module.py"
+    module_path.write_text(f'def backslash_line() -> str:\n    """Returns a string."""\n{body}\n')
+    spec = importlib.util.spec_from_file_location("backslash_module", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    function_info = FunctionInfo(
+        name="backslash_line",
+        input_params=FunctionParameterInfos(parameters=[]),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition=generated_body(module.backslash_line, writer),
+    )
+    namespace = {}
+
+    exec(build_definition(function_info), namespace)
+
+    assert namespace["backslash_line"]() == "a\n  b"
+
+
 def test_stored_body_that_does_not_tokenize_is_indented_line_by_line(caplog):
     function_info = FunctionInfo(
         name="broken",
