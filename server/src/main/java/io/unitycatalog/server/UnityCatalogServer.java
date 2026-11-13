@@ -121,18 +121,22 @@ public class UnityCatalogServer implements AutoCloseable {
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
     // An injected configurator stays the caller's to close; only a self-built one is ours.
     this.ownsHibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator == null;
-    if (ownsHibernateConfigurator
-        && !unityCatalogServerBuilder.serverProperties.isSchemaManagedByHibernate()) {
-      // Before Hibernate connects: H2 creates a missing database file when it connects. In
-      // hibernate mode, Hibernate sets up a new database there, as in 0.7.0.
-      SchemaMigrator.requireH2DatabaseExists(
+    if (ownsHibernateConfigurator) {
+      boolean schemaManagedByHibernate =
+          unityCatalogServerBuilder.serverProperties.isSchemaManagedByHibernate();
+      Properties ownProperties =
           HibernateConfigurator.setupHibernateProperties(
-              unityCatalogServerBuilder.serverProperties));
+              unityCatalogServerBuilder.serverProperties);
+      if (!schemaManagedByHibernate) {
+        // Before Hibernate connects: H2 creates a missing database file when it connects. In
+        // hibernate mode, Hibernate sets up a new database there, as in 0.7.0.
+        SchemaMigrator.requireH2DatabaseExists(ownProperties);
+      }
+      this.hibernateConfigurator =
+          new HibernateConfigurator(ownProperties, schemaManagedByHibernate);
+    } else {
+      this.hibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator;
     }
-    this.hibernateConfigurator =
-        ownsHibernateConfigurator
-            ? new HibernateConfigurator(unityCatalogServerBuilder.serverProperties)
-            : unityCatalogServerBuilder.hibernateConfigurator;
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
       Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();

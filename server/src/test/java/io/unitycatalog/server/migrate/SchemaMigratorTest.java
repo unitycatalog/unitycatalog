@@ -628,22 +628,74 @@ public class SchemaMigratorTest {
         .hasMessageContaining("H2 in server mode is not supported");
   }
 
-  @Test
-  void serverRefusesToStartOnAMissingH2FileWithoutCreatingIt(@TempDir Path dir) {
+  /**
+   * The URL as {@code hibernate.connection.url}, with {@code IFEXISTS=FALSE}, or as the URL of a
+   * pool set up by data source class.
+   */
+  @ParameterizedTest
+  @CsvSource({"PLAIN", "IFEXISTS_FALSE", "DATA_SOURCE_URL"})
+  void serverRefusesToStartOnAMissingH2FileWithoutCreatingIt(String form, @TempDir Path dir) {
     Properties properties = db.hibernateProperties();
-    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-    properties.setProperty("hibernate.connection.url", "jdbc:h2:file:" + dir + "/typo");
+    java.util.function.Consumer<String> setUrl =
+        url -> {
+          switch (form) {
+            case "PLAIN" -> {
+              properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+              properties.setProperty("hibernate.connection.url", url);
+            }
+            case "IFEXISTS_FALSE" -> {
+              properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+              properties.setProperty("hibernate.connection.url", url + ";IFEXISTS=FALSE");
+            }
+            default -> {
+              properties.remove("hibernate.connection.url");
+              properties.remove("hibernate.connection.driver_class");
+              properties.setProperty(
+                  "hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+              properties.setProperty("hibernate.hikari.dataSource.URL", url);
+            }
+          }
+        };
+    setUrl.accept("jdbc:h2:file:" + dir + "/typo");
 
     assertThatThrownBy(() -> SchemaMigrator.requireH2DatabaseExists(properties))
         .hasMessageContaining("H2 database file that hibernate.connection.url names is not found");
     assertThat(dir).isEmptyDirectory();
 
     // An existing file passes.
-    properties.setProperty("hibernate.connection.url", "jdbc:h2:file:" + dir + "/uc");
+    setUrl.accept("jdbc:h2:file:" + dir + "/uc");
     try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(properties)) {
       migrator.upgradeSchema();
     }
     SchemaMigrator.requireH2DatabaseExists(properties);
+  }
+
+  @Test
+  void runsStartingAtOnceInOneProcessTakeTurns() throws Exception {
+    // As two servers on one in-memory database starting together; on H2 no lock call exists.
+    CountDownLatch go = new CountDownLatch(1);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      List<Future<Integer>> runs = new ArrayList<>();
+      for (int i = 0; i < 2; i++) {
+        runs.add(
+            executor.submit(
+                () -> {
+                  go.await();
+                  return new SchemaMigrator(db.dataSource()).upgradeSchema();
+                }));
+      }
+      go.countDown();
+      int applied = 0;
+      for (Future<Integer> run : runs) {
+        applied += run.get(1, TimeUnit.MINUTES);
+      }
+      SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+      assertThat(applied).isEqualTo(releaseSteps(migrator));
+      assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test

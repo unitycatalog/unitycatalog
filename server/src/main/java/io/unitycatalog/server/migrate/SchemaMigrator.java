@@ -26,6 +26,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -224,19 +226,29 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
-   * connects, and a check must change nothing. Returns whether the URL names an H2 file database.
+   * connects, and a check must change nothing. Sets {@code IFEXISTS=TRUE} on each H2 file URL the
+   * pool may use ({@code hibernate.connection.url}, or the data source class's URL property),
+   * replacing an {@code IFEXISTS} the URL sets. Returns whether there was one.
    */
   private static boolean openH2OnlyIfItExists(Properties hibernateProperties) {
-    String url = hibernateProperties.getProperty("hibernate.connection.url");
-    String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
-    if (!lower.startsWith("jdbc:h2:") || isH2InMemory(lower)) {
-      return false;
+    boolean h2File = false;
+    for (String key : hibernateProperties.stringPropertyNames()) {
+      boolean urlSetting =
+          key.equals("hibernate.connection.url")
+              || (key.startsWith(HIKARI_DATA_SOURCE)
+                  && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("url"));
+      String url = hibernateProperties.getProperty(key);
+      String lower = url.toLowerCase(Locale.ROOT);
+      if (urlSetting && lower.startsWith("jdbc:h2:") && !isH2InMemory(lower)) {
+        hibernateProperties.setProperty(
+            key, url.replaceAll("(?i);\\s*ifexists\\s*=[^;]*", "") + ";IFEXISTS=TRUE");
+        h2File = true;
+      }
     }
-    if (setting(lower, "ifexists") == null) {
-      hibernateProperties.setProperty("hibernate.connection.url", url + ";IFEXISTS=TRUE");
-    }
-    return true;
+    return h2File;
   }
+
+  private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
 
   /** Whether H2 failed to open {@code e}'s database because it does not exist. */
   private static boolean isH2DatabaseNotFound(Throwable e) {
@@ -260,9 +272,10 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * H2 takes no run lock, because it opens a database file in one process. Its server mode lets
-   * several processes open the database, so they could run steps twice at once. Read from the
-   * configuration, before any connection: the connection's URL leaves {@code AUTO_SERVER} out.
+   * H2's run lock holds only within this process, because it opens a database file in one process.
+   * Its server mode lets several processes open the database, so they could run steps twice at
+   * once. Read from the configuration, before any connection: the connection's URL leaves {@code
+   * AUTO_SERVER} out.
    */
   private static void refuseH2ServerMode(HikariConfig config) {
     Properties driver = config.getDataSourceProperties();
@@ -429,8 +442,8 @@ public final class SchemaMigrator implements AutoCloseable {
    * (MySQL and H2 keep one) is deleted, so that the step is tried again. This also sets up an empty
    * database, and adopts a database without schema history when its schema is exactly that of
    * {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's last step (every
-   * step is recorded without running). On PostgreSQL and MySQL, a second run at the same time waits
-   * for the first. Returns the number of steps it ran or recorded.
+   * step is recorded without running). A second run at the same time waits for the first: on H2,
+   * one in this process. Returns the number of steps it ran or recorded.
    */
   public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
@@ -1153,12 +1166,20 @@ public final class SchemaMigrator implements AutoCloseable {
               "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")");
     }
 
+    /**
+     * H2 has no lock call, and only one process opens its database, so runs in this process take
+     * turns by database URL: servers on one in-memory database start in one process.
+     */
+    private static final Map<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
+
     private final Connection connection; // null on H2
     private final String unlockSql;
+    private final ReentrantLock h2Lock; // null except on H2
 
-    private RunLock(Connection connection, String unlockSql) {
+    private RunLock(Connection connection, String unlockSql, ReentrantLock h2Lock) {
       this.connection = connection;
       this.unlockSql = unlockSql;
+      this.h2Lock = h2Lock;
     }
 
     /**
@@ -1167,7 +1188,16 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
       if (kind == DatabaseKind.H2) {
-        return new RunLock(null, null);
+        String url;
+        try (Connection connection = dataSource.getConnection()) {
+          url = connection.getMetaData().getURL();
+        } catch (SQLException e) {
+          throw new IllegalStateException(
+              "Could not connect to the database: " + e.getMessage(), e);
+        }
+        ReentrantLock lock = H2_LOCKS.computeIfAbsent(url, u -> new ReentrantLock());
+        lock.lock();
+        return new RunLock(null, null, lock);
       }
       LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
@@ -1181,7 +1211,7 @@ public final class SchemaMigrator implements AutoCloseable {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, calls.unlock());
+        return new RunLock(connection, calls.unlock(), null);
       } catch (SQLException e) {
         close(connection);
         throw new IllegalStateException(
@@ -1196,6 +1226,10 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     @Override
     public void close() {
+      if (h2Lock != null) {
+        h2Lock.unlock();
+        return;
+      }
       if (connection == null) {
         return;
       }
