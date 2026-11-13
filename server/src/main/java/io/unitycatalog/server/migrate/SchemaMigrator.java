@@ -43,7 +43,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
  * up an empty database, adopts a database of the baseline release (recording step 1 without running
- * it) and applies the pending steps, checking the schema against the steps' effect files ({@code
+ * it) or of this build's last step (recording every step without running it) and applies the
+ * pending steps, checking the schema against the steps' effect files ({@code
  * schema-effects/<database>}) before each step and at the end. On PostgreSQL and MySQL, each {@link
  * #upgradeSchema()} holds a {@link RunLock} from classifying the database to the last step.
  */
@@ -101,6 +102,10 @@ public final class SchemaMigrator implements AutoCloseable {
       return name().toLowerCase(Locale.ROOT);
     }
   }
+
+  private static final Pattern CREATE_INDEX =
+      Pattern.compile(
+          "(?i)create\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?(\\w+)\\s+on\\s+(\\w+)");
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrator.class);
   private static final String HISTORY_TABLE = "uc_schema_history";
@@ -580,11 +585,12 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     if (previous.equals(EMPTY_BASELINE_VERSION)
         && tableNamesLowerCase().contains(HISTORY_TABLE)
-        && after.entries().containsAll(schema.entries())) {
+        && isLeftByAStoppedRun(step, schema, after)) {
       return true;
     }
     String nearer =
-        schema.differencesFrom(before).length() <= schema.differencesFrom(after).length()
+        schema.differencesFrom(before).lines().count()
+                <= schema.differencesFrom(after).lines().count()
             ? previous
             : step;
     throw new IllegalStateException(
@@ -611,10 +617,68 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
+   * Whether {@code schema} is what a run of first step {@code step} that stopped part way leaves,
+   * and a rerun completes into {@code after}: some of its tables, each whole except for the indexes
+   * that the step creates in statements of their own. The step creates each table and index only if
+   * it does not exist, so it can't add what a table lacks.
+   */
+  private boolean isLeftByAStoppedRun(String step, SchemaSnapshot schema, SchemaSnapshot after) {
+    if (!after.entries().containsAll(schema.entries())) {
+      return false;
+    }
+    Set<String> tables =
+        schema.entries().stream()
+            .filter(e -> e.startsWith("table "))
+            .map(e -> e.substring("table ".length()))
+            .collect(Collectors.toSet());
+    Set<String> ownIndexes = indexesCreatedSeparately(step);
+    return after.entries().stream()
+        .filter(e -> !schema.entries().contains(e) && tables.contains(tableOf(e)))
+        .allMatch(e -> e.startsWith("index ") && ownIndexes.contains(e.split(" ")[1]));
+  }
+
+  /** The table of a schema entry: the first part of its second word. */
+  private static String tableOf(String entry) {
+    String object = entry.split(" ")[1];
+    int dot = object.indexOf('.');
+    return dot < 0 ? object : object.substring(0, dot);
+  }
+
+  /**
+   * The indexes, as {@code table.index}, that {@code step}'s script creates in a {@code CREATE
+   * INDEX} statement of their own.
+   */
+  private Set<String> indexesCreatedSeparately(String step) {
+    String script =
+        resolvedSteps(flyway().load().info()).stream()
+            .filter(m -> m.getVersion().getVersion().equals(step))
+            .map(MigrationInfo::getScript)
+            .findFirst()
+            .orElseThrow();
+    String path = "db/migration/" + kind.folder() + "/" + script;
+    try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException(
+            "This build has no script " + path + " for its step " + step);
+      }
+      Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+      Set<String> indexes = new HashSet<>();
+      while (m.find()) {
+        indexes.add(
+            m.group(2).toLowerCase(Locale.ROOT) + "." + m.group(1).toLowerCase(Locale.ROOT));
+      }
+      return indexes;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /**
    * Whether the database has no applied step in its schema history (no history table, an empty one,
    * or one holding only Flyway's baseline row, as a run leaves that stopped before step 1's record)
    * and the schema of this build's last step, exactly: what Hibernate's update builds from the
-   * entities on a new database. Every step is then recorded without running.
+   * entities on a new database, with a {@code uc_*} table other than the history table. Every step
+   * is then recorded without running.
    */
   private boolean hasLastStepsSchemaWithoutHistory() {
     String recorded = recordedVersion();
