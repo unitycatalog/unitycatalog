@@ -65,7 +65,8 @@ public class CliTableOperations extends BaseCliOperations implements TableOperat
   public List<TableInfo> listTables(
       String catalogName, String schemaName, Optional<String> pageToken) throws ApiException {
     List<String> argsList =
-        new ArrayList<>(List.of("--catalog", catalogName, "--schema", schemaName));
+        new ArrayList<>(
+            List.of("--catalog", catalogName, "--schema", schemaName, "--max_results", "100"));
     if (pageToken.isPresent()) {
       argsList.add("--page_token");
       argsList.add(pageToken.get());

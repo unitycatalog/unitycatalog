@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.ListSchemasResponse;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateSchema;
 import org.apache.commons.cli.CommandLine;
@@ -64,18 +66,14 @@ public class SchemaCli {
   private static String listSchemas(SchemasApi schemasApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
-    int maxResults = 100;
-    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
-      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
-    }
-    String pageToken = null;
-    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
-      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
-    }
     return objectWriter.writeValueAsString(
-        schemasApi
-            .listSchemas(catalogName, maxResults, pageToken, /* includeBrowse= */ false)
-            .getSchemas());
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) ->
+                schemasApi.listSchemas(
+                    catalogName, maxResults, pageToken, /* includeBrowse= */ false),
+            ListSchemasResponse::getSchemas,
+            ListSchemasResponse::getNextPageToken));
   }
 
   private static String getSchema(SchemasApi schemasApi, JSONObject json)

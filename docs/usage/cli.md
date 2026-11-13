@@ -15,6 +15,12 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
 
     where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
 
+!!! note "Results of list commands"
+
+    A `list` command returns all the results, requesting as many pages from the server as it takes.
+    `--max_results` limits the total number of results across those pages, and `0` means no limit, the same as leaving it out.
+    `--page_token` starts the listing at the page that a `next_page_token` from the REST API points to.
+
 ## Credential Management CLI Usage
 
 You can use the Unity Catalog CLI to manage Credentials within your system. The `bin/uc` script
