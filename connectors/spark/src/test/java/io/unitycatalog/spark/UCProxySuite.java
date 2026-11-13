@@ -23,11 +23,14 @@ import io.unitycatalog.client.model.TableType;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
+import org.apache.spark.sql.catalyst.catalog.CatalogTable;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.connector.catalog.V1Table;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.MetadataBuilder;
@@ -35,6 +38,8 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import scala.Option;
+import scala.jdk.javaapi.CollectionConverters;
 
 /**
  * Version-agnostic unit tests for {@code UCProxy} (the table/namespace surface that exists on every
@@ -478,5 +483,65 @@ public class UCProxySuite {
                 .add("malformed", DataTypes.IntegerType, true, nullComment)
                 .add("unrepresentable", DataTypes.IntegerType, true, nullComment)
                 .add("defaulted", DataTypes.IntegerType, true, defaultMetadata));
+  }
+
+  private CatalogTable loadCatalogTable(
+      String name, DataSourceFormat format, Map<String, String> props) throws Exception {
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name(name)
+            .tableId("table-id-" + name)
+            .tableType(TableType.EXTERNAL)
+            .storageLocation("file:/tmp/uc/" + name)
+            .dataSourceFormat(format)
+            .comment("uc comment")
+            .properties(props)
+            .columns(
+                List.of(
+                    intColumn(
+                        "i",
+                        0,
+                        "{\"name\":\"i\",\"type\":\"integer\","
+                            + "\"nullable\":true,\"metadata\":{}}")));
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema." + name), eq(true), eq(true), eq(false)))
+        .thenReturn(ucTable);
+    return ((V1Table) proxy.loadTable(Identifier.of(NAMESPACE, name))).catalogTable();
+  }
+
+  @Test
+  public void testLoadTableTurnsOptionPrefixedPropertiesIntoOptions() throws Exception {
+    CatalogTable table =
+        loadCatalogTable(
+            "t_options", DataSourceFormat.CSV, Map.of("option.header", "true", "k", "v"));
+
+    assertThat(CollectionConverters.asJava(table.storage().properties()))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("header", "true"));
+    assertThat(CollectionConverters.asJava(table.properties()))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("k", "v"));
+    assertThat(table.comment()).isEqualTo(Option.apply("uc comment"));
+  }
+
+  @Test
+  public void testLoadTableDropsOnlyBareKeysThatDuplicateTheirOption() throws Exception {
+    CatalogTable table =
+        loadCatalogTable(
+            "t_collision",
+            DataSourceFormat.CSV,
+            Map.of(
+                "option.header", "true",
+                "header", "true",
+                "option.sep", "|",
+                "sep", ",",
+                "option.Mode", "FAILFAST",
+                "mode", "FAILFAST"));
+
+    assertThat(CollectionConverters.asJava(table.storage().properties()))
+        .containsExactlyInAnyOrderEntriesOf(
+            Map.of("header", "true", "sep", "|", "Mode", "FAILFAST"));
+    assertThat(CollectionConverters.asJava(table.properties()))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("sep", ",", "mode", "FAILFAST"));
   }
 }

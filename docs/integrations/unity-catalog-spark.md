@@ -865,6 +865,10 @@ letters.write.format("parquet").saveAsTable("stores.whatever.letters", path="/tm
 
 When you manually specify the path, as in the example above, Spark creates an unmanaged table.
 
+For a non-Delta external table, `OPTIONS (...)` such as a CSV `header` or `delimiter` are used when reading and
+writing the table, while `TBLPROPERTIES (...)` and `COMMENT` are only metadata. Tables created outside Spark follow the
+same rule through `option.`-prefixed properties; see [table create](../usage/cli.md#create-a-table) in the CLI docs.
+
 Let’s look at a visualization of our current tables:
 
 ![UC Spark 2](../assets/images/uc_spark2.png)

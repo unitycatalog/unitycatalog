@@ -9,6 +9,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.TableInfo;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.connector.catalog.Identifier;
@@ -102,6 +103,45 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
     sql("INSERT INTO %s VALUES (1, 2, 'abc')", fullTableName);
     assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 2, 'abcd')", fullTableName))
         .hasStackTraceContaining("char/varchar type length limitation");
+  }
+
+  /**
+   * {@code pathGlobFilter} is a reader option of every file source: if the table property were
+   * passed to the reader, no data file would match and the read would return no rows.
+   */
+  @Test
+  public void testLoadTableKeepsCommentAndTableProperties() throws Exception {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    TableSetupOptions options =
+        new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE);
+    String fullTableName = options.fullTableName();
+    sql(
+        "CREATE TABLE %s (i INT, s STRING) USING PARQUET COMMENT 'Sales \"Q3\" café 日本 it\\'s'"
+            + " TBLPROPERTIES ('pathGlobFilter' = '*.nothing') LOCATION '%s'",
+        fullTableName, getLocation(options));
+    sql("INSERT INTO %s VALUES (1, 'a'), (2, 'b')", fullTableName);
+
+    assertThat(sql("SELECT i, s FROM %s ORDER BY i", fullTableName))
+        .containsExactly(RowFactory.create(1, "a"), RowFactory.create(2, "b"));
+    assertThat(sql("SHOW TBLPROPERTIES %s", fullTableName))
+        .containsExactly(RowFactory.create("pathGlobFilter", "*.nothing"));
+    assertThat(session.catalog().getTable(fullTableName).description())
+        .isEqualTo("Sales \"Q3\" café 日本 it's");
+    assertThat(describeExtendedComment(fullTableName)).containsExactly("Sales \"Q3\" café 日本 it's");
+
+    TableSetupOptions noComment =
+        new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(ANOTHER_TEST_TABLE);
+    sql(noComment.createExternalTableSql(getLocation(noComment)));
+
+    assertThat(session.catalog().getTable(noComment.fullTableName()).description()).isNull();
+    assertThat(describeExtendedComment(noComment.fullTableName())).isEmpty();
+  }
+
+  private List<String> describeExtendedComment(String fullTableName) {
+    return sql("DESCRIBE TABLE EXTENDED %s", fullTableName).stream()
+        .filter(row -> "Comment".equals(row.getString(0)))
+        .map(row -> row.getString(1))
+        .collect(Collectors.toList());
   }
 
   @Test
