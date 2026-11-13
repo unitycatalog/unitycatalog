@@ -151,21 +151,45 @@ public class SchemaMigratorTest {
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
-  @Test
-  void keepsTheRecordOfAFailedStepWhenTheHistoryIsRefused() {
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
-    migrator.upgradeSchema();
+  /** What makes a run with a failed step in the schema history refuse. */
+  enum RefusalWithAFailedStep {
+    /** A step that was edited after it ran. */
+    EDITED_STEP,
+    /** The failed step is a newer release's, which this build doesn't have. */
+    NEWER_RELEASES_STEP,
+    /** The schema is neither the one before the failed step nor the one after it. */
+    SCHEMA_NEITHER_BEFORE_NOR_AFTER
+  }
+
+  @ParameterizedTest
+  @EnumSource(RefusalWithAFailedStep.class)
+  void keepsTheRecordOfAFailedStepWhenTheRunRefuses(RefusalWithAFailedStep refusal) {
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
     UpgradeTestUtils.execute(
         db, historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE"));
-    // A step that was edited after it ran.
-    UpgradeTestUtils.execute(
-        db,
-        ("UPDATE %1$suc_schema_history%1$s SET %1$schecksum%1$s = %1$schecksum%1$s + 1"
-                + " WHERE %1$sversion%1$s = '1'")
-            .formatted(identifierQuote(db.dataSource())));
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    String message = "schema history does not match";
+    switch (refusal) {
+      case EDITED_STEP ->
+          UpgradeTestUtils.execute(
+              db,
+              ("UPDATE %1$suc_schema_history%1$s SET %1$schecksum%1$s = %1$schecksum%1$s + 1"
+                      + " WHERE %1$sversion%1$s = '1'")
+                  .formatted(identifierQuote(db.dataSource())));
+      case NEWER_RELEASES_STEP -> {
+        // Step 1000 failed on the newer release, and this release runs again.
+        UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+        migrator = new SchemaMigrator(db.dataSource());
+        message = "Detected failed migration to version 1000";
+      }
+      case SCHEMA_NEITHER_BEFORE_NOR_AFTER -> {
+        UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+        UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+        message = "so schema step 1000 can't run";
+      }
+    }
 
-    assertThatThrownBy(migrator::upgradeSchema)
-        .hasMessageContaining("schema history does not match");
+    assertThatThrownBy(migrator::upgradeSchema).hasMessageContaining(message);
     assertThat(failedRecords()).isOne();
   }
 
@@ -272,13 +296,14 @@ public class SchemaMigratorTest {
   }
 
   /**
-   * Adopting a database at the last step's schema stopped after Flyway created the history table
-   * and before it wrote the first record: the history holds no applied step, and the rerun adopts
-   * again.
+   * Adopting a database at the last step's schema stopped at the history record of step 1, 2 or
+   * 1000 of a build with three steps: after Flyway created the history table, with the steps before
+   * that one recorded. The rerun records the remaining steps.
    */
-  @Test
-  void adoptsAgainAfterAnAdoptionStoppedBeforeAnyStepWasRecorded() {
-    SchemaMigrator built = new SchemaMigrator(db.dataSource());
+  @ParameterizedTest
+  @CsvSource({"1", "2", "3"})
+  void adoptsAgainAfterAnAdoptionStoppedAtAStepsRecord(int stoppedRecord) {
+    SchemaMigrator built = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
     int steps = built.upgradeSchema();
     UpgradeTestUtils.execute(
         db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
@@ -288,18 +313,20 @@ public class SchemaMigratorTest {
             db.dataSource(),
             (sql, prepared) -> {
               if (sql.toLowerCase(Locale.ROOT).matches("(?s)\\s*insert into .*uc_schema_history.*")
-                  && inserts.incrementAndGet() == 1) {
+                  && inserts.incrementAndGet() == stoppedRecord) {
                 throw new SQLException("Test: the run stops here");
               }
               return sql;
             });
-    assertThatThrownBy(new SchemaMigrator(stopping)::upgradeSchema)
+    assertThatThrownBy(new SchemaMigrator(stopping, NEXT_RELEASE)::upgradeSchema)
         .hasStackTraceContaining("Test: the run stops here");
 
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
-    assertThat(migrator.upgradeSchema()).isEqualTo(steps);
+    List<String> sent = new CopyOnWriteArrayList<>();
+    SchemaMigrator migrator = new SchemaMigrator(sending(sent), NEXT_RELEASE);
+    assertThat(migrator.upgradeSchema()).isEqualTo(steps - (stoppedRecord - 1));
+    assertThat(sent)
+        .noneMatch(sql -> isStep1(sql) || isStep2(sql) || sql.contains("uc_test_only_step"));
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
-    assertThat(migrator.recordedVersion()).isEqualTo(migrator.latestVersion());
   }
 
   @Test
