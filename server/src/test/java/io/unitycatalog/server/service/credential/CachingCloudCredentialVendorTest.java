@@ -20,8 +20,10 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.UcMetric;
 import io.unitycatalog.server.observability.UcMetricConstants;
@@ -171,18 +173,19 @@ public class CachingCloudCredentialVendorTest {
     return credentials.getAwsTempCredentials().getAccessKeyId();
   }
 
-  /**
-   * The Azure vendor refuses a credential, so its error reaches the caller, not one from reading an
-   * Azure credential as an AWS role for the key.
-   */
+  /** An Azure vendor error, such as a failed sign-in, reaches the caller and is not cached. */
   @Test
-  void azureCredentialIsPassedToTheAzureVendor() {
-    BaseException unimplemented = new BaseException(ErrorCode.UNIMPLEMENTED, "not supported yet");
-    when(azure.vendAzureCredential(any())).thenThrow(unimplemented);
-    CredentialContext context = azureCredential(AZURE_LOC);
+  void azureVendorErrorReachesTheCallerUncached() {
+    BaseException failed = new BaseException(ErrorCode.FAILED_PRECONDITION, "sign-in failed");
+    when(azure.vendAzureCredential(any())).thenThrow(failed);
+    CredentialContext context = azureCredential("application-A");
+    CachingCloudCredentialVendor cache = cache();
 
-    assertThat(assertThrows(BaseException.class, () -> cache().vendCredential(context)))
-        .isSameAs(unimplemented);
+    assertThat(assertThrows(BaseException.class, () -> cache.vendCredential(context)))
+        .isSameAs(failed);
+    assertThat(assertThrows(BaseException.class, () -> cache.vendCredential(context)))
+        .isSameAs(failed);
+    verify(azure, times(2)).vendAzureCredential(any());
     verify(context.getCredentialDAO().get(), times(0)).getAwsIamRoleResponse();
   }
 
@@ -224,17 +227,41 @@ public class CachingCloudCredentialVendorTest {
             perBucket("s3://bucket/data", "s3://bucket/other")),
         Arguments.of(
             "per-bucket config instead of a credential", original, perBucket(LOC.toString())),
-        // An Azure or GCS credential has no role, so only its type tells it apart.
+        // An Azure or GCS credential has no role; its type and identity tell it apart.
         Arguments.of(
             "an Azure credential instead of per-bucket config",
             perBucket(AZURE_LOC),
-            azureCredential(AZURE_LOC)));
+            azureCredential("application-A")),
+        Arguments.of(
+            "Azure application",
+            azureCredential("application-A"),
+            azureCredential("application-B")),
+        Arguments.of("GCS key", gcsCredential("key-A"), gcsCredential("key-B")));
   }
 
-  private static CredentialContext azureCredential(String location) {
+  private static CredentialContext azureCredential(String applicationId) {
     CredentialDAO dao = mock(CredentialDAO.class);
     when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.AZURE_SERVICE_PRINCIPAL);
-    return CredentialContext.create(NormalizedURL.from(location), READ_ONLY, Optional.of(dao));
+    when(dao.getAzureServicePrincipal())
+        .thenReturn(
+            new AzureServicePrincipalRequest()
+                .directoryId("directory")
+                .applicationId(applicationId)
+                .clientSecret("secret"));
+    return CredentialContext.create(NormalizedURL.from(AZURE_LOC), READ_ONLY, Optional.of(dao));
+  }
+
+  private static CredentialContext gcsCredential(String privateKeyId) {
+    CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY);
+    when(dao.getGcpServiceAccountKey())
+        .thenReturn(
+            new GcpServiceAccountKeyRequest()
+                .email("uc@project.iam.gserviceaccount.com")
+                .privateKeyId(privateKeyId)
+                .privateKey("key"));
+    return CredentialContext.create(
+        NormalizedURL.from("gs://bucket/table"), READ_ONLY, Optional.of(dao));
   }
 
   /** A READ_ONLY context for {@code location} with no credential DAO (per-bucket config). */
