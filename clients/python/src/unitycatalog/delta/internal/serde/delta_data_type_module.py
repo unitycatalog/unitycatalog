@@ -1,7 +1,7 @@
 """
 Python counterpart of the server/client Java ``DeltaDataTypeModule``: patches
-``DeltaDataType.from_dict``/``to_dict`` and ``DeltaStructField.from_dict``/
-``to_dict`` to handle Delta's string-or-object wire form (e.g. ``"long"`` /
+``from_dict``/``to_dict`` on ``DeltaDataType``, its subtypes, and
+``DeltaStructField`` to handle Delta's string-or-object wire form (e.g. ``"long"`` /
 ``"decimal(10,2)"`` as bare JSON strings for primitives, vs. JSON objects
 for ``array`` / ``map`` / ``struct``).
 
@@ -108,6 +108,11 @@ def _patched_sf_from_dict(cls, obj):
 
 
 DeltaDataType.from_dict = _patched_dt_from_dict
+DeltaPrimitiveType.from_dict = _patched_dt_from_dict
+DeltaDecimalType.from_dict = _patched_dt_from_dict
+DeltaArrayType.from_dict = _patched_dt_from_dict
+DeltaMapType.from_dict = _patched_dt_from_dict
+DeltaStructType.from_dict = _patched_dt_from_dict
 DeltaStructField.from_dict = _patched_sf_from_dict
 
 # Patch instance methods

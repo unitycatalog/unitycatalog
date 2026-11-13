@@ -151,6 +151,27 @@ continuation tokens as shown above in `list_all_catalogs`):
 await schemas_api.list_schemas(catalog_name="MyNewCatalog")
 ```
 
+### UC Delta API
+
+The UC Delta API (`/delta/v1/...`) lives in the `unitycatalog.delta` package, which has its own `ApiClient` and
+`Configuration`. Point it at the same host as the `unitycatalog.client` configuration:
+
+```python
+from unitycatalog.delta import ApiClient as DeltaApiClient
+from unitycatalog.delta import Configuration as DeltaConfiguration
+from unitycatalog.delta import DeltaTablesApi
+
+
+delta_client = DeltaApiClient(
+    configuration=DeltaConfiguration(host="http://localhost:8080/api/2.1/unity-catalog")
+)
+delta_tables_api = DeltaTablesApi(api_client=delta_client)
+
+table = await delta_tables_api.load_table(catalog="unity", var_schema="default", table="numbers")
+for field in table.metadata.columns.fields:
+    print(field.name, field.type.to_dict())
+```
+
 ## Feedback
 
 Have requests for the Unity Catalog project? Interested in getting involved in the Open Source project?

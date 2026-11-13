@@ -340,7 +340,17 @@ lazy val pythonClient = (project in file("clients/python"))
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.delta",
               additionalProperties = commonProps,
-              globalProperties = Map("apis" -> "", "models" -> "")
+              templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath,
+              // Only the package's own runtime modules: the project-level supporting files
+              // (README.md, setup.cfg, requirements.txt, ...) come from the all.yaml run above.
+              globalProperties = Map(
+                "apis" -> "",
+                "models" -> "",
+                "supportingFiles" -> Seq(
+                  "__init__.py", "api_client.py", "api_response.py", "configuration.py",
+                  "exceptions.py", "rest.py", "py.typed"
+                ).mkString(",")
+              )
             )
           )
         )
