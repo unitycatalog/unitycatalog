@@ -62,6 +62,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.LogManager;
@@ -120,12 +121,42 @@ public class UnityCatalogServer implements AutoCloseable {
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
     // An injected configurator stays the caller's to close; only a self-built one is ours.
     this.ownsHibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator == null;
-    this.hibernateConfigurator =
-        ownsHibernateConfigurator
-            ? new HibernateConfigurator(unityCatalogServerBuilder.serverProperties)
-            : unityCatalogServerBuilder.hibernateConfigurator;
+    if (ownsHibernateConfigurator) {
+      boolean schemaManagedByHibernate =
+          unityCatalogServerBuilder.serverProperties.isSchemaManagedByHibernate();
+      Properties ownProperties =
+          HibernateConfigurator.setupHibernateProperties(
+              unityCatalogServerBuilder.serverProperties);
+      if (!schemaManagedByHibernate) {
+        // Before Hibernate connects: H2 creates a missing database file when it connects. In
+        // hibernate mode, Hibernate sets up a new database there, as in 0.7.0.
+        SchemaMigrator.requireH2DatabaseExists(ownProperties);
+      }
+      this.hibernateConfigurator =
+          new HibernateConfigurator(ownProperties, schemaManagedByHibernate);
+    } else {
+      this.hibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator;
+    }
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
+      if (hibernateConfigurator.isSchemaManagedByHibernate()) {
+        LOGGER.warn(
+            "Hibernate manages the schema (server.schema-management=hibernate): the schema steps"
+                + " and their checks do not run. See docs/server/upgrades.md.");
+      } else {
+        // Serves only a database already at this release's schema: bin/start-uc-server
+        // --upgrade-schema brings it there. An in-memory database lasts only as long as this
+        // server, so the server sets it up itself. The migrator has its own small pool.
+        try (SchemaMigrator migrator =
+            SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
+          if (migrator.isInMemory()) {
+            migrator.upgradeSchema();
+          } else {
+            migrator.requireCurrentSchema();
+          }
+        }
+      }
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())
@@ -481,8 +512,9 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
-    if (options.isUpgradeSchema()) {
-      int exitCode = SchemaMigrator.runCommand(Path.of("etc", "conf"), System.out);
+    if (options.isCheckSchema() || options.isUpgradeSchema()) {
+      int exitCode =
+          SchemaMigrator.runCommand(options.isUpgradeSchema(), Path.of("etc", "conf"), System.out);
       LogManager.shutdown();
       System.exit(exitCode);
     }

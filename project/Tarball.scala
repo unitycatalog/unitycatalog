@@ -6,11 +6,25 @@ import scala.sys.process.*
 import scala.util.{Failure, Success, Try}
 object Tarball {
   lazy val createTarball = taskKey[Unit]("Create a tarball for the project")
+  private lazy val buildTarballSampleDatabase =
+    taskKey[File]("Build a new sample database for the tarball")
 
   def createTarballSettings(): Def.SettingsDefinition = {
     Seq(
+      // Built anew, so the tarball never ships the sample database a local server has changed.
+      buildTarballSampleDatabase := Def.taskDyn {
+        val file = target.value / "sample-database" / "h2db.mv.db"
+        IO.delete(file.getParentFile)
+        Def.task {
+          (LocalProject("sampleDatabase") / Compile / runMain)
+            .toTask(" io.unitycatalog.server.utils.SampleDatabase \"" + file + "\"")
+            .value
+          file
+        }
+      }.value,
       createTarball := {
         val log = streams.value.log
+        val sampleDatabase = buildTarballSampleDatabase.value
 
         // Output directory for the tarball
         val outputDir = target.value / "dist"
@@ -41,8 +55,11 @@ object Tarball {
         Files.write(classpathFile.toPath, allJars.mkString(":").getBytes)
         // Copy the script files to the output directory
         IO.copyDirectory(scriptsDir, outputDir / "bin")
-        // Copy the etc files to the output directory
+        // Copy the etc files to the output directory, with the new sample database
         IO.copyDirectory(etcDir, outputDir / "etc")
+        // A local sample database, and what a killed sample database build leaves behind.
+        IO.delete((outputDir / "etc" / "db" * ("h2db.*" || "building-*")).get)
+        IO.copyFile(sampleDatabase, outputDir / "etc" / "db" / "h2db.mv.db")
 
         // Create the tarball
         val tarballFile = target.value / s"${name.value}-${version.value}.tar.gz"

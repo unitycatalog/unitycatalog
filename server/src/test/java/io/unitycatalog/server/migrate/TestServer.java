@@ -18,7 +18,8 @@ import java.util.Properties;
 
 /**
  * The current server, in this process, on a {@link TestDatabase}: built like {@code
- * BaseServerTest.setUp()} (the database's own configurator, authorization on).
+ * BaseServerTest.setUp()} (the database's own configurator, authorization on). {@link #start}
+ * throws what the server throws when it refuses the database's schema.
  */
 final class TestServer implements AutoCloseable {
 
@@ -32,7 +33,17 @@ final class TestServer implements AutoCloseable {
 
   /** Starts the server on {@code db}, with its table storage under {@code storageRoot}. */
   static TestServer start(TestDatabase db, Path storageRoot) {
-    return start(db.openHibernateConfigurator(db.hibernateProperties()), storageRoot);
+    return start(db, db.hibernateProperties(), storageRoot);
+  }
+
+  /** The same, with the given Hibernate properties for {@code db}. */
+  static TestServer start(TestDatabase db, Properties hibernateProperties, Path storageRoot) {
+    return start(db.openHibernateConfigurator(hibernateProperties), storageRoot);
+  }
+
+  /** Starts the server on {@code db} with {@code server.schema-management=hibernate}. */
+  static TestServer startWithHibernateManagedSchema(TestDatabase db, Path storageRoot) {
+    return start(db.openHibernateConfigurator(db.hibernateProperties(), true), storageRoot);
   }
 
   private static TestServer start(HibernateConfigurator configurator, Path storageRoot) {

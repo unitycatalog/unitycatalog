@@ -772,6 +772,23 @@ postgres
 			<td>PostgreSQL username</td>
 		</tr>
 		<tr>
+			<td>server.db.schemaManagement</td>
+			<td>string</td>
+			<td><pre lang="json">
+"flyway"
+</pre>
+</td>
+			<td>Who changes the database schema
+
+Supported values: `flyway` (before the server starts, an init container brings the schema up to
+date with `bin/start-uc-server --upgrade-schema`), `hibernate` (Hibernate updates the schema at
+start, as before 0.8; a temporary fallback).
+With `server.config.override`, the chart can't see the override's `server.schema-management`:
+set this value to match it.
+See docs/server/upgrades.md.
+</td>
+		</tr>
+		<tr>
 			<td>server.db.type</td>
 			<td>string</td>
 			<td><pre lang="json">
@@ -807,6 +824,8 @@ not set
 			<td>Command that starts the server
 
 The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+The `upgrade-schema` init container runs the same command with the single argument
+`--upgrade-schema`.
 Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
 through its own wrapper can set it here; the wrapper must pass the arguments on to
 `./bin/start-uc-server`.
@@ -876,6 +895,10 @@ not set
 </pre>
 </td>
 			<td>List of additional init containers to be added to the server pod
+
+They run before the init container that upgrades the schema. Run a database proxy that the
+server needs here as a native sidecar (`restartPolicy: Always`), so that the upgrade can reach
+the database.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/#pod)
 </td>
@@ -1193,10 +1216,13 @@ not set
 			<td>server.deployment.updateStrategy</td>
 			<td>object</td>
 			<td><pre lang="">
-# If replicaCount: 1 and db type "file"<br>type: Recreate<br># Else<br>type: RollingUpdate
+type: Recreate
 </pre>
 </td>
 			<td>Update strategy for the deployment
+
+Only `type: Recreate` is allowed: an upgrade changes the database schema, so all old servers
+stop before the new ones start.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
 </td>

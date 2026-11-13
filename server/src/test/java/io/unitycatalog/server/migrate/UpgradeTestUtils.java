@@ -10,13 +10,16 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
@@ -126,6 +129,34 @@ final class UpgradeTestUtils {
     return sent;
   }
 
+  /**
+   * {@code db}'s data source, but the statement {@code statement} fails the first time it is sent
+   * or, with {@code historyRecord}, it runs and the schema history record Flyway writes next fails.
+   */
+  static DataSource failingAt(TestDatabase db, String statement, boolean historyRecord) {
+    AtomicBoolean sent = new AtomicBoolean();
+    AtomicBoolean failed = new AtomicBoolean();
+    return watched(
+        db.dataSource(),
+        (sql, prepared) -> {
+          if (failed.get()) {
+            return sql;
+          }
+          boolean fails =
+              historyRecord
+                  ? sent.get()
+                      && sql.toLowerCase(Locale.ROOT)
+                          .matches("(?s)\\s*insert into .*uc_schema_history.*")
+                  : sql.equals(statement);
+          sent.compareAndSet(false, sql.equals(statement));
+          if (fails) {
+            failed.set(true);
+            throw new SQLException("Test: the run stops here");
+          }
+          return sql;
+        });
+  }
+
   /** What {@link #watched} calls with each SQL statement before it is sent. */
   interface SqlWatcher {
     /**
@@ -133,6 +164,34 @@ final class UpgradeTestUtils {
      * prepared}: the statement is prepared (Flyway's own queries and history records).
      */
     String beforeSending(String sql, boolean prepared) throws SQLException;
+  }
+
+  /** {@code real}, but its connections' metadata name the database product {@code product}. */
+  static DataSource reportingProduct(DataSource real, String product) {
+    return proxy(
+        DataSource.class,
+        (proxy, method, args) -> {
+          Object result = method.invoke(real, args);
+          if (!method.getName().equals("getConnection")) {
+            return result;
+          }
+          Connection connection = (Connection) result;
+          return proxy(
+              Connection.class,
+              (connectionProxy, connectionMethod, connectionArgs) -> {
+                Object created = connectionMethod.invoke(connection, connectionArgs);
+                if (!connectionMethod.getName().equals("getMetaData")) {
+                  return created;
+                }
+                DatabaseMetaData metaData = (DatabaseMetaData) created;
+                return proxy(
+                    DatabaseMetaData.class,
+                    (metaDataProxy, metaDataMethod, metaDataArgs) ->
+                        metaDataMethod.getName().equals("getDatabaseProductName")
+                            ? product
+                            : metaDataMethod.invoke(metaData, metaDataArgs));
+              });
+        });
   }
 
   /**

@@ -7,41 +7,52 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.CoreErrorCode;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.flywaydb.core.api.output.MigrateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
- * up an empty database, adopts a database without schema history whose schema is that of the
- * baseline release (recording step 1 without running it) or of this build's last step, and applies
- * the pending steps, checking at the end the schema against the steps' effect files ({@code
- * schema-effects/<database>}). On PostgreSQL and MySQL, each {@link #upgradeSchema()} holds a
- * {@link RunLock} from classifying the database to the last step.
+ * up an empty database, adopts a database of the baseline release (recording step 1 without running
+ * it) or of this build's last step (recording every step without running it) and applies the
+ * pending steps, checking the schema against the steps' effect files ({@code
+ * schema-effects/<database>}) before each step and at the end. Each {@link #upgradeSchema()} holds
+ * a {@link RunLock} from classifying the database to the last step: on H2, one that holds within
+ * this process.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -98,6 +109,10 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
+  private static final Pattern CREATE_INDEX =
+      Pattern.compile(
+          "(?i)create\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?(\\w+)\\s+on\\s+(\\w+)");
+
   private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrator.class);
   private static final String HISTORY_TABLE = "uc_schema_history";
 
@@ -110,13 +125,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * The baseline Flyway records on a database that holds only other tables (Casbin's, another
-   * application's), below step 1 so that step 1 runs.
+   * application's), below step 1 so that step 1 runs; also the version before the first step.
    */
   private static final String EMPTY_BASELINE_VERSION = "0";
 
   /**
-   * The run lock's connection, Flyway's two (PostgreSQL), and one to spare for reading the
-   * database's state.
+   * The run lock's connection, Flyway's two (PostgreSQL), and one to spare for reading the schema
+   * between steps.
    */
   private static final int POOL_SIZE = 4;
 
@@ -146,13 +161,14 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Runs {@code bin/start-uc-server --upgrade-schema} on the database that the configuration files
-   * in {@code configurationFolder} set, printing what it found to {@code out}. Returns the exit
-   * code: 0 when the upgrade went through, 1 otherwise, also for a configuration with nothing to
-   * upgrade: a missing configuration file or an in-memory database.
+   * Runs {@code bin/start-uc-server --check-schema} (when {@code upgrade} is false) or {@code
+   * --upgrade-schema} on the database that the configuration files in {@code configurationFolder}
+   * set, printing what it found to {@code out}. Returns the exit code: 0 when the check or the
+   * upgrade went through, 1 otherwise, also for a configuration with nothing to upgrade: a missing
+   * configuration file, an in-memory database, or Hibernate managing the schema.
    */
-  public static int runCommand(Path configurationFolder, PrintStream out) {
-    String command = "bin/start-uc-server --upgrade-schema";
+  public static int runCommand(boolean upgrade, Path configurationFolder, PrintStream out) {
+    String command = "bin/start-uc-server " + (upgrade ? "--upgrade-schema" : "--check-schema");
     try {
       Path serverFile = configurationFolder.resolve("server.properties");
       Path hibernateFile = configurationFolder.resolve("hibernate.properties");
@@ -167,13 +183,25 @@ public final class SchemaMigrator implements AutoCloseable {
         }
       }
       ServerProperties serverProperties = new ServerProperties(serverFile.toString());
-      try (SchemaMigrator migrator =
-          fromHibernateProperties(
-              HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile))) {
+      if (serverProperties.isSchemaManagedByHibernate()) {
+        throw new IllegalStateException(
+            "server.schema-management=hibernate: Hibernate manages the schema, and the schema"
+                + " steps do not run. Set server.schema-management=flyway first; see"
+                + " docs/server/upgrades.md.");
+      }
+      Properties hibernateProperties =
+          HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile);
+      if (!upgrade) {
+        openH2OnlyIfItExists(hibernateProperties);
+      }
+      try (SchemaMigrator migrator = fromHibernateProperties(hibernateProperties)) {
         if (migrator.isInMemory()) {
           throw new IllegalStateException(
-              "The configured database is in memory, so there is nothing to upgrade: the server"
-                  + " sets up an in-memory database itself.");
+              "The configured database is in memory, so there is nothing to check or upgrade: the"
+                  + " server sets up an in-memory database itself.");
+        }
+        if (!upgrade) {
+          return migrator.checkSchema(out);
         }
         migrator.upgradeSchema();
         out.println("The database schema is at version " + migrator.latestVersion() + ".");
@@ -181,7 +209,13 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     } catch (RuntimeException e) {
       LOGGER.error("{} failed", command, e);
-      out.println(e.getMessage());
+      out.println(
+          !upgrade && isH2DatabaseNotFound(e)
+              ? "The H2 database file that hibernate.connection.url names is not found, and a"
+                  + " check does not create it: check the configuration, and run "
+                  + command
+                  + " in the Unity Catalog folder, the one that holds etc/conf."
+              : e.getMessage());
       return 1;
     }
   }
@@ -191,7 +225,40 @@ public final class SchemaMigrator implements AutoCloseable {
    * jdbc:h2:.}.
    */
   private static boolean isH2InMemory(String url) {
-    return url.startsWith("jdbc:h2:mem:") || url.matches("jdbc:h2:\\.(;.*)?");
+    String h2 = HibernateConfigurator.h2Url(url);
+    return h2 != null && (h2.startsWith("jdbc:h2:mem:") || h2.matches("jdbc:h2:\\.(;.*)?"));
+  }
+
+  /**
+   * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
+   * connects, and a check must change nothing. Sets {@code IFEXISTS=TRUE} on each H2 file URL the
+   * pool may use ({@code hibernate.connection.url}, or the data source class's URL property), also
+   * behind a wrapping driver, replacing an {@code IFEXISTS} the URL sets. Returns whether there was
+   * one.
+   */
+  private static boolean openH2OnlyIfItExists(Properties hibernateProperties) {
+    boolean h2File = false;
+    for (String key : HibernateConfigurator.urlSettings(hibernateProperties)) {
+      String url = hibernateProperties.getProperty(key);
+      if (HibernateConfigurator.h2Url(url) != null && !isH2InMemory(url)) {
+        hibernateProperties.setProperty(
+            key, url.replaceAll("(?i);\\s*ifexists\\s*=[^;]*", "") + ";IFEXISTS=TRUE");
+        h2File = true;
+      }
+    }
+    return h2File;
+  }
+
+  /** Whether H2 failed to open {@code e}'s database because it does not exist. */
+  private static boolean isH2DatabaseNotFound(Throwable e) {
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      // 90013: database not found; 90146: not found with IFEXISTS=TRUE
+      if (cause instanceof SQLException sql
+          && (sql.getErrorCode() == 90013 || sql.getErrorCode() == 90146)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */
@@ -204,9 +271,10 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * H2 takes no run lock, because it opens a database file in one process. Its server mode lets
-   * several processes open the database, so they could run steps twice at once. Read from the
-   * configuration, before any connection: the connection's URL leaves {@code AUTO_SERVER} out.
+   * H2's run lock holds only within this process, because it opens a database file in one process.
+   * Its server mode lets several processes open the database, so they could run steps twice at
+   * once. Read from the configuration, before any connection: the connection's URL leaves {@code
+   * AUTO_SERVER} out.
    */
   private static void refuseH2ServerMode(HikariConfig config) {
     Properties driver = config.getDataSourceProperties();
@@ -363,96 +431,385 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, applies this build's
-   * pending steps and checks that the database ends with the schema of the last step. This also
-   * sets up an empty database, and adopts a database without schema history when its schema is
-   * exactly that of {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's
-   * last step (every step is recorded without running). On PostgreSQL and MySQL, a second run at
-   * the same time waits for the first. Returns the number of steps it ran or recorded.
+   * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, brings the database to
+   * this build's schema one step at a time, and checks that it ends with the schema of the last
+   * step. Before each pending step the whole schema is compared with the steps' effect files
+   * ({@code schema-effects/<database>}): it must be the schema before the step, so the step runs,
+   * or after it (a run stopped before Flyway recorded the step) or after this build's last step (an
+   * adoption that stopped part way), so the step is recorded without running; otherwise the run
+   * stops, changing nothing more. Once the schema check accepts a step, its record as a failed step
+   * (MySQL and H2 keep one) is deleted, so that the step is tried again. This also sets up an empty
+   * database, and adopts a database without schema history when its schema is exactly that of
+   * {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's last step (every
+   * step is recorded without running). A second run at the same time waits for the first: on H2,
+   * one in this process. Returns the number of steps it ran or recorded.
    */
   public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      SchemaState state = state();
-      refuseIfUnsupported(state);
+      refuseIfUnsupported(state());
       requireValidHistory(true);
-      int recorded = state == SchemaState.UNVERSIONED_UC ? adopt() : 0;
-      int ran =
-          flyway()
-              .baselineOnMigrate(true)
-              .baselineVersion(EMPTY_BASELINE_VERSION)
-              .baselineDescription("empty")
-              .load()
-              .migrate()
-              .migrationsExecuted;
+      boolean adopted = hasLastStepsSchemaWithoutHistory();
+      int changed = 0;
+      for (String step : pendingSteps()) {
+        SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+        boolean record = adopted || !runs(step, schema);
+        // Only once the schema check passed, so that a run that refuses leaves the history as is.
+        deleteFailedRecord(step);
+        MigrateResult result =
+            flyway()
+                .baselineOnMigrate(true)
+                .baselineVersion(EMPTY_BASELINE_VERSION)
+                .baselineDescription("empty")
+                .target(step)
+                .skipExecutingMigrations(record)
+                .load()
+                .migrate();
+        if (result.migrationsExecuted != 1 || !step.equals(recordedVersion())) {
+          throw new IllegalStateException(
+              "Schema step "
+                  + step
+                  + " was not recorded as the only change of its run. Run"
+                  + " bin/start-uc-server --check-schema to see the database's state.");
+        }
+        LOGGER.info(
+            record
+                ? "Recorded schema step {} without running it: the database already has its change"
+                : "Ran schema step {}",
+            step);
+        changed++;
+      }
       requireCurrent();
-      return recorded + ran;
+      return changed;
     }
   }
 
   /**
-   * Adopts a database without schema history whose schema is exactly that of {@link
-   * #ADOPTED_RELEASE} (step 1) or of this build's last step: records the steps up to that one
-   * without running them, and returns their number.
+   * For {@code bin/start-uc-server --check-schema}: prints the database's schema version and what
+   * {@link #upgradeSchema()} would do with each pending step, and whether the schema allows the
+   * upgrade, running the same checks on the schema as it would. It does not test the database
+   * user's privileges or the run lock. Changes nothing and takes no run lock, so it can run while
+   * servers of the previous release still serve. A step of this build that failed counts as
+   * pending, since the upgrade deletes its record once the step's schema check passes.
    *
-   * @throws IllegalStateException for any other schema, naming its differences from step 1
+   * @return 0 when the schema allows the upgrade, 1 when it would refuse
    */
-  private int adopt() {
-    String first = steps().get(0);
-    String latest = latestVersion();
-    SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
-    String adoptedAt =
-        schema.equals(expected(latest)) ? latest : schema.equals(expected(first)) ? first : null;
-    if (adoptedAt == null) {
-      throw new IllegalStateException(
-          "The database has no schema history, and its schema is neither the schema of version "
-              + first
-              + " nor that of version "
-              + latest
-              + ". It differs from version "
-              + first
-              + " in:\n"
-              + differences(schema, expected(first))
-              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup,"
-              + " then run bin/start-uc-server --upgrade-schema again. A database from a release"
-              + " before "
-              + ADOPTED_RELEASE
-              + " must be started once on a "
-              + ADOPTED_RELEASE
-              + " server first (see docs/server/upgrades.md, \"Repairing a database from"
-              + " before 0.7.0\").");
+  int checkSchema(PrintStream out) {
+    try {
+      refuseIfUnsupported(state());
+      requireValidHistory(true);
+      String recorded = recordedVersion();
+      out.println(
+          "Database schema version: "
+              + (recorded == null ? "none" : recorded)
+              + "; this release ends at "
+              + latestVersion()
+              + ".");
+      List<String> pending = pendingSteps();
+      out.println(pending.isEmpty() ? "Pending steps: none." : "Pending steps:");
+      Map<String, String> descriptions = descriptions();
+      SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+      boolean adopted = hasLastStepsSchemaWithoutHistory();
+      for (String step : pending) {
+        boolean runs = !adopted && runs(step, schema);
+        out.println(
+            "  "
+                + step
+                + " "
+                + descriptions.get(step)
+                + (runs ? ": runs" : ": recorded without running (its change is already there)"));
+        if (runs) {
+          schema = expected(step);
+        }
+      }
+      SchemaSnapshot expected = expected(latestVersion());
+      if (!schema.equals(expected)) {
+        throw new IllegalStateException(
+            "The database schema differs from the schema of version "
+                + latestVersion()
+                + ":\n"
+                + differences(schema, expected));
+      }
+      out.println("The schema allows the upgrade: --upgrade-schema would run the steps above.");
+      return 0;
+    } catch (IllegalStateException e) {
+      out.println(e.getMessage());
+      out.println("The schema does not allow the upgrade.");
+      return 1;
     }
-    int recorded =
-        flyway()
-            .baselineOnMigrate(true)
-            .baselineVersion(EMPTY_BASELINE_VERSION)
-            .baselineDescription("empty")
-            .target(adoptedAt)
-            .skipExecutingMigrations(true)
-            .load()
-            .migrate()
-            .migrationsExecuted;
-    LOGGER.info(
-        "Adopted the database without schema history at version {}: recorded the steps up to it"
-            + " without running them",
-        adoptedAt);
-    return recorded;
+  }
+
+  private Map<String, String> descriptions() {
+    Map<String, String> descriptions = new HashMap<>();
+    for (MigrationInfo m : resolvedSteps(flyway().load().info())) {
+      descriptions.put(m.getVersion().getVersion(), m.getDescription());
+    }
+    return descriptions;
+  }
+
+  /**
+   * For server start, which changes nothing: throws unless the database is at this build's last
+   * step, Flyway's validation passes (no failed step, edited step or step missing below the
+   * recorded version), and the schema is the one the steps' effect files add up to. The message
+   * names what brings the database there. Takes no run lock.
+   */
+  public void requireCurrentSchema() {
+    SchemaState state = state();
+    refuseIfUnsupported(state);
+    String upgrade =
+        "Stop every server of the previous release, run bin/start-uc-server --upgrade-schema with"
+            + " this release, then start the server.";
+    if (state == SchemaState.EMPTY) {
+      throw new IllegalStateException(
+          "The database has no Unity Catalog schema yet. Set it up with bin/start-uc-server"
+              + " --upgrade-schema, then start the server.");
+    }
+    if (state != SchemaState.CURRENT) {
+      String recorded = recordedVersion();
+      throw new IllegalStateException(
+          "The database schema is at version "
+              + (recorded == null ? "none" : recorded)
+              + ", and this release needs version "
+              + latestVersion()
+              + ". "
+              + upgrade);
+    }
+    try {
+      requireValidHistory(false);
+    } catch (IllegalStateException e) {
+      throw new IllegalStateException(
+          e.getMessage()
+              + ". Run bin/start-uc-server --check-schema to see what an upgrade would do; "
+              + upgrade,
+          e);
+    }
+    requireLastStepsSchema(", then start the server");
+  }
+
+  /**
+   * For server start, before Hibernate connects, which creates a missing H2 database file: throws
+   * when {@code hibernateProperties} names an H2 database file that does not exist, so that a
+   * mistyped path is not taken for a new database.
+   */
+  public static void requireH2DatabaseExists(Properties hibernateProperties) {
+    Properties properties = new Properties();
+    properties.putAll(hibernateProperties);
+    if (!openH2OnlyIfItExists(properties)) {
+      return;
+    }
+    try (SchemaMigrator ignored = fromHibernateProperties(properties)) {
+      // Opening it is the check.
+    } catch (RuntimeException e) {
+      if (isH2DatabaseNotFound(e)) {
+        throw new IllegalStateException(
+            "The H2 database file that hibernate.connection.url names is not found. Check the"
+                + " configuration; to set up a new database there, run bin/start-uc-server"
+                + " --upgrade-schema, then start the server.",
+            e);
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Whether pending {@code step} runs on a database with {@code schema}: true when the schema is
+   * the one before the step, false when it already has the step's change or is the schema of this
+   * build's last step (an adoption that stopped after recording some steps), and for a first step
+   * whose earlier run stopped part way (the schema history exists and holds part of its schema)
+   * true, since the first step skips what is already there.
+   *
+   * @throws IllegalStateException when the schema is neither, naming the differences
+   */
+  private boolean runs(String step, SchemaSnapshot schema) {
+    String previous = previousStep(step);
+    SchemaSnapshot before = expected(previous);
+    SchemaSnapshot after = expected(step);
+    if (schema.equals(before)) {
+      return true;
+    }
+    if (schema.equals(after) || schema.equals(expected(latestVersion()))) {
+      return false;
+    }
+    if (previous.equals(EMPTY_BASELINE_VERSION)
+        && tableNamesLowerCase().contains(HISTORY_TABLE)
+        && isLeftByAStoppedRun(step, schema, after)) {
+      return true;
+    }
+    String nearer =
+        schema.differencesFrom(before).lines().count()
+                <= schema.differencesFrom(after).lines().count()
+            ? previous
+            : step;
+    throw new IllegalStateException(
+        "The database schema is neither the schema of version "
+            + previous
+            + " nor that of version "
+            + step
+            + ", so schema step "
+            + step
+            + " can't run. It differs from version "
+            + nearer
+            + " in:\n"
+            + differences(schema, expected(nearer))
+            + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup,"
+            + " then run bin/start-uc-server --upgrade-schema again."
+            + (tableNamesLowerCase().contains(HISTORY_TABLE)
+                ? ""
+                : " A database from a release before "
+                    + ADOPTED_RELEASE
+                    + " must be started once on a "
+                    + ADOPTED_RELEASE
+                    + " server first (see docs/server/upgrades.md, \"Repairing a database from"
+                    + " before 0.7.0\")."));
+  }
+
+  /**
+   * Whether {@code schema} is what a run of first step {@code step} that stopped part way leaves,
+   * and a rerun completes into {@code after}: some of its tables, each whole except for the indexes
+   * that the step creates in statements of their own. The step creates each table and index only if
+   * it does not exist, so it can't add what a table lacks.
+   */
+  private boolean isLeftByAStoppedRun(String step, SchemaSnapshot schema, SchemaSnapshot after) {
+    if (!after.entries().containsAll(schema.entries())) {
+      return false;
+    }
+    Set<String> tables =
+        schema.entries().stream()
+            .filter(e -> e.startsWith("table "))
+            .map(e -> e.substring("table ".length()))
+            .collect(Collectors.toSet());
+    Set<String> ownIndexes = indexesCreatedSeparately(step);
+    return after.entries().stream()
+        .filter(e -> !schema.entries().contains(e) && tables.contains(tableOf(e)))
+        .allMatch(e -> e.startsWith("index ") && ownIndexes.contains(e.split(" ")[1]));
+  }
+
+  /** The table of a schema entry: the first part of its second word. */
+  private static String tableOf(String entry) {
+    String object = entry.split(" ")[1];
+    int dot = object.indexOf('.');
+    return dot < 0 ? object : object.substring(0, dot);
+  }
+
+  /**
+   * The indexes, as {@code table.index}, that {@code step}'s script creates in a {@code CREATE
+   * INDEX} statement of their own.
+   */
+  private Set<String> indexesCreatedSeparately(String step) {
+    String script =
+        resolvedSteps(flyway().load().info()).stream()
+            .filter(m -> m.getVersion().getVersion().equals(step))
+            .map(MigrationInfo::getScript)
+            .findFirst()
+            .orElseThrow();
+    String path = "db/migration/" + kind.folder() + "/" + script;
+    try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException(
+            "This build has no script " + path + " for its step " + step);
+      }
+      Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+      Set<String> indexes = new HashSet<>();
+      while (m.find()) {
+        indexes.add(
+            m.group(2).toLowerCase(Locale.ROOT) + "." + m.group(1).toLowerCase(Locale.ROOT));
+      }
+      return indexes;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /**
+   * Whether the database has no applied step in its schema history (no history table, an empty one,
+   * or one holding only Flyway's baseline row, as a run leaves that stopped before step 1's record)
+   * and the schema of this build's last step, exactly: what Hibernate's update builds from the
+   * entities on a new database, with a {@code uc_*} table other than the history table. Every step
+   * is then recorded without running.
+   */
+  private boolean hasLastStepsSchemaWithoutHistory() {
+    String recorded = recordedVersion();
+    boolean noAppliedStep = recorded == null || recorded.equals(EMPTY_BASELINE_VERSION);
+    return noAppliedStep
+        && tableNamesLowerCase().stream()
+            .anyMatch(t -> t.startsWith("uc_") && !t.equals(HISTORY_TABLE))
+        && SchemaSnapshot.of(dataSource).equals(expected(latestVersion()));
+  }
+
+  /** The step before {@code step} in this build, {@value #EMPTY_BASELINE_VERSION} for the first. */
+  private String previousStep(String step) {
+    String previous = EMPTY_BASELINE_VERSION;
+    for (String s : steps()) {
+      if (s.equals(step)) {
+        return previous;
+      }
+      previous = s;
+    }
+    throw new IllegalArgumentException("Not a step of this build: " + step);
+  }
+
+  /** This build's steps after the recorded version. */
+  private List<String> pendingSteps() {
+    MigrationInfoService info = flyway().load().info();
+    String recorded = tableNamesLowerCase().contains(HISTORY_TABLE) ? recordedVersion(info) : null;
+    return stepVersions(info).stream()
+        .filter(
+            step ->
+                recorded == null
+                    || MigrationVersion.fromVersion(step)
+                            .compareTo(MigrationVersion.fromVersion(recorded))
+                        > 0)
+        .toList();
+  }
+
+  /**
+   * Deletes the schema history's record of {@code step} as a failed step, if it has one, so that
+   * the step is tried again. Plain SQL: Flyway's repair would also rewrite the other records'
+   * checksums.
+   */
+  private void deleteFailedRecord(String step) {
+    if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
+      return;
+    }
+    try (Connection connection = dataSource.getConnection()) {
+      // The caller's pool may not commit by itself, and a rollback would keep the record.
+      connection.setAutoCommit(true);
+      String q = connection.getMetaData().getIdentifierQuoteString();
+      try (PreparedStatement delete =
+          connection.prepareStatement(
+              "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
+                  .formatted(q, HISTORY_TABLE))) {
+        delete.setString(1, step);
+        if (delete.executeUpdate() > 0) {
+          LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
+        }
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException(
+          "Could not delete the record of a failed schema step: " + e.getMessage(), e);
+    }
   }
 
   /**
    * Throws unless Flyway's validation of the schema history passes: no failed step, no edited step
    * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
-   * recorded version may be pending: the upgrade runs them.
+   * recorded version may be pending and may have failed: the upgrade runs them. A failed step that
+   * is not one of this build's pending steps, such as a newer release's, is still refused.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
       return;
     }
     FluentConfiguration configuration = flyway();
+    Set<String> retried = upgrading ? Set.copyOf(pendingSteps()) : Set.of();
     if (upgrading) {
       configuration.ignoreMigrationPatterns("*:pending");
     }
     String errors =
         configuration.load().validateWithResult().invalidMigrations.stream()
+            .filter(
+                m ->
+                    !(m.errorDetails.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION
+                        && retried.contains(m.version)))
             .map(m -> m.errorDetails.errorMessage)
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
@@ -567,6 +924,151 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
+   * For {@code server.schema-management=hibernate}, before Hibernate updates the schema: throws
+   * when the schema history in the schema Hibernate updates (its {@code hibernate.default_catalog}
+   * and {@code hibernate.default_schema} in {@code hibernateSettings}, else the connection's)
+   * records a step newer than this build's last, applied or failed, which Hibernate's update would
+   * change back. Changes nothing. When the history can't be read (for example a PostgreSQL
+   * connection without a current schema, or a database the schema steps don't support), logs that
+   * and checks nothing, since Hibernate mode doesn't need the schema steps.
+   */
+  public static void refuseNewerSchema(DataSource dataSource, Map<?, ?> hibernateSettings) {
+    String newest;
+    String latest;
+    try {
+      SchemaMigrator migrator =
+          new SchemaMigrator(
+              inHibernatesSchema(
+                  dataSource,
+                  settingValue(hibernateSettings, "hibernate.default_catalog"),
+                  settingValue(hibernateSettings, "hibernate.default_schema")));
+      newest = migrator.newestRecordedVersion();
+      latest = migrator.latestVersion();
+    } catch (RuntimeException e) {
+      LOGGER.warn(
+          "Could not read the schema history, so Hibernate updates the schema without checking for"
+              + " a newer release's schema: {}",
+          e.getMessage());
+      return;
+    }
+    if (newest != null
+        && MigrationVersion.fromVersion(newest).compareTo(MigrationVersion.fromVersion(latest))
+            > 0) {
+      throw new IllegalStateException(
+          "The schema is newer than this release (version "
+              + newest
+              + ", this release ends at "
+              + latest
+              + "). Run the newer release.");
+    }
+  }
+
+  private static String settingValue(Map<?, ?> settings, String name) {
+    Object value = settings.get(name);
+    return value == null ? null : value.toString();
+  }
+
+  /**
+   * The highest version the schema history records, also of a step that failed; {@code null}
+   * without one.
+   */
+  private String newestRecordedVersion() {
+    if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
+      return null;
+    }
+    return Arrays.stream(flyway().load().info().applied())
+        .map(MigrationInfo::getVersion)
+        .filter(Objects::nonNull)
+        .max(MigrationVersion::compareTo)
+        .map(MigrationVersion::getVersion)
+        .orElse(null);
+  }
+
+  /**
+   * {@code dataSource} with each connection on {@code catalog} and {@code schema} where set, in the
+   * case the database stores unquoted names in, as Hibernate's unquoted names resolve. The pool
+   * resets both when a connection returns to it.
+   */
+  private static DataSource inHibernatesSchema(
+      DataSource dataSource, String catalog, String schema) {
+    if (isBlank(catalog) && isBlank(schema)) {
+      return dataSource;
+    }
+    return new DataSource() {
+      @Override
+      public Connection getConnection() throws SQLException {
+        return onHibernatesSchema(dataSource.getConnection());
+      }
+
+      @Override
+      public Connection getConnection(String user, String password) throws SQLException {
+        return onHibernatesSchema(dataSource.getConnection(user, password));
+      }
+
+      private Connection onHibernatesSchema(Connection connection) throws SQLException {
+        try {
+          DatabaseMetaData metaData = connection.getMetaData();
+          if (!isBlank(catalog)) {
+            connection.setCatalog(storedCase(metaData, catalog));
+          }
+          if (!isBlank(schema)) {
+            connection.setSchema(storedCase(metaData, schema));
+          }
+          return connection;
+        } catch (SQLException e) {
+          connection.close();
+          throw e;
+        }
+      }
+
+      @Override
+      public PrintWriter getLogWriter() throws SQLException {
+        return dataSource.getLogWriter();
+      }
+
+      @Override
+      public void setLogWriter(PrintWriter out) throws SQLException {
+        dataSource.setLogWriter(out);
+      }
+
+      @Override
+      public void setLoginTimeout(int seconds) throws SQLException {
+        dataSource.setLoginTimeout(seconds);
+      }
+
+      @Override
+      public int getLoginTimeout() throws SQLException {
+        return dataSource.getLoginTimeout();
+      }
+
+      @Override
+      public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
+        return dataSource.getParentLogger();
+      }
+
+      @Override
+      public <T> T unwrap(Class<T> type) throws SQLException {
+        return dataSource.unwrap(type);
+      }
+
+      @Override
+      public boolean isWrapperFor(Class<?> type) throws SQLException {
+        return dataSource.isWrapperFor(type);
+      }
+    };
+  }
+
+  private static boolean isBlank(String value) {
+    return value == null || value.isBlank();
+  }
+
+  private static String storedCase(DatabaseMetaData metaData, String name) throws SQLException {
+    return metaData.storesUpperCaseIdentifiers()
+        ? name.toUpperCase(Locale.ROOT)
+        : metaData.storesLowerCaseIdentifiers() ? name.toLowerCase(Locale.ROOT) : name;
+  }
+
+  /**
    * Throws for a database that {@link #upgradeSchema()} must not change, or a build with a
    * repeatable step.
    */
@@ -612,6 +1114,14 @@ public final class SchemaMigrator implements AutoCloseable {
           "The database schema is " + state + "; this release needs version " + latestVersion());
     }
     requireValidHistory(false);
+    requireLastStepsSchema("");
+  }
+
+  /**
+   * Throws unless the schema is the one that the steps' effect files add up to for this build's
+   * last step, naming the differences and then {@code then}.
+   */
+  private void requireLastStepsSchema(String then) {
     SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
     SchemaSnapshot expected = expected(latestVersion());
     if (!schema.equals(expected)) {
@@ -620,7 +1130,9 @@ public final class SchemaMigrator implements AutoCloseable {
               + latestVersion()
               + ":\n"
               + differences(schema, expected)
-              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup.");
+              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup"
+              + then
+              + ".");
     }
   }
 
@@ -778,12 +1290,20 @@ public final class SchemaMigrator implements AutoCloseable {
               "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")");
     }
 
+    /**
+     * H2 has no lock call, and only one process opens its database, so runs in this process take
+     * turns by database URL: servers on one in-memory database start in one process.
+     */
+    private static final Map<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
+
     private final Connection connection; // null on H2
     private final String unlockSql;
+    private final ReentrantLock h2Lock; // null except on H2
 
-    private RunLock(Connection connection, String unlockSql) {
+    private RunLock(Connection connection, String unlockSql, ReentrantLock h2Lock) {
       this.connection = connection;
       this.unlockSql = unlockSql;
+      this.h2Lock = h2Lock;
     }
 
     /**
@@ -792,7 +1312,16 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
       if (kind == DatabaseKind.H2) {
-        return new RunLock(null, null);
+        String url;
+        try (Connection connection = dataSource.getConnection()) {
+          url = connection.getMetaData().getURL();
+        } catch (SQLException e) {
+          throw new IllegalStateException(
+              "Could not connect to the database: " + e.getMessage(), e);
+        }
+        ReentrantLock lock = H2_LOCKS.computeIfAbsent(url, u -> new ReentrantLock());
+        lock.lock();
+        return new RunLock(null, null, lock);
       }
       LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
@@ -806,7 +1335,7 @@ public final class SchemaMigrator implements AutoCloseable {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, calls.unlock());
+        return new RunLock(connection, calls.unlock(), null);
       } catch (SQLException e) {
         close(connection);
         throw new IllegalStateException(
@@ -821,6 +1350,10 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     @Override
     public void close() {
+      if (h2Lock != null) {
+        h2Lock.unlock();
+        return;
+      }
       if (connection == null) {
         return;
       }
