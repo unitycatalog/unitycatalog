@@ -5,9 +5,14 @@ import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.client.model.FunctionParameterInfo;
 import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.json.JSONArray;
 
@@ -68,6 +73,10 @@ public class PythonInvoker {
       // Invoke the Python script
       ProcessBuilder pb = new ProcessBuilder(argsList);
       Process p = pb.start();
+      // Read stderr on another thread, so that a full stderr pipe cannot block the script while
+      // stdout is read below.
+      CompletableFuture<String> error =
+          CompletableFuture.supplyAsync(() -> readFully(p.getErrorStream()));
 
       // Get the output from the Python script
       BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
@@ -77,10 +86,25 @@ public class PythonInvoker {
         result.append(resultLine).append("\n");
       }
       in.close();
+      int exitCode = p.waitFor();
+      if (exitCode != 0) {
+        throw new ApiException(
+            "Python function failed with exit code " + exitCode + ": " + error.join().strip());
+      }
       return result.toString();
+    } catch (ApiException e) {
+      throw e;
     } catch (Exception e) {
       e.printStackTrace();
       throw new ApiException("Error invoking Python script: " + e.getMessage());
+    }
+  }
+
+  private static String readFully(InputStream stream) {
+    try (stream) {
+      return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
     }
   }
 }

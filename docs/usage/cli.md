@@ -685,6 +685,7 @@ bin/uc function call \
 
 This is an experimental feature and only supported for Python functions that take in primitive types as input
 parameters. It runs the functions using the Python engine script at `etc/data/function/python_engine.py`.
+If the function raises an error, the command fails with the Python error message.
 
 Here's an example that invokes a Python sum function that takes two integer inputs:
 
