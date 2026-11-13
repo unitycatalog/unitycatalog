@@ -44,9 +44,10 @@ run_in_source_code() {
 
 # This function runs the CLI using the tarball
 run_in_tarball() {
-  CLI_CLASSPATH_FILE=$(find "$TARBALL_JAR_DIR" -name "classpath" | head -n 1)
-
-  run_cli_java_command "$CLI_CLASSPATH_FILE" "$@"
+  # Relocatable classpath: a wildcard over the cli jars dir (server and cli jars
+  # are staged separately; see project/Tarball.scala). Quote the glob so the
+  # shell leaves it for the JVM to expand.
+  java -cp "$TARBALL_JAR_DIR/cli/*" io.unitycatalog.cli.UnityCatalogCli "$@" || exit
 }
 
 # Check if TARBALL_JAR_DIR exists, then we are running in the tarball

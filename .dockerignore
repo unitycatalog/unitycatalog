@@ -1,0 +1,35 @@
+# Build output (the single biggest context-bloat item) -- regenerated in the image
+**/target/
+
+# sbt / Scala / IDE state
+.bloop/
+.metals/
+.bsp/
+project/project/
+project/boot/
+lib_managed/
+src_managed/
+.idea/
+*.iml
+.vscode/
+
+# VCS & CI (not needed inside the build context)
+.git/
+.github/
+
+# Secrets / local env -- must never leak into an image
+*.env
+.env
+entra-id.env
+examples/credential-vending/.certs/
+
+# Node / Python build artifacts (UI builds from its own context)
+ui/node_modules/
+web/node_modules/
+**/__pycache__/
+*.pyc
+
+# Docs & site (not part of the server image)
+docs/
+site/
+*.md
