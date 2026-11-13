@@ -31,7 +31,7 @@ public class VolumeInfoDAO extends IdentifiableDAO {
   @Column(name = "comment")
   private String comment;
 
-  @Column(name = "storage_location")
+  @Column(name = "storage_location", length = 2048)
   private String storageLocation;
 
   @Column(name = "owner")

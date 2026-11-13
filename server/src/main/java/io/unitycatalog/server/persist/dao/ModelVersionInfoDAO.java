@@ -39,7 +39,7 @@ public class ModelVersionInfoDAO {
   @Column(name = "version")
   private Long version;
 
-  @Column(name = "source")
+  @Column(name = "source", length = 2048)
   private String source;
 
   @Column(name = "run_id")
