@@ -50,8 +50,9 @@ import org.slf4j.LoggerFactory;
  * up an empty database, adopts a database of the baseline release (recording step 1 without running
  * it) or of this build's last step (recording every step without running it) and applies the
  * pending steps, checking the schema against the steps' effect files ({@code
- * schema-effects/<database>}) before each step and at the end. On PostgreSQL and MySQL, each {@link
- * #upgradeSchema()} holds a {@link RunLock} from classifying the database to the last step.
+ * schema-effects/<database>}) before each step and at the end. Each {@link #upgradeSchema()} holds
+ * a {@link RunLock} from classifying the database to the last step: on H2, one that holds within
+ * this process.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
