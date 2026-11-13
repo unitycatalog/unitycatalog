@@ -1231,13 +1231,13 @@ def stored_python_function(
     )
 
 
-def int_param(name: str) -> FunctionParameterInfo:
+def int_param(name: str, position: int = 0) -> FunctionParameterInfo:
     return FunctionParameterInfo(
         name=name,
         type_name="INT",
         type_text="int",
         type_json=f'{{"name":"{name}","type":"integer","nullable":false,"metadata":{{}}}}',
-        position=0,
+        position=position,
     )
 
 
@@ -1322,6 +1322,124 @@ async def test_function_is_reexecuted_instead_of_memoized(
         results.append(result.value)
 
     assert results == ["first", "second", "third"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize(
+    ("new_definition", "new_param_names", "arguments", "expected"),
+    [
+        ("return x * 25", ["x"], {"x": 10}, 250),
+        ("return x * y", ["x", "y"], {"x": 10, "y": 3}, 30),
+        ("return x * 10", ["x", "y"], {"x": 10, "y": 3}, 100),
+    ],
+)
+async def test_function_changed_in_catalog_executes_new_definition(
+    mocked_store_client,
+    use_async,
+    new_definition,
+    new_param_names,
+    arguments,
+    expected,
+):
+    function_name = f"{CATALOG}.{SCHEMA}.tax"
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(function_name, "return x * 10", "INT", [int_param("x")]),
+    )
+    first = await execute(mocked_store_client, use_async, function_name, {"x": 10})
+
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(
+            function_name,
+            new_definition,
+            "INT",
+            [int_param(name, position) for position, name in enumerate(new_param_names)],
+        ),
+    )
+    second = await execute(mocked_store_client, use_async, function_name, arguments)
+
+    assert (first.value, second.error, second.value) == (100, None, expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_unchanged_function_reuses_cached_callable(mocked_store_client, use_async):
+    function_name = f"{CATALOG}.{SCHEMA}.count_calls"
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(
+            function_name,
+            'globals()["calls"] = globals().get("calls", 0) + 1\nreturn globals()["calls"]',
+            "INT",
+        ),
+    )
+
+    results = [
+        (await execute(mocked_store_client, use_async, function_name, {})).value for _ in range(3)
+    ]
+
+    assert results == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_changed_function_is_rebuilt_once_then_reused(mocked_store_client, use_async):
+    function_name = f"{CATALOG}.{SCHEMA}.count_calls"
+    counter = 'globals()["calls"] = globals().get("calls", 0) + 1\nreturn globals()["calls"]'
+    serve_functions(mocked_store_client, stored_python_function(function_name, counter, "INT"))
+    before = [
+        (await execute(mocked_store_client, use_async, function_name, {})).value for _ in range(2)
+    ]
+
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(function_name, counter + " * 10", "INT"),
+    )
+    after = [
+        (await execute(mocked_store_client, use_async, function_name, {})).value for _ in range(3)
+    ]
+
+    assert (before, after) == ([1, 2], [10, 20, 30])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_replacing_a_function_resets_only_its_cached_callable(mocked_store_client, use_async):
+    counter = 'globals()["calls"] = globals().get("calls", 0) + 1\nreturn globals()["calls"]'
+    replaced = f"{CATALOG}.{SCHEMA}.counter_replaced"
+    untouched = f"{CATALOG}.{SCHEMA}.counter_untouched"
+    by_name = {name: stored_python_function(name, counter, "INT") for name in (replaced, untouched)}
+    mocked_store_client.uc.functions_client.get_function.side_effect = lambda name, **_: by_name[
+        name.lower()
+    ]
+    for name in (replaced, untouched, replaced, untouched):
+        await execute(mocked_store_client, use_async, name, {})
+
+    mocked_store_client.uc.functions_client.create_function.return_value = stored_python_function(
+        replaced, counter, "INT"
+    )
+    create_kwargs = {
+        "function_name": replaced.upper(),
+        "routine_definition": counter,
+        "data_type": "INT",
+        "full_data_type": "INT",
+        "comment": "Counts its calls.",
+        "parameters": [],
+        "replace": True,
+    }
+    if use_async:
+        await mocked_store_client.create_function_async(**create_kwargs)
+    else:
+        mocked_store_client.create_function(**create_kwargs)
+
+    after = [
+        (await execute(mocked_store_client, use_async, name, {})).value
+        for name in (replaced, untouched)
+    ]
+
+    assert after == [1, 3]
 
 
 @pytest.mark.asyncio

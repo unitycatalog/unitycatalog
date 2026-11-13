@@ -27,7 +27,7 @@ The Unity Catalog (UC) function client is a core component of the Unity Catalog 
 - **Comprehensive Function Management**: Easily create, retrieve, list, execute, and delete UC functions.
 - **Wrapped Function Support**: In addition to standard single-function creation, you can create *wrapped functions* that in-line additional helper functions within a function's definition to simplify code reuse and modularity.
 - **Integration with GenAI**: Seamlessly integrate UC functions as tools within Generative AI agents, enhancing intelligent automation workflows.
-- **Type Safety and Caching**: Enforce strict type validation and utilize caching mechanisms to optimize performance and reduce redundant executions.
+- **Type Safety and Caching**: Enforce strict type validation, and cache the callable built for each function, rebuilding it when the function definition changes.
 
 #### Caveats
 
