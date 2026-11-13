@@ -463,8 +463,8 @@ public final class SchemaMigrator implements AutoCloseable {
    * {@link #upgradeSchema()} would do with each pending step, and whether the schema allows the
    * upgrade, running the same checks on the schema as it would. It does not test the database
    * user's privileges or the run lock. Changes nothing and takes no run lock, so it can run while
-   * servers of the previous release still serve. A step that failed counts as pending, since the
-   * upgrade deletes its record first.
+   * servers of the previous release still serve. A step of this build that failed counts as
+   * pending, since the upgrade deletes its record once the step's schema check passes.
    *
    * @return 0 when the schema allows the upgrade, 1 when it would refuse
    */
@@ -492,7 +492,9 @@ public final class SchemaMigrator implements AutoCloseable {
                 + " "
                 + descriptions.get(step)
                 + (runs ? ": runs" : ": recorded without running (its change is already there)"));
-        schema = expected(step);
+        if (runs) {
+          schema = expected(step);
+        }
       }
       SchemaSnapshot expected = expected(latestVersion());
       if (!schema.equals(expected)) {

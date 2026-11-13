@@ -189,6 +189,9 @@ public class SchemaMigratorTest {
       }
     }
 
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains(message);
     assertThatThrownBy(migrator::upgradeSchema).hasMessageContaining(message);
     assertThat(failedRecords()).isOne();
   }
@@ -323,6 +326,9 @@ public class SchemaMigratorTest {
 
     List<String> sent = new CopyOnWriteArrayList<>();
     SchemaMigrator migrator = new SchemaMigrator(sending(sent), NEXT_RELEASE);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).doesNotContain(": runs");
     assertThat(migrator.upgradeSchema()).isEqualTo(steps - (stoppedRecord - 1));
     assertThat(sent)
         .noneMatch(sql -> isStep1(sql) || isStep2(sql) || sql.contains("uc_test_only_step"));
