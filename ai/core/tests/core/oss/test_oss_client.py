@@ -1330,6 +1330,7 @@ async def test_function_is_reexecuted_instead_of_memoized(
     [
         ("return x * 25", ["x"], {"x": 10}, 250),
         ("return x * y", ["x", "y"], {"x": 10, "y": 3}, 30),
+        ("return x * 10", ["x", "y"], {"x": 10, "y": 3}, 100),
     ],
 )
 async def test_function_changed_in_catalog_executes_new_definition(
@@ -1408,11 +1409,10 @@ async def test_replacing_a_function_resets_only_its_cached_callable(mocked_store
     counter = 'globals()["calls"] = globals().get("calls", 0) + 1\nreturn globals()["calls"]'
     replaced = f"{CATALOG}.{SCHEMA}.counter_replaced"
     untouched = f"{CATALOG}.{SCHEMA}.counter_untouched"
-    serve_functions(
-        mocked_store_client,
-        stored_python_function(replaced, counter, "INT"),
-        stored_python_function(untouched, counter, "INT"),
-    )
+    by_name = {name: stored_python_function(name, counter, "INT") for name in (replaced, untouched)}
+    mocked_store_client.uc.functions_client.get_function.side_effect = lambda name, **_: by_name[
+        name.lower()
+    ]
     for name in (replaced, untouched, replaced, untouched):
         await execute(mocked_store_client, use_async, name, {})
 
@@ -1420,7 +1420,7 @@ async def test_replacing_a_function_resets_only_its_cached_callable(mocked_store
         replaced, counter, "INT"
     )
     create_kwargs = {
-        "function_name": replaced,
+        "function_name": replaced.upper(),
         "routine_definition": counter,
         "data_type": "INT",
         "full_data_type": "INT",

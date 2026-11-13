@@ -387,7 +387,6 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             # Function calls still fail with SANDBOX_UNSUPPORTED_MESSAGE as their error, which in
             # toolkit setups only reaches the LLM, so also tell the developer at construction.
             _logger.warning(SANDBOX_UNSUPPORTED_MESSAGE)
-        # Each cached callable records the source it was built from in `_uc_source`.
         self.func_cache = {}
         super().__init__()
 
