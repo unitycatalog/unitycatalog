@@ -34,6 +34,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
@@ -127,15 +128,35 @@ public class HibernateConfigurator implements AutoCloseable {
    * Refuses it.
    */
   private static void requireNamedMemoryDatabase(Properties hibernateProperties) {
-    String url = hibernateProperties.getProperty("hibernate.connection.url", "");
-    if (url.toLowerCase(Locale.ROOT).matches("jdbc:h2:(mem:|\\.)(;.*)?")) {
-      throw new IllegalArgumentException(
-          "The in-memory H2 URL "
-              + url
-              + " has no database name, so every connection gets its own empty database. Name it:"
-              + " jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1");
+    for (String key : urlSettings(hibernateProperties)) {
+      String url = hibernateProperties.getProperty(key);
+      String h2 = h2Url(url);
+      if (h2 != null && h2.matches("jdbc:h2:(mem:|\\.)(;.*)?")) {
+        throw new IllegalArgumentException(
+            "The in-memory H2 URL "
+                + url
+                + " has no database name, so every connection gets its own empty database. Name"
+                + " it: jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1");
+      }
     }
   }
+
+  /**
+   * The settings that can give the pool its JDBC URL: {@code hibernate.connection.url}, and the URL
+   * property of a data source class ({@code hibernate.hikari.dataSource.URL} or {@code .url}).
+   */
+  public static List<String> urlSettings(Properties hibernateProperties) {
+    return hibernateProperties.stringPropertyNames().stream()
+        .filter(
+            key ->
+                key.equals("hibernate.connection.url")
+                    || (key.startsWith(HIKARI_DATA_SOURCE)
+                        && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("url")))
+        .sorted()
+        .toList();
+  }
+
+  private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
 
   /**
    * The schema steps own the schema. Refuses every Hibernate schema action but none, validate too,

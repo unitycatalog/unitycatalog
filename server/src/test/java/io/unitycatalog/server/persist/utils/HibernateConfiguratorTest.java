@@ -113,11 +113,20 @@ class HibernateConfiguratorTest {
         "jdbc:h2:mem:;DB_CLOSE_DELAY=-1",
         "JDBC:H2:MEM:;MODE=MySQL",
         "jdbc:h2:.",
-        "jdbc:h2:.;DB_CLOSE_DELAY=-1"
+        "jdbc:h2:.;DB_CLOSE_DELAY=-1",
+        "jdbc:p6spy:h2:mem:",
+        "dataSource:jdbc:h2:mem:"
       })
   void refusesAnUnnamedInMemoryDatabase(String url) {
     Properties properties = h2Properties();
-    properties.setProperty("hibernate.connection.url", url);
+    if (url.startsWith("dataSource:")) {
+      // A pool set up by data source class: the URL is a data source property.
+      properties.remove("hibernate.connection.url");
+      properties.setProperty(
+          "hibernate.hikari.dataSource.URL", url.substring("dataSource:".length()));
+    } else {
+      properties.setProperty("hibernate.connection.url", url);
+    }
 
     assertThatThrownBy(() -> new HibernateConfigurator(properties))
         .hasMessageContaining("has no database name")

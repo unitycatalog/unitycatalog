@@ -228,13 +228,9 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   private static boolean openH2OnlyIfItExists(Properties hibernateProperties) {
     boolean h2File = false;
-    for (String key : hibernateProperties.stringPropertyNames()) {
-      boolean urlSetting =
-          key.equals("hibernate.connection.url")
-              || (key.startsWith(HIKARI_DATA_SOURCE)
-                  && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("url"));
+    for (String key : HibernateConfigurator.urlSettings(hibernateProperties)) {
       String url = hibernateProperties.getProperty(key);
-      if (urlSetting && HibernateConfigurator.h2Url(url) != null && !isH2InMemory(url)) {
+      if (HibernateConfigurator.h2Url(url) != null && !isH2InMemory(url)) {
         hibernateProperties.setProperty(
             key, url.replaceAll("(?i);\\s*ifexists\\s*=[^;]*", "") + ";IFEXISTS=TRUE");
         h2File = true;
@@ -242,8 +238,6 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     return h2File;
   }
-
-  private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
 
   /** Whether H2 failed to open {@code e}'s database because it does not exist. */
   private static boolean isH2DatabaseNotFound(Throwable e) {
