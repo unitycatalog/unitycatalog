@@ -5,6 +5,8 @@
 |------------ | ------------- | ------------- | -------------|
 | **name** | **String** | The credential name. The name must be unique within the metastore. | [optional] [default to null] |
 | **aws\_iam\_role** | [**AwsIamRoleResponse**](AwsIamRoleResponse.md) |  | [optional] [default to null] |
+| **azure\_service\_principal** | [**AzureServicePrincipalResponse**](AzureServicePrincipalResponse.md) |  | [optional] [default to null] |
+| **gcp\_service\_account\_key** | [**GcpServiceAccountKeyResponse**](GcpServiceAccountKeyResponse.md) |  | [optional] [default to null] |
 | **comment** | **String** | Comment associated with the credential. | [optional] [default to null] |
 | **owner** | **String** | Username of current owner of credential. | [optional] [default to null] |
 | **full\_name** | **String** | The full name of the credential. | [optional] [default to null] |
