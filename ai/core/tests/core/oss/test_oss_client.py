@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import importlib.util
 import json
 import logging
 import multiprocessing
@@ -1775,26 +1776,26 @@ async def test_create_wrapped_function_async_with_doc(uc_client: UnitycatalogFun
     expected_definition = textwrap.dedent("""\
         def int_func_with_doc(a: int) -> int:
             \"\"\"
-            A function that takes an integer and returns an integer.
+        A function that takes an integer and returns an integer.
 
-            Args:
-                a: An integer.
+        Args:
+            a: An integer.
 
-            Returns:
-                An integer.
-            \"\"\"
+        Returns:
+            An integer.
+        \"\"\"
             return a + 10
 
         def str_func_with_doc(b: str) -> str:
             \"\"\"
-            A function that takes a string and returns a string.
+        A function that takes a string and returns a string.
 
-            Args:
-                b: A string.
+        Args:
+            b: A string.
 
-            Returns:
-                A string.
-            \"\"\"
+        Returns:
+            A string.
+        \"\"\"
             return f"str value: {b}"
 
         func1 = int_func_with_doc(a)
@@ -2472,6 +2473,175 @@ def constant_function_info(return_literal: str, data_type: str) -> FunctionInfo:
         routine_definition=f"return {return_literal}",
         external_language="PYTHON",
     )
+
+
+def render_letter(name: str) -> str:
+    """
+    Renders a letter.
+
+    Args:
+        name: the recipient
+    """
+    template = """Dear {name},
+Thanks.
+"""
+    return template.format(name=name)
+
+
+def render_rows(count: int) -> str:
+    """
+    Renders a row for every even index.
+
+    Args:
+        count: the number of indexes
+    """
+    rows = []
+    for index in range(count):
+        if index % 2 == 0:
+            rows.append(
+                f"""row {index}
+    indented
+"""
+            )
+    return "".join(rows)
+
+
+def render_literals(name: str) -> str:
+    """
+    Renders raw, bytes and backslash-continued string literals.
+
+    Args:
+        name: the prefix
+    """
+    raw = r"""\d+
+  raw"""
+    data = b"""bytes
+  line"""
+    joined = "back\
+  slash"
+    return f"{name}|{raw}|{data.decode()}|{joined}"
+
+
+# fmt: off
+def render_signed(name: str) -> str:
+    """
+    Renders a signed note whose comment and continuation lines sit left of the code.
+
+    Args:
+        name: the signer
+    """
+    note = """Signed,
+""" + \
+  name
+# the signature goes last
+    return note
+# fmt: on
+
+
+def make_nested_letter():
+    def render_nested_letter(name: str) -> str:
+        """
+        Renders a letter from a nested function.
+
+        Args:
+            name: the recipient
+        """
+        template = """Dear {name},
+Thanks.
+"""
+        return template.format(name=name)
+
+    return render_nested_letter
+
+
+def store_created_functions(client: UnitycatalogFunctionClient) -> None:
+    stored = {}
+
+    async def create_function(request, **_):
+        info = request.function_info
+        full_name = f"{info.catalog_name}.{info.schema_name}.{info.name}"
+        stored[full_name] = FunctionInfo.from_dict({**info.to_dict(), "full_name": full_name})
+        return stored[full_name]
+
+    async def get_function(name, **_):
+        if name not in stored:
+            raise NotFoundException(status=404, reason="Not Found")
+        return stored[name]
+
+    client.uc.functions_client.create_function.side_effect = create_function
+    client.uc.functions_client.get_function.side_effect = get_function
+
+
+MULTILINE_STRING_CASES = [
+    (render_letter, {"name": "Bo"}, "Dear Bo,\nThanks.\n"),
+    (render_rows, {"count": 3}, "row 0\n    indented\nrow 2\n    indented\n"),
+    (render_literals, {"name": "Bo"}, "Bo|\\d+\n  raw|bytes\n  line|back  slash"),
+    (render_signed, {"name": "Bo"}, "Signed,\nBo"),
+    (make_nested_letter(), {"name": "Bo"}, "Dear Bo,\nThanks.\n"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("func", "params", "expected"), MULTILINE_STRING_CASES)
+async def test_multiline_string_literal_survives_create_and_execute(
+    offline_uc_client, func, params, expected
+):
+    store_created_functions(offline_uc_client)
+    offline_uc_client.create_python_function(func=func, catalog=CATALOG, schema=SCHEMA)
+
+    result = offline_uc_client.execute_function(f"{CATALOG}.{SCHEMA}.{func.__name__}", params)
+
+    assert (result.error, result.value) == (None, expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("func", "params", "expected"), MULTILINE_STRING_CASES)
+async def test_multiline_string_literal_survives_get_function_as_callable(
+    offline_uc_client, func, params, expected
+):
+    store_created_functions(offline_uc_client)
+    offline_uc_client.create_python_function(func=func, catalog=CATALOG, schema=SCHEMA)
+
+    fetched = offline_uc_client.get_function_as_callable(f"{CATALOG}.{SCHEMA}.{func.__name__}")
+
+    assert fetched(**params) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("padding", "expected"),
+    [
+        ("  ", "Dear\n  \n    xBo"),
+        ("    ", "Dear\n    \n    xBo"),
+        ("        ", "Dear\n        \n    xBo"),
+    ],
+)
+async def test_whitespace_only_line_inside_string_survives_create_and_execute(
+    offline_uc_client, tmp_path, padding, expected
+):
+    module_path = tmp_path / "padded_note.py"
+    module_path.write_text(
+        "def render_padded(name: str) -> str:\n"
+        '    """\n'
+        "    Renders a note with a whitespace-only line.\n"
+        "\n"
+        "    Args:\n"
+        "        name: the recipient\n"
+        '    """\n'
+        f'    return """Dear\n{padding}\n    x""" + name\n'
+    )
+    spec = importlib.util.spec_from_file_location("padded_note", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    store_created_functions(offline_uc_client)
+    offline_uc_client.create_python_function(
+        func=module.render_padded, catalog=CATALOG, schema=SCHEMA
+    )
+
+    result = offline_uc_client.execute_function(f"{CATALOG}.{SCHEMA}.render_padded", {"name": "Bo"})
+    fetched = offline_uc_client.get_function_as_callable(f"{CATALOG}.{SCHEMA}.render_padded")
+
+    assert (result.error, result.value, fetched(name="Bo")) == (None, expected, expected)
 
 
 FALSY_RESULT_CASES = [
