@@ -1072,7 +1072,7 @@ private[spark] class UCProxy(
     // Delta tables keep all UC properties as storage properties, unchanged (Delta reads
     // UC_TABLE_ID_KEY there), and take their comment and table properties from the Delta log.
     // Other formats split them like Spark's session catalog: OPTIONS become reader and writer
-    // options, everything else is a table property.
+    // options, and the rest, minus Spark's bare duplicate of each option, are table properties.
     val (tableProperties, dataSourceOptions) = if (isDelta) {
       (Map.empty[String, String], t.getProperties.asScala.toMap)
     } else {
