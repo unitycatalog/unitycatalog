@@ -350,7 +350,7 @@ def test_unpicklable_result_reports_the_pickling_error():
 
 
 def write_partial_result_frame(sender):
-    # The length header promises 100 bytes and only 7 follow, so recv() hits EOF mid-frame.
+    # The length header promises 100 bytes and only 7 follow, so the reader hits EOF mid-frame.
     os.write(sender.fileno(), struct.pack("!i", 100) + b"partial")
 
 
