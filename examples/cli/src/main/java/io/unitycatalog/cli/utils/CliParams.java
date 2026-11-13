@@ -75,6 +75,24 @@ public enum CliParams {
   CREDENTIAL_NAME("credential_name", "The name of the storage credential", "credential_name"),
   AWS_IAM_ROLE_ARN(
       "aws_iam_role_arn", "The ARN of the AWS IAM role for credential", "aws_iam_role_arn"),
+  AZURE_DIRECTORY_ID(
+      "azure_directory_id",
+      "The directory (tenant) ID of the Azure service principal for credential",
+      "azure_directory_id"),
+  AZURE_APPLICATION_ID(
+      "azure_application_id",
+      "The application (client) ID of the Azure service principal for credential",
+      "azure_application_id"),
+  AZURE_CLIENT_SECRET(
+      "azure_client_secret",
+      "A client secret of the Azure service principal for credential. Instead of this flag, which"
+          + " leaves the secret in shell history, set UC_AZURE_CLIENT_SECRET or enter it when"
+          + " prompted",
+      "azure_client_secret"),
+  GCP_SERVICE_ACCOUNT_KEY_FILE(
+      "gcp_service_account_key_file",
+      "The path of the JSON key file of the GCP service account for credential",
+      "gcp_service_account_key_file"),
   STORAGE_ROOT(
       "storage_root",
       "The storage root URL for managed tables/volumes within the catalog or schema.",

@@ -24,11 +24,14 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.KeyPairGenerator;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.InstantSource;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -88,6 +91,25 @@ public class TestUtils {
   public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
 
   /** A UTC {@link Clock} whose current instant comes from {@code now}, e.g. a manual test clock. */
+  /**
+   * A new RSA private key, PEM-encoded as PKCS#8 like the {@code private_key} of a Google Cloud
+   * service account key file. Tests generate one so that no private key is checked in.
+   */
+  public static String generatePkcs8PrivateKeyPem() {
+    try {
+      KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+      generator.initialize(2048);
+      String body =
+          Base64.getMimeEncoder(64, new byte[] {'\n'})
+              .encodeToString(generator.generateKeyPair().getPrivate().getEncoded());
+      // Built from parts so that secret scanners do not take this source for a key.
+      String label = "PRIVATE" + " KEY";
+      return "-----BEGIN " + label + "-----\n" + body + "\n-----END " + label + "-----\n";
+    } catch (GeneralSecurityException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
   public static Clock clockOf(Supplier<Instant> now) {
     InstantSource source = now::get;
     return source.withZone(ZoneOffset.UTC);
