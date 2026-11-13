@@ -5,12 +5,21 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 TARBALL_JAR_DIR="$ROOT_DIR/jars"
 SERVER_CLASS_FILE="$ROOT_DIR/server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
+SAMPLE_DATABASE="$ROOT_DIR/etc/db/h2db.mv.db"
 
 # This function generates the unity catalog jars using sbt
 generate_jar() {
   local GENERATE_JAR_COMMAND="$ROOT_DIR/build/sbt -info clean package"
   echo "Running SBT to generate Server JAR: $GENERATE_JAR_COMMAND"
   $GENERATE_JAR_COMMAND || exit
+}
+
+# This function builds the quickstart's sample database (etc/db/h2db.mv.db) using sbt. A source
+# checkout does not hold it; the tarball and the Docker image ship one.
+build_sample_database() {
+  local BUILD_SAMPLE_DATABASE_COMMAND="$ROOT_DIR/build/sbt -info buildSampleDatabase"
+  echo "Running SBT to build the sample database $SAMPLE_DATABASE: $BUILD_SAMPLE_DATABASE_COMMAND"
+  $BUILD_SAMPLE_DATABASE_COMMAND || exit
 }
 
 # This function starts the unity catalog server. exec makes the JVM this process, so it receives
@@ -37,6 +46,19 @@ run_in_source_code() {
       echo "No classpath file found in the target directory '$SERVER_TARGET_DIR'."
       generate_jar
   fi
+
+  # The Docker image holds the server's sources but not build/sbt: it ships its sample database,
+  # and a volume mounted over etc/db stays empty.
+  # The schema commands and --version do not use it.
+  case " $* " in
+    *" --check-schema "*|*" --upgrade-schema "*|*" -v "*|*" --version "*) ;;
+    *)
+      if [ ! -f "$SAMPLE_DATABASE" ] && [ -x "$ROOT_DIR/build/sbt" ]; then
+          echo "Sample database '$SAMPLE_DATABASE' not found."
+          build_sample_database
+      fi
+      ;;
+  esac
 
   run_uc_server_java_command "$SERVER_CLASSPATH_FILE" "$@"
 }

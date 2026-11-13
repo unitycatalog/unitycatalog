@@ -4,32 +4,44 @@ Unity Catalog uses [Flyway](https://flywaydb.org/) to manage the schema of its d
 release ships the schema steps it needs, and each step is applied once and recorded in the
 `uc_schema_history` table.
 
-For now the schema steps are optional, and you run them by hand. The server still lets Hibernate
-update the schema when it starts (`hibernate.hbm2ddl.auto=update` in
-`etc/conf/hibernate.properties`). The steps build the same schema, so on a database that the steps
-set up, Hibernate changes nothing.
+Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
+`hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
 
-`bin/start-uc-server --upgrade-schema` brings the database to the schema version of its release,
-then exits without starting the server: with 0 when it succeeds, and with 1 and the reason when it
-refuses. It sets up an empty database (a new install), adopts a database from the baseline
-release, and applies the steps that are not applied yet.
+The server doesn't change the schema when it starts. It starts only on a database at the schema
+version of its release whose schema history passes Flyway's checks and whose schema is the one its
+release's steps build. Otherwise it refuses to start
+and tells you to run `bin/start-uc-server --upgrade-schema`. The one exception is an in-memory
+database (`server.env=test`, or a `jdbc:h2:mem:` URL), which only the server's own process can
+reach: the server sets up its schema at start.
+
+Two options of `bin/start-uc-server` check and change the schema. Neither starts the server. Both
+exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
+[Messages](#messages)).
+
+- `--check-schema` tells you whether the schema allows `--upgrade-schema`, and lists the steps it
+  would apply. It does not test the database user's privileges or the lock. It changes nothing and takes no lock, so on PostgreSQL and MySQL you can run it with
+  the new release while the old servers still run. H2 lets only one process open the database
+  file, so on H2 stop the server first.
+- `--upgrade-schema` brings the database to the schema version of its release. It sets up an empty
+  database (a new install), adopts a database from the baseline release, and applies the steps that
+  are not applied yet. If it fails, fix the cause it names
+  and run the same command again: it also retries a step that a crash left half done.
 
 ## The baseline release
 
 The first baseline release is 0.7.0: schema version 1 is its schema. A database without schema
 history is adopted as version 1 when its schema matches version 1 exactly, and as the latest version
-when it matches that exactly, such as a database that a server of this release set up when it
-started; `--upgrade-schema` lists every difference. A database from an earlier release must be
-upgraded to 0.7.0 first: start a 0.7.0 server on it once, stop it, then upgrade it to this release.
-Such a database still differs from version 1 in two checks, so repair it first (see
+when it matches that exactly; `--check-schema` lists every difference. A database from an earlier
+release must be upgraded to 0.7.0 first: start a 0.7.0 server on it once, stop it, then upgrade it
+to this release. Such a database still differs from version 1 in two checks, so repair it first (see
 [Repairing a database from before 0.7.0](#repairing-a-database-from-before-070)).
 
 ### Repairing a database from before 0.7.0
 
 A database that a release before 0.7.0 set up keeps that release's checks on the function type
 columns even after a 0.7.0 server ran on it: they allow types 0 to 20, while version 1 allows 0 to
-21. `--upgrade-schema` then lists these differences (shown here for H2; the other databases print
-the checks in their own syntax):
+21. `--check-schema` and `--upgrade-schema` then list these differences (shown here for H2; the
+other databases print the checks in their own syntax):
 
 ```console
 missing check uc_function_params "TYPE_NAME" BETWEEN 0 AND 21
@@ -83,11 +95,20 @@ one name. Put it in place of the `<...>` in the statements that follow, run them
 
 ## Upgrading to a new release
 
-Run the commands with the new release.
+Run the commands with the new release. On PostgreSQL and MySQL, you can also run step 3 before you
+stop the servers, to find out early whether the schema allows the upgrade.
 
 1. Stop all servers.
 2. Back up the database (see [Backing up the database](#backing-up-the-database)).
-3. Upgrade the schema:
+3. Check that the schema allows the upgrade:
+
+    ```sh
+    bin/start-uc-server --check-schema
+    ```
+
+    If it exits with 1, fix what it lists before you go on.
+
+4. Upgrade the schema:
 
     ```sh
     bin/start-uc-server --upgrade-schema
@@ -95,11 +116,14 @@ Run the commands with the new release.
 
     It applies the pending steps and logs what it applied.
 
-4. Start the new release:
+5. Start the new release:
 
     ```sh
     bin/start-uc-server
     ```
+
+With the Helm chart, an init container in each server pod runs `--upgrade-schema`; see
+[Deploy with Helm](helm.md#upgrade-and-uninstall).
 
 On PostgreSQL and MySQL, `--upgrade-schema` takes a lock, so when several run at the same time, one
 applies the steps and the others wait for it. It holds that lock on one database session for the
@@ -137,12 +161,21 @@ widened) while the schema history still records the step.
 
 ## Messages
 
-Messages that `--upgrade-schema` prints when it refuses, and what to do.
+Messages that the server prints when it refuses to start, and that `--check-schema` and
+`--upgrade-schema` print when they refuse, and what to do.
 
-`The database has no schema history, and its schema is neither the schema of version 1 nor that of version <m>. It differs from version 1 in:`
+`The database schema is at version <n>, and this release needs version <m>. Stop every server of the previous release, run bin/start-uc-server --upgrade-schema with this release, then start the server.`
+: The server refuses to start on a database that is not at its release's schema version: `none`
+  for a database without schema history, such as one from the baseline release. Follow
+  [Upgrading to a new release](#upgrading-to-a-new-release).
+
+  After a failed `--upgrade-schema`, fix the cause it printed and run it again. Do not edit
+  `uc_schema_history` by hand.
+
+`The database schema is neither the schema of version <n-1> nor that of version <n>, so schema step <n> can't run. It differs from version <v> in:`
 : Followed by one line per difference (`missing ...` or `unexpected ...`). Repair the differences or
-  restore the backup, then run `bin/start-uc-server --upgrade-schema` again. A database from before
-  0.7.0 shows the differences that
+  restore the backup, then run `bin/start-uc-server --upgrade-schema` again. `--check-schema` prints
+  the same message. A database from before 0.7.0 shows the differences that
   [Repairing a database from before 0.7.0](#repairing-a-database-from-before-070) repairs; the
   message then adds that it must be started once on a 0.7.0 server first. Other differences come
   from changes made outside Unity Catalog's steps: undo them.
@@ -150,21 +183,30 @@ Messages that `--upgrade-schema` prints when it refuses, and what to do.
 `The database schema differs from the schema of version <m>:`
 : Followed by the differences, as above. The schema history records this release's last version,
   but the schema is not the one this release's steps build: something changed it outside the steps.
-  Undo those changes or restore the backup, then run the command again. A `missing index` line can
+  Undo those changes or restore the backup, then run the command again. The server prints this
+  message too, and doesn't start until the schema matches. A `missing index` line can
   end with a note that another table's index already has that name: on PostgreSQL and H2, index
   names are unique within a schema, so the step skipped Unity Catalog's index but is recorded as
   applied. Renaming the other index and running the command again does not create it; follow the
   note: restore the backup (on a new install, drop the `uc_*` tables and `uc_schema_history`),
   rename the other index or give Unity Catalog its own schema, then run the command again.
 
+`The H2 database file that hibernate.connection.url names is not found.`
+: The server refuses to start on an H2 database file that does not exist, and doesn't create it.
+  Check `hibernate.connection.url` in `etc/conf/hibernate.properties`. For a new install, run
+  `bin/start-uc-server --upgrade-schema`, which sets up the database there, then start the server.
+
 `The database's schema history does not match this release's schema steps: <reasons>`
 : Flyway's check of `uc_schema_history` failed, for example because a recorded step differs from
   this release's step of the same version (its checksum), or this release lacks a recorded step.
   `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. Run the release
-  that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand. On H2 and
-  MySQL, a step that failed is reported here too: this release can't retry it, so restore the backup
-  and fix the cause, then run the command on the restored database. On PostgreSQL, a failed step
-  leaves no history row, so the command runs it again.
+  that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand.
+
+`<setting>=<value> is not supported: the schema steps manage the schema. Set it to none.`
+: A Hibernate setting asks Hibernate to create, update or validate the schema itself:
+  `hibernate.hbm2ddl.auto` in a server embedded in an application, or
+  `jakarta.persistence.schema-generation.database.action` (or its `javax.` form), also as a JVM
+  system property or in a `hibernate.properties` on the classpath. Set it to `none` or remove it.
 
 `Could not take the schema migration lock: <reason>`
 : The command could not get the lock that keeps two migration runs apart, so it changed nothing.

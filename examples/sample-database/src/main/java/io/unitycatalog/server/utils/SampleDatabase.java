@@ -5,6 +5,11 @@ import static io.unitycatalog.server.utils.ColumnUtils.getTypeJson;
 import static io.unitycatalog.server.utils.ColumnUtils.getTypeText;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.common.util.SafeCloseable;
+import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.CreateFunction;
@@ -28,6 +33,10 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
 import java.util.Properties;
@@ -37,25 +46,82 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 
 /**
- * This is a utility class to populate the test database with some sample data. All the quickstart
- * examples in the documentation are based on this sample data. This class is not part of the main
- * application code and is only used for testing purposes. To recreate the sample data, first delete
- * the existing database (at /etc/db) and then run main method of this class by running the command
- * `build/sbt server/populateTestDB`. Any data artifacts which might be referred to by storage
- * location of any table/volume should be created before creating the table/volume entry in the
- * database or can be a part of the same PR.
+ * Builds the sample H2 database that the quickstart examples in the documentation use: the {@code
+ * unity} catalog with its {@code default} schema, tables, volumes and functions. The tables and
+ * volumes point at the files under {@code etc/data}; add any file that a new table or volume points
+ * at in the same change. It is built, not checked in: {@code build/sbt buildSampleDatabase} builds
+ * {@code etc/db/h2db.mv.db}, {@code bin/start-uc-server} does so in a source checkout where the
+ * file is missing, and the tarball and the Docker image ship one built by their build.
  */
-public class PopulateTestDatabase {
+public class SampleDatabase {
 
-  public static void main(String[] args) throws JsonProcessingException {
-    System.out.println("Populating test database...");
+  private static final String H2_FILE_SUFFIX = ".mv.db";
 
+  /** Builds the sample database at the path given as the only argument. */
+  public static void main(String[] args) {
+    build(Path.of(args[0]));
+  }
+
+  /**
+   * Builds the sample database in the H2 file {@code h2File} (named {@code <name>.mv.db}): sets up
+   * this build's schema with the schema steps, as {@code bin/start-uc-server --upgrade-schema}
+   * does, then writes the sample data through the repositories. The file appears only when the
+   * build is done, and the build fails if it already exists.
+   */
+  public static void build(Path h2File) {
+    System.out.println("Building the sample database " + h2File + "...");
+    // Built beside the target under a name of its own, so builds at the same time don't share a
+    // file, and moved there only when done: a failed build leaves no file for bin/start-uc-server
+    // to take for the sample database.
+    Path building = null;
+    try {
+      Path folder = Files.createDirectories(h2File.toAbsolutePath().getParent());
+      building = Files.createTempFile(folder, "building-", H2_FILE_SUFFIX);
+      buildInto(building);
+      Files.move(building, h2File);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    } finally {
+      try {
+        if (building != null) {
+          Files.deleteIfExists(building);
+        }
+      } catch (IOException e) {
+        // The build's own failure matters more.
+      }
+    }
+  }
+
+  private static void buildInto(Path h2File) {
+    String database = h2File.toAbsolutePath().toString();
+    Properties hibernateProperties = new Properties();
+    hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    // The URL options of etc/conf/hibernate.properties, as H2 stores DB_CLOSE_DELAY in the file.
+    hibernateProperties.setProperty(
+        "hibernate.connection.url",
+        "jdbc:h2:file:"
+            + database.substring(0, database.length() - H2_FILE_SUFFIX.length())
+            + ";DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=0");
+    hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "none");
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "dev");
     ServerProperties serverProperties = new ServerProperties(properties);
-    HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
-    Repositories repositories =
-        new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
+    // The repositories read the caller from the request's context: none here, so no owner.
+    try (HibernateConfigurator hibernateConfigurator =
+            new HibernateConfigurator(hibernateProperties);
+        SafeCloseable request =
+            ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/")).push()) {
+      new SchemaMigrator(hibernateConfigurator.getDataSource()).upgradeSchema();
+      writeSampleData(
+          hibernateConfigurator.getSessionFactory(),
+          new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties));
+    } catch (JsonProcessingException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private static void writeSampleData(SessionFactory factory, Repositories repositories)
+      throws JsonProcessingException {
     CatalogRepository catalogRepository = repositories.getCatalogRepository();
     SchemaRepository schemaRepository = repositories.getSchemaRepository();
 
@@ -72,11 +138,10 @@ public class PopulateTestDatabase {
     SchemaInfo schemaInfo = schemaRepository.getSchema(catalogName + "." + schemaName);
     String schemaId = schemaInfo.getSchemaId();
 
-    SessionFactory factory = hibernateConfigurator.getSessionFactory();
-
     // Create managed table
     ColumnInfoDAO idColumn =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("id")
             .typeName(ColumnTypeName.INT.getValue())
             .comment("ID primary key")
@@ -86,6 +151,7 @@ public class PopulateTestDatabase {
 
     ColumnInfoDAO nameColumn =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("name")
             .typeName(ColumnTypeName.STRING.getValue())
             .comment("Name of the entity")
@@ -95,6 +161,7 @@ public class PopulateTestDatabase {
 
     ColumnInfoDAO marksColumn =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("marks")
             .typeName(ColumnTypeName.INT.getValue())
             .comment("Marks of the entity")
@@ -108,8 +175,6 @@ public class PopulateTestDatabase {
     String tableName = "marksheet";
     String storageRoot = "etc/data/managed/";
     String tablePath = storageRoot + catalogName + "/" + schemaName + "/tables/" + tableName;
-
-    System.setProperty("storageRoot", storageRoot);
 
     TableInfoDAO tableInfoDAO =
         TableInfoDAO.builder()
@@ -156,6 +221,7 @@ public class PopulateTestDatabase {
     UUID uniformTableId = UUID.randomUUID();
     ColumnInfoDAO idColumnUniform =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("id")
             .typeName(ColumnTypeName.INT.getValue())
             .comment("ID primary key")
@@ -165,6 +231,7 @@ public class PopulateTestDatabase {
 
     ColumnInfoDAO nameColumnUniform =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("name")
             .typeName(ColumnTypeName.STRING.getValue())
             .comment("Name of the entity")
@@ -174,6 +241,7 @@ public class PopulateTestDatabase {
 
     ColumnInfoDAO marksColumnUniform =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("marks")
             .typeName(ColumnTypeName.INT.getValue())
             .comment("Marks of the entity")
@@ -226,6 +294,7 @@ public class PopulateTestDatabase {
     // create external table
     ColumnInfoDAO idColumn1 =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("as_int")
             .typeName(ColumnTypeName.INT.getValue())
             .comment("Int column")
@@ -234,6 +303,7 @@ public class PopulateTestDatabase {
     addTypeTextAndJsonText(idColumn1);
     ColumnInfoDAO doubleColumn2 =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("as_double")
             .typeName(ColumnTypeName.DOUBLE.getValue())
             .comment("Double column")
@@ -247,8 +317,6 @@ public class PopulateTestDatabase {
         externalStorageRoot + catalogName + "/" + schemaName + "/tables/" + externalTableName;
 
     UUID externalTableId = UUID.randomUUID();
-
-    System.setProperty("storageRoot", externalStorageRoot);
 
     TableInfoDAO externalTableInfoDAO =
         TableInfoDAO.builder()
@@ -305,6 +373,7 @@ public class PopulateTestDatabase {
     // Add columns
     ColumnInfoDAO firstName =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("first_name")
             .typeName(ColumnTypeName.STRING.getValue())
             .comment("string column")
@@ -314,6 +383,7 @@ public class PopulateTestDatabase {
 
     ColumnInfoDAO age =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("age")
             .typeName(ColumnTypeName.LONG.getValue())
             .comment("long column")
@@ -323,6 +393,7 @@ public class PopulateTestDatabase {
 
     ColumnInfoDAO country =
         ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
             .name("country")
             .typeName(ColumnTypeName.STRING.getValue())
             .comment("partition column")
@@ -395,7 +466,7 @@ public class PopulateTestDatabase {
     insertFunctionSampleData(catalogName, schemaName, repositories);
   }
 
-  public static void insertFunctionSampleData(
+  private static void insertFunctionSampleData(
       String catalog, String schema, Repositories repositories) {
 
     // Create function objects

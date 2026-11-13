@@ -1,12 +1,15 @@
 package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Path;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class HibernateConfiguratorTest {
 
@@ -67,6 +70,70 @@ class HibernateConfiguratorTest {
   }
 
   @Test
+  void neverLetsHibernateChangeTheSchema() {
+    Properties properties = h2Properties();
+    properties.setProperty("hibernate.hbm2ddl.auto", "update");
+
+    assertThat(HibernateConfigurator.withSchemaUpdatesOff(properties))
+        .containsEntry("hibernate.hbm2ddl.auto", "none");
+    assertThat(
+            HibernateConfigurator.setupHibernateProperties(new ServerProperties(new Properties())))
+        .containsEntry("hibernate.hbm2ddl.auto", "none");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "hibernate.hbm2ddl.auto",
+        "hibernate.hbm2ddl.auto.orm",
+        "jakarta.persistence.schema-generation.database.action",
+        "javax.persistence.schema-generation.database.action"
+      })
+  void refusesASchemaActionOtherThanNone(String setting) {
+    Properties properties = h2Properties();
+    properties.setProperty(setting, "create");
+
+    assertThatThrownBy(() -> new HibernateConfigurator(properties))
+        .hasMessageContaining(setting + "=create is not supported");
+  }
+
+  @Test
+  void refusesHibernatesOwnDefaultSchema() {
+    Properties properties = h2Properties();
+    properties.setProperty("hibernate.default_schema", "uc");
+
+    assertThatThrownBy(() -> new HibernateConfigurator(properties))
+        .hasMessageContaining("set the schema in the JDBC URL instead");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "jdbc:h2:mem:",
+        "jdbc:h2:mem:;DB_CLOSE_DELAY=-1",
+        "JDBC:H2:MEM:;MODE=MySQL",
+        "jdbc:h2:.",
+        "jdbc:h2:.;DB_CLOSE_DELAY=-1",
+        "jdbc:p6spy:h2:mem:",
+        "dataSource:jdbc:h2:mem:"
+      })
+  void refusesAnUnnamedInMemoryDatabase(String url) {
+    Properties properties = h2Properties();
+    if (url.startsWith("dataSource:")) {
+      // A pool set up by data source class: the URL is a data source property.
+      properties.remove("hibernate.connection.url");
+      properties.setProperty(
+          "hibernate.hikari.dataSource.URL", url.substring("dataSource:".length()));
+    } else {
+      properties.setProperty("hibernate.connection.url", url);
+    }
+
+    assertThatThrownBy(() -> new HibernateConfigurator(properties))
+        .hasMessageContaining("has no database name")
+        .hasMessageContaining("jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1");
+  }
+
+  @Test
   void prefersThePasswordFromTheEnvironmentToTheFile() {
     Properties fileProperties = new Properties();
     fileProperties.setProperty("hibernate.connection.password", "file-password");
@@ -99,7 +166,7 @@ class HibernateConfiguratorTest {
     properties.setProperty(
         "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
     properties.setProperty("hibernate.connection.user", "sa");
-    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
     return properties;
   }
 }

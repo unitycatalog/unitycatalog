@@ -24,11 +24,11 @@ OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
 OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 ```
 
-From the repository root, build the server artifacts. The startup script can trigger this automatically on first run,
-but building explicitly is recommended:
+From the repository root, build the server artifacts and the sample database (`etc/db/h2db.mv.db`) that the examples
+below use. The startup script builds whichever is missing on first run, but building explicitly is recommended:
 
 ```sh
-build/sbt package
+build/sbt package buildSampleDatabase
 ```
 
 From the repository root, run `bin/start-uc-server` to instantiate the server. Here is what you

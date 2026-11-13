@@ -95,7 +95,6 @@ hibernate.connection.user={{ .Values.server.db.mysqlConfig.username }}
 {{ fail "Unsupported database type. Supported types are: file, postgresql, mysql." }}
 {{- end }}
 
-hibernate.hbm2ddl.auto=update
 hibernate.show_sql=false
 hibernate.archive.autodetection=class
 hibernate.use_sql_comments=true
@@ -151,11 +150,9 @@ rootLogger.appenderRef.console.ref=Console
 {{- end }}
 
 {{/*
-Secrets for the server container (see "Secrets" in docs/server/configuration.md): the database
-password and every part of each storage credential come from here, not from the generated properties
-files, which are written only at pod start.
+The database password, for the server and upgrade-schema containers.
 */}}
-{{- define "unitycatalog.server.secretEnv" -}}
+{{- define "unitycatalog.server.dbPasswordEnv" -}}
 {{- $db := dict "postgresql" .Values.server.db.postgresqlConfig "mysql" .Values.server.db.mysqlConfig }}
 {{- with get $db .Values.server.db.type }}
 {{- if .passwordSecretName }}
@@ -166,6 +163,15 @@ files, which are written only at pod start.
       key: {{ required "Password secret key is required" .passwordSecretKey | quote }}
 {{- end }}
 {{- end }}
+{{- end }}
+
+{{/*
+Secrets for the server container (see "Secrets" in docs/server/configuration.md): the database
+password and every part of each storage credential come from here, not from the generated properties
+files, which are written only at pod start.
+*/}}
+{{- define "unitycatalog.server.secretEnv" -}}
+{{- include "unitycatalog.server.dbPasswordEnv" . }}
 {{- range $index, $config := .Values.storage.credentials.s3 }}
 - name: UC_S3_ACCESSKEY_{{ $index }}
   valueFrom:
