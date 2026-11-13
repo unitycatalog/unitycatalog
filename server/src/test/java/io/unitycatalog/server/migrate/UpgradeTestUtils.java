@@ -16,7 +16,9 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
@@ -124,6 +126,34 @@ final class UpgradeTestUtils {
     // The server's own configuration, so the recorder sees the steps the server would run.
     new SchemaMigrator(watched).flyway().callbacks(recorder).load().migrate();
     return sent;
+  }
+
+  /**
+   * {@code db}'s data source, but the statement {@code statement} fails the first time it is sent
+   * or, with {@code historyRecord}, it runs and the schema history record Flyway writes next fails.
+   */
+  static DataSource failingAt(TestDatabase db, String statement, boolean historyRecord) {
+    AtomicBoolean sent = new AtomicBoolean();
+    AtomicBoolean failed = new AtomicBoolean();
+    return watched(
+        db.dataSource(),
+        (sql, prepared) -> {
+          if (failed.get()) {
+            return sql;
+          }
+          boolean fails =
+              historyRecord
+                  ? sent.get()
+                      && sql.toLowerCase(Locale.ROOT)
+                          .matches("(?s)\\s*insert into .*uc_schema_history.*")
+                  : sql.equals(statement);
+          sent.compareAndSet(false, sql.equals(statement));
+          if (fails) {
+            failed.set(true);
+            throw new SQLException("Test: the run stops here");
+          }
+          return sql;
+        });
   }
 
   /** What {@link #watched} calls with each SQL statement before it is sent. */
