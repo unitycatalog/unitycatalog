@@ -142,7 +142,8 @@ The endpoints are unauthenticated. See [Observability](observability.md) for res
 
 ## Upgrade and uninstall
 
-To upgrade, read the release notes, back up the database (see
+To upgrade, read the release notes, scale the server to 0 replicas (`kubectl scale deployment` with the chart's
+deployment name and `--replicas=0`) and back up the database (see
 [Backing up the database](upgrades.md#backing-up-the-database)), then run `helm upgrade` with the new `--version` and
 the same `--values` file. If you pass any `--values` or `--set`, Helm doesn't keep the values from your earlier
 install, so pass the full file each time.
