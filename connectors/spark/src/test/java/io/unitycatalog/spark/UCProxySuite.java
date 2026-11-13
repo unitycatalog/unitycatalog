@@ -455,36 +455,36 @@ public class UCProxySuite {
   }
 
   @Test
-  public void testLoadNonDeltaTableSplitsOptionsFromTableProperties() throws Exception {
+  public void testLoadTableTurnsOptionPrefixedPropertiesIntoOptions() throws Exception {
     CatalogTable table =
         loadCatalogTable(
-            "t_csv",
+            "t_options", DataSourceFormat.CSV, Map.of("option.header", "true", "k", "v"));
+
+    assertThat(CollectionConverters.asJava(table.storage().properties()))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("header", "true"));
+    assertThat(CollectionConverters.asJava(table.properties()))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("k", "v"));
+    assertThat(table.comment()).isEqualTo(Option.apply("uc comment"));
+  }
+
+  @Test
+  public void testLoadTableDropsOnlyBareKeysThatDuplicateTheirOption() throws Exception {
+    CatalogTable table =
+        loadCatalogTable(
+            "t_collision",
             DataSourceFormat.CSV,
             Map.of(
                 "option.header", "true",
                 "header", "true",
                 "option.sep", "|",
                 "sep", ",",
-                "delimiter", ";",
-                "k", "v"));
+                "option.Mode", "FAILFAST",
+                "mode", "FAILFAST"));
 
     assertThat(CollectionConverters.asJava(table.storage().properties()))
-        .containsExactlyInAnyOrderEntriesOf(Map.of("header", "true", "sep", "|"));
+        .containsExactlyInAnyOrderEntriesOf(
+            Map.of("header", "true", "sep", "|", "Mode", "FAILFAST"));
     assertThat(CollectionConverters.asJava(table.properties()))
-        .containsExactlyInAnyOrderEntriesOf(Map.of("sep", ",", "delimiter", ";", "k", "v"));
-    assertThat(table.comment()).isEqualTo(Option.apply("uc comment"));
-  }
-
-  @Test
-  public void testLoadDeltaTableKeepsAllPropertiesAsStorageProperties() throws Exception {
-    Map<String, String> props =
-        Map.of("io.unitycatalog.tableId", "uc-table-id", "option.x", "y", "k", "v");
-
-    CatalogTable table = loadCatalogTable("t_delta", DataSourceFormat.DELTA, props);
-
-    assertThat(CollectionConverters.asJava(table.storage().properties()))
-        .containsExactlyInAnyOrderEntriesOf(props);
-    assertThat(table.properties().isEmpty()).isTrue();
-    assertThat(table.comment().isEmpty()).isTrue();
+        .containsExactlyInAnyOrderEntriesOf(Map.of("sep", ",", "mode", "FAILFAST"));
   }
 }

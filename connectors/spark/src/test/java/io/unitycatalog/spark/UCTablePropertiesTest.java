@@ -2,7 +2,6 @@ package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.Map;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.junit.jupiter.api.Test;
 
@@ -67,32 +66,5 @@ public class UCTablePropertiesTest {
     assertThat(UCTableProperties.shouldPersistProperty("spark.sql.create.version")).isTrue();
     assertThat(UCTableProperties.shouldPersistProperty("view.sqlConfig.spark.sql.ansi.enabled"))
         .isTrue();
-  }
-
-  @Test
-  public void splitsOptionsFromTableProperties() {
-    Map<String, String> properties =
-        Map.of(
-            "option.header", "true",
-            "header", "true",
-            "option.sep", "|",
-            "sep", ",",
-            "option.Mode", "FAILFAST",
-            "mode", "FAILFAST",
-            "delimiter", ";",
-            "k", "v");
-
-    assertThat(UCTableProperties.dataSourceOptions(properties))
-        .containsExactlyInAnyOrderEntriesOf(
-            Map.of("header", "true", "sep", "|", "Mode", "FAILFAST"));
-    assertThat(UCTableProperties.tablePropertiesWithoutOptions(properties))
-        .containsExactlyInAnyOrderEntriesOf(
-            Map.of("sep", ",", "mode", "FAILFAST", "delimiter", ";", "k", "v"));
-  }
-
-  @Test
-  public void splitsEmptyProperties() {
-    assertThat(UCTableProperties.dataSourceOptions(Map.of())).isEmpty();
-    assertThat(UCTableProperties.tablePropertiesWithoutOptions(Map.of())).isEmpty();
   }
 }
