@@ -12,11 +12,9 @@ import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,8 +24,6 @@ import org.hibernate.Session;
 import org.hibernate.query.Query;
 
 public class RepositoryUtils {
-
-  private static final Map<String, Class<?>> PROPERTY_TYPE_MAP = new HashMap<>();
 
   /**
    * Acquires the table row lock shared by the Delta and Iceberg commit paths and by table deletion,
@@ -110,10 +106,6 @@ public class RepositoryUtils {
         || failure instanceof org.hibernate.exception.LockAcquisitionException;
   }
 
-  static {
-    PROPERTY_TYPE_MAP.put(Constants.FUNCTION, String.class);
-  }
-
   public static <T> T attachProperties(
       T entityInfo, String uuid, String entityType, Session session) {
     try {
@@ -122,18 +114,8 @@ public class RepositoryUtils {
       if (propertyDAOList.isEmpty()) {
         return entityInfo;
       }
-      Class<?> entityClass = PROPERTY_TYPE_MAP.getOrDefault(entityType, Map.class);
-      Method setPropertiesMethod = entityInfo.getClass().getMethod("setProperties", entityClass);
-      Map<String, String> propertyMap = PropertyDAO.toMap(propertyDAOList);
-      Object propertiesArgument =
-          switch (entityClass.getSimpleName()) {
-            case "Map" -> propertyMap;
-            case "String" -> propertyMap.toString();
-            default ->
-                throw new IllegalArgumentException(
-                    "Unsupported parameter type: " + entityClass.getSimpleName());
-          };
-      setPropertiesMethod.invoke(entityInfo, propertiesArgument);
+      Method setPropertiesMethod = entityInfo.getClass().getMethod("setProperties", Map.class);
+      setPropertiesMethod.invoke(entityInfo, PropertyDAO.toMap(propertyDAOList));
       return entityInfo;
     } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
       throw new RuntimeException(e);
