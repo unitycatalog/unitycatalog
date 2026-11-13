@@ -18,6 +18,8 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
 !!! note "Results of list commands"
 
     A `list` command returns all the results, requesting as many pages from the server as it takes.
+    Without `--max_results`, a `list` command used to return at most 100 results and now returns all of them.
+    This applies to every `list` command except `user list`, which uses `--start_index` and `--count`.
     `--max_results` limits the total number of results across those pages, and `0` means no limit, the same as leaving it out.
     `--page_token` starts the listing at the page that a `next_page_token` from the REST API points to.
 
