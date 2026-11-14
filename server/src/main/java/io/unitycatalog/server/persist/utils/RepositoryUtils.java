@@ -9,6 +9,7 @@ import io.unitycatalog.server.persist.DependencyRepository;
 import io.unitycatalog.server.persist.PropertyRepository;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
+import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -95,6 +96,62 @@ public class RepositoryUtils {
       throw new BaseException(
           lockContentionError,
           "Concurrent modification in progress on table " + tableName + "; retry the request.");
+    }
+  }
+
+  /**
+   * Reads the entity with a name, with a write lock on its row until the transaction ends. The row
+   * is locked by its primary key: names have no index on MySQL, where a locking read by name locks
+   * every row and gap it scans, so it could deadlock with a concurrent insert. The id is read
+   * without loading the entity, so the locked read is the entity's first load in the session and
+   * sees its committed state. Call it in a READ COMMITTED transaction: under MySQL's default
+   * REPEATABLE READ, the id read fixes the transaction's snapshot, so reads after the lock would
+   * not see rows committed while it waited.
+   *
+   * @param session the session of the transaction
+   * @param entityClass the entity's class
+   * @param name the entity's name
+   * @return the entity, or null if none has the name
+   * @throws BaseException with UNAVAILABLE, to retry, if the lock is not acquired
+   */
+  public static <T extends IdentifiableDAO> T getForUpdateByName(
+      Session session, Class<T> entityClass, String name) {
+    UUID id =
+        session
+            .createSelectionQuery(
+                "SELECT id FROM " + entityClass.getSimpleName() + " WHERE name = :name", UUID.class)
+            .setParameter("name", name)
+            .setMaxResults(1)
+            .getSingleResultOrNull();
+    if (id == null) {
+      return null;
+    }
+    T locked = getForUpdate(session, entityClass, id);
+    // Renamed or deleted between the two reads.
+    return locked != null && name.equals(locked.getName()) ? locked : null;
+  }
+
+  /**
+   * Reads the entity with an id, with a write lock on its row until the transaction ends. If the
+   * session already holds the entity, Hibernate locks the row without reading it again, so callers
+   * lock on the first read of the row in the transaction.
+   *
+   * @param session the session of the transaction
+   * @param entityClass the entity's class
+   * @param id the entity's id
+   * @return the entity, or null if none has the id
+   * @throws BaseException with UNAVAILABLE, to retry, if the lock is not acquired
+   */
+  public static <T extends IdentifiableDAO> T getForUpdate(
+      Session session, Class<T> entityClass, UUID id) {
+    try {
+      return session.get(entityClass, id, LockMode.PESSIMISTIC_WRITE);
+    } catch (RuntimeException e) {
+      if (!isLockFailure(e) && !isLockFailure(e.getCause())) {
+        throw e;
+      }
+      throw new BaseException(
+          ErrorCode.UNAVAILABLE, "Concurrent modification in progress; retry the request.", e);
     }
   }
 

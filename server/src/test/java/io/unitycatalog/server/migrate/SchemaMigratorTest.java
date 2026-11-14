@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.nio.file.Path;
@@ -16,13 +18,17 @@ import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -32,7 +38,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
+import javax.sql.rowset.serial.SerialClob;
 import org.assertj.core.api.AbstractThrowableAssert;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -94,6 +102,115 @@ public class SchemaMigratorTest {
 
     try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(byClass)) {
       assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+    }
+  }
+
+  @Test
+  void upgradeKeepsStoredCredentialsAndFitsLongerOnes() throws SQLException {
+    // A credential stored before step 4 (a large object on PostgreSQL, tinytext on MySQL) reads
+    // back as the same text after it, and one longer than tinytext's 255 bytes fits.
+    DatabaseKind kind = DatabaseKind.of(db.dataSource());
+    UpgradeTestUtils.migrateTo(db, "3");
+    // Two-, three- and four-byte characters in UTF-8.
+    String existingRoleArn = "arn:aws:iam::123456789012:role/réle-日-𝄞";
+    String existing = "{\"role_arn\":\"" + existingRoleArn + "\"}";
+    if (kind == DatabaseKind.POSTGRESQL) {
+      insertLargeObjectCredential("existing", existing);
+    } else {
+      insertCredential("existing", "'" + existing + "'", kind);
+    }
+
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+
+    String longerRoleArn = "arn:aws:iam::123456789012:role/" + "r".repeat(1000) + "日𝄞";
+    String longer = "{\"role_arn\":\"" + longerRoleArn + "\"}";
+    insertCredential("longer", "'" + longer + "'", kind);
+    assertThat(storedCredential("existing")).isEqualTo(existing);
+    assertThat(storedCredential("longer")).isEqualTo(longer);
+    // And through CredentialDAO's mapping, as the server reads them.
+    try (Session session = db.sessionFactory().openSession()) {
+      for (String name : List.of("existing", "longer")) {
+        CredentialDAO credential =
+            session
+                .createQuery("FROM CredentialDAO WHERE name = :name", CredentialDAO.class)
+                .setParameter("name", name)
+                .getSingleResult();
+        assertThat(credential.getAwsIamRoleResponse().getRoleArn())
+            .isEqualTo(name.equals("existing") ? existingRoleArn : longerRoleArn);
+      }
+    }
+  }
+
+  @Test
+  void upgradeWithAMissingLargeObjectChangesNothing() throws SQLException {
+    // The PostgreSQL step reads every credential's large object, so one that is missing fails the
+    // step, which leaves the column and its rows as they were (docs/server/upgrades.md).
+    assumeTrue(
+        DatabaseKind.of(db.dataSource()) == DatabaseKind.POSTGRESQL,
+        "only PostgreSQL stores credentials as large objects");
+    UpgradeTestUtils.migrateTo(db, "3");
+    insertCredential("missing", "999999999", DatabaseKind.POSTGRESQL);
+
+    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
+        .hasMessageContaining("V4__credentials_credential_as_text")
+        .rootCause()
+        .hasMessageContaining("large object 999999999 does not exist");
+    assertThat(
+            queryString(
+                "SELECT data_type FROM information_schema.columns"
+                    + " WHERE table_name = 'uc_credentials' AND column_name = 'credential'"))
+        .isEqualTo("oid");
+    assertThat(storedCredential("missing")).isEqualTo("999999999");
+  }
+
+  /**
+   * Stores a credential on PostgreSQL as the release before step 4 did, through pgjdbc's large
+   * object path for a {@code @Lob String}, rather than encoding the text in SQL.
+   */
+  private void insertLargeObjectCredential(String name, String credential) throws SQLException {
+    try (Connection connection = db.dataSource().getConnection()) {
+      // A large object is written within a transaction.
+      connection.setAutoCommit(false);
+      try (PreparedStatement statement =
+          connection.prepareStatement(
+              "INSERT INTO uc_credentials (id, name, purpose, created_at, credential,"
+                  + " credential_type) VALUES (?, ?, 0, CURRENT_TIMESTAMP, ?, 'AWS_IAM_ROLE')")) {
+        statement.setObject(1, UUID.randomUUID());
+        statement.setString(2, name);
+        statement.setClob(3, new SerialClob(credential.toCharArray()));
+        statement.executeUpdate();
+      }
+      connection.commit();
+    }
+  }
+
+  private void insertCredential(String name, String credentialSql, DatabaseKind kind) {
+    String id =
+        kind == DatabaseKind.MYSQL
+            ? "UNHEX(REPLACE(UUID(), '-', ''))"
+            : "'" + UUID.randomUUID() + "'";
+    UpgradeTestUtils.execute(
+        db,
+        "INSERT INTO uc_credentials (id, name, purpose, created_at, credential, credential_type)"
+            + " VALUES ("
+            + id
+            + ", '"
+            + name
+            + "', 0, CURRENT_TIMESTAMP, "
+            + credentialSql
+            + ", 'AWS_IAM_ROLE')");
+  }
+
+  private String storedCredential(String name) throws SQLException {
+    return queryString("SELECT credential FROM uc_credentials WHERE name = '" + name + "'");
+  }
+
+  private String queryString(String sql) throws SQLException {
+    try (Connection connection = db.dataSource().getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
+      assertThat(rs.next()).isTrue();
+      return rs.getString(1);
     }
   }
 

@@ -146,12 +146,26 @@ jobs:
           for ref in UC_S3_ACCESSKEY_0:ci-s3-credentials:accessKey UC_S3_SECRETKEY_0:ci-s3-credentials:secretKey \
             UC_ADLS_TENANTID_0:ci-adls-credentials:tenantId UC_ADLS_CLIENTID_0:ci-adls-credentials:clientId \
             UC_ADLS_CLIENTSECRET_0:ci-adls-credentials:clientSecret \
-            UC_HIBERNATE_CONNECTION_PASSWORD:ci-db-password:password; do
+            UC_HIBERNATE_CONNECTION_PASSWORD:ci-db-password:password \
+            UC_SERVER_CREDENTIAL_ENCRYPTION_KEY:ci-credential-encryption:encryptionKey; do
             IFS=: read -r name secret key <<<"$ref"
             grep -A4 -- "- name: $name\$" <<<"$out" | tr -d '\n' | grep -qE "name: \"$secret\" +key: \"?$key\"?( |\$)"
           done
           # None in the file, which the init container writes only at pod start.
-          ! grep -qE 'server\.client-secret|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)|hibernate\.connection\.password' <<<"$out" || exit 1
+          ! grep -qE 'server\.client-secret|server\.credential-encryption-key|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)|hibernate\.connection\.password' <<<"$out" || exit 1
+          # The credential encryption key is passed only when its Secret is named, with any database.
+          default_render="$(helm template uc helm)"
+          ! grep -qF 'UC_SERVER_CREDENTIAL_ENCRYPTION_KEY' <<<"$default_render" || exit 1
+          # With any database, in the one env list of the server container, and never in the file.
+          for values in "" "-f helm/ci/postgresql-values.yaml" "-f helm/ci/mysql-values.yaml"; do
+            key_only="$(helm template uc helm $values --set storage.credentials.encryptionKeySecretName=k)"
+            grep -A4 -- "- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY\$" <<<"$key_only" | tr -d '\n' \
+              | grep -qE 'name: "k" +key: "?encryptionKey"?( |$)'
+            ! grep -qE 'server\.credential-encryption-key' <<<"$key_only" || exit 1
+          done
+          # On MySQL the key comes last in secretEnv, right before JDK_JAVA_OPTIONS in the same list.
+          grep -A8 -- "- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY\$" <<<"$key_only" \
+            | grep -qF -- '- name: JDK_JAVA_OPTIONS'
           # The rendered chart no longer has DB_PASSWORD.
           ! grep -qF 'DB_PASSWORD' <<<"$out" || exit 1
           # The deprecated init container variables are there only for a custom template.

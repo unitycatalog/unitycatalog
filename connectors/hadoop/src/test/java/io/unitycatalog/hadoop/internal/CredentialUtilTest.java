@@ -70,6 +70,55 @@ class CredentialUtilTest {
             new AwsCredential(
                 "access-key", "secret-key", "session-token", EXPIRATION, "s3://bucket/table")),
         Arguments.of(
+            "S3-compatible",
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("access-key")
+                        .secretAccessKey("secret-key")
+                        .sessionToken("session-token")
+                        .s3Endpoint("http://storage.example.com:9000")
+                        .s3Region("eu-test-1"))
+                .expirationTime(EXPIRATION)
+                .url("s3://bucket/table"),
+            new AwsCredential(
+                "access-key",
+                "secret-key",
+                "session-token",
+                EXPIRATION,
+                "s3://bucket/table",
+                "http://storage.example.com:9000",
+                "eu-test-1")),
+        Arguments.of(
+            "S3-compatible key pair",
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("access-key")
+                        .secretAccessKey("secret-key")
+                        .s3Endpoint("http://storage.example.com:9000"))
+                .url("s3://bucket/table"),
+            new AwsCredential(
+                "access-key",
+                "secret-key",
+                null,
+                Long.MAX_VALUE,
+                "s3://bucket/table",
+                "http://storage.example.com:9000")),
+        Arguments.of(
+            "S3-compatible endpoint only",
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials().s3Endpoint("http://storage.example.com:9000"))
+                .url("s3://bucket/table"),
+            new AwsCredential(
+                null,
+                null,
+                null,
+                Long.MAX_VALUE,
+                "s3://bucket/table",
+                "http://storage.example.com:9000")),
+        Arguments.of(
             "Azure",
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token"))
@@ -209,6 +258,32 @@ class CredentialUtilTest {
     assertThat(gc.secretAccessKey()).isEqualTo("sk");
     assertThat(gc.sessionToken()).isEqualTo("st");
     assertThat(gc.prefix()).isEqualTo("s3://bucket");
+  }
+
+  @Test
+  void toGenericCredentialCarriesS3EndpointAndRegionForS3CompatibleStorage() {
+    String endpoint = "http://storage.example.com:9000";
+    // A key vend, and an endpoint-only vend for a credential that does not vend keys.
+    for (DeltaStorageCredentialConfig config :
+        List.of(
+            new DeltaStorageCredentialConfig()
+                .s3AccessKeyId("ak")
+                .s3SecretAccessKey("sk")
+                .s3SessionToken("st")
+                .s3Endpoint(endpoint)
+                .clientRegion("eu-test-1"),
+            new DeltaStorageCredentialConfig().s3Endpoint(endpoint))) {
+      AwsCredential gc =
+          (AwsCredential)
+              CredentialUtil.toGenericCredential(
+                  new DeltaStorageCredential()
+                      .prefix("s3://bucket/t")
+                      .operation(DeltaCredentialOperation.READ)
+                      .config(config));
+      assertThat(gc.s3Endpoint()).isEqualTo(endpoint);
+      assertThat(gc.s3Region()).isEqualTo(config.getClientRegion());
+      assertThat(gc.hasKeys()).isEqualTo(config.getS3AccessKeyId() != null);
+    }
   }
 
   @Test

@@ -2,6 +2,8 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.regex.Pattern;
 
@@ -58,6 +60,38 @@ public class ValidationUtils {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, String.format(messageTemplate, messageArgs));
     }
+  }
+
+  /**
+   * Checks that {@code value} is an absolute http or https URL with a host and, if any, a port from
+   * 1 to 65535, and without user info, a query or a fragment, such as a storage service endpoint.
+   *
+   * @param value the URL to check
+   * @param fieldName the request field holding {@code value}, named in the error message
+   * @throws BaseException with INVALID_ARGUMENT if {@code value} is not an http(s) URL
+   */
+  public static void validateHttpUrl(String value, String fieldName) {
+    checkArgument(value != null && !value.isEmpty(), "%s is required.", fieldName);
+    URI uri;
+    try {
+      uri = new URI(value);
+    } catch (URISyntaxException e) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid " + fieldName + ": not a URL.");
+    }
+    // Endpoints are returned to everyone who can read the credential, so they must not carry
+    // anything secret. The messages leave the value out, since a rejected one may.
+    checkArgument(
+        uri.getRawUserInfo() == null && uri.getRawQuery() == null && uri.getRawFragment() == null,
+        "Invalid %s: must not contain user info, a query or a fragment.",
+        fieldName);
+    checkArgument(
+        ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+            && uri.getHost() != null
+            // No port is -1; java.net.URI accepts any number.
+            && (uri.getPort() == -1 || (uri.getPort() >= 1 && uri.getPort() <= 65535)),
+        "Invalid %s: must be an http or https URL with a host (a host name holds only letters,"
+            + " digits, '-' and '.') and, if any, a port from 1 to 65535.",
+        fieldName);
   }
 
   /**
