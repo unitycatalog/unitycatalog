@@ -23,7 +23,6 @@ import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.VirtualHostBuilder;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
-import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
@@ -34,6 +33,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.ServiceExceptionHandlingDecorator;
+import io.unitycatalog.server.exception.TypedErrorJacksonRequestConverter;
 import io.unitycatalog.server.exception.UnroutedIcebergRequestHandler;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
@@ -366,10 +366,9 @@ public class ArmeriaServerBuilder {
     RequestConverterFunction requestConverter =
         switch (protocol) {
           case AUTH, UC, SCIM -> bodyConverter(ucMapper);
-          // The Jackson converter leaks its own error text (exception class, mapped types, source
-          // position) on any surface. Only on the Iceberg surface is an unreadable body rewritten
-          // into a clean message, since its REST spec fixes the error contract clients parse; the
-          // other dialects still surface the raw converter message.
+          // On every surface an unreadable body is reported as "Malformed request body: <reason>"
+          // with Jackson's own wording (see bodyConverter). The Iceberg surface further rewrites it
+          // into a fixed message, since its REST spec fixes the error contract clients parse.
           case ICEBERG -> new MalformedBodyRejectingConverter(bodyConverter(icebergMapper));
           case DELTA -> bodyConverter(deltaMapper);
         };
@@ -402,9 +401,11 @@ public class ArmeriaServerBuilder {
    * The request converter for a service's body parameters: the authorization gate wrapping Jackson
    * when authorization is enabled, plain Jackson when it is not. With authorization disabled
    * nothing produces a {@code PayloadAuthorizer}, so a gate would wait on a value never produced.
+   * Either way, Jackson is wrapped in {@link TypedErrorJacksonRequestConverter} so an unreadable
+   * body surfaces Jackson's message without the converter's exception-class prefix and location.
    */
   private RequestConverterFunction bodyConverter(ObjectMapper mapper) {
-    JacksonRequestConverterFunction jackson = new JacksonRequestConverterFunction(mapper);
+    RequestConverterFunction jackson = TypedErrorJacksonRequestConverter.forMapper(mapper);
     return authorizationEnabled ? new AuthorizationGateConverter(jackson, mapper) : jackson;
   }
 
