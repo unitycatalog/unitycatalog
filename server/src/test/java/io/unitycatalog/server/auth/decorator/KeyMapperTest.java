@@ -137,6 +137,29 @@ public class KeyMapperTest {
   }
 
   @Test
+  void missingShareAndRecipientAreTheNotFoundUcAnswersForAnyMissingObject() {
+    // OpenSharing reports these with its own exception; the key mapper runs in UC's authorization
+    // decorator, ahead of any service, so it has to turn them into UC's.
+    for (SecurableType type : new SecurableType[] {SecurableType.SHARE, SecurableType.RECIPIENT}) {
+      Map<SecurableType, Object> keys = new HashMap<>();
+      keys.put(type, "no_such_object");
+      assertThatThrownBy(() -> repositories.getKeyMapper().mapResourceKeys(keys))
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("not found: no_such_object")
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.NOT_FOUND);
+    }
+  }
+
+  @Test
+  void nullShareAndRecipientKeysResolveToNoId() {
+    Map<SecurableType, Object> keys = new HashMap<>();
+    keys.put(SecurableType.SHARE, null);
+    keys.put(SecurableType.RECIPIENT, null);
+    assertThat(repositories.getKeyMapper().mapResourceKeys(keys)).isEmpty();
+  }
+
+  @Test
   void externalLocationPathStillResolvesWhenItAddsANewKey() {
     UUID externalLocationId = UUID.randomUUID();
     TransactionManager.executeWithTransaction(

@@ -5,11 +5,18 @@ import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.FUNCTION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.RECIPIENT;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.SHARE;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
+import io.opensharing.http.ApiException;
+import io.opensharing.recipient.RecipientStore;
+import io.opensharing.share.ShareStore;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.RegisteredModelInfo;
@@ -28,11 +35,14 @@ import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.service.sharing.HibernateTransactions;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import org.apache.commons.lang3.tuple.Pair;
+import org.hibernate.SessionFactory;
 
 /**
  * Maps resource identifiers to internal UUIDs for authorization purposes.
@@ -65,6 +75,7 @@ import org.apache.commons.lang3.tuple.Pair;
  *   <li>REGISTERED_MODEL - ML model within a schema
  *   <li>EXTERNAL_LOCATION - External storage location
  *   <li>CREDENTIAL - Cloud storage credential
+ *   <li>SHARE, RECIPIENT - OpenSharing shares and recipients
  * </ul>
  *
  * <h2>Input Formats</h2>
@@ -125,6 +136,7 @@ public class KeyMapper {
   private final MetastoreRepository metastoreRepository;
   private final ExternalLocationRepository externalLocationRepository;
   private final CredentialRepository credentialRepository;
+  private final SessionFactory sessionFactory;
 
   public KeyMapper(Repositories repositories) {
     this.externalLocationUtils = repositories.getExternalLocationUtils();
@@ -137,6 +149,7 @@ public class KeyMapper {
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.externalLocationRepository = repositories.getExternalLocationRepository();
     this.credentialRepository = repositories.getCredentialRepository();
+    this.sessionFactory = repositories.getSessionFactory();
   }
 
   public Map<SecurableType, UUID> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {
@@ -348,6 +361,46 @@ public class KeyMapper {
       }
     }
 
+    // Shares and recipients are referenced by name. A null key is one that an extractor found none
+    // for. Only the provider API of embedded OpenSharing has such keys, so nothing here reads
+    // OpenSharing's tables unless it is enabled.
+    if (resourceKeys.get(SHARE) instanceof String name) {
+      resourceIds.put(
+          SHARE,
+          openSharingId(
+              "Share",
+              name,
+              n ->
+                  new ShareStore(new HibernateTransactions(sessionFactory)).getOrThrow(n).getId()));
+    }
+    if (resourceKeys.get(RECIPIENT) instanceof String name) {
+      resourceIds.put(
+          RECIPIENT,
+          openSharingId(
+              "Recipient",
+              name,
+              n ->
+                  new RecipientStore(new HibernateTransactions(sessionFactory))
+                      .getOrThrow(n)
+                      .getId()));
+    }
+
     return resourceIds;
+  }
+
+  /**
+   * The id that {@code lookup} finds for a share or recipient name. OpenSharing reports a missing
+   * one with its own exception, which this layer, ahead of any service, would not render as the 404
+   * that UC answers for any other missing object.
+   */
+  private static UUID openSharingId(String kind, String name, Function<String, UUID> lookup) {
+    try {
+      return lookup.apply(name);
+    } catch (ApiException e) {
+      if (e.getStatus() == 404) {
+        throw new BaseException(ErrorCode.NOT_FOUND, kind + " not found: " + name);
+      }
+      throw e;
+    }
   }
 }
