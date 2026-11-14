@@ -212,6 +212,13 @@ public class UserRepository {
           if (userDAO != null) {
             userDAO.setState(User.StateEnum.DISABLED.toString());
             session.merge(userDAO);
+            // Write the user row before the memberships: a group add reads it and then adds a
+            // membership, so the other order can deadlock with that add.
+            session.flush();
+            session
+                .createMutationQuery("DELETE FROM GroupMemberDAO WHERE userId = :userId")
+                .setParameter("userId", userDAO.getId())
+                .executeUpdate();
             LOGGER.info("Deleted user: {}", id);
             return null;
           } else {
