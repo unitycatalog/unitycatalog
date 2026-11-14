@@ -607,6 +607,19 @@ components:
             s3.session-token:
               type: string
               description: AWS session token for temporary credentials
+            s3.endpoint:
+              type: string
+              description: |
+                EXPERIMENTAL. S3 API endpoint of the S3-compatible storage holding the prefix, for
+                example `https://minio.example.com:9000`: the `s3_endpoint` of the storage credential
+                of the external location covering the prefix. Requests to it always use path-style
+                addressing. Absent for AWS S3. When that credential does not vend keys, this and
+                `client.region` are the only S3 keys set. A client that does not support this key must
+                not use the credential, and must not send its requests to AWS S3.
+            client.region:
+              type: string
+              description: |
+                EXPERIMENTAL. Region to sign S3 requests with, set together with `s3.endpoint`.
             azure.sas-token:
               type: string
               description: Azure SAS (Shared Access Signature) token
@@ -620,6 +633,12 @@ components:
             Credential expiration time in epoch milliseconds.
             This standardized field avoids the need for provider-specific expiration keys
             (e.g., s3.session-token-expires-at-ms, adls.sas-token-expires-at-ms, etc.)
+            EXPERIMENTAL: for S3-compatible storage without `assume_role`, it is when to fetch
+            credentials again, an hour ahead, in both of Unity Catalog's modes for it
+            (`server.s3-compatible-storage.static-key-vending`): a `static-key` key pair itself stays
+            valid until the storage rotates or revokes it, and an `endpoint-only` vend carries no
+            keys. An engine that does not fetch a vend without keys again, such as the UC Hadoop
+            connector, picks up a changed endpoint on its first table load after this time.
 
     DeltaCredentialsResponse:
       type: object

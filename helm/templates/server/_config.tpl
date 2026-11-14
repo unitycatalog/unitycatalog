@@ -152,8 +152,8 @@ rootLogger.appenderRef.console.ref=Console
 
 {{/*
 Secrets for the server container (see "Secrets" in docs/server/configuration.md): the database
-password and every part of each storage credential come from here, not from the generated properties
-files, which are written only at pod start.
+password, every part of each storage credential and the credential encryption key come from here,
+not from the generated properties files, which are written only at pod start.
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
 {{- $db := dict "postgresql" .Values.server.db.postgresqlConfig "mysql" .Values.server.db.mysqlConfig }}
@@ -194,5 +194,12 @@ files, which are written only at pod start.
     secretKeyRef:
       name: {{ $config.credentialsSecretName | quote }}
       key: clientSecret
+{{- end }}
+{{- with .Values.storage.credentials.encryptionKeySecretName }}
+- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ . | quote }}
+      key: encryptionKey
 {{- end }}
 {{- end }}

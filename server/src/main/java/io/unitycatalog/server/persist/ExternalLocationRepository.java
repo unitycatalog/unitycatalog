@@ -9,13 +9,18 @@ import io.unitycatalog.server.model.ListExternalLocationsResponse;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.net.URI;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -48,8 +53,10 @@ public class ExternalLocationRepository {
    * @throws BaseException if credential doesn't exist or is not of type storage
    */
   private CredentialDAO validateAndGetCredentialDAO(Session session, String credentialName) {
+    // Locked, so a concurrent change of the credential's type waits for this check, or this one for
+    // that change (see CredentialRepository#getCredentialDAOForUpdate).
     CredentialDAO credentialDAO =
-        repositories.getCredentialRepository().getCredentialDAO(session, credentialName);
+        repositories.getCredentialRepository().getCredentialDAOForUpdate(session, credentialName);
     if (credentialDAO == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Credential not found: " + credentialName);
     }
@@ -58,6 +65,37 @@ public class ExternalLocationRepository {
           ErrorCode.INVALID_ARGUMENT, "Credential not of type storage: " + credentialName);
     }
     return credentialDAO;
+  }
+
+  /**
+   * Checks that a location can be reached with its credential: an {@code s3_compatible} credential
+   * names S3-compatible storage, so its locations must be {@code s3://} paths.
+   *
+   * @param url the location URL
+   * @param credentialDAO the location's storage credential, or null if it was force-deleted
+   * @throws BaseException with INVALID_ARGUMENT if the credential cannot reach the URL
+   */
+  static void validateUrlForCredential(NormalizedURL url, CredentialDAO credentialDAO) {
+    if (credentialDAO == null) {
+      return;
+    }
+    ValidationUtils.checkArgument(
+        credentialDAO.getCredentialType() != CredentialType.S3_COMPATIBLE || isS3Path(url),
+        "Storage credential '%s' is an s3_compatible credential, so its external locations must be"
+            + " s3:// paths: %s",
+        credentialDAO.getName(),
+        url);
+  }
+
+  /**
+   * Whether a location URL is an {@code s3://} path with a bucket. {@link
+   * CredentialRepository#validateLocationsAreS3Paths} applies the same rule.
+   */
+  static boolean isS3Path(NormalizedURL url) {
+    URI uri = url.toUri();
+    return UriScheme.fromURI(uri) == UriScheme.S3
+        && uri.getRawAuthority() != null
+        && !uri.getRawAuthority().isEmpty();
   }
 
   public ExternalLocationInfo addExternalLocation(CreateExternalLocation createExternalLocation) {
@@ -79,6 +117,7 @@ public class ExternalLocationRepository {
 
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
+          validateUrlForCredential(url, credentialDAO);
           UUID externalLocationId = UUID.randomUUID();
           ExternalLocationDAO externalLocationDAO =
               ExternalLocationDAO.builder()
@@ -96,7 +135,10 @@ public class ExternalLocationRepository {
           return externalLocationDAO.toExternalLocationInfo(credentialDAO.getName());
         },
         "Failed to add external location",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        // Reads after the row lock see what was committed while it waited (see
+        // RepositoryUtils#getForUpdateByName).
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   public ExternalLocationInfo getExternalLocation(String name) {
@@ -125,6 +167,16 @@ public class ExternalLocationRepository {
     query.setParameter("value", name);
     query.setMaxResults(1);
     return query.uniqueResult();
+  }
+
+  /**
+   * Reads the location with a write lock on its row, so that concurrent updates of it take turns
+   * and none writes back a stale copy over another's change.
+   *
+   * @return the location, or null if none has the name
+   */
+  ExternalLocationDAO getExternalLocationDAOForUpdate(Session session, String name) {
+    return RepositoryUtils.getForUpdateByName(session, ExternalLocationDAO.class, name);
   }
 
   public ListExternalLocationsResponse listExternalLocations(
@@ -158,7 +210,8 @@ public class ExternalLocationRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          ExternalLocationDAO existingLocation = getExternalLocationDAO(session, name);
+          // The location, then its credential, are locked on their first read in this session.
+          ExternalLocationDAO existingLocation = getExternalLocationDAOForUpdate(session, name);
           if (existingLocation == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
@@ -189,12 +242,17 @@ public class ExternalLocationRepository {
             credentialName = updateExternalLocation.getCredentialName();
             CredentialDAO credentialDAO = validateAndGetCredentialDAO(session, credentialName);
             existingLocation.setCredentialId(credentialDAO.getId());
+            validateUrlForCredential(NormalizedURL.from(existingLocation.getUrl()), credentialDAO);
           } else {
-            // Keep the current credential
-            credentialName =
-                repositories
-                    .getCredentialRepository()
-                    .getCredentialName(session, existingLocation.getCredentialId());
+            // Keep the current credential. Locked on its first read in this session: a lock taken
+            // on an entity already loaded does not refresh it, so a concurrent type change could go
+            // unseen. Null if the credential was force-deleted.
+            CredentialDAO current =
+                RepositoryUtils.getForUpdate(
+                    session, CredentialDAO.class, existingLocation.getCredentialId());
+            credentialName = current == null ? null : current.getName();
+            // Checked whether or not the URL changes, against the credential's committed type.
+            validateUrlForCredential(NormalizedURL.from(existingLocation.getUrl()), current);
           }
 
           existingLocation.setUpdatedAt(new Date());
@@ -205,7 +263,10 @@ public class ExternalLocationRepository {
           return existingLocation.toExternalLocationInfo(credentialName);
         },
         "Failed to update external location",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        // Reads after the row lock see what was committed while it waited (see
+        // RepositoryUtils#getForUpdateByName).
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   /**

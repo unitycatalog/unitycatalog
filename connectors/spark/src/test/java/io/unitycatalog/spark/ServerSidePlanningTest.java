@@ -54,11 +54,7 @@ public class ServerSidePlanningTest extends BaseSparkIntegrationTest {
           builder.config(catalogConf + "." + OptionsUtil.SERVER_SIDE_PLANNING_ENABLED, "true");
     }
 
-    // Use fake file system for cloud storage so that we can test credentials.
-    builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
-    builder.config("spark.hadoop.fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
-    builder.config("spark.hadoop.fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
-    return builder.getOrCreate();
+    return configureCloudFileSystems(builder).getOrCreate();
   }
 
   @ParameterizedTest

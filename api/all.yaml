@@ -1207,7 +1207,35 @@ paths:
         - Credentials
       operationId: createCredential
       summary: Create a credential
-      description: Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+      description: |-
+        Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+        Set exactly one of `aws_iam_role` and `s3_compatible`; otherwise the request fails with
+        `INVALID_ARGUMENT`.
+
+        EXPERIMENTAL: `s3_compatible` is available only when the server property
+        `server.s3-compatible-storage.enabled` is `true`. Otherwise a create or update request that
+        sets `s3_compatible`, and vending for a path under one, fail with `INVALID_ARGUMENT`; other
+        updates, reads, lists and deletes of existing ones still work. An `s3_compatible`
+        credential holds an access key pair of S3-compatible storage and the storage's S3 endpoint.
+        `s3_endpoint` and `assume_role.sts_endpoint` are http or https URLs with a host, and
+        without user info, a query or a fragment; other values fail with `INVALID_ARGUMENT`. With
+        `assume_role`, the key pair signs AssumeRole on the storage's STS, and Unity Catalog vends
+        short-lived credentials scoped to the requested path and privilege. Without it, the server
+        property `server.s3-compatible-storage.static-key-vending` decides what clients receive:
+
+        * `endpoint-only` (default): the S3 endpoint and region, but no keys; engines bring their
+          own.
+        * `static-key`: the key pair itself. It is not scoped to the requested path or privilege,
+          and changing Unity Catalog permissions does not revoke a key pair already vended.
+
+        Vends with keys (`assume_role` sessions and `static-key` key pairs) suit only servers whose
+        clients all read `s3_endpoint`: a client that does not would send the keys to AWS S3.
+        Without `assume_role`, in both modes the vended `expiration_time`, an hour ahead, is when a
+        client may fetch credentials again, and the Iceberg REST table config of a `static-key` vend
+        carries no expiration; an engine that does not fetch a vend without keys again, such as the
+        UC Hadoop connector, picks up a changed endpoint on its first table load after
+        `expiration_time`. The external locations of an `s3_compatible` credential must be `s3://`
+        paths.
       requestBody:
         content:
           application/json:
@@ -1297,6 +1325,19 @@ paths:
         Updates a credential.
         The caller must be a metastore admin, the credential owner,
         or have MANAGE on the credential.
+        Set at most one of `aws_iam_role` and `s3_compatible`; setting both fails with
+        `INVALID_ARGUMENT`. Either one replaces the stored credential as a whole, with no field-level
+        merge, and can change its type: an `s3_compatible` update carries `secret_access_key` again,
+        and leaving out `assume_role` removes it. Updates without either, such as of the name or
+        comment, keep the stored credential.
+
+        EXPERIMENTAL: whoever may update a credential is trusted with where the data under it lives.
+        Changing `s3_endpoint` of an `s3_compatible` credential moves data access for every path
+        under its external locations, including tables and volumes other principals own, to the new
+        host; changing `sts_endpoint` moves where their credentials are issued. The server itself
+        connects to both endpoints. An `s3_compatible` credential has only `s3://` external
+        locations: setting `s3_compatible` while a location outside `s3://` uses the credential,
+        or creating or updating such a location to use it, fails with `INVALID_ARGUMENT`.
       requestBody:
         content:
           application/json:
@@ -1338,6 +1379,8 @@ paths:
       summary: Create an external location
       description: |
         Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
+        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
+        otherwise the request fails with `INVALID_ARGUMENT`.
       operationId: createExternalLocation
       requestBody:
         required: true
@@ -1438,6 +1481,8 @@ paths:
         Updates an external location in the metastore.
         The caller must be a metastore admin, the external location owner,
         or have MANAGE on the external location.
+        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
+        otherwise the request fails with `INVALID_ARGUMENT`.
       operationId: updateExternalLocation
       requestBody:
         required: true
@@ -2460,6 +2505,19 @@ components:
           description: The token that users must pass to AWS API to use the temporary
             credentials.
           type: string
+        s3_endpoint:
+          description: EXPERIMENTAL. The S3 API endpoint to send requests for the path to, set when
+            the path is on S3-compatible storage. It is the `s3_endpoint` of the storage credential of
+            the external location covering the path. Requests to it always use path-style addressing.
+            Absent for AWS S3. When that credential does not vend keys, this and `s3_region` are the
+            only fields set. A client that does not support this field must not use the credentials,
+            and must not send their requests to AWS S3.
+          type: string
+        s3_region:
+          description: EXPERIMENTAL. The region to sign S3 requests with, set together with
+            `s3_endpoint`. Unity Catalog asks the storage for the bucket's region, and uses
+            `us-east-1` if it does not say.
+          type: string
       type: object
     AzureUserDelegationSAS:
       properties:
@@ -2722,6 +2780,11 @@ components:
           description: |
             Server time when the credential will expire, in epoch milliseconds.
             The API client is advised to cache the credential given this expiration time.
+            EXPERIMENTAL: for S3-compatible storage without `assume_role`, it is when to fetch
+            credentials again, an hour ahead: a `static-key` key pair itself stays valid until the
+            storage rotates or revokes it, and an `endpoint-only` vend carries no keys. An engine
+            that does not fetch a vend without keys again, such as the UC Hadoop connector, picks up
+            a changed endpoint on its first table load after this time.
           type: integer
           format: int64
         url:
@@ -2877,6 +2940,8 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleResponse'
+        s3_compatible:
+          $ref: '#/components/schemas/S3CompatibleResponse'
         comment:
           description: Comment associated with the credential.
           type: string
@@ -2918,6 +2983,8 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
+        s3_compatible:
+          $ref: '#/components/schemas/S3CompatibleRequest'
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     UpdateCredentialRequest:
@@ -2931,6 +2998,8 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
+        s3_compatible:
+          $ref: '#/components/schemas/S3CompatibleRequest'
         new_name:
           description: New name for the credential.
           type: string
@@ -2956,6 +3025,99 @@ components:
           type: string
         external_id:
           description: The external ID used in role assumption to prevent confused deputy problem.
+          type: string
+    S3CompatibleRequest:
+      description: |
+        EXPERIMENTAL. Available only when the server property `server.s3-compatible-storage.enabled`
+        is `true`; otherwise a create or update request that sets one, and vending for paths under
+        one, fail with `INVALID_ARGUMENT`. Access key pair of S3-compatible storage, and the
+        storage's S3 endpoint. With `assume_role`, the key pair signs AssumeRole on the storage's
+        STS, and Unity Catalog vends the resulting short-lived credentials scoped to the requested
+        path and privilege. Without `assume_role`, the key pair is the only identity, and the
+        server property `server.s3-compatible-storage.static-key-vending` decides what clients
+        receive:
+         * `endpoint-only` (default): the S3 endpoint and region, but no keys. The server uses the
+           key pair for its own storage access; engines bring their own keys. Its
+           `expiration_time`, an hour ahead, tells engines when they may fetch again, to pick up a
+           changed endpoint; one that does not, such as the UC Hadoop connector, picks it up on
+           its first table load after that time.
+         * `static-key`: the key pair itself. Its `expiration_time`, an hour ahead, only
+           tells engines when to fetch credentials again, so that they pick up an updated key pair:
+           the key pair stays valid until the storage rotates or revokes it, and changing Unity
+           Catalog permissions does not revoke a key pair already vended. The storage applies the
+           key pair's own permissions rather than the requested path and privilege. The Iceberg REST
+           table config carries no expiration, so Iceberg clients keep the key pair until they
+           load the table again.
+        Paths stay `s3://<bucket>/<path>` everywhere: a path reaches the storage of the credential
+        of the external location covering it. External locations cannot overlap, so each path has
+        one storage, and one bucket name can be on several storage systems under different
+        locations. An update replaces the whole object (see `updateCredential`); changing the
+        endpoint moves every path under the credential's locations, for example to the storage's new
+        host name.
+      type: object
+      required:
+        - access_key_id
+        - secret_access_key
+        - s3_endpoint
+      properties:
+        s3_endpoint:
+          $ref: "#/components/schemas/S3CompatibleS3Endpoint"
+        access_key_id:
+          description: EXPERIMENTAL. The access key ID.
+          type: string
+        secret_access_key:
+          description: EXPERIMENTAL. The secret access key. Write-only; never returned.
+          type: string
+        assume_role:
+          $ref: "#/components/schemas/S3AssumeRole"
+    S3CompatibleResponse:
+      description: |
+        EXPERIMENTAL. An `s3_compatible` storage credential as returned, without its write-only
+        `secret_access_key`; see `S3CompatibleRequest`.
+      type: object
+      required:
+        - access_key_id
+        - s3_endpoint
+      properties:
+        s3_endpoint:
+          $ref: "#/components/schemas/S3CompatibleS3Endpoint"
+        access_key_id:
+          description: EXPERIMENTAL. The access key ID.
+          type: string
+        assume_role:
+          $ref: "#/components/schemas/S3AssumeRole"
+    S3CompatibleS3Endpoint:
+      description: |
+        EXPERIMENTAL. S3 API endpoint of the S3-compatible storage, for example
+        `https://minio.example.com:9000`: an http or https URL with a host, and without user info, a
+        query or a fragment; other values fail with `INVALID_ARGUMENT`. Credential vending returns
+        it with the region engines need to reach the storage; requests to it use path-style
+        addressing.
+      type: string
+    S3AssumeRole:
+      description: |
+        EXPERIMENTAL. AssumeRole on the STS of S3-compatible storage, signed with the credential's
+        key pair; see `S3CompatibleRequest`.
+      type: object
+      required:
+        - role_arn
+      properties:
+        sts_endpoint:
+          description: |
+            EXPERIMENTAL. STS endpoint of the storage to call AssumeRole on, for example
+            `https://minio.example.com:9000`: an http or https URL with a host, and without user
+            info, a query or a fragment; other values fail with `INVALID_ARGUMENT`. Absent when not
+            set: AssumeRole then goes to the credential's `s3_endpoint`, so a change of
+            `s3_endpoint` moves it too.
+          type: string
+        role_arn:
+          description: EXPERIMENTAL. The role to assume.
+          type: string
+        sts_region:
+          description: |
+            EXPERIMENTAL. The region to sign the AssumeRole request with, of letters, digits, '.',
+            '_' and '-'. If not set, the region of the S3-compatible storage holding the requested
+            path is used.
           type: string
     ListCredentialsResponse:
       type: object

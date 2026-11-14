@@ -378,10 +378,11 @@ server.port=8080
 ...other config properties...
 ```
 
-Do not put secrets here: the chart passes the S3 and ADLS secrets to the server as environment
-variables, and a secret in `server.properties` is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`,
-`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated
-too: the server reads `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment.
+Do not put secrets here: the chart passes the S3 and ADLS secrets, and the credential
+encryption key, to the server as environment variables, and a secret in `server.properties`
+is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`, `${S3_SECRET_KEY_<n>}` or
+`${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated too: the server reads
+`UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment.
 </td>
 		</tr>
 		<tr>
@@ -1338,6 +1339,30 @@ Credential secret must contain the following keys:
 - `tenantId`: Azure tenant ID
 - `clientId`: Azure client ID
 - `clientSecret`: Azure client secret
+</td>
+		</tr>
+		<tr>
+			<td>storage.credentials.encryptionKeySecretName</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Name of a Secret with the key that the server encrypts the secret values of storage credentials with in its database
+
+Required to create or use `s3_compatible` storage credentials, which are experimental: enable
+them with `server.s3-compatible-storage.enabled: "true"` in `server.config.extraProperties`.
+With that set, the server refuses to start with a malformed key. Keep the same key for as long
+as such credentials exist: values stored with a key cannot be read with another.
+
+The secret must contain the following key:
+- `encryptionKey`: 32 random bytes in base64, such as the output of `openssl rand -base64 32`
+
+Example:
+```sh
+kubectl create secret generic uc-credential-encryption \
+  --from-literal=encryptionKey="$(openssl rand -base64 32)"
+```
 </td>
 		</tr>
 		<tr>

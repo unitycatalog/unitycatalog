@@ -1,16 +1,29 @@
 package io.unitycatalog.server.service.credential.aws;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.S3AssumeRole;
+import io.unitycatalog.server.model.S3CompatibleResponse;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.S3CompatibleStaticKeyVending;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import lombok.Getter;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
@@ -19,7 +32,7 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 /**
  * Vends AWS credentials for accessing S3 storage.
  *
- * <p>This class supports two modes of credential vending:
+ * <p>This class supports three modes of credential vending:
  *
  * <ol>
  *   <li><b>External Location Credentials:</b> When a storage credential (CredentialDAO) is
@@ -53,9 +66,14 @@ import software.amazon.awssdk.services.sts.model.Credentials;
  *             uses the master role and storage role defined in this config and doesn't have support
  *             for externalId.
  *       </ul>
+ *   <li><b>S3-Compatible Credentials:</b> An {@code s3_compatible} storage credential of an
+ *       external location on S3-compatible storage. With {@code assume_role}, its own keys assume
+ *       the role at its {@code sts_endpoint}, or its {@code s3_endpoint} when none is set, as
+ *       above. Without it, the server uses the key pair for its own storage access, and {@link
+ *       ServerProperties.Property#S3_COMPATIBLE_STATIC_KEY_VENDING} decides what clients receive.
  * </ol>
  */
-public class AwsCredentialVendor {
+public class AwsCredentialVendor implements AutoCloseable {
 
   private final Map<NormalizedURL, S3StorageConfig> perBucketS3Configs;
   private final Map<NormalizedURL, AwsCredentialGenerator> perBucketCredGenerators =
@@ -82,6 +100,44 @@ public class AwsCredentialVendor {
   private final AwsCredentialGenerator awsS3MasterRoleStsGenerator =
       createStsCredentialGenerator(awsS3MasterRoleConfig); // Lazy initialized
 
+  // STS clients for s3_compatible credentials with assume_role, one per STS endpoint and signing
+  // region. They hold no keys: each AssumeRole is signed with the key pair of the credential
+  // version the request read, so a credential update needs no new client. Endpoints and regions
+  // come from the credential API, so the cache is bounded; a client it evicts closes once the
+  // requests using it are done.
+  private static final int MAX_S3_COMPATIBLE_STS_CLIENTS = 100;
+  private static final Duration S3_COMPATIBLE_STS_CLIENT_IDLE_TIME = Duration.ofHours(1);
+  private final Cache<StsClientKey, SharedStsGenerator> s3CompatibleStsGenerators =
+      Caffeine.newBuilder()
+          .maximumSize(MAX_S3_COMPATIBLE_STS_CLIENTS)
+          .expireAfterAccess(S3_COMPATIBLE_STS_CLIENT_IDLE_TIME)
+          .<StsClientKey, SharedStsGenerator>removalListener(
+              (key, shared, cause) -> {
+                if (shared != null) {
+                  shared.retire();
+                }
+              })
+          // Run Caffeine's small eviction work on the calling thread, not the common pool.
+          .executor(Runnable::run)
+          .build();
+
+  private record StsClientKey(String stsEndpoint, String region) {}
+
+  /**
+   * Retires the STS clients of S3-compatible storage; each closes once the calls using it are done.
+   */
+  @Override
+  public void close() {
+    s3CompatibleStsGenerators.invalidateAll();
+    s3CompatibleStsGenerators.cleanUp();
+  }
+
+  private final S3CompatibleStaticKeyVending staticKeyVending;
+
+  private final CredentialSecretStore secretStore;
+
+  private final ServerProperties serverProperties;
+
   public AwsCredentialVendor(ServerProperties serverProperties) {
     this(serverProperties, StsClient::builder);
   }
@@ -98,6 +154,9 @@ public class AwsCredentialVendor {
     this.perBucketS3Configs = serverProperties.getS3Configurations();
     // awsS3MasterRoleConfig.awsRoleArn is null. The ARN to assume comes from credential securable.
     this.awsS3MasterRoleConfig = serverProperties.getS3MasterRoleConfiguration();
+    this.staticKeyVending = serverProperties.getS3CompatibleStaticKeyVending();
+    this.secretStore = CredentialSecretStore.from(serverProperties);
+    this.serverProperties = serverProperties;
   }
 
   private AwsCredentialGenerator createPerBucketCredentialGenerator(S3StorageConfig config) {
@@ -119,14 +178,132 @@ public class AwsCredentialVendor {
     return createStsCredentialGenerator(config);
   }
 
-  private AwsCredentialGenerator createStsCredentialGenerator(S3StorageConfig config) {
+  /**
+   * Vends for an {@code s3_compatible} credential: scoped short-lived credentials from its STS with
+   * {@code assume_role}. Without it, the key pair for the server's own access, and for clients only
+   * when {@code server.s3-compatible-storage.static-key-vending} is {@code static-key}, with the
+   * lifetime of an STS session.
+   *
+   * @return the credentials, or empty when the key pair is not vended to clients
+   */
+  private Optional<Credentials> vendS3Compatible(
+      CredentialDAO credentialDAO, CredentialContext context) {
+    // Credentials stored while the feature was enabled stay in the database after it is turned off;
+    // they are not vended then.
+    serverProperties.checkS3CompatibleStorageEnabled();
+    S3CompatibleResponse s3Compatible = credentialDAO.getS3CompatibleResponse();
+    S3AssumeRole assumeRole = s3Compatible.getAssumeRole();
+    if (assumeRole != null) {
+      // STS is commonly served at the storage's S3 endpoint, the default when none is set.
+      String stsEndpoint =
+          assumeRole.getStsEndpoint() != null
+              ? assumeRole.getStsEndpoint()
+              : s3Compatible.getS3Endpoint();
+      StsClientKey key = new StsClientKey(stsEndpoint, stsRegion(s3Compatible, context));
+      AwsCredentialsProvider signer =
+          StaticCredentialsProvider.create(
+              AwsBasicCredentials.create(
+                  s3Compatible.getAccessKeyId(), secretAccessKey(credentialDAO)));
+      return Optional.of(assumeS3CompatibleRole(key, context, assumeRole.getRoleArn(), signer));
+    }
+    if (context.isServerAccess()) {
+      return Optional.of(keyPair(credentialDAO, s3Compatible).build());
+    }
+    if (staticKeyVending == S3CompatibleStaticKeyVending.STATIC_KEY) {
+      // The key pair itself does not expire. A lifetime makes clients vend again, so an update of
+      // the credential's key pair reaches them.
+      return Optional.of(
+          keyPair(credentialDAO, s3Compatible)
+              .expiration(Instant.now().plus(AwsCredentialGenerator.SESSION_DURATION))
+              .build());
+    }
+    // Clients get only the S3 endpoint, so the secret is not loaded from its store.
+    return Optional.empty();
+  }
+
+  /**
+   * Assumes the role with the shared STS client for {@code key}, held for the call. A client
+   * evicted between the lookup and its use is looked up once more; if that one is evicted too, as
+   * when more than MAX_S3_COMPATIBLE_STS_CLIENTS keys are in use, a client of its own serves the
+   * call.
+   */
+  private Credentials assumeS3CompatibleRole(
+      StsClientKey key, CredentialContext context, String roleArn, AwsCredentialsProvider signer) {
+    for (int attempt = 0; attempt < 2; attempt++) {
+      SharedStsGenerator shared =
+          s3CompatibleStsGenerators.get(key, k -> new SharedStsGenerator(newStsGenerator(k)));
+      Optional<AwsCredentialGenerator.StsAwsCredentialGenerator> generator = shared.acquire();
+      if (generator.isPresent()) {
+        try {
+          return generator.get().generate(context, roleArn, signer);
+        } finally {
+          shared.release();
+        }
+      }
+    }
+    try (AwsCredentialGenerator.StsAwsCredentialGenerator own = newStsGenerator(key)) {
+      return own.generate(context, roleArn, signer);
+    }
+  }
+
+  private AwsCredentialGenerator.StsAwsCredentialGenerator newStsGenerator(StsClientKey key) {
+    return createStsCredentialGenerator(
+        S3StorageConfig.builder().region(key.region()).stsEndpoint(key.stsEndpoint()).build());
+  }
+
+  private Credentials.Builder keyPair(
+      CredentialDAO credentialDAO, S3CompatibleResponse s3Compatible) {
+    return Credentials.builder()
+        .accessKeyId(s3Compatible.getAccessKeyId())
+        .secretAccessKey(secretAccessKey(credentialDAO));
+  }
+
+  /**
+   * The credential's secret, or a general error for the caller: why it cannot be read names the
+   * server's key, which the server logs with the cause, and warns about at startup.
+   */
+  private String secretAccessKey(CredentialDAO credentialDAO) {
+    try {
+      return credentialDAO.getS3SecretAccessKey(secretStore);
+    } catch (BaseException e) {
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Failed to vend temporary storage credentials.", e);
+    }
+  }
+
+  /**
+   * The region to sign AssumeRole with: the credential's {@code sts_region}, otherwise the region
+   * of the storage holding the path, since STS usually runs on that storage.
+   *
+   * @return the signing region
+   */
+  private static String stsRegion(S3CompatibleResponse s3Compatible, CredentialContext context) {
+    String stsRegion = s3Compatible.getAssumeRole().getStsRegion();
+    if (stsRegion != null && !stsRegion.isEmpty()) {
+      return stsRegion;
+    }
+    return context.getS3Region().orElse(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
+  }
+
+  private AwsCredentialGenerator.StsAwsCredentialGenerator createStsCredentialGenerator(
+      S3StorageConfig config) {
     return new AwsCredentialGenerator.StsAwsCredentialGenerator(
         stsClientBuilderSupplier.get(), config);
   }
 
-  public Credentials vendAwsCredentials(CredentialContext context) {
+  /**
+   * Vends AWS credentials for the context's path.
+   *
+   * @param context the path, privileges, and storage credential to vend for
+   * @return the credentials, or empty when the path's credential does not vend keys to clients
+   */
+  public Optional<Credentials> vendAwsCredentials(CredentialContext context) {
     AwsCredentialGenerator generator;
     if (context.getCredentialDAO().isPresent()) {
+      CredentialDAO credentialDAO = context.getCredentialDAO().get();
+      if (credentialDAO.getCredentialType() == CredentialDAO.CredentialType.S3_COMPATIBLE) {
+        return vendS3Compatible(credentialDAO, context);
+      }
       // Use the master role STS generator
       generator = getAwsS3MasterRoleStsGenerator();
     } else {
@@ -140,6 +317,6 @@ public class AwsCredentialVendor {
           perBucketCredGenerators.computeIfAbsent(
               context.getStorageBase(), storageBase -> createPerBucketCredentialGenerator(config));
     }
-    return generator.generate(context);
+    return Optional.of(generator.generate(context));
   }
 }

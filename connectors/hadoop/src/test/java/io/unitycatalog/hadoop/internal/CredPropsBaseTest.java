@@ -84,6 +84,13 @@ abstract class CredPropsBaseTest {
   /** Keys emitted on every path. */
   abstract Map<String, String> defaultKeys();
 
+  /**
+   * The keys recording the storage vended for {@link #location()}'s bucket, if the cloud has any.
+   */
+  Map<String, String> vendedStorageKeys() {
+    return Map.of();
+  }
+
   /** Non-renewable credentials keys. */
   abstract Map<String, String> staticCredKeys(Long expiration);
 
@@ -354,6 +361,7 @@ abstract class CredPropsBaseTest {
       expected.put(
           UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
           String.join(",", CredentialUtil.encodeCredPrefixes(prefixes)));
+      expected.putAll(vendedStorageKeys());
     }
     if (credScoped) {
       expected.putAll(customImplKeys(conf));
@@ -380,6 +388,7 @@ abstract class CredPropsBaseTest {
     expected.put(
         UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
         CredentialUtil.encodeCredPrefixes(List.of(location()))[0]);
+    expected.putAll(vendedStorageKeys());
     if (credScoped) {
       expected.putAll(customImplKeys(conf));
     }

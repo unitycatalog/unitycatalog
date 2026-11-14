@@ -955,3 +955,16 @@ addCommandAlias(
     s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database", "UC_TEST_MIGRATION_CHECKS" -> "true", "UC_UPDATE_SCHEMA_EFFECTS" -> "true")""" +
       " ; server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest"
   }.mkString)
+
+// Runs every project's tests with s3:// paths on one S3-compatible storage. One alias per
+// SupportedStorage constant except EMULATED (the default). Forked tests also inherit the shell's
+// environment, so UC_TEST_DATABASE set there selects the database as well.
+def testOnStorage(storage: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_STORAGE" -> "$storage") ; test"""
+addCommandAlias("testMinIO", testOnStorage("MINIO"))
+addCommandAlias("testCeph", testOnStorage("CEPH"))
+addCommandAlias("testCephStaticKey", testOnStorage("CEPH_STATIC_KEY"))
+addCommandAlias("testRustFS", testOnStorage("RUSTFS"))
+addCommandAlias("testSeaweedFS", testOnStorage("SEAWEEDFS"))
+addCommandAlias("testGarage", testOnStorage("GARAGE"))
+addCommandAlias("testGarageStaticKey", testOnStorage("GARAGE_STATIC_KEY"))
