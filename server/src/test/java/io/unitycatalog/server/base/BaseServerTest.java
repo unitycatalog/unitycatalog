@@ -12,6 +12,7 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -81,6 +82,9 @@ public abstract class BaseServerTest {
     serverProperties = new Properties();
     serverProperties.setProperty(Property.SERVER_ENV.getKey(), "test");
     serverProperties.setProperty(Property.INCLUDE_STACK_TRACE_IN_ERROR.getKey(), "true");
+    serverProperties.setProperty(Property.S3_COMPATIBLE_STORAGE_ENABLED.getKey(), "true");
+    serverProperties.setProperty(
+        Property.CREDENTIAL_ENCRYPTION_KEY.getKey(), TestUtils.CREDENTIAL_ENCRYPTION_KEY);
     tableStorageRoot = getManagedStorageCloudPath(testDirectoryRoot);
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
     serverProperties.setProperty(
