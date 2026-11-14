@@ -226,7 +226,7 @@ You can also store more complex functions. For example, you can import Python mo
 To write a definition with multiple lines on the command line, separate the lines with the two characters "\n", as
 in the example below. A definition that contains real line breaks, such as one created through the REST API or
 the Python client, is split only at those line breaks, so a "\n" inside it is kept. A definition indented as a whole
-is also accepted.
+is also accepted, and its strings and comments are kept as written.
 
 Let's take the example below of a function that uses the Numpy library to simulate a random roll of dice:
 

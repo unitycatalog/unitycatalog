@@ -32,7 +32,19 @@ public class PythonInvokerTest {
             "backslash-n inside a string literal", "s = \"x\\ny\"\nreturn len(s) + a", "10", "13"),
         Arguments.of("indented backslash-n separators", "  c = a * 2\\n  return c", "5", "10"),
         // As a triple-quoted Python string holds it.
-        Arguments.of("indented real newlines", "\n    c = a * 3\n    return c\n", "5", "15"));
+        Arguments.of("indented real newlines", "\n    c = a * 3\n    return c\n", "5", "15"),
+        Arguments.of(
+            "indented with a comment at column 0",
+            "    b = a + 1\\n# explanation\\n    return b",
+            "5",
+            "6"),
+        Arguments.of(
+            "backslash-n separators and a trailing newline", "b = a + 1\\nreturn b\n", "5", "6"),
+        Arguments.of(
+            "indented multi-line string",
+            "    s = \"\"\"x\n    y\"\"\"\n    return len(s) + a",
+            "0",
+            "7"));
   }
 
   @ParameterizedTest(name = "{0}")

@@ -2,7 +2,6 @@ import ast
 import sys
 import json
 import logging
-import textwrap
 
 # Configure logging
 logging.basicConfig(filename='python_engine.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -10,13 +9,15 @@ logging.basicConfig(filename='python_engine.log', level=logging.INFO, format='%(
 def parse_body(routine_body):
     # A body without a real newline separates its lines with the two characters backslash and n,
     # as in the CLI examples (--def "c=a*b\nreturn c").
-    if '\n' not in routine_body:
+    if '\n' not in routine_body.rstrip('\r\n'):
         routine_body = routine_body.replace('\\n', '\n')
     try:
-        return ast.parse(routine_body).body
+        return ast.parse(routine_body, filename='<routine_definition>').body
     except IndentationError:
-        # A body indented as a whole, such as the inside of a triple-quoted string.
-        return ast.parse(textwrap.dedent(routine_body)).body
+        # A body indented as a whole parses inside an indented block, with its strings and
+        # comments kept as written.
+        wrapped = ast.parse("if 1:\n" + routine_body, filename='<routine_definition>')
+        return wrapped.body[0].body
 
 def define_function(func_name, routine_body, param_names):
     func_def = ast.parse(f"def {func_name}({', '.join(param_names)}):\n    pass")

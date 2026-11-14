@@ -73,25 +73,29 @@ public class PythonInvoker {
       // Invoke the Python script
       ProcessBuilder pb = new ProcessBuilder(argsList);
       Process p = pb.start();
-      // Read stderr on another thread, so that a full stderr pipe cannot block the script while
-      // stdout is read below.
-      CompletableFuture<String> error =
-          CompletableFuture.supplyAsync(() -> readFully(p.getErrorStream()));
+      try {
+        // Read stderr on another thread, so that a full stderr pipe cannot block the script while
+        // stdout is read below.
+        CompletableFuture<String> error =
+            CompletableFuture.supplyAsync(() -> readFully(p.getErrorStream()));
 
-      // Get the output from the Python script
-      BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
-      String resultLine;
-      StringBuilder result = new StringBuilder();
-      while ((resultLine = in.readLine()) != null) {
-        result.append(resultLine).append("\n");
+        StringBuilder result = new StringBuilder();
+        try (BufferedReader in =
+            new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+          String resultLine;
+          while ((resultLine = in.readLine()) != null) {
+            result.append(resultLine).append("\n");
+          }
+        }
+        int exitCode = p.waitFor();
+        if (exitCode != 0) {
+          throw new ApiException(
+              "Python function failed with exit code " + exitCode + ": " + error.join().strip());
+        }
+        return result.toString();
+      } finally {
+        p.destroy();
       }
-      in.close();
-      int exitCode = p.waitFor();
-      if (exitCode != 0) {
-        throw new ApiException(
-            "Python function failed with exit code " + exitCode + ": " + error.join().strip());
-      }
-      return result.toString();
     } catch (ApiException e) {
       throw e;
     } catch (Exception e) {
