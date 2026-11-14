@@ -20,12 +20,22 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
+import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.api.CatalogsApi;
+import io.unitycatalog.client.api.GrantsApi;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
+import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
+import java.net.http.HttpResponse;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
@@ -34,6 +44,7 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -439,6 +450,115 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         client.execute(headers, HttpData.ofUtf8(noPrimaryEmailJson)).aggregate().join();
     assertThat(noPrimary.status()).isEqualTo(HttpStatus.PRECONDITION_FAILED);
     assertThat(MAPPER.readTree(noPrimary.contentUtf8()).get("status").asText()).isEqualTo("412");
+  }
+
+  /**
+   * The journey of a person whose email changes at the identity provider: the user is provisioned,
+   * granted access and signs in; the IdP renames the email and the person keeps the grant under the
+   * new email; deleting the user and creating the email again gives a user with no grants. Okta
+   * itself never sends a user DELETE; the admin does.
+   */
+  @Test
+  public void testEmailChangeAndDeleteJourney() throws Exception {
+    ServerConfig admin =
+        new ServerConfig(serverConfig.getServerUrl(), securityContext.getServiceToken());
+    String catalog = "journey_catalog";
+    new CatalogsApi(TestUtils.createApiClient(admin))
+        .createCatalog(new CreateCatalog().name(catalog));
+    String oldEmail = "alice@journey.example.com";
+    String newEmail = "alice.smith@journey.example.com";
+
+    // Okta creates the user; the admin grants her access.
+    HttpResponse<String> created = scim(admin, "POST", null, oktaUser(null, oldEmail, "okta-1"));
+    assertThat(created.statusCode()).isEqualTo(201);
+    String id = MAPPER.readTree(created.body()).get("id").asText();
+    grant(admin, SecurableType.CATALOG, catalog, oldEmail, Privilege.USE_CATALOG);
+
+    // She signs in with her IdP token and reads the catalog.
+    assertThat(catalogApiAfterSignIn(oldEmail).getCatalog(catalog, false).getName())
+        .isEqualTo(catalog);
+
+    // Okta changes her email: the same user keeps the grant under the new email, and the old
+    // email no longer signs in.
+    HttpResponse<String> renamed = scim(admin, "PUT", id, oktaUser(id, newEmail, "okta-1"));
+    assertThat(renamed.statusCode()).isEqualTo(200);
+    assertThat(MAPPER.readTree(renamed.body()).get("id").asText()).isEqualTo(id);
+    assertExchangeRejectedAsInvalid("old email", identityToken(oldEmail));
+    assertThat(catalogApiAfterSignIn(newEmail).getCatalog(catalog, false).getName())
+        .isEqualTo(catalog);
+
+    // The admin deletes her, and Okta creates the email again: the new user has no grants.
+    assertThat(scim(admin, "DELETE", id, null).statusCode()).isEqualTo(200);
+    assertExchangeRejectedAsInvalid("deleted user", identityToken(newEmail));
+    HttpResponse<String> recreated = scim(admin, "POST", null, oktaUser(null, newEmail, "okta-2"));
+    assertThat(recreated.statusCode()).isEqualTo(201);
+    assertThat(MAPPER.readTree(recreated.body()).get("id").asText()).isNotEqualTo(id);
+    CatalogsApi again = catalogApiAfterSignIn(newEmail);
+    TestUtils.assertPermissionDenied(() -> again.getCatalog(catalog, false));
+  }
+
+  private void grant(
+      ServerConfig admin,
+      SecurableType type,
+      String name,
+      String principal,
+      Privilege... privileges)
+      throws Exception {
+    new GrantsApi(TestUtils.createApiClient(admin))
+        .update(
+            type,
+            name,
+            new UpdatePermissions()
+                .changes(
+                    List.of(
+                        new PermissionsChange().principal(principal).add(List.of(privileges)))));
+  }
+
+  private HttpResponse<String> scim(ServerConfig admin, String method, String id, String body)
+      throws Exception {
+    String path = "/api/1.0/unity-control/scim2/Users" + (id == null ? "" : "/" + id);
+    return TestUtils.sendRaw(admin, method, path, Optional.ofNullable(body));
+  }
+
+  /**
+   * A user as Okta sends it (developer.okta.com/docs/api/openapi/okta-scim/guides/scim-20): a POST
+   * carries a placeholder password, and a PUT is the full user with its {@code id} and {@code
+   * meta}.
+   */
+  private static String oktaUser(String id, String email, String oktaId) {
+    String idAndMeta =
+        id == null
+            ? "\"password\":\"1mz050nq\","
+            : "\"id\":\"" + id + "\",\"meta\":{\"resourceType\":\"User\"},";
+    return "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],"
+        + idAndMeta
+        + "\"userName\":\""
+        + email
+        + "\",\"externalId\":\""
+        + oktaId
+        + "\","
+        + "\"name\":{\"givenName\":\"Alice\",\"familyName\":\"Smith\"},"
+        + "\"emails\":[{\"primary\":true,\"value\":\""
+        + email
+        + "\",\"type\":\"work\"}],"
+        + "\"displayName\":\"Alice Smith\",\"locale\":\"en-US\",\"groups\":[],\"active\":true}";
+  }
+
+  private String identityToken(String email) {
+    return createIdentityToken(
+        email, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+  }
+
+  /** Signs in by token exchange with an IdP token for the email; the API is called as that user. */
+  private ApiClient signIn(String email) throws IOException {
+    AggregatedHttpResponse response = exchangeToken(identityToken(email));
+    assertThat(response.status()).as(response.contentUtf8()).isEqualTo(HttpStatus.OK);
+    String accessToken = MAPPER.readTree(response.contentUtf8()).get("access_token").asText();
+    return TestUtils.createApiClient(new ServerConfig(serverConfig.getServerUrl(), accessToken));
+  }
+
+  private CatalogsApi catalogApiAfterSignIn(String email) throws IOException {
+    return new CatalogsApi(signIn(email));
   }
 
   @Test
