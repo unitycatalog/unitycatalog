@@ -97,6 +97,9 @@ public class UnityCatalogServer implements AutoCloseable {
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private StorageCleanupWorker cleanupWorker;
 
+  // The cloud credential vendor the repositories built, if not injected; closed with the server.
+  private CloudCredentialVendor cloudCredentialVendor;
+
   /**
    * Metrics registry owned by this server instance; set during {@link #initializeServer}. Closed on
    * shutdown to release the JVM/GC metric listeners it binds (may be null if construction fails
@@ -142,6 +145,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
       closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
       closeQuietly(auditor, t, "the audit sink");
+      closeQuietly(cloudCredentialVendor, t, "the cloud credential vendor");
       closeOwnedSessionFactory(t);
       throw t;
     }
@@ -265,8 +269,19 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.fileOperationsDecorator,
             domainMetrics,
             audit);
+    cloudCredentialVendor = repositories.getOwnedCloudCredentialVendor().orElse(null);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
+    if (unityCatalogServerBuilder.serverProperties.isS3CompatibleStorageEnabled()) {
+      warnAboutUnreadableSecrets(repositories);
+      if (unityCatalogServerBuilder.serverProperties.getS3CompatibleStaticKeyVending()
+          == ServerProperties.S3CompatibleStaticKeyVending.STATIC_KEY) {
+        LOGGER.warn(
+            "{}=static-key: clients get the key pair of s3_compatible credentials without"
+                + " assume_role, which is not scoped to the requested path or privilege",
+            ServerProperties.Property.S3_COMPATIBLE_STATIC_KEY_VENDING.getKey());
+      }
+    }
     // Init authorizer
     authorizer =
         initializeAuthorizer(
@@ -336,6 +351,21 @@ public class UnityCatalogServer implements AutoCloseable {
             Clock.systemUTC(),
             serverProperties,
             domainMetrics);
+  }
+
+  /** Warns about each credential whose stored secret the server cannot read, with the reason. */
+  private static void warnAboutUnreadableSecrets(Repositories repositories) {
+    repositories
+        .getCredentialRepository()
+        .findUnreadableSecrets()
+        .forEach(
+            (name, failure) ->
+                // Not only a missing or changed key: the stored value can also be malformed.
+                LOGGER.warn(
+                    "Cannot read the stored secret of storage credential '{}': {}",
+                    name,
+                    failure.getMessage(),
+                    failure));
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(
@@ -562,6 +592,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
       closeQuietly(auditor, null, "the audit sink");
+      closeQuietly(cloudCredentialVendor, null, "the cloud credential vendor");
       closeQuietly(
           ownsHibernateConfigurator ? hibernateConfigurator : null, null, "the database pool");
     }

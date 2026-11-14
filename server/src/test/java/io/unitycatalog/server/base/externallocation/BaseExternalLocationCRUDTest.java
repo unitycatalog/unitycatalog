@@ -21,7 +21,9 @@ import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.S3CompatibleRequest;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.BaseCRUDTest;
@@ -53,6 +55,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   private static final String NEW_EXTERNAL_LOCATION_NAME = EXTERNAL_LOCATION_NAME + "_new";
   private static final String CREDENTIAL_NAME = "uc_testcredential";
   private static final String ANOTHER_CREDENTIAL_NAME = "uc_testcredential_another";
+  protected static final String COMPAT_CREDENTIAL_NAME = "uc_testcredential_compat";
+  protected static final String ANOTHER_COMPAT_CREDENTIAL_NAME = "uc_testcredential_compat_another";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
   protected ExternalLocationOperations externalLocationOperations;
   protected SchemaOperations schemaOperations;
@@ -234,6 +238,96 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testS3CompatibleLocations() throws ApiException {
+    String endpointA = "http://storage-a.invalid:9000";
+    String endpointB = "http://storage-b.invalid:9000";
+    createCompatCredential(COMPAT_CREDENTIAL_NAME, endpointA);
+    createCompatCredential(ANOTHER_COMPAT_CREDENTIAL_NAME, endpointB);
+
+    // Such a credential reaches storage only through the S3 API, at an s3:// path with a bucket.
+    for (String url :
+        List.of(
+            "gs://shared-bucket/data",
+            "s3:/shared-bucket/data",
+            "s3:///shared-bucket/data",
+            "s3://?shared-bucket",
+            "s3://#shared-bucket")) {
+      assertApiException(
+          () -> createLocation("el_other", url, COMPAT_CREDENTIAL_NAME),
+          ErrorCode.INVALID_ARGUMENT,
+          "its external locations must be s3:// paths");
+    }
+
+    // One bucket name on two storage systems, under locations that do not overlap.
+    createLocation("el_a", "s3://shared-bucket/a", COMPAT_CREDENTIAL_NAME);
+    createLocation("el_b", "s3://shared-bucket/b", ANOTHER_COMPAT_CREDENTIAL_NAME);
+    assertApiException(
+        () -> createLocation("el_bucket", "s3://shared-bucket", COMPAT_CREDENTIAL_NAME),
+        ErrorCode.INVALID_ARGUMENT,
+        "overlaps with existing external location");
+    // Updates keep the same rule: a new URL, or a new credential.
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                "el_a", new UpdateExternalLocation().url("gs://shared-bucket/a")),
+        ErrorCode.INVALID_ARGUMENT,
+        "its external locations must be s3:// paths");
+
+    // A credential can change type while locations use it, as long as an s3_compatible credential
+    // keeps only s3:// locations.
+    for (UpdateCredentialRequest update :
+        List.of(
+            new UpdateCredentialRequest()
+                .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)),
+            new UpdateCredentialRequest().s3Compatible(keyPair(endpointA)))) {
+      credentialOperations.updateCredential(COMPAT_CREDENTIAL_NAME, update);
+    }
+    create(EXTERNAL_LOCATION_NAME, testUrl());
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().credentialName(COMPAT_CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        "its external locations must be s3:// paths");
+    assertApiException(
+        () ->
+            credentialOperations.updateCredential(
+                CREDENTIAL_NAME, new UpdateCredentialRequest().s3Compatible(keyPair(endpointA))),
+        ErrorCode.INVALID_ARGUMENT,
+        "Cannot make credential '" + CREDENTIAL_NAME + "' an s3_compatible");
+
+    for (String name : List.of("el_a", "el_b")) {
+      delete(name, Optional.empty());
+    }
+    for (String name : List.of(COMPAT_CREDENTIAL_NAME, ANOTHER_COMPAT_CREDENTIAL_NAME)) {
+      credentialOperations.deleteCredential(name, Optional.empty());
+    }
+  }
+
+  protected void createCompatCredential(String name, String s3Endpoint) throws ApiException {
+    credentialOperations.createCredential(
+        new CreateCredentialRequest()
+            .name(name)
+            .purpose(CredentialPurpose.STORAGE)
+            .s3Compatible(keyPair(s3Endpoint)));
+  }
+
+  protected void createLocation(String name, String url, String credentialName)
+      throws ApiException {
+    externalLocationOperations.createExternalLocation(
+        new CreateExternalLocation().name(name).url(url).credentialName(credentialName));
+    externalLocationsToDelete.add(name);
+  }
+
+  protected static S3CompatibleRequest keyPair(String s3Endpoint) {
+    return new S3CompatibleRequest()
+        .accessKeyId("key-id-1")
+        .secretAccessKey("key-value-1")
+        .s3Endpoint(s3Endpoint);
+  }
+
+  @Test
   public void testExternalLocationUrlOverlapPrevention() throws ApiException {
     final String errorMessageCreateWithOverlap =
         "Cannot accept an external location that duplicates"
@@ -390,6 +484,12 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().comment("after"));
     assertThat(commented.getComment()).isEqualTo("after");
     assertThat(commented.getCredentialName()).isNull();
+    // Its URL can change too: with no credential, no credential type restricts the URL.
+    ExternalLocationInfo moved =
+        externalLocationOperations.updateExternalLocation(
+            EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(testUrl() + "/moved"));
+    assertThat(moved.getUrl()).isEqualTo(testUrl() + "/moved");
+    assertThat(moved.getCredentialName()).isNull();
 
     ExternalLocationInfo repaired =
         externalLocationOperations.updateExternalLocation(

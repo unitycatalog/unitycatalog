@@ -25,6 +25,14 @@ public abstract class GenericCredential {
     return prefix;
   }
 
+  /**
+   * Whether this credential is worth renewing from Unity Catalog before it expires. Always for
+   * Azure and GCP; {@link AwsCredential} renews only credentials that can expire.
+   */
+  public boolean isRenewable() {
+    return true;
+  }
+
   public final boolean readyToRenew(Clock clock, long renewalLeadTimeMillis) {
     return expirationTimeMillis != null
         && expirationTimeMillis <= clock.now().toEpochMilli() + renewalLeadTimeMillis;

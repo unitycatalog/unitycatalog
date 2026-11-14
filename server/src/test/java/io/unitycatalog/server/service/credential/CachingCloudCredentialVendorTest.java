@@ -16,6 +16,8 @@ import static org.mockito.Mockito.when;
 
 import com.google.auth.oauth2.AccessToken;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
@@ -41,6 +43,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -62,6 +65,7 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 public class CachingCloudCredentialVendorTest {
 
   private static final NormalizedURL LOC = NormalizedURL.from("s3://bucket/tableA");
+  private static final UUID S3_ACCESS_KEY_ID = UUID.randomUUID();
   private static final long T0 = 1_000_000_000_000L;
   private static final long ONE_HOUR_MS = 3_600_000L;
 
@@ -110,13 +114,14 @@ public class CachingCloudCredentialVendorTest {
   }
 
   /** AWS session credentials as STS returns them; a {@code null} expiry is a static credential. */
-  private static Credentials awsCreds(String accessKey, Long expiryEpochMs) {
-    return Credentials.builder()
-        .accessKeyId(accessKey)
-        .secretAccessKey("SK")
-        .sessionToken("TK")
-        .expiration(expiryEpochMs == null ? null : Instant.ofEpochMilli(expiryEpochMs))
-        .build();
+  private static Optional<Credentials> awsCreds(String accessKey, Long expiryEpochMs) {
+    return Optional.of(
+        Credentials.builder()
+            .accessKeyId(accessKey)
+            .secretAccessKey("SK")
+            .sessionToken("TK")
+            .expiration(expiryEpochMs == null ? null : Instant.ofEpochMilli(expiryEpochMs))
+            .build());
   }
 
   /** Every cloud vends a new, distinct credential on each call, valid for an hour. */
@@ -158,9 +163,28 @@ public class CachingCloudCredentialVendorTest {
   private static CredentialContext ctx(
       String roleArn, String externalId, Set<CredentialContext.Privilege> privileges) {
     CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.AWS_IAM_ROLE);
     when(dao.getAwsIamRoleResponse())
         .thenReturn(new AwsIamRoleResponse().roleArn(roleArn).externalId(externalId));
     return CredentialContext.create(LOC, privileges, Optional.of(dao));
+  }
+
+  /** A context on S3-compatible storage with an {@code s3_compatible} credential. */
+  private static CredentialContext s3CompatibleCtx(String fingerprint, boolean isServerAccess) {
+    CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.S3_COMPATIBLE);
+    when(dao.getId()).thenReturn(S3_ACCESS_KEY_ID);
+    when(dao.getCredentialFingerprint()).thenReturn(fingerprint);
+    // As the real DAO does for a credential of another type.
+    when(dao.getAwsIamRoleResponse())
+        .thenThrow(new BaseException(ErrorCode.FAILED_PRECONDITION, "not AWS_IAM_ROLE"));
+    return CredentialContext.create(
+        LOC,
+        READ_ONLY,
+        Optional.of(dao),
+        Optional.of("http://storage.example.com:9000"),
+        Optional.of("us-east-1"),
+        isServerAccess);
   }
 
   private static String accessKey(TemporaryCredentials credentials) {
@@ -664,5 +688,40 @@ public class CachingCloudCredentialVendorTest {
   @FunctionalInterface
   private interface ThrowingRunnable {
     void run() throws Exception;
+  }
+
+  @Test
+  public void testS3CompatibleServerAndClientVendsAndVersionsAreCachedApart() {
+    // A server vend of an s3_compatible credential always carries keys, so a client must never be
+    // served it; and any update to the credential can change what is vended.
+    vendDistinctCredentials();
+    CachingCloudCredentialVendor cache = cache();
+    String client = accessKey(cache.vendCredential(s3CompatibleCtx("version-1", false)));
+    String server = accessKey(cache.vendCredential(s3CompatibleCtx("version-1", true)));
+    assertNotEquals(client, server);
+    assertEquals(client, accessKey(cache.vendCredential(s3CompatibleCtx("version-1", false))));
+    assertEquals(server, accessKey(cache.vendCredential(s3CompatibleCtx("version-1", true))));
+
+    String updated = accessKey(cache.vendCredential(s3CompatibleCtx("version-2", false)));
+    assertNotEquals(client, updated);
+    verify(aws, times(3)).vendAwsCredentials(any());
+  }
+
+  @Test
+  public void testAwsIamRoleServerAndClientVendsShareAnEntry() {
+    // Only s3_compatible credentials vend differently to the server, so an IAM role vends once.
+    vendDistinctCredentials();
+    CachingCloudCredentialVendor cache = cache();
+    CredentialContext client = ctx("arn:aws:iam::123456789012:role/r");
+    CredentialContext server =
+        CredentialContext.create(
+            LOC,
+            READ_ONLY,
+            client.getCredentialDAO(),
+            Optional.empty(),
+            Optional.empty(),
+            /* isServerAccess= */ true);
+    assertEquals(accessKey(cache.vendCredential(client)), accessKey(cache.vendCredential(server)));
+    verify(aws, times(1)).vendAwsCredentials(any());
   }
 }
