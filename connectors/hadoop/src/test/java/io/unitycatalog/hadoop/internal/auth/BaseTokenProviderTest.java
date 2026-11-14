@@ -32,8 +32,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.stubbing.OngoingStubbing;
 
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
-  private String clockName;
-  private Clock clock;
+  protected String clockName;
+  protected Clock clock;
 
   /**
    * Builds a standard UC fetcher from a (table- or path-based) conf, dispatching to the concrete
@@ -581,7 +581,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     verify(tempCredApi, times(2)).generateTemporaryTableCredentials(any());
   }
 
-  private T provider(String location, GenericCredential... credentials) {
+  protected T provider(String location, GenericCredential... credentials) {
     return createTestProvider(providerConf(location), fetcherReturning(List.of(credentials)));
   }
 

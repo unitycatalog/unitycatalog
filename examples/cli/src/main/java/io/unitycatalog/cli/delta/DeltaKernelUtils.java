@@ -165,17 +165,67 @@ public class DeltaKernelUtils {
       if (awsTempCredentials == null) {
         throw new IllegalArgumentException("AWS temporary credentials are missing");
       }
-      conf.set("fs.s3a.access.key", awsTempCredentials.getAccessKeyId());
-      conf.set("fs.s3a.secret.key", awsTempCredentials.getSecretAccessKey());
-      conf.set("fs.s3a.session.token", awsTempCredentials.getSessionToken());
+      // S3-compatible storage may vend only its endpoint, leaving the keys to the environment.
+      boolean isEndpointOnly =
+          awsTempCredentials.getS3Endpoint() != null
+              && awsTempCredentials.getAccessKeyId() == null
+              && awsTempCredentials.getSecretAccessKey() == null
+              && awsTempCredentials.getSessionToken() == null;
+      if (!isEndpointOnly) {
+        requireValue(awsTempCredentials.getAccessKeyId(), "AWS access key is missing");
+        requireValue(awsTempCredentials.getSecretAccessKey(), "AWS secret key is missing");
+        // Only S3-compatible storage vends a key pair without a session token.
+        if (awsTempCredentials.getS3Endpoint() == null) {
+          requireValue(awsTempCredentials.getSessionToken(), "AWS session token is missing");
+        }
+        conf.set("fs.s3a.access.key", awsTempCredentials.getAccessKeyId());
+        conf.set("fs.s3a.secret.key", awsTempCredentials.getSecretAccessKey());
+        // Empty for a key pair, so that a session token already configured is not paired with it.
+        conf.set(
+            "fs.s3a.session.token",
+            awsTempCredentials.getSessionToken() != null
+                ? awsTempCredentials.getSessionToken()
+                : "");
+      }
       conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
       conf.set("fs.s3a.path.style.access", "true");
+      if (awsTempCredentials.getS3Endpoint() != null) {
+        // At the table's bucket scope, since a bucket option in core-site.xml overrides the global
+        // one.
+        String bucketPrefix = "fs.s3a.bucket." + tablePathUri.getAuthority();
+        conf.set(bucketPrefix + ".endpoint", awsTempCredentials.getS3Endpoint());
+        if (awsTempCredentials.getS3Region() != null) {
+          conf.set(bucketPrefix + ".endpoint.region", awsTempCredentials.getS3Region());
+        }
+        conf.set(bucketPrefix + ".path.style.access", "true");
+        if (!isEndpointOnly) {
+          conf.set(bucketPrefix + ".access.key", awsTempCredentials.getAccessKeyId());
+          conf.set(bucketPrefix + ".secret.key", awsTempCredentials.getSecretAccessKey());
+          conf.set(
+              bucketPrefix + ".session.token",
+              awsTempCredentials.getSessionToken() != null
+                  ? awsTempCredentials.getSessionToken()
+                  : "");
+          // A provider that reads these keys, rather than one configured for other credentials.
+          conf.set(
+              bucketPrefix + ".aws.credentials.provider",
+              awsTempCredentials.getSessionToken() != null
+                  ? "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider"
+                  : "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider");
+        }
+      }
     } else if (scheme.equals(Constants.URI_SCHEME_FILE)) {
       conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
     } else {
       throw new IllegalArgumentException("Unsupported URI scheme: " + scheme);
     }
     return conf;
+  }
+
+  private static void requireValue(String value, String message) {
+    if (value == null || value.isEmpty()) {
+      throw new IllegalArgumentException(message);
+    }
   }
 
   public static String readDeltaTable(
