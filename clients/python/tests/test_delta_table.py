@@ -1,6 +1,6 @@
 import pytest
 
-from unitycatalog.delta.models.delta_primitive_type import DeltaPrimitiveType
+from unitycatalog.client.delta.models.delta_primitive_type import DeltaPrimitiveType
 
 
 @pytest.mark.asyncio
