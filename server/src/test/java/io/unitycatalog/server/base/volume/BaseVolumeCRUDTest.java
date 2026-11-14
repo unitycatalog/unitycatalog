@@ -20,6 +20,7 @@ import io.unitycatalog.client.model.UpdateSchema;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -30,6 +31,8 @@ import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
   @Test
@@ -227,5 +230,103 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
         .isInstanceOf(Exception.class);
     assertThatThrownBy(() -> schemaOperations.getSchema(CATALOG_NAME + "." + SCHEMA_NEW_NAME))
         .isInstanceOf(Exception.class);
+  }
+
+  /** A drop that waits for a concurrent rename must not delete the renamed volume. */
+  @ParameterizedTest
+  @EnumSource(
+      value = VolumeType.class,
+      names = {"EXTERNAL", "MANAGED"})
+  public void dropRacingARenameDoesNotDeleteTheRenamedVolume(VolumeType type) throws Exception {
+    UUID id =
+        type == VolumeType.EXTERNAL
+            ? UUID.fromString(createExternalVolume("drop_race").getVolumeId())
+            : insertManagedVolume("drop_race");
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, VolumeInfoDAO.class, id, "name", "drop_race_renamed"),
+                () -> {
+                  volumeOperations.deleteVolume(SCHEMA_FULL_NAME + ".drop_race");
+                  return null;
+                }),
+        ErrorCode.NOT_FOUND,
+        "Volume not found");
+
+    assertThat(volumeOperations.getVolume(SCHEMA_FULL_NAME + ".drop_race_renamed").getVolumeId())
+        .isEqualTo(id.toString());
+    // A refused drop queues no cleanup of the live volume's storage.
+    assertThat(StorageCleanupTestSupport.findTask(hibernateConfigurator.getSessionFactory(), id))
+        .isNull();
+  }
+
+  /** A rename that waits for a concurrent edit of another column keeps that edit. */
+  @Test
+  public void renameKeepsAConcurrentCommentEdit() throws Exception {
+    UUID id = UUID.fromString(createExternalVolume("edit_race").getVolumeId());
+
+    runBlockedByHeldWrite(
+        held -> setColumn(held, VolumeInfoDAO.class, id, "comment", "held comment"),
+        () ->
+            volumeOperations.updateVolume(
+                SCHEMA_FULL_NAME + ".edit_race",
+                new UpdateVolumeRequestContent().newName("edited")));
+
+    VolumeInfo renamed = volumeOperations.getVolume(SCHEMA_FULL_NAME + ".edited");
+    assertThat(renamed.getVolumeId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo("held comment");
+  }
+
+  /** Inserts a managed volume row; creating one through the API needs managed storage. */
+  private UUID insertManagedVolume(String name) {
+    UUID id = UUID.randomUUID();
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      session.persist(
+          VolumeInfoDAO.builder()
+              .volumeType(VolumeType.MANAGED.getValue())
+              .storageLocation("/tmp/" + name)
+              .name(name)
+              .createdAt(new Date())
+              .updatedAt(new Date())
+              .id(id)
+              .schemaId(UUID.fromString(schemaId))
+              .build());
+      session.getTransaction().commit();
+    }
+    return id;
+  }
+
+  private VolumeInfo createExternalVolume(String name) throws ApiException {
+    return volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(name)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation("/tmp/" + name));
+  }
+
+  /** An update that waits for a concurrent rename of the volume misses it and changes nothing. */
+  @Test
+  public void updateRacingARenameIsNotFound() throws Exception {
+    VolumeInfo volume = createExternalVolume("update_race");
+    UUID id = UUID.fromString(volume.getVolumeId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, VolumeInfoDAO.class, id, "name", "update_race_renamed"),
+                () ->
+                    volumeOperations.updateVolume(
+                        SCHEMA_FULL_NAME + ".update_race",
+                        new UpdateVolumeRequestContent().comment("lost"))),
+        ErrorCode.NOT_FOUND,
+        "Volume not found");
+
+    VolumeInfo renamed = volumeOperations.getVolume(SCHEMA_FULL_NAME + ".update_race_renamed");
+    assertThat(renamed.getVolumeId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo(volume.getComment());
   }
 }
