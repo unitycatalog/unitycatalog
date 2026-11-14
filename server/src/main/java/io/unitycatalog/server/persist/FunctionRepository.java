@@ -1,5 +1,10 @@
 package io.unitycatalog.server.persist;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectReader;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateFunction;
@@ -7,16 +12,20 @@ import io.unitycatalog.server.model.CreateFunctionRequest;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
-import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.JsonUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -30,6 +39,11 @@ public class FunctionRepository {
   private final SessionFactory sessionFactory;
   private static final PagedListingHelper<FunctionInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(FunctionInfoDAO.class);
+  private static final ObjectReader STRICT_JSON_READER =
+      JsonUtils.getInstance()
+          .reader()
+          .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+          .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION);
 
   public FunctionRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.repositories = repositories;
@@ -39,6 +53,7 @@ public class FunctionRepository {
   public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest) {
     ValidationUtils.validateSqlObjectName(createFunctionRequest.getFunctionInfo().getName());
     CreateFunction createFunction = createFunctionRequest.getFunctionInfo();
+    Map<String, String> properties = parseProperties(createFunction.getProperties());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     Long createTime = System.currentTimeMillis();
     FunctionInfo functionInfo =
@@ -48,7 +63,7 @@ public class FunctionRepository {
             .catalogName(createFunction.getCatalogName())
             .schemaName(createFunction.getSchemaName())
             .comment(createFunction.getComment())
-            .properties(createFunction.getProperties())
+            .properties(toPropertiesJson(properties))
             .owner(callerId)
             .createdAt(createTime)
             .createdBy(callerId)
@@ -109,6 +124,7 @@ public class FunctionRepository {
                     p.setFunction(dao);
                   });
           session.persist(dao);
+          PropertyDAO.from(properties, dao.getId(), Constants.FUNCTION).forEach(session::persist);
           return functionInfo;
         },
         "Failed to create function",
@@ -158,11 +174,16 @@ public class FunctionRepository {
     List<FunctionInfoDAO> functionInfoDAOList =
         LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
     String nextPageToken = LISTING_HELPER.getNextPageToken(functionInfoDAOList, maxResults);
+    Map<UUID, List<PropertyDAO>> propertiesByFunctionId =
+        PropertyRepository.findPropertiesByEntityIds(
+            session,
+            functionInfoDAOList.stream().map(FunctionInfoDAO::getId).toList(),
+            Constants.FUNCTION);
     List<FunctionInfo> result = new ArrayList<>();
     for (FunctionInfoDAO functionInfoDAO : functionInfoDAOList) {
       FunctionInfo functionInfo = functionInfoDAO.toFunctionInfo();
-      RepositoryUtils.attachProperties(
-          functionInfo, functionInfo.getFunctionId(), Constants.FUNCTION, session);
+      setProperties(
+          functionInfo, propertiesByFunctionId.getOrDefault(functionInfoDAO.getId(), List.of()));
       addNamespaceData(functionInfo, catalogName, schemaName);
       result.add(functionInfo);
     }
@@ -182,8 +203,10 @@ public class FunctionRepository {
           }
           FunctionInfo functionInfo = functionInfoDAO.toFunctionInfo();
           addNamespaceInfo(functionInfo, catalogName, schemaName);
-          RepositoryUtils.attachProperties(
-              functionInfo, functionInfo.getFunctionId(), Constants.FUNCTION, session);
+          setProperties(
+              functionInfo,
+              PropertyRepository.findProperties(
+                  session, functionInfoDAO.getId(), Constants.FUNCTION));
           return functionInfo;
         },
         "Failed to get function",
@@ -235,6 +258,69 @@ public class FunctionRepository {
     if (functionInfoDAO == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + functionName);
     }
+    PropertyRepository.findProperties(session, functionInfoDAO.getId(), Constants.FUNCTION)
+        .forEach(session::remove);
     session.remove(functionInfoDAO);
+  }
+
+  /**
+   * Parses the {@code properties} of a function create request: a single JSON object with unique
+   * keys and nothing after it. A value that is not a string is stored as its JSON text. An absent
+   * field, a blank string or a JSON {@code null} means no properties.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for any other value, or for a key
+   *     longer than {@link PropertyDAO#MAX_KEY_LENGTH} characters
+   */
+  private static Map<String, String> parseProperties(String properties) {
+    if (properties == null || properties.isBlank()) {
+      return Map.of();
+    }
+    JsonNode node;
+    try {
+      node = STRICT_JSON_READER.readTree(properties);
+    } catch (JsonProcessingException e) {
+      throw invalidProperties();
+    }
+    if (node.isNull()) {
+      return Map.of();
+    }
+    if (!node.isObject()) {
+      throw invalidProperties();
+    }
+    Map<String, String> parsed = new HashMap<>();
+    for (Map.Entry<String, JsonNode> field : node.properties()) {
+      if (field.getKey().length() > PropertyDAO.MAX_KEY_LENGTH) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Function property keys cannot be longer than "
+                + PropertyDAO.MAX_KEY_LENGTH
+                + " characters.");
+      }
+      JsonNode value = field.getValue();
+      parsed.put(field.getKey(), value.isTextual() ? value.textValue() : value.toString());
+    }
+    return parsed;
+  }
+
+  private static BaseException invalidProperties() {
+    return new BaseException(
+        ErrorCode.INVALID_ARGUMENT,
+        "Function properties must be a single JSON object with unique keys.");
+  }
+
+  private static void setProperties(FunctionInfo functionInfo, List<PropertyDAO> properties) {
+    functionInfo.setProperties(toPropertiesJson(PropertyDAO.toMap(properties)));
+  }
+
+  /** Serializes properties as a JSON object with keys in sorted order, or null when empty. */
+  private static String toPropertiesJson(Map<String, String> properties) {
+    if (properties.isEmpty()) {
+      return null;
+    }
+    try {
+      return JsonUtils.getInstance().writeValueAsString(new TreeMap<>(properties));
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException(e);
+    }
   }
 }
