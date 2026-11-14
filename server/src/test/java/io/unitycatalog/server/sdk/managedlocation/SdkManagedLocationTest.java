@@ -146,8 +146,10 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
     String schemaRoot = "s3://schema-bucket/" + "s".repeat(1200);
     createCatalog(Optional.of(catalogRoot));
     createSchema(Optional.of(schemaRoot));
+    assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageRoot()).isEqualTo(catalogRoot);
     assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageLocation())
         .isEqualTo(catalogInfo.getStorageLocation());
+    assertThat(schemaOperations.getSchema(SCHEMA_FULL_NAME).getStorageRoot()).isEqualTo(schemaRoot);
     assertThat(schemaOperations.getSchema(SCHEMA_FULL_NAME).getStorageLocation())
         .isEqualTo(schemaInfo.getStorageLocation());
 
