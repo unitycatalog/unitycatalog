@@ -64,6 +64,8 @@ public class TestUtils {
       CATALOG_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME;
   public static final String COMMENT = "test comment";
   public static final String COMMENT2 = "test comment 2";
+  // Longer than the 255 characters of a default string column
+  public static final String LONG_COMMENT = "c".repeat(300);
   public static final String CATALOG_NEW_NAME = "uc_newtestcatalog";
   public static final String CATALOG_NEW_COMMENT = "new test comment";
   public static final String MODEL_NEW_COMMENT = "new test model comment";

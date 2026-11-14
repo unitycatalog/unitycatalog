@@ -1,8 +1,8 @@
 package io.unitycatalog.server.base.volume;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
-import static io.unitycatalog.server.utils.TestUtils.COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.COMMON_ENTITY_NAME;
+import static io.unitycatalog.server.utils.TestUtils.LONG_COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NEW_COMMENT;
@@ -140,11 +140,13 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
     // Update volume comment without updating name
     System.out.println("Testing update volume: changing comment..");
     UpdateVolumeRequestContent updateVolumeRequest2 =
-        new UpdateVolumeRequestContent().comment(COMMENT);
+        new UpdateVolumeRequestContent().comment(LONG_COMMENT);
     VolumeInfo updatedVolumeInfo2 =
         volumeOperations.updateVolume(VOLUME_NEW_FULL_NAME, updateVolumeRequest2);
     assertThat(updatedVolumeInfo2.getName()).isEqualTo(VOLUME_NEW_NAME);
-    assertThat(updatedVolumeInfo2.getComment()).isEqualTo(updateVolumeRequest2.getComment());
+    assertThat(updatedVolumeInfo2.getComment()).isEqualTo(LONG_COMMENT);
+    assertThat(volumeOperations.getVolume(VOLUME_NEW_FULL_NAME).getComment())
+        .isEqualTo(LONG_COMMENT);
     assertThat(updatedVolumeInfo2.getFullName()).isEqualTo(VOLUME_NEW_FULL_NAME);
     assertThat(updatedVolumeInfo2.getUpdatedAt()).isNotNull();
 

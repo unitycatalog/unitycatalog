@@ -54,7 +54,7 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "data_type")
   private ColumnTypeName dataType;
 
-  @Column(name = "full_data_type")
+  @Column(name = "full_data_type", length = 16777215)
   private String fullDataType;
 
   @Column(name = "external_language")

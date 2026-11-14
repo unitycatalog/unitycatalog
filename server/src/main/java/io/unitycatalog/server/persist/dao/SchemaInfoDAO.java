@@ -27,7 +27,7 @@ public class SchemaInfoDAO extends IdentifiableDAO {
   @Column(name = "catalog_id")
   private UUID catalogId;
 
-  @Column(name = "comment")
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   @Column(name = "owner")

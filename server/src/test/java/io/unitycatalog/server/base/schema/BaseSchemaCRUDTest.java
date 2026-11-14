@@ -89,7 +89,7 @@ public abstract class BaseSchemaCRUDTest extends BaseSchemaCRUDTestEnv {
 
     // Update schema comment without updating name and properties
     System.out.println("Testing update schema: changing comment..");
-    UpdateSchema updateSchema2 = new UpdateSchema().comment(TestUtils.SCHEMA_NEW_COMMENT);
+    UpdateSchema updateSchema2 = new UpdateSchema().comment(TestUtils.LONG_COMMENT);
     SchemaInfo updatedSchemaInfo2 =
         schemaOperations.updateSchema(TestUtils.SCHEMA_NEW_FULL_NAME, updateSchema2);
     assertThat(updatedSchemaInfo2.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME);
@@ -104,7 +104,9 @@ public abstract class BaseSchemaCRUDTest extends BaseSchemaCRUDTestEnv {
     SchemaInfo updatedSchemaInfo3 =
         schemaOperations.updateSchema(TestUtils.SCHEMA_NEW_FULL_NAME, updateSchema3);
     assertThat(updatedSchemaInfo3.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME);
-    assertThat(updatedSchemaInfo3.getComment()).isEqualTo(TestUtils.SCHEMA_NEW_COMMENT);
+    assertThat(updatedSchemaInfo3.getComment()).isEqualTo(TestUtils.LONG_COMMENT);
+    assertThat(schemaOperations.getSchema(TestUtils.SCHEMA_NEW_FULL_NAME).getComment())
+        .isEqualTo(TestUtils.LONG_COMMENT);
     assertThat(updatedSchemaInfo3.getFullName()).isEqualTo(TestUtils.SCHEMA_NEW_FULL_NAME);
     assertThat(updatedSchemaInfo3.getProperties()).isEqualTo(updateSchema3.getProperties());
     assertThat(updatedSchemaInfo3.getUpdatedAt()).isNotNull();

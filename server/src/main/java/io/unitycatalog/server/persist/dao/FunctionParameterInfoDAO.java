@@ -43,7 +43,7 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
   @Column(name = "input_or_return", nullable = false)
   private InputOrReturnEnum inputOrReturn;
 
-  @Column(name = "type_text", nullable = false)
+  @Column(name = "type_text", nullable = false, length = 16777215)
   private String typeText;
 
   @Column(name = "type_json", length = 16777215)
@@ -70,10 +70,10 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
   @Column(name = "parameter_type")
   private FunctionParameterType parameterType;
 
-  @Column(name = "parameter_default")
+  @Column(name = "parameter_default", length = 65535)
   private String parameterDefault;
 
-  @Column(name = "comment")
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   public static FunctionParameterInfoDAO from(
