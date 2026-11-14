@@ -487,6 +487,19 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
+   * Throws unless every step of this build is applied (the database's {@link #state()} is CURRENT),
+   * saying what to run: the upgrade, or the newer release the database belongs to.
+   */
+  public void refuseIfNotCurrent() {
+    SchemaState state = state();
+    refuseIfUnsupported(state);
+    if (state != SchemaState.CURRENT) {
+      throw new IllegalStateException(
+          "The database schema needs an upgrade: run bin/start-uc-server --upgrade-schema first.");
+    }
+  }
+
+  /**
    * The highest version the schema history records as applied, {@code null} without one. A step
    * that failed does not count; Flyway's own {@code current()} counts it.
    */

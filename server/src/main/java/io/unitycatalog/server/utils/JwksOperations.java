@@ -8,6 +8,7 @@ import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.JwkProviderBuilder;
 import com.auth0.jwk.JwksHttpClient;
 import com.auth0.jwk.JwksHttpResponse;
+import com.auth0.jwk.NetworkException;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -28,7 +29,6 @@ import io.unitycatalog.server.security.SecurityContext;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
-import java.nio.file.Path;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
@@ -50,10 +50,13 @@ public class JwksOperations {
   private static final Duration CACHE_TTL = Duration.ofHours(1);
   private static final Duration DISCOVERY_FAILURE_TTL = Duration.ofSeconds(30);
   private static final Duration MIN_KEY_REFRESH_INTERVAL = Duration.ofSeconds(6);
+  // How far an issuer's clock may run ahead of the server's for iat and nbf.
+  private static final long CLOCK_SKEW_SECONDS = 60;
 
   private final WebClient webClient;
   private static final ObjectMapper mapper = new ObjectMapper();
-  private final SecurityContext securityContext;
+  // Checks the server's own tokens with its signing key. Tests of external issuers pass no context.
+  private final JWTVerifier internalVerifier;
   private final Ticker ticker;
   private final Set<URI> allowedJwksUris;
   private final Cache<String, JwkProvider> providers;
@@ -79,7 +82,10 @@ public class JwksOperations {
       List<String> allowedJwksUris,
       Ticker ticker,
       Duration responseTimeout) {
-    this.securityContext = securityContext;
+    this.internalVerifier =
+        securityContext == null
+            ? null
+            : JWT.require(securityContext.getAlgorithm()).withIssuer(INTERNAL).build();
     this.ticker = ticker;
     this.webClient =
         WebClient.builder()
@@ -108,28 +114,50 @@ public class JwksOperations {
             .build();
   }
 
+  /**
+   * Returns the verifier for a token from the given issuer. For the server's own ({@code internal})
+   * tokens, {@code keyId} and {@code alg} are not used: the token must be signed with the server's
+   * key, with RS512.
+   */
   @SneakyThrows
   public JWTVerifier verifierForIssuerAndKey(String issuer, String keyId, String alg) {
+    if (issuer.equals(INTERNAL)) {
+      return internalVerifier;
+    }
     JwkProvider jwkProvider = loadJwkProvider(issuer);
     Jwk jwk;
     try {
       jwk = jwkProvider.get(keyId);
     } catch (JwkException e) {
-      LOGGER.warn("Failed to get signing key '{}' for issuer '{}'", keyId, issuer, e);
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INTERNAL,
-          String.format("Could not get signing key '%s' for issuer %s", keyId, issuer),
-          e);
+      if (e instanceof NetworkException && !(e.getCause() instanceof RefreshRateLimitedException)) {
+        LOGGER.warn("Failed to get signing key '{}' for issuer '{}'", keyId, issuer, e);
+        throw new OAuthInvalidRequestException(
+            ErrorCode.INTERNAL,
+            String.format("Could not get signing key '%s' for issuer %s", keyId, issuer),
+            e);
+      }
+      // No key has the caller's key id, or the key set was empty or had no usable key.
+      LOGGER.debug("No usable signing key '{}' for issuer '{}'", keyId, issuer, e);
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Unknown signing key", e);
     }
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
 
-    return JWT.require(algorithm).withIssuer(issuer).build();
+    // Tolerates an issuer clock ahead of the server's on iat and nbf; exp gets no leeway.
+    return JWT.require(algorithm)
+        .withIssuer(issuer)
+        .acceptIssuedAt(CLOCK_SKEW_SECONDS)
+        .acceptNotBefore(CLOCK_SKEW_SECONDS)
+        .build();
   }
 
   @SneakyThrows
   private Algorithm algorithmForJwk(Jwk jwk, String alg) {
     String keyType = jwk.getType();
+    if (alg == null) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.UNAUTHENTICATED, "Missing signing algorithm");
+    }
 
     return switch (keyType) {
       case "RSA" ->
@@ -159,18 +187,12 @@ public class JwksOperations {
   /**
    * Reuses an external provider after the caller checks the issuer allowlist.
    *
-   * @param issuer token issuer, or {@code internal} for the server's own keys
+   * @param issuer an external token issuer
    * @return the signing-key provider
    */
   @SneakyThrows
   public JwkProvider loadJwkProvider(String issuer) {
     LOGGER.debug("Loading JwkProvider for issuer '{}'", issuer);
-    if (issuer.equals(INTERNAL)) {
-      // Return our own "self-signed" provider, for easy mode.
-      // TODO: This should be configurable
-      Path certsFile = securityContext.getCertsFile();
-      return new JwkProviderBuilder(certsFile.toUri().toURL()).cached(false).build();
-    }
     // Share discovery for each issuer. A slow load can also delay issuers in the same hash bin.
     return providers.get(issuer, this::fetchJwkProvider);
   }
@@ -269,19 +291,33 @@ public class JwksOperations {
 
   private record DiscoveryFailure(ErrorCode errorCode, String message) {}
 
+  /** A refresh refused because the keys were read less than the minimum interval ago. */
+  private static final class RefreshRateLimitedException extends IOException {
+    private RefreshRateLimitedException() {
+      super("Signing-key refresh is rate limited");
+    }
+  }
+
   /** Limits HTTP fetches per provider while keeping its full cached key set available. */
   private JwksHttpClient rateLimitedSigningKeysClient() {
     return new JwksHttpClient() {
       private long nextRefreshNanos = ticker.read();
+      private boolean lastFetchFailed;
 
       @Override
       public synchronized JwksHttpResponse fetch(URL url) throws IOException {
         long now = ticker.read();
         if (now - nextRefreshNanos < 0) {
-          throw new IOException("Signing-key refresh is rate limited");
+          // After a failed fetch no keys were read, so the refusal is a fetch failure (500).
+          throw lastFetchFailed
+              ? new IOException("Signing-key refresh is rate limited")
+              : new RefreshRateLimitedException();
         }
         nextRefreshNanos = now + MIN_KEY_REFRESH_INTERVAL.toNanos();
-        return fetchSigningKeys(url);
+        lastFetchFailed = true;
+        JwksHttpResponse keys = fetchSigningKeys(url);
+        lastFetchFailed = false;
+        return keys;
       }
     };
   }

@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.auth.AuthorizeExpressions.SCIM_PROVISIONING;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 
@@ -42,6 +43,7 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.Scim2Utils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Calendar;
@@ -63,6 +65,9 @@ import java.util.UUID;
  *   <li>externalId - maps to SCIM external id
  *   <li>userName - maps to SCIM primary email
  * </ul>
+ *
+ * <p>A user is owned by the admin, or by the IdP whose SCIM token created it, and only its owner
+ * changes or deletes it. An IdP sees only its own users; any other is not found for it.
  */
 public class Scim2UserService implements ScimService {
   private final UserRepository userRepository;
@@ -83,7 +88,7 @@ public class Scim2UserService implements ScimService {
   @Get("")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public ListResponse<UserResource> getScimUsers(
       @Param("filter") Optional<String> filter,
@@ -92,13 +97,14 @@ public class Scim2UserService implements ScimService {
     final Filter userFilter =
         filter.filter(f -> !f.isEmpty()).<Filter>map(this::parseFilter).orElse(null);
     FilterEvaluator filterEvaluator = new FilterEvaluator();
+    String caller = IdentityUtils.callerOwner();
 
     List<UserResource> userResourcesList =
         userRepository
             .listUsers(
                 startIndex.orElse(1) - 1,
                 count.orElse(50),
-                m -> match(filterEvaluator, userFilter, asUserResource(m)))
+                m -> isVisible(m, caller) && match(filterEvaluator, userFilter, asUserResource(m)))
             .stream()
             .map(Scim2Utils::asUserResource)
             .toList();
@@ -122,7 +128,7 @@ public class Scim2UserService implements ScimService {
   @Post("")
   @Produces("application/scim+json")
   @StatusCode(201)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource createScimUser(UserResource userResource) {
     // Get primary email address
@@ -139,6 +145,8 @@ public class Scim2UserService implements ScimService {
     if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
       pictureUrl = userResource.getPhotos().get(0).getValue().toString();
     }
+    // Outside the try: a refused SCIM token is a 403, not a bad request.
+    String owner = IdentityUtils.callerOwner();
     try {
       User user =
           userRepository.createUser(
@@ -148,6 +156,7 @@ public class Scim2UserService implements ScimService {
                   .active(userResource.getActive())
                   .externalId(userResource.getExternalId())
                   .pictureUrl(pictureUrl)
+                  .owner(owner)
                   .build());
       return asUserResource(user);
     } catch (BaseException e) {
@@ -165,19 +174,19 @@ public class Scim2UserService implements ScimService {
   @Get("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource getUser(@Param("id") String id) {
-    return asUserResource(userRepository.getUser(id));
+    return asUserResource(visibleUser(id, IdentityUtils.callerOwner()));
   }
 
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
-    User existing = userRepository.getUser(id);
+    User existing = changeableUser(id);
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
@@ -196,10 +205,10 @@ public class Scim2UserService implements ScimService {
   }
 
   @Delete("/{id}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
-    User user = userRepository.getUser(id);
+    User user = changeableUser(id);
     checkNotMetastoreOwner(user);
     authorizer.clearAuthorizationsForPrincipal(
         UUID.fromString(Objects.requireNonNull(user.getId())));
@@ -208,7 +217,7 @@ public class Scim2UserService implements ScimService {
   }
 
   @Patch("/{id}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
     return patchRequest.getOperations().stream()
@@ -223,9 +232,10 @@ public class Scim2UserService implements ScimService {
 
   private HttpResponse handleUserUpdate(String id, PatchOperation operation) {
     try {
+      User user = changeableUser(id);
       Boolean value = operation.getValues(Boolean.class).get(0);
       if (Boolean.FALSE.equals(value)) {
-        checkNotMetastoreOwner(userRepository.getUser(id));
+        checkNotMetastoreOwner(user);
       }
       UpdateUser updateUser = UpdateUser.builder().active(value).build();
       userRepository.updateUser(id, updateUser);
@@ -233,6 +243,33 @@ public class Scim2UserService implements ScimService {
     } catch (ScimException | JsonProcessingException e) {
       return handleExceptionDuringPatch(e);
     }
+  }
+
+  /** The admin sees every user; an IdP sees only its own. */
+  private static boolean isVisible(User user, String caller) {
+    return IdentityUtils.ADMIN_OWNER.equals(caller) || caller.equals(user.getOwner());
+  }
+
+  /** The user, if {@code caller} may see it; another owner's user is not found for an IdP. */
+  private User visibleUser(String id, String caller) {
+    User user = userRepository.getUser(id);
+    if (!isVisible(user, caller)) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
+    }
+    return user;
+  }
+
+  /** The user, if the caller owns it and may change it. */
+  private User changeableUser(String id) {
+    String caller = IdentityUtils.callerOwner();
+    User user = visibleUser(id, caller);
+    checkNotIdpPrincipalForScimToken(user);
+    if (!caller.equals(user.getOwner())) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "User " + user.getEmail() + " is managed by identity provider " + user.getOwner());
+    }
+    return user;
   }
 
   // With authorization disabled, every authorize() call returns true, so the owner check only
@@ -247,6 +284,21 @@ public class Scim2UserService implements ScimService {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           "The metastore owner can't be deleted or deactivated: " + user.getEmail());
+    }
+  }
+
+  // Only the admin changes an IdP principal: with a SCIM token, one IdP could lock out or revive
+  // another IdP's principal, or its own. A principal is a user the admin owns (bin/uc-admin-token
+  // refuses others), so a SCIM token already gets 404 for it; this keeps the rule for a principal
+  // row an IdP owns. SCIM tokens are honored only with authorization enabled.
+  private void checkNotIdpPrincipalForScimToken(User user) {
+    if (!serverProperties.isAuthorizationEnabled()) {
+      return;
+    }
+    if (IdentityUtils.isScimToken() && user.getIdpName() != null) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "An IdP principal can't be changed with a SCIM token: " + user.getEmail());
     }
   }
 
