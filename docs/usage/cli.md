@@ -421,6 +421,12 @@ bin/uc table create \
 4. `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
 5. `properties`: _\[Optional\]_ The properties of the table in JSON format
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
+   For non-Delta tables read or written through the Unity Catalog Spark connector, only keys prefixed with `option.`
+   become reader and writer options, with the prefix removed (e.g., `'{"option.header": "true"}'` for a CSV file with
+   a header row). Other keys, such as a bare `header`, are table properties. This applies to tables created through
+   the REST API too. To fix an existing table that uses a bare key as a reader option, delete it with
+   `bin/uc table delete` and create it again with the same storage location and the `option.`-prefixed key. Deleting
+   an external table does not delete its data files.
 
 Here's an example to create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with storage location `/path/to/storage`:
 
