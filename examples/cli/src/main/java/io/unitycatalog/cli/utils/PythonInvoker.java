@@ -89,8 +89,11 @@ public class PythonInvoker {
         }
         int exitCode = p.waitFor();
         if (exitCode != 0) {
+          String stderr = error.join().strip();
           throw new ApiException(
-              "Python function failed with exit code " + exitCode + ": " + error.join().strip());
+              "Python function failed with exit code "
+                  + exitCode
+                  + (stderr.isEmpty() ? "" : ": " + stderr));
         }
         return result.toString();
       } finally {
@@ -98,6 +101,9 @@ public class PythonInvoker {
       }
     } catch (ApiException e) {
       throw e;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new ApiException("Interrupted while invoking Python script");
     } catch (Exception e) {
       e.printStackTrace();
       throw new ApiException("Error invoking Python script: " + e.getMessage());

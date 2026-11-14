@@ -13,11 +13,17 @@ def parse_body(routine_body):
         routine_body = routine_body.replace('\\n', '\n')
     try:
         return ast.parse(routine_body, filename='<routine_definition>').body
-    except IndentationError:
+    except IndentationError as original:
         # A body indented as a whole parses inside an indented block, with its strings and
-        # comments kept as written.
-        wrapped = ast.parse("if 1:\n" + routine_body, filename='<routine_definition>')
-        return wrapped.body[0].body
+        # comments kept as written. Any statement outside that block means the body is malformed.
+        try:
+            wrapped = ast.parse("if 1:\n" + routine_body, filename='<routine_definition>')
+        except SyntaxError:
+            raise original from None
+        block = wrapped.body[0] if len(wrapped.body) == 1 else None
+        if not isinstance(block, ast.If) or block.orelse:
+            raise original from None
+        return block.body
 
 def define_function(func_name, routine_body, param_names):
     func_def = ast.parse(f"def {func_name}({', '.join(param_names)}):\n    pass")
