@@ -81,6 +81,7 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
   @Test
   public void testFunctionPropertiesRoundTrip() throws ApiException {
     createCommonResources();
+    String maxLengthKey = "k".repeat(255);
     // Function name, the properties it is created with, and what create, get and list return.
     String[][] cases = {
       {
@@ -93,9 +94,18 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
         "{\"env.deps\":\"[\\\"requests\\\"]\"}",
         "{\"env.deps\":\"[\\\"requests\\\"]\"}"
       },
+      {
+        "fn_non_string",
+        "{\"attempts\": 3, \"enabled\": true, \"unset\": null, \"nested\": {\"b\": [1, \"c\"]}}",
+        "{\"attempts\":\"3\",\"enabled\":\"true\",\"nested\":\"{\\\"b\\\":[1,\\\"c\\\"]}\","
+            + "\"unset\":\"null\"}"
+      },
+      {"fn_max_key", "{\"" + maxLengthKey + "\":\"v\"}", "{\"" + maxLengthKey + "\":\"v\"}"},
       {"fn_absent", null, null},
       {"fn_json_null", "null", null},
       {"fn_empty", "{}", null},
+      {"fn_empty_string", "", null},
+      {"fn_blank", " \n\t", null},
     };
     Map<String, String> expectedByName = new HashMap<>();
     for (String[] c : cases) {
@@ -121,21 +131,21 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
     for (String properties :
         List.of(
             "not json",
-            "",
             "[\"a\"]",
             "\"a\"",
-            "{\"a\":1}",
-            "{\"a\":true}",
-            "{\"a\":null}",
-            "{\"a\":{\"b\":\"c\"}}",
+            "1",
             "{\"a\":\"b\"} x",
             "{\"a\":\"b\"}{\"c\":\"d\"}",
             "{\"a\":\"1\",\"a\":\"2\"}")) {
       assertApiException(
           () -> createFunction("fn_invalid", properties),
           ErrorCode.INVALID_ARGUMENT,
-          "Function properties must be a JSON object whose values are all strings");
+          "Function properties must be a single JSON object with unique keys");
     }
+    assertApiException(
+        () -> createFunction("fn_invalid", "{\"" + "k".repeat(256) + "\":\"v\"}"),
+        ErrorCode.INVALID_ARGUMENT,
+        "Function property keys cannot be longer than 255 characters");
     assertThat(functionOperations.listFunctions(CATALOG_NAME, SCHEMA_NAME, Optional.empty()))
         .isEmpty();
   }

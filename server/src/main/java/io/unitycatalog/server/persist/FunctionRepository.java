@@ -182,10 +182,8 @@ public class FunctionRepository {
     List<FunctionInfo> result = new ArrayList<>();
     for (FunctionInfoDAO functionInfoDAO : functionInfoDAOList) {
       FunctionInfo functionInfo = functionInfoDAO.toFunctionInfo();
-      functionInfo.setProperties(
-          toPropertiesJson(
-              PropertyDAO.toMap(
-                  propertiesByFunctionId.getOrDefault(functionInfoDAO.getId(), List.of()))));
+      setProperties(
+          functionInfo, propertiesByFunctionId.getOrDefault(functionInfoDAO.getId(), List.of()));
       addNamespaceData(functionInfo, catalogName, schemaName);
       result.add(functionInfo);
     }
@@ -205,11 +203,10 @@ public class FunctionRepository {
           }
           FunctionInfo functionInfo = functionInfoDAO.toFunctionInfo();
           addNamespaceInfo(functionInfo, catalogName, schemaName);
-          functionInfo.setProperties(
-              toPropertiesJson(
-                  PropertyDAO.toMap(
-                      PropertyRepository.findProperties(
-                          session, functionInfoDAO.getId(), Constants.FUNCTION))));
+          setProperties(
+              functionInfo,
+              PropertyRepository.findProperties(
+                  session, functionInfoDAO.getId(), Constants.FUNCTION));
           return functionInfo;
         },
         "Failed to get function",
@@ -267,14 +264,15 @@ public class FunctionRepository {
   }
 
   /**
-   * Parses the {@code properties} of a function create request: a JSON object whose values are all
-   * strings, with no duplicate keys and nothing after it. An absent field or a JSON {@code null}
-   * means no properties.
+   * Parses the {@code properties} of a function create request: a single JSON object with unique
+   * keys and nothing after it. A value that is not a string is stored as its JSON text. An absent
+   * field, a blank string or a JSON {@code null} means no properties.
    *
-   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for any other value
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for any other value, or for a key
+   *     longer than {@link PropertyDAO#MAX_KEY_LENGTH} characters
    */
   private static Map<String, String> parseProperties(String properties) {
-    if (properties == null) {
+    if (properties == null || properties.isBlank()) {
       return Map.of();
     }
     JsonNode node;
@@ -291,10 +289,15 @@ public class FunctionRepository {
     }
     Map<String, String> parsed = new HashMap<>();
     for (Map.Entry<String, JsonNode> field : node.properties()) {
-      if (!field.getValue().isTextual()) {
-        throw invalidProperties();
+      if (field.getKey().length() > PropertyDAO.MAX_KEY_LENGTH) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Function property keys cannot be longer than "
+                + PropertyDAO.MAX_KEY_LENGTH
+                + " characters.");
       }
-      parsed.put(field.getKey(), field.getValue().textValue());
+      JsonNode value = field.getValue();
+      parsed.put(field.getKey(), value.isTextual() ? value.textValue() : value.toString());
     }
     return parsed;
   }
@@ -302,7 +305,11 @@ public class FunctionRepository {
   private static BaseException invalidProperties() {
     return new BaseException(
         ErrorCode.INVALID_ARGUMENT,
-        "Function properties must be a JSON object whose values are all strings.");
+        "Function properties must be a single JSON object with unique keys.");
+  }
+
+  private static void setProperties(FunctionInfo functionInfo, List<PropertyDAO> properties) {
+    functionInfo.setProperties(toPropertiesJson(PropertyDAO.toMap(properties)));
   }
 
   /** Serializes properties as a JSON object with keys in sorted order, or null when empty. */
