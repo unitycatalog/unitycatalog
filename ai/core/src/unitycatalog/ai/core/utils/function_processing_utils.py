@@ -205,6 +205,56 @@ def process_function_names(
     return tools_dict
 
 
+def parse_parameter_default(parameter_default: str) -> Any:
+    """
+    Parse a stored ``parameter_default`` string into its Python value.
+
+    This is the one parser for stored defaults: the execution path
+    (``process_function_parameter_defaults``) and the tool-schema path
+    (``param_info_to_pydantic_type``) both use it, so a parameter's default
+    means the same thing in the tool schema as it does at call time.
+
+    Args:
+        parameter_default: The stored default text, in the form written by
+            ``format_default_value`` (for example ``X'0102'`` for a bytes
+            default, or ``'default'`` for a string default).
+
+    Returns:
+        The parsed Python value, or the raw string when no form matches.
+    """
+    default_str = parameter_default.strip()
+    upper_str = default_str.upper()
+    # NB: Pydantic requires a NoneType definition to be explicity set directly. If retrieiving
+    # this type from a lookup mapping (as is done with True / False as registered in
+    # UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING), it will not be recognized
+    # as a NoneType properly.
+    if upper_str == "NULL":
+        return None
+    elif upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
+        return UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
+    elif upper_str.startswith("X'") and default_str.endswith("'") and len(default_str) > 2:
+        # Spark SQL binary literal (X'<hex>'), the form format_default_value
+        # writes for bytes defaults; ast.literal_eval cannot parse it.
+        try:
+            hex_str = default_str[2:-1]
+            if len(hex_str) % 2:
+                # Spark prepends a 0 to odd-length hex literals
+                # (X'123' parses as X'0123'); bytes.fromhex needs
+                # an even number of digits, so match Spark's rule.
+                hex_str = "0" + hex_str
+            return bytes.fromhex(hex_str)
+        except ValueError:
+            return default_str
+    else:
+        try:
+            return ast.literal_eval(default_str)
+        except (ValueError, SyntaxError):
+            try:
+                return json.loads(default_str)
+            except json.JSONDecodeError:
+                return default_str
+
+
 def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> PydanticField:
     """
     Convert Unity Catalog function parameter information to Pydantic type.
@@ -227,14 +277,9 @@ def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> Pydant
     description = param_info.comment or ""
     if param_info.parameter_default:
         # Note: DEFAULT is supported for LANGUAGE SQL only.
-        if param_info.parameter_default.strip().upper() == "NULL":
-            default = None
-        else:
-            try:
-                default = json.loads(param_info.parameter_default)
-            except json.JSONDecodeError:
-                # If JSON decoding fails, treat it as a string
-                default = param_info.parameter_default.strip()
+        # Build the schema default with the same parser as execution, so the
+        # schema default is the value a call would actually use.
+        default = parse_parameter_default(param_info.parameter_default)
         description = f"{description} (Default: {param_info.parameter_default})"
     elif nullable:
         pydantic_field_type = Optional[pydantic_field_type]
@@ -418,41 +463,7 @@ def process_function_parameter_defaults(
     if function_info.input_params and function_info.input_params.parameters:
         for param in function_info.input_params.parameters:
             if param.parameter_default is not None:
-                default_str = param.parameter_default.strip()
-                upper_str = default_str.upper()
-                # NB: Pydantic requires a NoneType definition to be explicity set directly. If retrieiving
-                # this type from a lookup mapping (as is done with True / False as registered in
-                # UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING), it will not be recognized
-                # as a NoneType properly.
-                if upper_str == "NULL":
-                    defaults[param.name] = None
-                elif upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
-                    defaults[param.name] = UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
-                elif (
-                    upper_str.startswith("X'")
-                    and default_str.endswith("'")
-                    and len(default_str) > 2
-                ):
-                    # Spark SQL binary literal (X'<hex>'), the form format_default_value
-                    # writes for bytes defaults; ast.literal_eval cannot parse it.
-                    try:
-                        hex_str = default_str[2:-1]
-                        if len(hex_str) % 2:
-                            # Spark prepends a 0 to odd-length hex literals
-                            # (X'123' parses as X'0123'); bytes.fromhex needs
-                            # an even number of digits, so match Spark's rule.
-                            hex_str = "0" + hex_str
-                        defaults[param.name] = bytes.fromhex(hex_str)
-                    except ValueError:
-                        defaults[param.name] = default_str
-                else:
-                    try:
-                        defaults[param.name] = ast.literal_eval(default_str)
-                    except (ValueError, SyntaxError):
-                        try:
-                            defaults[param.name] = json.loads(default_str)
-                        except json.JSONDecodeError:
-                            defaults[param.name] = default_str
+                defaults[param.name] = parse_parameter_default(param.parameter_default)
 
     if parameters is None:
         parameters = {}
