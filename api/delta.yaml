@@ -863,11 +863,10 @@ components:
         properties:
           type: object
           description: |
-            Table properties. Besides the table's metaData.configuration entries, the map carries
-            server-derived keys (delta.minReaderVersion, delta.minWriterVersion, delta.feature.*,
-            clusteringColumns, delta.rowTracking.rowIdHighWaterMark, delta.lastUpdateVersion,
-            delta.lastCommitTimestamp) that clients must not write back to the Delta log or send in
-            set-properties / remove-properties.
+            Table properties. Besides the table's metaData.configuration entries, the map can carry
+            server-derived keys that clients must not write back to the Delta log or send in
+            set-properties / remove-properties. Examples, not a complete list: delta.minReaderVersion,
+            delta.feature.* and delta.lastCommitTimestamp.
           additionalProperties:
             type: string
         last-commit-version:
@@ -1005,13 +1004,9 @@ components:
         updates:
           type: object
           description: |
-            Properties to set. On a MANAGED table, a server-derived key (delta.minReaderVersion,
-            delta.minWriterVersion, delta.feature.*, clusteringColumns,
-            delta.rowTracking.rowIdHighWaterMark, delta.lastUpdateVersion, delta.lastCommitTimestamp)
-            is rejected with a 400 InvalidParameterValueException. Changing the stored value of a
-            required catalog-managed property, io.unitycatalog.tableId or
-            delta.enableIcebergCompatV2 is rejected with the same error when the result breaks the
-            contract. Resending the stored value of a contract property is a no-op.
+            Properties to set. On a MANAGED table, the server rejects some properties with a 400
+            InvalidParameterValueException. Examples, not a complete list: a server-derived key such
+            as delta.minReaderVersion, or a change to io.unitycatalog.tableId.
           additionalProperties:
             type: string
 
@@ -1026,11 +1021,9 @@ components:
         removals:
           type: array
           description: |
-            Property keys to remove. On a MANAGED table, removing a server-derived key (see
-            set-properties) is rejected with a 400 InvalidParameterValueException. Removing a stored
-            required catalog-managed property, io.unitycatalog.tableId or
-            delta.enableIcebergCompatV2 is rejected with the same error when the result breaks the
-            contract. Removing a contract key that is not stored is a no-op.
+            Property keys to remove. On a MANAGED table, the server rejects some removals with a 400
+            InvalidParameterValueException. Examples, not a complete list: a server-derived key such
+            as delta.minReaderVersion, or io.unitycatalog.tableId.
           items:
             type: string
       required:
