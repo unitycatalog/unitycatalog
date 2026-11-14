@@ -22,8 +22,13 @@ public enum CliParams {
       "storage_location",
       "The storage location associated with the table. Need to be specified for external tables.",
       "storage_location"),
-  MAX_RESULTS("max_results", "The maximum number of results to return.", "max_results"),
-  PAGE_TOKEN("page_token", "Opaque token to retrieve the next page of results.", "page_token"),
+  MAX_RESULTS(
+      "max_results",
+      "The maximum number of results to return. For a list command, this is the total across all"
+          + " pages, and 0 means no limit. For table read, this is the number of rows (default"
+          + " 100).",
+      "max_results"),
+  PAGE_TOKEN("page_token", "Opaque token of the page to start listing from.", "page_token"),
   TABLE_TYPE(
       "table_type",
       "The type of the table. Supported values are MANAGED and EXTERNAL. For create table only"

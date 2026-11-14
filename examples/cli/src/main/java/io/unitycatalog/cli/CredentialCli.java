@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CredentialsApi;
@@ -15,7 +16,6 @@ import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.ListCredentialsResponse;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
-import java.util.List;
 import java.util.Optional;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -77,12 +77,12 @@ public class CredentialCli {
 
   private static String listCredentials(CredentialsApi credentialsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    int maxResults = json.optInt(CliParams.MAX_RESULTS.getServerParam(), 100);
-    String pageToken = json.optString(CliParams.PAGE_TOKEN.getServerParam(), null);
-    ListCredentialsResponse listCredentialsResponse =
-        credentialsApi.listCredentials(maxResults, pageToken, null);
-    List<CredentialInfo> credentials = listCredentialsResponse.getCredentials();
-    return objectWriter.writeValueAsString(credentials);
+    return objectWriter.writeValueAsString(
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) -> credentialsApi.listCredentials(maxResults, pageToken, null),
+            ListCredentialsResponse::getCredentials,
+            ListCredentialsResponse::getNextPageToken));
   }
 
   private static String getCredential(CredentialsApi credentialsApi, JSONObject json)
