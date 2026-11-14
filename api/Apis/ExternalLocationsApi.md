@@ -17,7 +17,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Create an external location
 
-    Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations. 
+    Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations. EXPERIMENTAL: a location whose credential is &#x60;s3_compatible&#x60; must have an &#x60;s3://&#x60; URL; otherwise the request fails with &#x60;INVALID_ARGUMENT&#x60;. 
 
 ### Parameters
 
@@ -129,7 +129,7 @@ No authorization required
 
 Update an external location
 
-    Updates an external location in the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location.
+    Updates an external location in the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location. EXPERIMENTAL: a location whose credential is &#x60;s3_compatible&#x60; must have an &#x60;s3://&#x60; URL; otherwise the request fails with &#x60;INVALID_ARGUMENT&#x60;.
 
 ### Parameters
 
