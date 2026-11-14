@@ -38,6 +38,7 @@ public class UserRepository {
             .name(createUser.getName())
             .email(createUser.getEmail())
             .externalId(createUser.getExternalId())
+            .owner(createUser.getOwner())
             .state(User.StateEnum.ENABLED)
             .createdAt(System.currentTimeMillis());
 
@@ -204,6 +205,47 @@ public class UserRepository {
         /* readOnly= */ false);
   }
 
+  /**
+   * Marks the user as the principal of the identity provider {@code idpName}, for its SCIM token.
+   * Refuses the admin user, a user an identity provider owns (only the admin manages a principal),
+   * and a user that is already the principal of another identity provider.
+   */
+  public User setIdpName(String email, String idpName) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserByEmail(session, email);
+          if (userDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
+          }
+          // The stored email, so that a case variant of "admin" is refused as well.
+          if ("admin".equals(userDAO.getEmail())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "The admin user can't be an IdP principal.");
+          }
+          if (!IdentityUtils.ADMIN_OWNER.equals(userDAO.getOwner())) {
+            throw new BaseException(
+                ErrorCode.FAILED_PRECONDITION,
+                String.format(
+                    "%s is managed by identity provider %s; the SCIM principal must be a user the"
+                        + " admin owns",
+                    email, userDAO.getOwner()));
+          }
+          if (userDAO.getIdpName() != null && !userDAO.getIdpName().equals(idpName)) {
+            throw new BaseException(
+                ErrorCode.FAILED_PRECONDITION,
+                String.format(
+                    "User %s is already the IdP principal of %s, not %s.",
+                    email, userDAO.getIdpName(), idpName));
+          }
+          userDAO.setIdpName(idpName);
+          session.merge(userDAO);
+          return userDAO.toUser();
+        },
+        "Failed to set the IdP name of the user",
+        /* readOnly= */ false);
+  }
+
   public void deleteUser(String id) {
     TransactionManager.executeWithTransaction(
         sessionFactory,
@@ -212,6 +254,13 @@ public class UserRepository {
           if (userDAO != null) {
             userDAO.setState(User.StateEnum.DISABLED.toString());
             session.merge(userDAO);
+            // Write the user row before the memberships: a group add reads it and then adds a
+            // membership, so the other order can deadlock with that add.
+            session.flush();
+            session
+                .createMutationQuery("DELETE FROM GroupMemberDAO WHERE userId = :userId")
+                .setParameter("userId", userDAO.getId())
+                .executeUpdate();
             LOGGER.info("Deleted user: {}", id);
             return null;
           } else {
@@ -224,10 +273,13 @@ public class UserRepository {
 
   public UUID findPrincipalId() {
     String principalEmailAddress = IdentityUtils.findPrincipalEmailAddress();
-    if (principalEmailAddress != null) {
-      return UUID.fromString(getUserByEmail(principalEmailAddress).getId());
-    } else {
+    if (principalEmailAddress == null) {
       return null;
     }
+    // A SCIM token's subject is already the user's id; AuthDecorator looked the user up by it.
+    if (IdentityUtils.isScimToken()) {
+      return UUID.fromString(principalEmailAddress);
+    }
+    return UUID.fromString(getUserByEmail(principalEmailAddress).getId());
   }
 }

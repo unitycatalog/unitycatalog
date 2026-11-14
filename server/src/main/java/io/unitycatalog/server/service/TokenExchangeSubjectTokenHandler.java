@@ -118,15 +118,22 @@ public class TokenExchangeSubjectTokenHandler {
   }
 
   /**
-   * The bootstrap admin user is provisioned with the literal email "admin" (not a conventional
-   * name@domain address) and holds metastore OWNER; it exists only for the internal service token
-   * and must never be assumable through external token exchange, via either the email-claim or the
-   * OAuth-client resolution path. The incoming subject is only a lookup key: we compare the
-   * resolved user's stored email so that a case variant like "ADMIN", which a case-insensitive
-   * database collation resolves back to the same stored "admin" user, is rejected as well.
+   * Two kinds of users exist only for a token that the server's key signs, and must never be
+   * assumable through external token exchange, via either the email-claim or the OAuth-client
+   * resolution path:
+   *
+   * <ul>
+   *   <li>The bootstrap admin user, provisioned with the literal email "admin" (not a conventional
+   *       name@domain address), holds metastore OWNER and exists only for the internal service
+   *       token. The incoming subject is only a lookup key: we compare the resolved user's stored
+   *       email so that a case variant like "ADMIN", which a case-insensitive database collation
+   *       resolves back to the same stored "admin" user, is rejected as well.
+   *   <li>An IdP principal (a user with an IdP name) acts only through its SCIM token from {@code
+   *       bin/uc-admin-token}.
+   * </ul>
    */
   private static boolean isAssumablePrincipal(User user) {
-    return !"admin".equals(user.getEmail());
+    return !"admin".equals(user.getEmail()) && user.getIdpName() == null;
   }
 
   private Optional<String> tryResolvePrincipalEmailForClient(String clientId) {

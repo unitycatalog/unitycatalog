@@ -51,7 +51,11 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.TestUtils;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -291,15 +295,17 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
     try {
       // Use the securityConfiguration that was set up by BaseAccessControlCRUDTest
       Algorithm algorithm = securityConfiguration.algorithmRSA();
-      String keyId = securityConfiguration.getKeyId();
 
-      // Create token following the same pattern as SecurityContext.createAccessToken
+      // An internal token for the subject, signed with the server's key, with a key ID
       return JWT.create()
           .withSubject(subject)
           .withIssuer(INTERNAL)
+          // Tokens with a key ID are accepted; the server ignores it for its own tokens.
+          .withKeyId("any-key-id")
           .withIssuedAt(new Date())
-          .withKeyId(keyId)
+          .withExpiresAt(Date.from(Instant.now().plus(Duration.ofHours(1))))
           .withJWTId(UUID.randomUUID().toString())
+          .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
           .withClaim("email", subject)
           .sign(algorithm);
     } catch (Exception e) {

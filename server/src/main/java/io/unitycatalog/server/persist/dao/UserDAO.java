@@ -46,6 +46,12 @@ public class UserDAO extends IdentifiableDAO {
   @Column(name = "picture_url")
   private String pictureUrl;
 
+  @Column(name = "idp_name")
+  private String idpName;
+
+  @Column(name = "owner", nullable = false)
+  private String owner;
+
   public static UserDAO from(User user) {
     return UserDAO.builder()
         .id(UUID.fromString(user.getId()))
@@ -54,6 +60,8 @@ public class UserDAO extends IdentifiableDAO {
         .externalId(user.getExternalId())
         .state(user.getState().name())
         .pictureUrl(user.getPictureUrl())
+        .idpName(user.getIdpName())
+        .owner(user.getOwner())
         .createdAt(new Date(user.getCreatedAt()))
         .updatedAt(user.getUpdatedAt() == null ? null : new Date(user.getUpdatedAt()))
         .build();
@@ -67,6 +75,8 @@ public class UserDAO extends IdentifiableDAO {
         .externalId(getExternalId())
         .state(User.StateEnum.fromValue(getState()))
         .pictureUrl(getPictureUrl())
+        .idpName(getIdpName())
+        .owner(getOwner())
         .createdAt(getCreatedAt().getTime())
         .updatedAt(getUpdatedAt() == null ? null : getUpdatedAt().getTime());
   }

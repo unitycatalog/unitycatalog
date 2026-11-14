@@ -120,6 +120,47 @@ class UserRepositoryTest {
     verify(failing, never()).createUser(any());
   }
 
+  @Test
+  void setIdpNameMarksTheUserAndKeepsIt() {
+    var user =
+        userRepository.createUser(CreateUser.builder().name("Okta").email("okta-scim").build());
+
+    assertThat(userRepository.setIdpName("okta-scim", "okta").getId()).isEqualTo(user.getId());
+    // Minting again for the same IdP is allowed.
+    userRepository.setIdpName("okta-scim", "okta");
+    assertThat(userRepository.getUser(user.getId()).getIdpName()).isEqualTo("okta");
+    // A SCIM update leaves the mark in place.
+    userRepository.updateUser(user.getId(), UpdateUser.builder().name("Okta SCIM").build());
+    assertThat(userRepository.getUserByEmail("okta-scim").getIdpName()).isEqualTo("okta");
+  }
+
+  @Test
+  void setIdpNameRefusesAMissingUserTheAdminAndAnotherIdp() {
+    if (userRepository.listUsers(0, 100, u -> "admin".equals(u.getEmail())).isEmpty()) {
+      userRepository.createUser(CreateUser.builder().name("admin").email("admin").build());
+    }
+    userRepository.createUser(CreateUser.builder().name("Entra").email("entra-scim").build());
+    userRepository.setIdpName("entra-scim", "entra");
+
+    assertSetIdpNameRefused("nobody-scim", ErrorCode.NOT_FOUND, "User not found: nobody-scim");
+    assertSetIdpNameRefused(
+        "admin", ErrorCode.INVALID_ARGUMENT, "The admin user can't be an IdP principal.");
+    assertSetIdpNameRefused(
+        "entra-scim",
+        ErrorCode.FAILED_PRECONDITION,
+        "User entra-scim is already the IdP principal of entra, not okta.");
+    assertThat(userRepository.getUserByEmail("entra-scim").getIdpName()).isEqualTo("entra");
+    assertThat(userRepository.getUserByEmail("admin").getIdpName()).isNull();
+  }
+
+  private static void assertSetIdpNameRefused(String email, ErrorCode code, String message) {
+    assertThatThrownBy(() -> userRepository.setIdpName(email, "okta"))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(message)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(code);
+  }
+
   /** The metastore is a mock; only its ID is read. */
   private static UnityAccessUtil bootstrap(UserRepository users, UUID metastoreId) {
     MetastoreRepository metastoreRepository = mock(MetastoreRepository.class);

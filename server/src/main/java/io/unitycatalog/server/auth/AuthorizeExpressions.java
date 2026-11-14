@@ -20,6 +20,13 @@ public final class AuthorizeExpressions {
 
   private AuthorizeExpressions() {}
 
+  /**
+   * SCIM provisioning: metastore OWNER, or an IdP's SCIM token from {@code bin/uc-admin-token}
+   * ({@code #scim_token}), which is accepted only on the SCIM API.
+   */
+  public static final String SCIM_PROVISIONING =
+      "#scim_token || #authorize(#principal, #metastore, OWNER)";
+
   /** Catalog BROWSE permits discovery of the catalog and its descendants without usage grants. */
   public static final String BROWSE_CATALOG = "#authorize(#principal, #catalog, BROWSE)";
 
