@@ -1575,7 +1575,7 @@ components:
         comment:
           type: string
           maxLength: 65536
-          minLength: 1
+          minLength: 0
           description: The comment attached to the volume
         storage_location:
           type: string
@@ -1603,7 +1603,7 @@ components:
         comment:
           type: string
           maxLength: 65536
-          minLength: 1
+          minLength: 0
           description: The comment attached to the volume
         new_name:
           description: New name for the volume.
@@ -1626,7 +1626,7 @@ components:
         comment:
           type: string
           maxLength: 65536
-          minLength: 1
+          minLength: 0
           description: The comment attached to the volume
         owner:
           description: The identifier of the user who owns the volume
