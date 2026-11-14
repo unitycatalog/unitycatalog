@@ -3,11 +3,13 @@ package io.unitycatalog.cli.auth;
 import static io.unitycatalog.cli.TestUtils.executeCliCommand;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.unitycatalog.cli.utils.Oauth2CliExchange;
+import io.unitycatalog.control.ApiException;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 
 public class CliAuthCrudTest extends BaseAuthCRUDTest {
@@ -258,6 +261,103 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     List<String> argsDeleteUser = List.of("user", "delete", "--id", id);
     responseJsonInfo = executeCliCommand(serverConfig, argsDeleteUser);
     assertThat(responseJsonInfo).isNotNull();
+
+    serverConfig.setAuthToken("");
+  }
+
+  /** Runs a CLI command that the server refuses, returning the control API's error. */
+  private ApiException refusedCommand(List<String> args) {
+    Throwable thrown = catchThrowable(() -> executeCliCommand(serverConfig, args));
+    assertThat(thrown).isInstanceOf(RuntimeException.class).hasCauseInstanceOf(ApiException.class);
+    return (ApiException) thrown.getCause();
+  }
+
+  private String createUserId(String email) {
+    return executeCliCommand(
+            serverConfig, List.of("user", "create", "--email", email, "--name", email))
+        .get("id")
+        .asText();
+  }
+
+  private static List<String> memberIds(JsonNode group) {
+    return StreamSupport.stream(group.get("members").spliterator(), false)
+        .map(JsonNode::asText)
+        .toList();
+  }
+
+  @Test
+  public void testGroupCrud() throws IOException {
+    serverConfig.setAuthToken(Files.readString(configurationFolder.resolve("token.txt")));
+    String ada = createUserId("ada@localhost");
+    String bob = createUserId("bob@localhost");
+
+    // Create, with an external id, and add both users.
+    JsonNode group =
+        executeCliCommand(
+            serverConfig,
+            List.of("group", "create", "--name", "data-eng", "--external_id", "okta-1"));
+    String id = group.get("id").asText();
+    assertThat(group.get("name").asText()).isEqualTo("data-eng");
+    assertThat(group.get("external_id").asText()).isEqualTo("okta-1");
+    assertThat(memberIds(group)).isEmpty();
+    for (String user : List.of(ada, bob)) {
+      executeCliCommand(serverConfig, List.of("group", "add-member", "--id", id, "--member", user));
+    }
+    group = executeCliCommand(serverConfig, List.of("group", "get", "--id", id));
+    assertThat(memberIds(group)).containsExactlyInAnyOrder(ada, bob);
+
+    // Remove one member.
+    group =
+        executeCliCommand(
+            serverConfig, List.of("group", "remove-member", "--id", id, "--member", ada));
+    assertThat(memberIds(group)).containsExactly(bob);
+
+    // A second group, created with several members: ids are split on commas and trimmed, and an
+    // empty entry is skipped. Then a duplicate name.
+    for (String members : List.of(ada + "," + bob, " " + ada + " , " + bob + ",,")) {
+      group =
+          executeCliCommand(
+              serverConfig, List.of("group", "create", "--name", "empty", "--members", members));
+      assertThat(memberIds(group)).as(members).containsExactlyInAnyOrder(ada, bob);
+      executeCliCommand(serverConfig, List.of("group", "delete", "--id", group.get("id").asText()));
+    }
+    group =
+        executeCliCommand(
+            serverConfig, List.of("group", "create", "--name", "empty", "--members", ada));
+    assertThat(memberIds(group)).containsExactly(ada);
+    ApiException duplicate =
+        refusedCommand(List.of("group", "create", "--name", "data-eng", "--members", ada));
+    assertThat(duplicate.getCode()).isEqualTo(409);
+    assertThat(duplicate.getResponseBody()).contains("data-eng");
+
+    // A rename keeps the external id and the members.
+    group =
+        executeCliCommand(
+            serverConfig, List.of("group", "update", "--id", id, "--name", "data-platform"));
+    assertThat(group.get("name").asText()).isEqualTo("data-platform");
+    assertThat(group.get("external_id").asText()).isEqualTo("okta-1");
+    assertThat(memberIds(group)).containsExactly(bob);
+
+    // List, with and without a filter.
+    assertThat(executeCliCommand(serverConfig, List.of("group", "list")))
+        .extracting(g -> g.get("name").asText())
+        .containsExactly("data-platform", "empty");
+    assertThat(
+            executeCliCommand(
+                serverConfig, List.of("group", "list", "--filter", "displayName eq \"empty\"")))
+        .extracting(g -> g.get("name").asText())
+        .containsExactly("empty");
+    assertThat(
+            executeCliCommand(
+                serverConfig, List.of("group", "list", "--start_index", "2", "--count", "1")))
+        .extracting(g -> g.get("name").asText())
+        .containsExactly("empty");
+
+    // Delete; the group is gone.
+    executeCliCommand(serverConfig, List.of("group", "delete", "--id", id));
+    ApiException gone = refusedCommand(List.of("group", "get", "--id", id));
+    assertThat(gone.getCode()).isEqualTo(404);
+    assertThat(gone.getResponseBody()).contains("Group not found: " + id);
 
     serverConfig.setAuthToken("");
   }

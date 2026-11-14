@@ -70,8 +70,10 @@ public enum CliParams {
   PRINCIPAL("principal", "The target principal of the permission change", "principal"),
   PRIVILEGE("privilege", "The privilege to grant or revoke", "privilege"),
   ID("id", "The unique id of the user", "id"),
-  EXTERNAL_ID("external_id", "The identity provider's id for the user", "externalId"),
+  EXTERNAL_ID("external_id", "The identity provider's id for the user or group", "externalId"),
   EMAIL("email", "The email address for the user", "email"),
+  MEMBERS("members", "The ids of the users to put in the group, separated by a comma.", "members"),
+  MEMBER("member", "The id of the user to add to or remove from the group.", "member"),
   FILTER("filter", "Query by which the results have to be filtered", "filter"),
   START_INDEX(
       "start_index", "Specifies the index (starting at 1) of the first result.", "startIndex"),
