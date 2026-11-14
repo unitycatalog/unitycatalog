@@ -64,6 +64,7 @@ public class CliTableOperations extends BaseCliOperations implements TableOperat
   @Override
   public List<TableInfo> listTables(
       String catalogName, String schemaName, Optional<String> pageToken) throws ApiException {
+    // SdkTableOperations lists one page of 100, and the CLI follows every page unless limited.
     List<String> argsList =
         new ArrayList<>(
             List.of("--catalog", catalogName, "--schema", schemaName, "--max_results", "100"));

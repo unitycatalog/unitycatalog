@@ -188,6 +188,8 @@ public class CliListPaginationTest extends BaseServerTest {
     }
     assertThat(list(List.of("registered_model", "--catalog", CATALOG, "--schema", SCHEMA), "name"))
         .containsExactly("mdl_a", "mdl_b", "mdl_c");
+    assertThat(list(List.of("registered_model"), "name"))
+        .containsExactlyInAnyOrder("mdl_a", "mdl_b", "mdl_c");
     assertThat(
             list(
                 List.of("model_version", "--full_name", CATALOG + "." + SCHEMA + ".mdl_a"),
