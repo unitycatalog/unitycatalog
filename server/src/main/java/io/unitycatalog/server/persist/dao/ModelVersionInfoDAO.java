@@ -28,7 +28,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class ModelVersionInfoDAO {
+public class ModelVersionInfoDAO implements UuidEntity {
   @Id
   @Column(name = "id")
   private UUID id;

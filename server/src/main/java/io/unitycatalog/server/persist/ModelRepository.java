@@ -25,7 +25,9 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
@@ -66,9 +68,21 @@ public class ModelRepository {
     RegisteredModelInfoDAO existingRegisteredModelDao =
         getRegisteredModelDao(session, schemaId, name);
     if (existingRegisteredModelDao == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + name);
+      throw registeredModelNotFound(name);
     }
     return existingRegisteredModelDao;
+  }
+
+  private static BaseException registeredModelNotFound(String name) {
+    return new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + name);
+  }
+
+  private static BaseException modelVersionNotFound(String fullVersionName) {
+    return new BaseException(ErrorCode.NOT_FOUND, "Model version not found: " + fullVersionName);
+  }
+
+  private static String describeVersion(String fullName, long version) {
+    return fullName + "/" + version;
   }
 
   public List<RegisteredModelInfoDAO> getAllRegisteredModelsDao(
@@ -414,18 +428,31 @@ public class ModelRepository {
         RegisteredModelInfoDAO origRegisteredModelInfoDAO =
             findRegisteredModel(session, catalogName, schemaName, registeredModelName);
         if (origRegisteredModelInfoDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + fullName);
+          throw registeredModelNotFound(fullName);
         }
+        Map<String, Object> key = Map.of("name", registeredModelName);
+        RepositoryUtils.lockByKey(
+            session,
+            RegisteredModelInfoDAO.class,
+            origRegisteredModelInfoDAO.getId(),
+            key,
+            "registered model " + fullName,
+            () -> registeredModelNotFound(fullName));
+        Map<String, Object> changes = new HashMap<>();
         if (updateRegisteredModel.getNewName() != null) {
-          origRegisteredModelInfoDAO.setName(updateRegisteredModel.getNewName());
+          changes.put("name", updateRegisteredModel.getNewName());
         }
         if (updateRegisteredModel.getComment() != null) {
-          origRegisteredModelInfoDAO.setComment(updateRegisteredModel.getComment());
+          changes.put("comment", updateRegisteredModel.getComment());
         }
-        long updatedTime = System.currentTimeMillis();
-        origRegisteredModelInfoDAO.setUpdatedAt(new Date(updatedTime));
-        origRegisteredModelInfoDAO.setUpdatedBy(callerId);
-        session.persist(origRegisteredModelInfoDAO);
+        changes.put("updatedAt", new Date());
+        changes.put("updatedBy", callerId);
+        RepositoryUtils.updateByKey(
+            session,
+            origRegisteredModelInfoDAO,
+            key,
+            changes,
+            () -> registeredModelNotFound(fullName));
         registeredModelInfo = origRegisteredModelInfoDAO.toRegisteredModelInfo();
         registeredModelInfo.setCatalogName(catalogName);
         registeredModelInfo.setSchemaName(schemaName);
@@ -471,8 +498,17 @@ public class ModelRepository {
 
   public void deleteRegisteredModel(
       Session session, UUID schemaId, String registeredModelName, boolean force) {
-    RegisteredModelInfoDAO registeredModelInfoDAO =
+    RegisteredModelInfoDAO found =
         getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
+    Map<String, Object> key = Map.of("name", registeredModelName);
+    RegisteredModelInfoDAO registeredModelInfoDAO =
+        RepositoryUtils.lockByKey(
+            session,
+            RegisteredModelInfoDAO.class,
+            found.getId(),
+            key,
+            "registered model " + registeredModelName,
+            () -> registeredModelNotFound(registeredModelName));
     if (force) {
       // Remove all model versions
       List<ModelVersionInfoDAO> versionList =
@@ -503,7 +539,8 @@ public class ModelRepository {
             registeredModelInfoDAO.getId(),
             registeredModelInfoDAO.getName(),
             registeredModelInfoDAO.getUrl());
-    session.remove(registeredModelInfoDAO);
+    RepositoryUtils.deleteByKey(
+        session, registeredModelInfoDAO, key, () -> registeredModelNotFound(registeredModelName));
   }
 
   /** **************** Model version handlers ***************** */
@@ -576,8 +613,17 @@ public class ModelRepository {
       NormalizedURL storageLocation = null;
       try {
         // Check if registered model already exists
+        RegisteredModelInfoDAO found = getRegisteredModelDaoOrThrow(session, schemaId, modelName);
+        // Lock the model, so concurrent creates number their versions in turn.
+        Map<String, Object> modelKey = Map.of("name", modelName);
         RegisteredModelInfoDAO existingRegisteredModel =
-            getRegisteredModelDaoOrThrow(session, schemaId, modelName);
+            RepositoryUtils.lockByKey(
+                session,
+                RegisteredModelInfoDAO.class,
+                found.getId(),
+                modelKey,
+                "registered model " + modelName,
+                () -> registeredModelNotFound(modelName));
         if (existingRegisteredModel.getMaxVersionNumber() == null
             || existingRegisteredModel.getMaxVersionNumber() < 0) {
           throw new BaseException(
@@ -597,8 +643,12 @@ public class ModelRepository {
         session.persist(modelVersionInfoDAO);
         FileOperations.createStorageLocationDir(storageLocation);
         // update the registered model
-        existingRegisteredModel.setMaxVersionNumber(version);
-        session.persist(existingRegisteredModel);
+        RepositoryUtils.updateByKey(
+            session,
+            existingRegisteredModel,
+            modelKey,
+            Map.of("maxVersionNumber", version),
+            () -> registeredModelNotFound(modelName));
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
@@ -719,11 +769,18 @@ public class ModelRepository {
         // Get the model version record from the database
         ModelVersionInfoDAO origModelVersionInfoDAO =
             getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
-        origModelVersionInfoDAO.setComment(updateModelVersion.getComment());
-        long updatedTime = System.currentTimeMillis();
-        origModelVersionInfoDAO.setUpdatedAt(new Date(updatedTime));
-        origModelVersionInfoDAO.setUpdatedBy(callerId);
-        session.persist(origModelVersionInfoDAO);
+        Map<String, Object> key = versionKey(origModelVersionInfoDAO);
+        lockModelVersion(session, origModelVersionInfoDAO, key, fullName);
+        Map<String, Object> changes = new HashMap<>();
+        changes.put("comment", updateModelVersion.getComment());
+        changes.put("updatedAt", new Date());
+        changes.put("updatedBy", callerId);
+        RepositoryUtils.updateByKey(
+            session,
+            origModelVersionInfoDAO,
+            key,
+            changes,
+            () -> modelVersionNotFound(describeVersion(fullName, version)));
         modelVersionInfo = origModelVersionInfoDAO.toModelVersionInfo();
         modelVersionInfo.setCatalogName(catalogName);
         modelVersionInfo.setSchemaName(schemaName);
@@ -771,12 +828,13 @@ public class ModelRepository {
 
   public void deleteModelVersion(
       Session session, UUID registeredModelId, String fullName, long version) {
-    ModelVersionInfoDAO modelVersionInfoDAO =
-        getModelVersionDao(session, registeredModelId, version);
-    if (modelVersionInfoDAO == null) {
-      throw new BaseException(
-          ErrorCode.NOT_FOUND, "Model version not found: " + fullName + "/" + version);
+    String fullVersionName = describeVersion(fullName, version);
+    ModelVersionInfoDAO found = getModelVersionDao(session, registeredModelId, version);
+    if (found == null) {
+      throw modelVersionNotFound(fullVersionName);
     }
+    Map<String, Object> key = versionKey(found);
+    ModelVersionInfoDAO modelVersionInfoDAO = lockModelVersion(session, found, key, fullName);
     repositories
         .getStorageCleanupTaskRepository()
         .create(
@@ -785,7 +843,26 @@ public class ModelRepository {
             modelVersionInfoDAO.getId(),
             modelVersionInfoDAO.getVersion().toString(),
             modelVersionInfoDAO.getUrl());
-    session.remove(modelVersionInfoDAO);
+    RepositoryUtils.deleteByKey(
+        session, modelVersionInfoDAO, key, () -> modelVersionNotFound(fullVersionName));
+  }
+
+  /** The model version's key: its model's id plus the version number the request named. */
+  private static Map<String, Object> versionKey(ModelVersionInfoDAO version) {
+    return Map.of(
+        "registeredModelId", version.getRegisteredModelId(), "version", version.getVersion());
+  }
+
+  private ModelVersionInfoDAO lockModelVersion(
+      Session session, ModelVersionInfoDAO version, Map<String, Object> key, String fullName) {
+    String fullVersionName = describeVersion(fullName, version.getVersion());
+    return RepositoryUtils.lockByKey(
+        session,
+        ModelVersionInfoDAO.class,
+        version.getId(),
+        key,
+        "model version " + fullVersionName,
+        () -> modelVersionNotFound(fullVersionName));
   }
 
   public ModelVersionInfo finalizeModelVersion(FinalizeModelVersion finalizeModelVersion) {
@@ -816,6 +893,8 @@ public class ModelRepository {
         ModelVersionInfoDAO origModelVersionInfoDAO =
             getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
 
+        Map<String, Object> key = versionKey(origModelVersionInfoDAO);
+        lockModelVersion(session, origModelVersionInfoDAO, key, fullName);
         // Check the creator here so the check and status update use the same stored version.
         if (serverProperties.isAuthorizationEnabled()
             && (callerId == null || !callerId.equals(origModelVersionInfoDAO.getCreatedBy()))) {
@@ -828,11 +907,16 @@ public class ModelRepository {
               ErrorCode.INVALID_ARGUMENT,
               "Model version not in a pending registration state: " + fullName + "/" + version);
         }
-        origModelVersionInfoDAO.setStatus(ModelVersionStatus.READY.toString());
-        long updatedTime = System.currentTimeMillis();
-        origModelVersionInfoDAO.setUpdatedAt(new Date(updatedTime));
-        origModelVersionInfoDAO.setUpdatedBy(callerId);
-        session.persist(origModelVersionInfoDAO);
+        Map<String, Object> changes = new HashMap<>();
+        changes.put("status", ModelVersionStatus.READY.toString());
+        changes.put("updatedAt", new Date());
+        changes.put("updatedBy", callerId);
+        RepositoryUtils.updateByKey(
+            session,
+            origModelVersionInfoDAO,
+            key,
+            changes,
+            () -> modelVersionNotFound(describeVersion(fullName, version)));
         modelVersionInfo = origModelVersionInfoDAO.toModelVersionInfo();
         modelVersionInfo.setCatalogName(catalogName);
         modelVersionInfo.setSchemaName(schemaName);
