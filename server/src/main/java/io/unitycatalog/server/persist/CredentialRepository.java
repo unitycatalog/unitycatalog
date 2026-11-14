@@ -8,15 +8,21 @@ import io.unitycatalog.server.model.ListCredentialsResponse;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -29,20 +35,40 @@ public class CredentialRepository {
   private final Repositories repositories;
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
+  private final CredentialSecretStore secretStore;
   private static final PagedListingHelper<CredentialDAO> LISTING_HELPER =
       new PagedListingHelper<>(CredentialDAO.class);
 
   public CredentialRepository(
       Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
+    this(
+        repositories,
+        sessionFactory,
+        serverProperties,
+        CredentialSecretStore.from(serverProperties));
+  }
+
+  /**
+   * @param secretStore keeps the secret values of credentials
+   */
+  CredentialRepository(
+      Repositories repositories,
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CredentialSecretStore secretStore) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
+    this.secretStore = secretStore;
   }
 
   public CredentialInfo addCredential(CreateCredentialRequest createCredentialRequest) {
     ValidationUtils.validateSqlObjectName(createCredentialRequest.getName());
+    if (createCredentialRequest.getS3Compatible() != null) {
+      serverProperties.checkS3CompatibleStorageEnabled();
+    }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    CredentialDAO dao = CredentialDAO.from(createCredentialRequest, callerId);
+    CredentialDAO dao = CredentialDAO.from(createCredentialRequest, callerId, secretStore);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -88,6 +114,18 @@ public class CredentialRepository {
     return query.uniqueResult();
   }
 
+  /**
+   * Reads the credential with a write lock on its row until the transaction ends. A credential
+   * update and an external location change on the same credential both take it before checking that
+   * an {@code s3_compatible} credential has only {@code s3://} locations, so one waits for the
+   * other and checks its committed result.
+   *
+   * @return the credential, or null if none has the name
+   */
+  CredentialDAO getCredentialDAOForUpdate(Session session, String name) {
+    return RepositoryUtils.getForUpdateByName(session, CredentialDAO.class, name);
+  }
+
   public ListCredentialsResponse listCredentials(
       Optional<Integer> maxResults, Optional<String> pageToken) {
     return TransactionManager.executeWithTransaction(
@@ -112,12 +150,17 @@ public class CredentialRepository {
   }
 
   public CredentialInfo updateCredential(String name, UpdateCredentialRequest updateCredential) {
+    ValidationUtils.checkArgument(
+        updateCredential.getAwsIamRole() == null || updateCredential.getS3Compatible() == null,
+        "Specify only one of aws_iam_role and s3_compatible.");
+    if (updateCredential.getS3Compatible() != null) {
+      serverProperties.checkS3CompatibleStorageEnabled();
+    }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          CredentialDAO existingCredential = getCredentialDAO(session, name);
+          CredentialDAO existingCredential = getCredentialDAOForUpdate(session, name);
           if (existingCredential == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
           }
@@ -132,8 +175,14 @@ public class CredentialRepository {
             }
             existingCredential.setName(updateCredential.getNewName());
           }
+          // Every part of a credential can change while external locations use it, including its
+          // type and S3 endpoint, as long as each location stays reachable with it (s3:// only for
+          // s3_compatible); the paths under those locations then reach storage the new way.
           if (updateCredential.getAwsIamRole() != null) {
             existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
+          } else if (updateCredential.getS3Compatible() != null) {
+            existingCredential.setS3Compatible(updateCredential.getS3Compatible(), secretStore);
+            validateLocationsAreS3Paths(session, existingCredential);
           }
           if (updateCredential.getComment() != null) {
             existingCredential.setComment(updateCredential.getComment());
@@ -146,7 +195,10 @@ public class CredentialRepository {
           return existingCredential.toCredentialInfo(getAwsS3MasterRoleArn());
         },
         "Failed to update storage credential",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        // Reads after the row lock see what was committed while it waited (see
+        // RepositoryUtils#getForUpdateByName).
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   public UUID deleteCredential(String name, boolean force) {
@@ -154,7 +206,8 @@ public class CredentialRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          CredentialDAO existingCredential = getCredentialDAO(session, name);
+          // Locked, as location changes lock it, so a location added meanwhile is seen below.
+          CredentialDAO existingCredential = getCredentialDAOForUpdate(session, name);
           if (existingCredential == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Credential not found: " + name);
           }
@@ -175,7 +228,38 @@ public class CredentialRepository {
           return existingCredential.getId();
         },
         "Failed to delete credential",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        // Reads after the row lock see what was committed while it waited (see
+        // RepositoryUtils#getForUpdateByName).
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
+  }
+
+  /**
+   * Reads the stored secret of every {@code s3_compatible} credential, so that a missing or changed
+   * {@code server.credential-encryption-key} shows at startup rather than on the first request.
+   *
+   * @return the name of each credential whose secret cannot be read, with the failure
+   */
+  public Map<String, RuntimeException> findUnreadableSecrets() {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          Map<String, RuntimeException> unreadable = new TreeMap<>();
+          Query<CredentialDAO> query =
+              session.createQuery(
+                  "FROM CredentialDAO WHERE credentialType = :type", CredentialDAO.class);
+          query.setParameter("type", CredentialDAO.CredentialType.S3_COMPATIBLE);
+          for (CredentialDAO dao : query.list()) {
+            try {
+              dao.getS3SecretAccessKey(secretStore);
+            } catch (RuntimeException e) {
+              unreadable.put(dao.getName(), e);
+            }
+          }
+          return unreadable;
+        },
+        "Failed to read stored credential values",
+        /* readOnly= */ true);
   }
 
   protected ExternalLocationDAO getExternalLocationDAOUsingCredential(
@@ -186,6 +270,25 @@ public class CredentialRepository {
     query.setParameter("value", credentialId);
     query.setMaxResults(1);
     return query.uniqueResult();
+  }
+
+  /**
+   * Rejects making a credential an {@code s3_compatible} credential while an external location
+   * outside {@code s3://} uses it, since such a credential reaches storage only through the S3 API.
+   */
+  private void validateLocationsAreS3Paths(Session session, CredentialDAO credentialDAO) {
+    // A credential has few locations, so each URL is checked with the rule location changes use.
+    List<String> urls =
+        session
+            .createSelectionQuery(
+                "SELECT url FROM ExternalLocationDAO WHERE credentialId = :value", String.class)
+            .setParameter("value", credentialDAO.getId())
+            .list();
+    ValidationUtils.checkArgument(
+        urls.stream().map(NormalizedURL::from).allMatch(ExternalLocationRepository::isS3Path),
+        "Cannot make credential '%s' an s3_compatible credential: it is used by an external"
+            + " location that is not an s3:// path.",
+        credentialDAO.getName());
   }
 
   private Optional<String> getAwsS3MasterRoleArn() {

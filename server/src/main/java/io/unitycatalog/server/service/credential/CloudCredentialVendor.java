@@ -5,14 +5,17 @@ import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.time.Instant;
+import java.util.Optional;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
-public class CloudCredentialVendor {
+public class CloudCredentialVendor implements AutoCloseable {
 
   private final AwsCredentialVendor awsCredentialVendor;
   private final AzureCredentialVendor azureCredentialVendor;
@@ -31,6 +34,12 @@ public class CloudCredentialVendor {
     this.awsCredentialVendor = awsCredentialVendor;
     this.azureCredentialVendor = azureCredentialVendor;
     this.gcpCredentialVendor = gcpCredentialVendor;
+  }
+
+  /** Releases the clients the cloud vendors hold. */
+  @Override
+  public void close() {
+    awsCredentialVendor.close();
   }
 
   public TemporaryCredentials vendCredential(CredentialContext context) {
@@ -59,19 +68,30 @@ public class CloudCredentialVendor {
   }
 
   private TemporaryCredentials vendAwsCredential(CredentialContext context) {
-    Credentials awsSessionCredentials = awsCredentialVendor.vendAwsCredentials(context);
+    AwsCredentials awsCredentials =
+        new AwsCredentials()
+            .s3Endpoint(context.getS3Endpoint().orElse(null))
+            .s3Region(context.getS3Region().orElse(null));
     TemporaryCredentials temporaryCredentials =
-        new TemporaryCredentials()
-            .awsTempCredentials(
-                new AwsCredentials()
-                    .accessKeyId(awsSessionCredentials.accessKeyId())
-                    .secretAccessKey(awsSessionCredentials.secretAccessKey())
-                    .sessionToken(awsSessionCredentials.sessionToken()));
-
+        new TemporaryCredentials().awsTempCredentials(awsCredentials);
+    Optional<Credentials> vended = awsCredentialVendor.vendAwsCredentials(context);
+    if (vended.isEmpty()) {
+      // The path's credential does not vend keys: return only the S3 endpoint, and the client uses
+      // its own keys. The lifetime, as for a vended key pair, tells clients when they may fetch
+      // again to pick up a changed endpoint; one that does not refetch a vend without keys, such
+      // as the UC Hadoop connector, picks it up on its first table load after that time.
+      return temporaryCredentials.expirationTime(
+          Instant.now().plus(AwsCredentialGenerator.SESSION_DURATION).toEpochMilli());
+    }
+    Credentials credentials = vended.get();
+    awsCredentials
+        .accessKeyId(credentials.accessKeyId())
+        .secretAccessKey(credentials.secretAccessKey())
+        .sessionToken(credentials.sessionToken());
     // Explicitly set the expiration time for the temporary credentials if it's a non-static
     // credential. For static credential, the expiration time can be nullable.
-    if (awsSessionCredentials.expiration() != null) {
-      temporaryCredentials.expirationTime(awsSessionCredentials.expiration().toEpochMilli());
+    if (credentials.expiration() != null) {
+      temporaryCredentials.expirationTime(credentials.expiration().toEpochMilli());
     }
     return temporaryCredentials;
   }

@@ -266,7 +266,10 @@ public class FileOperationsTest {
         .containsEntry(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS, "12345")
         // This overload builds config for the server's own FileIO, which has no catalog URI to
         // resolve a refresh endpoint against.
-        .doesNotContainKey(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT);
+        .doesNotContainKey(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT)
+        // AWS S3: the SDK resolves the endpoint and addressing style itself.
+        .doesNotContainKey(S3FileIOProperties.ENDPOINT)
+        .doesNotContainKey(S3FileIOProperties.PATH_STYLE_ACCESS);
   }
 
   @Test
@@ -749,6 +752,93 @@ public class FileOperationsTest {
 
     assertThat(config).containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2");
     verify(supplier, never()).get();
+  }
+
+  @Test
+  public void testGetFileIOConfigS3CompatibleEndpointSkipsDiscovery() {
+    // The bucket is not on AWS, so asking AWS for its region would be wrong.
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("key-id-1")
+                        .secretAccessKey("key-value-1")
+                        .sessionToken("session-1")
+                        .s3Endpoint("http://storage.example.com:9000")
+                        .s3Region("eu-test-1")));
+    @SuppressWarnings("unchecked")
+    Supplier<S3ClientBuilder> supplier = mock(Supplier.class);
+    FileOperations fileOps =
+        new FileOperationsImpl(vendor, new ServerProperties(new Properties()), supplier);
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://compat-bucket/table"));
+
+    // The region is vended along with the endpoint.
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ENDPOINT, "http://storage.example.com:9000")
+        .containsEntry(S3FileIOProperties.PATH_STYLE_ACCESS, "true")
+        .containsEntry(AwsClientProperties.CLIENT_REGION, "eu-test-1");
+    verify(supplier, never()).get();
+  }
+
+  @Test
+  public void testGetFileIOConfigStaticKeyHasNoRefreshEndpoint() {
+    // A vended key pair has a lifetime but no session token. Iceberg's refreshing provider requires
+    // a session token, so the client gets neither the lifetime nor the refresh endpoint and keeps
+    // the key pair it was handed.
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("key-id-1")
+                        .secretAccessKey("key-value-1")
+                        .s3Endpoint("http://storage.example.com:9000"))
+                .expirationTime(System.currentTimeMillis() + 3_600_000L));
+    FileOperations fileOps =
+        new FileOperationsImpl(
+            vendor, new ServerProperties(new Properties()), mock(Supplier.class));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(
+            NormalizedURL.from("s3://compat-bucket/table"),
+            CredentialContext.READ_ONLY,
+            Optional.of("v1/catalogs/c/namespaces/n/tables/t/credentials"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ACCESS_KEY_ID, "key-id-1")
+        .doesNotContainKeys(
+            S3FileIOProperties.SESSION_TOKEN,
+            S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS,
+            AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT);
+  }
+
+  @Test
+  public void testGetFileIOConfigS3EndpointOnlyCarriesNoKeys() {
+    // A credential that does not vend keys returns only the endpoint; the client uses its own keys.
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials().s3Endpoint("http://storage.example.com:9000")));
+    FileOperations fileOps =
+        new FileOperationsImpl(
+            vendor, new ServerProperties(new Properties()), mock(Supplier.class));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://compat-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ENDPOINT, "http://storage.example.com:9000")
+        .doesNotContainKeys(
+            S3FileIOProperties.ACCESS_KEY_ID,
+            S3FileIOProperties.SECRET_ACCESS_KEY,
+            S3FileIOProperties.SESSION_TOKEN);
   }
 
   @Test

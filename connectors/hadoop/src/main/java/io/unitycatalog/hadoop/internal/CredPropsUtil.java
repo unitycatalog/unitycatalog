@@ -5,7 +5,9 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Clock;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
+import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
@@ -194,13 +196,35 @@ public class CredPropsUtil {
     List<GenericCredential> credentials =
         fetchGenericCredentials(
             hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
+    // A table's credentials are assumed to be all with keys or all without: the properties set one
+    // S3A credentials provider for every path, and a location vended only its S3 endpoint relies
+    // on the engine's own keys, which S3A cannot use for one bucket while the vended provider
+    // serves the others.
+    // TODO: support a table whose credentials mix storage, by processing each credential on its
+    // own, for example with a per-bucket fs.s3a.bucket.<bucket>.aws.credentials.provider, as the
+    // endpoint and region already are.
+    boolean anyHasKeys = credentials.stream().anyMatch(CredPropsUtil::hasKeys);
+    Preconditions.checkArgument(
+        !anyHasKeys || credentials.stream().allMatch(CredPropsUtil::hasKeys),
+        "Unity Catalog vended an S3 endpoint without keys together with credentials with keys for"
+            + " %s; such a set cannot be served",
+        credId);
     CredPropsBuilder builder =
         CredPropsBuilder.forCloud(cloudType.get(), hadoopConf)
+            // Its cache tells apart the storage and the engine's own keys behind an S3 endpoint
+            // (FileSystemCredId), so it serves credentials without keys too.
             .credScopedFsEnabled(credScopedFsEnabled)
             .initialCredentials(credentials)
             .credId(credId);
 
-    if (renewCredEnabled) {
+    // Renew when a credential expires. A single key pair without a lifetime has nothing to renew,
+    // so it uses fixed keys instead; credentials without keys leave the engine's own in use.
+    // Several credentials with keys always take the vended provider, which picks the one covering
+    // each path.
+    if (renewCredEnabled
+        && anyHasKeys
+        && (credentials.size() > 1
+            || credentials.stream().anyMatch(GenericCredential::isRenewable))) {
       builder.enableRenewCred(catalogUri, tokenProvider, credId, appVersions);
     }
 
@@ -280,5 +304,9 @@ public class CredPropsUtil {
         tokenProvider,
         UCHadoopConfConstants.createRequestRetryPolicy(null),
         appVersions);
+  }
+
+  private static boolean hasKeys(GenericCredential credential) {
+    return !(credential instanceof AwsCredential) || ((AwsCredential) credential).hasKeys();
   }
 }

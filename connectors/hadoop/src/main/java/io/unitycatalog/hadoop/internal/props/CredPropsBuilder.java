@@ -131,6 +131,8 @@ public abstract class CredPropsBuilder {
       }
     }
 
+    setS3EndpointKeys(initialCredentials);
+
     // Set the props for initial credential prefixes.
     List<String> credPrefixes =
         initialCredentials.stream()
@@ -162,6 +164,19 @@ public abstract class CredPropsBuilder {
     props.put(key, newValue);
     return this;
   }
+
+  /** Whether credential renewal is enabled, so the vended provider serves the credentials. */
+  protected boolean isRenewCredEnabled() {
+    return renewCredEnabled;
+  }
+
+  /**
+   * Sets the S3 endpoint keys for the initial credentials. No-op unless the cloud supports storage
+   * endpoints other than its own.
+   *
+   * @param credentials the initial credentials
+   */
+  protected void setS3EndpointKeys(List<GenericCredential> credentials) {}
 
   /** Cloud-specific filesystem-impl overrides that install CredScopedFileSystem. */
   protected abstract void setCredScopedFsKeys();

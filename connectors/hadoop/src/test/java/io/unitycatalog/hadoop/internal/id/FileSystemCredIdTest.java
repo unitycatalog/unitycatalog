@@ -65,6 +65,70 @@ class FileSystemCredIdTest {
         .isNotEqualTo(FileSystemCredId.create(conf, URI.create("s3://bucket-b/path"), prefix));
   }
 
+  private static FileSystemCredId s3CompatibleId(String... settings) {
+    Configuration conf = new Configuration(false);
+    for (int i = 0; i < settings.length; i += 2) {
+      conf.set(settings[i], settings[i + 1]);
+    }
+    return FileSystemCredId.create(conf, TEST_URI, "s3://bucket/a");
+  }
+
+  @Test
+  void s3CompatibleStorageAndEngineKeysArePartOfTheId() {
+    String endpoint = "fs.s3a.bucket.bucket.endpoint";
+    FileSystemCredId onA = s3CompatibleId(endpoint, "http://a:9000");
+    // The same bucket name on another storage, or in another region, gets its own filesystem.
+    assertThat(onA)
+        .isEqualTo(s3CompatibleId(endpoint, "http://a:9000"))
+        .isNotEqualTo(s3CompatibleId(endpoint, "http://b:9000"))
+        .isNotEqualTo(
+            s3CompatibleId(endpoint, "http://a:9000", "fs.s3a.bucket.bucket.endpoint.region", "r"));
+    // So do the engine's own keys, at bucket scope or global, which serve a vend without keys.
+    assertThat(s3CompatibleId(endpoint, "http://a:9000", "fs.s3a.access.key", "engine-1"))
+        .isNotEqualTo(s3CompatibleId(endpoint, "http://a:9000", "fs.s3a.access.key", "engine-2"))
+        .isNotEqualTo(onA);
+    assertThat(
+            s3CompatibleId(endpoint, "http://a:9000", "fs.s3a.bucket.bucket.secret.key", "value"))
+        .isNotEqualTo(onA);
+    // So do the credential stores S3A reads secrets from, and the role it assumes.
+    assertThat(
+            s3CompatibleId(
+                endpoint, "http://a:9000", "hadoop.security.credential.provider.path", "jceks://a"))
+        .isNotEqualTo(
+            s3CompatibleId(
+                endpoint,
+                "http://a:9000",
+                "hadoop.security.credential.provider.path",
+                "jceks://b"));
+    assertThat(
+            s3CompatibleId(
+                endpoint, "http://a:9000", "fs.s3a.security.credential.provider.path", "jceks://a"))
+        .isNotEqualTo(onA);
+    assertThat(s3CompatibleId(endpoint, "http://a:9000", "fs.s3a.assumed.role.arn", "role"))
+        .isNotEqualTo(onA);
+    assertThat(s3CompatibleId(endpoint, "http://a:9000", "fs.s3a.assumed.role.policy", "{}"))
+        .isNotEqualTo(onA);
+    assertThat(
+            s3CompatibleId(
+                endpoint, "http://a:9000", "fs.s3a.assumed.role.sts.endpoint", "http://s"))
+        .isNotEqualTo(onA);
+    // The id holds a hash of the settings, not the settings.
+    Configuration conf = new Configuration(false);
+    conf.set(endpoint, "http://a:9000");
+    conf.set("fs.s3a.secret.key", "engine-value");
+    assertThat(FileSystemCredId.s3Storage(conf, TEST_URI))
+        .matches("[0-9a-f]+")
+        .doesNotContain("engine-value");
+  }
+
+  @Test
+  void awsS3KeysAreNotPartOfTheId() {
+    // Without an S3 endpoint for the bucket the id is as before.
+    assertThat(s3CompatibleId("fs.s3a.access.key", "engine-1"))
+        .isEqualTo(s3CompatibleId("fs.s3a.access.key", "engine-2"))
+        .isEqualTo(s3CompatibleId());
+  }
+
   @ParameterizedTest
   @MethodSource("differentPrefixes")
   void differentPrefixesAreDifferent(String prefixA, String prefixB) {

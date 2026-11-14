@@ -15,4 +15,6 @@ public class S3StorageConfig {
   private final String secretKey;
   private final String sessionToken;
   private final String credentialGenerator;
+  // STS endpoint of S3-compatible storage; null for AWS STS.
+  private final String stsEndpoint;
 }

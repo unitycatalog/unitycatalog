@@ -8,8 +8,9 @@ import lombok.Value;
 
 /**
  * Who a vended storage credential is for, and, for the storage cleanup, which dropped object. It
- * only labels the audit record; it does not change what is vended. Only {@link #CLIENT}, {@link
- * #SERVER} and {@link #cleanup(UUID)} exist, so a purpose and a resource ID cannot disagree.
+ * labels the audit record, and a credential for the server or the cleanup always carries usable
+ * keys, even when the path's storage credential vends no keys to clients. Only {@link #CLIENT},
+ * {@link #SERVER} and {@link #cleanup(UUID)} exist, so a purpose and a resource ID cannot disagree.
  */
 @Value
 @AllArgsConstructor(access = AccessLevel.PRIVATE)

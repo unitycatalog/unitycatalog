@@ -15,6 +15,16 @@ public class UCHadoopConfConstants {
   public static final String S3A_INIT_ACCESS_KEY = "fs.s3a.init.access.key";
   public static final String S3A_INIT_SECRET_KEY = "fs.s3a.init.secret.key";
   public static final String S3A_INIT_SESSION_TOKEN = "fs.s3a.init.session.token";
+  // The S3 endpoint of S3-compatible storage; when set, AwsVendedTokenProvider accepts an initial
+  // key pair without a session token.
+  public static final String S3A_INIT_S3_ENDPOINT = "fs.s3a.init.s3.endpoint";
+  // The region vended with that endpoint, so the initial credential matches later renewals.
+  public static final String S3A_INIT_S3_REGION = "fs.s3a.init.s3.region";
+  // The S3 endpoint and region Unity Catalog vended for a bucket when the table was loaded, each
+  // followed by the bucket name; empty for AWS S3. AwsVendedTokenProvider refuses a renewal for
+  // other storage, since the file system keeps sending requests where it was set up to.
+  public static final String UC_VENDED_S3_ENDPOINT_PREFIX = "fs.unitycatalog.vended.s3.endpoint.";
+  public static final String UC_VENDED_S3_REGION_PREFIX = "fs.unitycatalog.vended.s3.region.";
   // Expired time in milliseconds.
   public static final String S3A_INIT_CRED_EXPIRED_TIME = "fs.s3a.init.credential.expired.time";
 
