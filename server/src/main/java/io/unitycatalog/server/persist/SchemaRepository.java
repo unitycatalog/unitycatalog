@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_READ_COMMITTED;
+
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateSchema;
@@ -16,8 +18,12 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -37,6 +43,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
@@ -45,6 +52,12 @@ public class SchemaRepository {
   private final SessionFactory sessionFactory;
   private static final PagedListingHelper<SchemaInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(SchemaInfoDAO.class);
+  private static final List<Class<?>> CHILD_TYPES =
+      List.of(
+          TableInfoDAO.class,
+          VolumeInfoDAO.class,
+          FunctionInfoDAO.class,
+          RegisteredModelInfoDAO.class);
 
   public SchemaRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.repositories = repositories;
@@ -115,11 +128,22 @@ public class SchemaRepository {
   public SchemaInfoDAO getSchemaDaoOrThrow(
       Session session, UUID catalogId, String catalogName, String schemaName) {
     return RepositoryUtils.getSchemaDaoOpt(session, catalogId, schemaName)
-        .orElseThrow(
-            () ->
-                new BaseException(
-                    ErrorCode.SCHEMA_NOT_FOUND,
-                    "Schema not found: " + catalogName + "." + schemaName));
+        .orElseThrow(() -> schemaNotFound(catalogName + "." + schemaName));
+  }
+
+  private static BaseException schemaNotFound(String fullName) {
+    return new BaseException(ErrorCode.SCHEMA_NOT_FOUND, "Schema not found: " + fullName);
+  }
+
+  private void lockSchema(
+      Session session, SchemaInfoDAO schema, Map<String, Object> key, String fullName) {
+    RepositoryUtils.lockByKey(
+        session,
+        SchemaInfoDAO.class,
+        schema.getId(),
+        key,
+        "schema " + fullName,
+        () -> schemaNotFound(fullName));
   }
 
   public SchemaInfoDAO getSchemaDaoOrThrow(Session session, String catalogName, String schemaName) {
@@ -241,6 +265,8 @@ public class SchemaRepository {
         sessionFactory,
         session -> {
           SchemaInfoDAO schemaInfoDAO = getSchemaDaoOrThrow(session, fullName);
+          Map<String, Object> nameKey = Map.of("name", splitSchemaFullName(fullName).schemaName());
+          lockSchema(session, schemaInfoDAO, nameKey, fullName);
           Map<String, String> properties = new HashMap<>();
           PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
               .forEach(property -> properties.put(property.getKey(), property.getValue()));
@@ -262,13 +288,16 @@ public class SchemaRepository {
           session.flush();
           PropertyDAO.from(properties, schemaInfoDAO.getId(), Constants.SCHEMA)
               .forEach(session::persist);
-          schemaInfoDAO.setUpdatedAt(new Date());
-          schemaInfoDAO.setUpdatedBy(callerId);
-          session.merge(schemaInfoDAO);
+          Map<String, Object> changes = new HashMap<>();
+          changes.put("updatedAt", new Date());
+          changes.put("updatedBy", callerId);
+          RepositoryUtils.updateByKey(
+              session, schemaInfoDAO, nameKey, changes, () -> schemaNotFound(fullName));
           return new PropertyChanges(new LinkedHashSet<>(updates.keySet()), removed, missing);
         },
         "Failed to update schema properties",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
@@ -290,12 +319,15 @@ public class SchemaRepository {
               && (updateSchema.getProperties() == null || updateSchema.getProperties().isEmpty())) {
             return convertFromDAO(session, schemaInfoDAO, fullName);
           }
+          Map<String, Object> nameKey = Map.of("name", splitSchemaFullName(fullName).schemaName());
+          lockSchema(session, schemaInfoDAO, nameKey, fullName);
           // Update the schema with new values
+          Map<String, Object> changes = new HashMap<>();
           if (updateSchema.getComment() != null) {
-            schemaInfoDAO.setComment(updateSchema.getComment());
+            changes.put("comment", updateSchema.getComment());
           }
           if (updateSchema.getNewName() != null) {
-            schemaInfoDAO.setName(updateSchema.getNewName());
+            changes.put("name", updateSchema.getNewName());
           }
           if (updateSchema.getProperties() != null && !updateSchema.getProperties().isEmpty()) {
             PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
@@ -304,13 +336,15 @@ public class SchemaRepository {
             PropertyDAO.from(updateSchema.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
                 .forEach(session::persist);
           }
-          schemaInfoDAO.setUpdatedAt(new Date());
-          schemaInfoDAO.setUpdatedBy(callerId);
-          session.merge(schemaInfoDAO);
+          changes.put("updatedAt", new Date());
+          changes.put("updatedBy", callerId);
+          RepositoryUtils.updateByKey(
+              session, schemaInfoDAO, nameKey, changes, () -> schemaNotFound(fullName));
           return convertFromDAO(session, schemaInfoDAO, fullName);
         },
         "Failed to update schema",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   public List<DeletedResource> deleteSchema(String fullName, boolean force) {
@@ -326,12 +360,14 @@ public class SchemaRepository {
               session, catalog.getId(), names.catalogName(), names.schemaName(), force);
         },
         "Failed to delete schema",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   private List<DeletedResource> deleteChildTables(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     List<DeletedResource> deleted = new ArrayList<>();
+    Supplier<BaseException> childVanished = childVanished(catalogName, schemaName);
     // first check if there are any child tables
     List<TableInfo> tables =
         repositories
@@ -368,7 +404,13 @@ public class SchemaRepository {
           deleted.add(
               new DeletedResource(
                   SecurableType.TABLE, tableInfo.getTableId(), schemaId.toString()));
-          repositories.getTableRepository().deleteTable(session, schemaId, tableInfo.getName());
+          repositories
+              .getTableRepository()
+              .deleteTable(
+                  session,
+                  UUID.fromString(tableInfo.getTableId()),
+                  tableInfo.getName(),
+                  childVanished);
         }
         nextToken = listTablesResponse.getNextPageToken();
       } while (nextToken != null);
@@ -379,6 +421,7 @@ public class SchemaRepository {
   private List<DeletedResource> deleteChildVolumes(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     List<DeletedResource> deleted = new ArrayList<>();
+    Supplier<BaseException> childVanished = childVanished(catalogName, schemaName);
     // first check if there are any child volumes
     List<VolumeInfo> volumes =
         repositories
@@ -406,7 +449,13 @@ public class SchemaRepository {
           deleted.add(
               new DeletedResource(
                   SecurableType.VOLUME, volumeInfo.getVolumeId(), schemaId.toString()));
-          repositories.getVolumeRepository().deleteVolume(session, schemaId, volumeInfo.getName());
+          repositories
+              .getVolumeRepository()
+              .deleteVolume(
+                  session,
+                  UUID.fromString(volumeInfo.getVolumeId()),
+                  volumeInfo.getName(),
+                  childVanished);
         }
         nextToken = listVolumesResponse.getNextPageToken();
       } while (nextToken != null);
@@ -417,6 +466,7 @@ public class SchemaRepository {
   private List<DeletedResource> deleteChildFunctions(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     List<DeletedResource> deleted = new ArrayList<>();
+    Supplier<BaseException> childVanished = childVanished(catalogName, schemaName);
     // first check if there are any child functions
     List<FunctionInfo> functions =
         repositories
@@ -447,7 +497,11 @@ public class SchemaRepository {
                   SecurableType.FUNCTION, functionInfo.getFunctionId(), schemaId.toString()));
           repositories
               .getFunctionRepository()
-              .deleteFunction(session, schemaId, functionInfo.getName());
+              .deleteFunction(
+                  session,
+                  UUID.fromString(functionInfo.getFunctionId()),
+                  functionInfo.getName(),
+                  childVanished);
         }
         nextToken = listFunctionsResponse.getNextPageToken();
       } while (nextToken != null);
@@ -458,6 +512,7 @@ public class SchemaRepository {
   private List<DeletedResource> deleteChildModels(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     List<DeletedResource> deleted = new ArrayList<>();
+    Supplier<BaseException> childVanished = childVanished(catalogName, schemaName);
     // first check if there are any child Models
     List<RegisteredModelInfo> registeredModels =
         repositories
@@ -490,7 +545,12 @@ public class SchemaRepository {
                   schemaId.toString()));
           repositories
               .getModelRepository()
-              .deleteRegisteredModel(session, schemaId, registeredModelInfo.getName(), true);
+              .deleteRegisteredModel(
+                  session,
+                  UUID.fromString(registeredModelInfo.getId()),
+                  catalogName + "." + schemaName + "." + registeredModelInfo.getName(),
+                  true,
+                  childVanished);
         }
         nextToken = listRegisteredModelsResponse.getNextPageToken();
       } while (nextToken != null);
@@ -498,19 +558,57 @@ public class SchemaRepository {
     return deleted;
   }
 
+  /** What a cascade throws when a child it listed has since been renamed or dropped. */
+  private static Supplier<BaseException> childVanished(String catalogName, String schemaName) {
+    return () -> RepositoryUtils.concurrentModification("schema " + catalogName + "." + schemaName);
+  }
+
   public List<DeletedResource> deleteSchema(
       Session session, UUID catalogId, String catalogName, String schemaName, boolean force) {
     SchemaInfoDAO schemaInfo = getSchemaDaoOrThrow(session, catalogId, catalogName, schemaName);
-    UUID schemaId = schemaInfo.getId();
+    return deleteSchema(
+        session,
+        schemaInfo.getId(),
+        catalogId,
+        catalogName,
+        schemaName,
+        force,
+        () -> schemaNotFound(catalogName + "." + schemaName));
+  }
+
+  /**
+   * Deletes the schema {@code schemaId} named {@code schemaName}; {@code notFound} is thrown if no
+   * such row exists, for example because it was renamed or dropped since the caller found it. A
+   * child that is renamed or dropped while the schema is deleted, or created behind the listing,
+   * fails the delete closed.
+   */
+  List<DeletedResource> deleteSchema(
+      Session session,
+      UUID schemaId,
+      UUID catalogId,
+      String catalogName,
+      String schemaName,
+      boolean force,
+      Supplier<BaseException> notFound) {
+    String fullName = catalogName + "." + schemaName;
+    Map<String, Object> key = Map.of("name", schemaName);
+    SchemaInfoDAO schemaInfo =
+        RepositoryUtils.lockByKey(
+            session, SchemaInfoDAO.class, schemaId, key, "schema " + fullName, notFound);
     List<DeletedResource> deleted = new ArrayList<>();
     deleted.addAll(deleteChildTables(session, schemaId, catalogName, schemaName, force));
     deleted.addAll(deleteChildVolumes(session, schemaId, catalogName, schemaName, force));
     deleted.addAll(deleteChildFunctions(session, schemaId, catalogName, schemaName, force));
     deleted.addAll(deleteChildModels(session, schemaId, catalogName, schemaName, force));
+    for (Class<?> childType : CHILD_TYPES) {
+      if (RepositoryUtils.hasChildren(session, childType, "schemaId", schemaId)) {
+        throw childVanished(catalogName, schemaName).get();
+      }
+    }
     PropertyRepository.findProperties(session, schemaId, Constants.SCHEMA).forEach(session::remove);
     deleted.add(
         new DeletedResource(SecurableType.SCHEMA, schemaId.toString(), catalogId.toString()));
-    session.remove(schemaInfo);
+    RepositoryUtils.deleteByKey(session, schemaInfo, key, notFound);
     return deleted;
   }
 
