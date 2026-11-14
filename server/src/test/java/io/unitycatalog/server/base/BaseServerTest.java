@@ -17,9 +17,12 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionException;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
@@ -205,5 +208,11 @@ public abstract class BaseServerTest {
       // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
       unityCatalogServer = null;
     }
+  }
+
+  /** Races {@code operation} against an uncommitted write; see {@link TestDatabase}. */
+  protected <T> T runBlockedByHeldWrite(Consumer<Session> heldWrite, Callable<T> operation)
+      throws Exception {
+    return testDatabase.runBlockedByHeldWrite(heldWrite, operation);
   }
 }
