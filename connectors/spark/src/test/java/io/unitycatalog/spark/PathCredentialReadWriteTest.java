@@ -3,7 +3,9 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
@@ -23,6 +25,7 @@ import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation;
 import org.apache.spark.sql.catalyst.parser.ParseException;
 import org.apache.spark.sql.catalyst.plans.logical.InsertIntoStatement;
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan;
+import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -40,7 +43,9 @@ import org.junit.jupiter.params.provider.EnumSource;
  * filesystem to assert the vended credentials reach S3A. The test principal is the metastore owner,
  * so path authorization passes and credentials fall back to the per-bucket server config ({@code
  * accessKey0}/... for {@code s3://test-bucket0}) configured in {@link
- * BaseSparkIntegrationTest#setUpProperties()}.
+ * BaseSparkIntegrationTest#setUpProperties()}. On real S3-compatible storage ({@code
+ * UC_TEST_STORAGE}) the bucket's external location vends STS session credentials instead, and S3A
+ * reads with them.
  */
 public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
@@ -91,10 +96,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     for (String catalog : ucCatalogs) {
       builder = configureUcCatalog(builder, catalog);
     }
-    builder
-        .config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName())
-        .config("spark.hadoop.fs.s3a.impl", S3CredentialTestFileSystem.S3a.class.getName());
-    return builder.getOrCreate();
+    return configurePathCredFileSystems(builder).getOrCreate();
   }
 
   private SparkSession createPathCredSession(
@@ -140,10 +142,68 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
           configureUcCatalogWithPathCredOptions(
               builder, catalog, renewCred, credScopedFs, vendPathEnabled);
     }
-    builder
-        .config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName())
-        .config("spark.hadoop.fs.s3a.impl", S3CredentialTestFileSystem.S3a.class.getName());
-    return builder.getOrCreate();
+    return configurePathCredFileSystems(builder).getOrCreate();
+  }
+
+  /**
+   * The cloud file systems, plus {@code s3a://} on the fake S3 file system when S3 is emulated (on
+   * real storage S3A already serves it).
+   */
+  private static SparkSession.Builder configurePathCredFileSystems(SparkSession.Builder builder) {
+    configureCloudFileSystems(builder);
+    return onRealS3Storage()
+        ? builder
+        : builder.config(
+            "spark.hadoop.fs.s3a.impl", S3CredentialTestFileSystem.S3a.class.getName());
+  }
+
+  /**
+   * Asserts the S3 access key a bare path was given is one Unity Catalog vends for the bucket: the
+   * emulated bucket's fixed key; on real storage an STS session key rather than the storage user's
+   * own key; that key itself on storage without STS when the server vends it; and no key when the
+   * server vends none, leaving the engine's own keys in use.
+   *
+   * @param accessKey the {@code fs.s3a.access.key} value, or null if none was set
+   */
+  private static void assertVendedAccessKey(String accessKey) {
+    if (usesAmbientS3Keys()) {
+      assertThat(accessKey).isNull();
+    } else if (onRealS3Storage() && s3Storage().get().roleArn().isPresent()) {
+      assertThat(accessKey).isNotBlank().isNotEqualTo(s3Storage().get().accessKeyId());
+    } else if (onRealS3Storage()) {
+      assertThat(accessKey).isEqualTo(s3Storage().get().accessKeyId());
+    } else {
+      assertThat(accessKey).isEqualTo("accessKey0");
+    }
+  }
+
+  /**
+   * The message a read fails with when the path got no vended S3 credentials.
+   *
+   * @param emulatedMessage the message of the emulated file system
+   * @return {@code emulatedMessage}, or S3A's on real storage
+   */
+  private static String missingCredentialsMessage(String emulatedMessage) {
+    return onRealS3Storage() ? "No AWS Credentials" : emulatedMessage;
+  }
+
+  /**
+   * Asserts a query that gets no vended credentials fails for lack of them, or succeeds with the
+   * engine's own keys where Unity Catalog vends none and the engine is configured with them.
+   *
+   * @param query the query
+   * @param emulatedMessage the message the emulated file system fails with
+   */
+  private static void assertNeedsVendedCredentials(
+      ThrowableAssert.ThrowingCallable query, String emulatedMessage) {
+    if (usesAmbientS3Keys()) {
+      assertThatCode(query).doesNotThrowAnyException();
+    } else {
+      assertThatThrownBy(query)
+          .satisfies(e -> assertNoCauseOfType(e, ApiException.class))
+          .satisfies(
+              e -> assertCauseChainContainsMessage(e, missingCredentialsMessage(emulatedMessage)));
+    }
   }
 
   /** UC extension only — parameterized SQL tests delegate to {@code SparkSqlParser} directly. */
@@ -340,7 +400,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
                   .parsePlan(String.format("SELECT * FROM parquet.`%s`", location)));
       UnresolvedRelation relation = findBareCloudPathRelation(readPlan);
       assertThat(relation).isNotNull();
-      assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+      assertVendedAccessKey(relation.options().get("fs.s3a.access.key"));
       assertThat(relation.options().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
           .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
       assertThat(relation.options().get(UCHadoopConfConstants.UC_PATH_KEY))
@@ -425,7 +485,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     LogicalPlan table = ((InsertIntoStatement) plan).table();
     assertThat(table).isInstanceOf(UnresolvedRelation.class);
     UnresolvedRelation target = (UnresolvedRelation) table;
-    assertThat(target.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+    assertVendedAccessKey(target.options().get("fs.s3a.access.key"));
   }
 
   /**
@@ -452,7 +512,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             "analyzer rule should inject credentials onto bare cloud-path UnresolvedRelation: %s",
             plan)
         .isNotNull();
-    assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+    assertVendedAccessKey(relation.options().get("fs.s3a.access.key"));
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
   }
 
@@ -513,7 +573,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
     String identityPath = location.replaceFirst("(?i)^(s3a|s3)://", "s3://");
     assertThat(catalog.vendPathCredentialConfWithFallback(session, location))
-        .containsEntry("fs.s3a.access.key", "accessKey0")
+        .satisfies(conf -> assertVendedAccessKey(conf.get("fs.s3a.access.key")))
         .containsEntry(
             UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
             UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
@@ -534,7 +594,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession.clearActiveSession();
     try {
       assertThat(catalog.vendPathCredentialConfWithFallback(session, location))
-          .containsEntry("fs.s3a.access.key", "accessKey0");
+          .satisfies(conf -> assertVendedAccessKey(conf.get("fs.s3a.access.key")));
     } finally {
       SparkSession.setActiveSession(session);
     }
@@ -550,13 +610,10 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     session = createPathCredSession(SPARK_CATALOG);
     String location = "s3://" + NO_CREDS_BUCKET + new File(dataDir, "unmanaged").getCanonicalPath();
 
-    assertThatThrownBy(
-            () ->
-                sql(
-                    "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s",
-                    location))
-        .satisfies(e -> assertNoCauseOfType(e, ApiException.class))
-        .satisfies(e -> assertCauseChainContainsMessage(e, "invalid path"));
+    assertNeedsVendedCredentials(
+        () ->
+            sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location),
+        "invalid path");
   }
 
   /**
@@ -600,6 +657,9 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testDisabledByFlag() throws IOException {
+    // The engine's own keys serve the path where Unity Catalog vends none, so a missing vend
+    // cannot fail there.
+    assumeFalse(usesAmbientS3Keys(), "the engine's own keys serve the path");
     session = createPathCredSession(SPARK_CATALOG);
     String location = bucketPath("import_disabled");
     // Write with the feature on so the data exists.
@@ -608,8 +668,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     // Recreate session with path credential vending disabled.
     stopSession();
     session = createPathCredSession(false, false, false, SPARK_CATALOG);
-    assertThatThrownBy(() -> sql("SELECT * FROM parquet.`%s`", location))
-        .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
+    assertNeedsVendedCredentials(() -> sql("SELECT * FROM parquet.`%s`", location), "accessKey0");
   }
 
   /**
@@ -618,14 +677,16 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testDisabledByDefaultWhenFlagOmitted() throws IOException {
+    // The engine's own keys serve the path where Unity Catalog vends none, so a missing vend
+    // cannot fail there.
+    assumeFalse(usesAmbientS3Keys(), "the engine's own keys serve the path");
     session = createPathCredSession(SPARK_CATALOG);
     String location = bucketPath("import_default_disabled");
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
 
     stopSession();
     session = createPathCredSessionLeavingVendFlagUnset(SPARK_CATALOG);
-    assertThatThrownBy(() -> sql("SELECT * FROM parquet.`%s`", location))
-        .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
+    assertNeedsVendedCredentials(() -> sql("SELECT * FROM parquet.`%s`", location), "accessKey0");
   }
 
   /**
@@ -679,7 +740,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             "analyzer rule should inject credentials onto bare cloud-path UnresolvedRelation: %s",
             plan)
         .isNotNull();
-    assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+    assertVendedAccessKey(relation.options().get("fs.s3a.access.key"));
 
     session.sql(mergeSql).collect();
     assertSingleRow(sql("SELECT * FROM %s", target));
@@ -723,6 +784,9 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   @Test
   public void testCountFromParquetSubqueryFailsWhenCurrentCatalogIsDeltaCatalog()
       throws IOException {
+    // The engine's own keys serve the path where Unity Catalog vends none, so a missing vend
+    // cannot fail there.
+    assumeFalse(usesAmbientS3Keys(), "the engine's own keys serve the path");
     session = createDeltaSparkCatalogSession(CATALOG_NAME, false);
     session.conf().set("spark.sql.defaultCatalog", CATALOG_NAME);
     sql("SET CATALOG %s", CATALOG_NAME);
@@ -733,7 +797,6 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(sql("SELECT current_catalog()").get(0).getString(0)).isEqualTo(SPARK_CATALOG);
     assertThat(session.conf().get("spark.sql.defaultCatalog")).isEqualTo(CATALOG_NAME);
 
-    assertThatThrownBy(() -> assertCountSubquerySucceeds(location))
-        .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
+    assertNeedsVendedCredentials(() -> assertCountSubquerySucceeds(location), "accessKey0");
   }
 }
