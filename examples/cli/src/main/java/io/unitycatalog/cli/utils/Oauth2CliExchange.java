@@ -47,6 +47,8 @@ public class Oauth2CliExchange {
 
   Properties serverProperties = new Properties();
 
+  private String accessToken;
+
   public Oauth2CliExchange() throws IOException {
     // TODO: Probably should retrieve this from the server or do exchange server side
     try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
@@ -62,6 +64,20 @@ public class Oauth2CliExchange {
   public static String clientSecret(Map<String, String> env, Properties fileProperties) {
     String secret = env.getOrDefault("UC_SERVER_CLIENT_SECRET", "").replaceAll("[\\r\\n]+$", "");
     return secret.isEmpty() ? fileProperties.getProperty("server.client-secret") : secret;
+  }
+
+  /** The tokens in an identity provider's token response. */
+  public record IdpTokens(String idToken, String accessToken) {}
+
+  /** Reads the tokens from the body of an identity provider's token response. */
+  public static IdpTokens idpTokens(String tokenResponse) throws IOException {
+    Map<String, String> params = mapper.readValue(tokenResponse, new TypeReference<>() {});
+    return new IdpTokens(params.get("id_token"), params.get("access_token"));
+  }
+
+  /** The identity provider's access token from the last {@link #authenticate()}, or null. */
+  public String accessToken() {
+    return accessToken;
   }
 
   // TODO: Some of this should probably be done server side.
@@ -142,6 +158,18 @@ public class Oauth2CliExchange {
 
     server.stop(0);
 
+    return requestTokens(tokenUrl, clientId, clientSecret, authCode, redirectUrl);
+  }
+
+  /**
+   * Trades the authorization code for the identity provider's tokens at {@code tokenUrl}, and keeps
+   * the access token for {@link #accessToken()}.
+   *
+   * @return the identity token, or null if the identity provider refused the code
+   */
+  public String requestTokens(
+      String tokenUrl, String clientId, String clientSecret, String authCode, String redirectUrl)
+      throws IOException {
     String tokenBody =
         new OAuthAccessTokenForm()
             .grantType(AuthorizationGrantType.AUTHORIZATION_CODE)
@@ -173,10 +201,10 @@ public class Oauth2CliExchange {
         tokenResponse = new String(inputStream.readAllBytes());
       }
       System.out.println("Received token response.");
-      Map<String, String> tokenResponseParams =
-          mapper.readValue(tokenResponse, new TypeReference<>() {});
+      IdpTokens tokens = idpTokens(tokenResponse);
       urlConnection.disconnect();
-      return tokenResponseParams.get("id_token");
+      accessToken = tokens.accessToken();
+      return tokens.idToken();
     } else {
       String errorResponse;
       try (InputStream inputStream = urlConnection.getErrorStream()) {

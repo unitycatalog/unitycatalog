@@ -1,0 +1,7 @@
++ column uc_users.link_claim type=varchar size=16 nullable=YES default=null
++ column uc_users.link_issuer type=varchar size=255 nullable=YES default=null
++ column uc_users.link_value type=varchar size=255 nullable=YES default=null
++ column uc_users.reactivated_epoch_second type=bigint size=19 nullable=YES default=null
++ index uc_users.uc_users_link_key unique=true column=link_claim#2
++ index uc_users.uc_users_link_key unique=true column=link_issuer#1
++ index uc_users.uc_users_link_key unique=true column=link_value#3

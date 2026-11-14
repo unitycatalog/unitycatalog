@@ -101,6 +101,17 @@ class AuditorTest {
       audited.vendCredential(clientPath, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
     }
     assertThat(CapturingAuditSink.RECORDS.get(2).getUser()).isEqualTo("bob@example.com");
+    // An identity provider's token is recorded under its linked user's email, not its sub.
+    DecodedJWT idpJwt =
+        JWT.decode(JWT.create().withSubject("00u-123").sign(Algorithm.HMAC256("secret")));
+    ServiceRequestContext idpRequest =
+        ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
+    idpRequest.setAttr(AuthDecorator.DECODED_JWT_ATTR, idpJwt);
+    idpRequest.setAttr(AuthDecorator.PRINCIPAL_EMAIL_ATTR, "alice@example.com");
+    try (SafeCloseable ignored = idpRequest.push()) {
+      audited.vendCredential(clientPath, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
+    }
+    assertThat(CapturingAuditSink.RECORDS.get(3).getUser()).isEqualTo("alice@example.com");
     // ABFS keeps its container@account authority.
     assertThat(auditor.sanitizeLocation("abfss://my-ctr@acct.dfs.core.windows.net/p?sv=x"))
         .isEqualTo("abfss://my-ctr@acct.dfs.core.windows.net/p");

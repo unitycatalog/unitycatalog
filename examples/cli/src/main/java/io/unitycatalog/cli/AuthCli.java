@@ -1,6 +1,7 @@
 package io.unitycatalog.cli;
 
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
+import static java.net.HttpURLConnection.HTTP_NOT_IMPLEMENTED;
 import static java.net.HttpURLConnection.HTTP_OK;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -20,7 +21,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.Map;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -56,9 +57,8 @@ public class AuthCli {
     try {
       Oauth2CliExchange oauth2CliExchange = new Oauth2CliExchange();
       String identityToken = oauth2CliExchange.authenticate();
-      Map<String, String> login = new HashMap<>();
-      login.put("identityToken", identityToken);
-      return doExchange(apiClient, login);
+      return loginInfo(
+          exchangeForAccessToken(apiClient, identityToken, oauth2CliExchange.accessToken()));
     } catch (IOException e) {
       throw new ApiException(e);
     }
@@ -68,10 +68,28 @@ public class AuthCli {
       throws JsonProcessingException, ApiException {
     Map<String, String> login =
         objectMapper.readValue(json.toString(), new TypeReference<Map<String, String>>() {});
-    return doExchange(apiClient, login);
+    return loginInfo(exchangeForAccessToken(apiClient, login.get("identityToken"), null));
   }
 
-  private static String doExchange(ApiClient apiClient, Map<String, String> login)
+  private static String loginInfo(String accessToken) throws JsonProcessingException {
+    LoginInfo loginInfo = new LoginInfo();
+    loginInfo.setAccessToken(accessToken);
+    return objectWriter.writeValueAsString(loginInfo);
+  }
+
+  /**
+   * Exchanges the identity token for a UC access token. A server in external mode has no exchange
+   * (501 UNIMPLEMENTED) and accepts the identity provider's access token directly, so that token is
+   * returned instead.
+   *
+   * @param idpAccessToken the identity provider's own access token from the browser login, or null
+   *     when there is none
+   * @return the UC access token, or {@code idpAccessToken} in external mode
+   * @throws ApiException if the exchange fails, or if the server is in external mode and {@code
+   *     idpAccessToken} is null or not a JWT
+   */
+  public static String exchangeForAccessToken(
+      ApiClient apiClient, String identityToken, String idpAccessToken)
       throws JsonProcessingException, ApiException {
 
     URI endpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
@@ -81,7 +99,7 @@ public class AuthCli {
             .grantType(GrantType.TOKEN_EXCHANGE)
             .requestedTokenType(TokenType.ACCESS_TOKEN)
             .subjectTokenType(TokenType.ID_TOKEN)
-            .subjectToken(login.get("identityToken"))
+            .subjectToken(identityToken)
             .toUrlQueryString();
 
     HttpRequest request =
@@ -94,17 +112,52 @@ public class AuthCli {
     try {
       HttpResponse<String> response =
           apiClient.getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-      if (response.statusCode() != HTTP_OK) {
+      if (isExchangeDisabled(response)) {
+        if (idpAccessToken == null) {
+          throw new ApiException(
+              "Error authenticating - token exchange is disabled on this server; use the identity"
+                  + " provider's access token as --auth_token - "
+                  + response.body());
+        }
+        if (!isJwt(idpAccessToken)) {
+          throw new ApiException(
+              "Error authenticating - token exchange is disabled on this server and the identity"
+                  + " provider returned an opaque access token; the server needs the identity"
+                  + " provider's JWT access token - "
+                  + response.body());
+        }
+        return idpAccessToken;
+      } else if (response.statusCode() != HTTP_OK) {
         throw new ApiException("Error authenticating - " + response.body());
       } else {
         Map<String, String> responseMap =
             objectMapper.readValue(response.body(), new TypeReference<Map<String, String>>() {});
-        LoginInfo loginInfo = new LoginInfo();
-        loginInfo.setAccessToken(responseMap.get("access_token"));
-        return objectWriter.writeValueAsString(loginInfo);
+        return responseMap.get("access_token");
       }
     } catch (InterruptedException | IOException e) {
       throw new ApiException(e);
+    }
+  }
+
+  /** True for three dot-separated non-empty parts, the shape of a JWT. */
+  private static boolean isJwt(String token) {
+    String[] parts = token.split("\\.", -1);
+    return parts.length == 3 && Arrays.stream(parts).noneMatch(String::isEmpty);
+  }
+
+  /**
+   * True for the 501 UNIMPLEMENTED UC error a server in external mode gives the exchange. Both the
+   * status and the error code must match, so a proxy's own 501 is not taken for it.
+   */
+  private static boolean isExchangeDisabled(HttpResponse<String> response) {
+    if (response.statusCode() != HTTP_NOT_IMPLEMENTED) {
+      return false;
+    }
+    try {
+      return "UNIMPLEMENTED"
+          .equals(objectMapper.readTree(response.body()).path("error_code").asText());
+    } catch (JsonProcessingException e) {
+      return false;
     }
   }
 

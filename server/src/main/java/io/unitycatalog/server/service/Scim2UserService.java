@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.auth.AuthorizeExpressions.SCIM_PROVISIONING;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 
@@ -42,6 +43,7 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.Scim2Utils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Calendar;
@@ -83,7 +85,7 @@ public class Scim2UserService implements ScimService {
   @Get("")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public ListResponse<UserResource> getScimUsers(
       @Param("filter") Optional<String> filter,
@@ -122,7 +124,7 @@ public class Scim2UserService implements ScimService {
   @Post("")
   @Produces("application/scim+json")
   @StatusCode(201)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource createScimUser(UserResource userResource) {
     // Get primary email address
@@ -165,7 +167,7 @@ public class Scim2UserService implements ScimService {
   @Get("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource getUser(@Param("id") String id) {
     return asUserResource(userRepository.getUser(id));
@@ -174,16 +176,19 @@ public class Scim2UserService implements ScimService {
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
     User existing = userRepository.getUser(id);
+    checkNotIdpPrincipalForScimToken(existing);
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
     if (Boolean.FALSE.equals(userResource.getActive())) {
       checkNotMetastoreOwner(existing);
     }
+    checkExternalIdUnchangedForScimToken(existing, userResource.getExternalId());
+    checkEmailUnchangedForScimToken(existing, userResource);
 
     UpdateUser updateUser =
         UpdateUser.builder()
@@ -196,10 +201,11 @@ public class Scim2UserService implements ScimService {
   }
 
   @Delete("/{id}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = userRepository.getUser(id);
+    checkNotIdpPrincipalForScimToken(user);
     checkNotMetastoreOwner(user);
     authorizer.clearAuthorizationsForPrincipal(
         UUID.fromString(Objects.requireNonNull(user.getId())));
@@ -208,7 +214,7 @@ public class Scim2UserService implements ScimService {
   }
 
   @Patch("/{id}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
     return patchRequest.getOperations().stream()
@@ -223,9 +229,11 @@ public class Scim2UserService implements ScimService {
 
   private HttpResponse handleUserUpdate(String id, PatchOperation operation) {
     try {
+      User user = userRepository.getUser(id);
+      checkNotIdpPrincipalForScimToken(user);
       Boolean value = operation.getValues(Boolean.class).get(0);
       if (Boolean.FALSE.equals(value)) {
-        checkNotMetastoreOwner(userRepository.getUser(id));
+        checkNotMetastoreOwner(user);
       }
       UpdateUser updateUser = UpdateUser.builder().active(value).build();
       userRepository.updateUser(id, updateUser);
@@ -247,6 +255,63 @@ public class Scim2UserService implements ScimService {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           "The metastore owner can't be deleted or deactivated: " + user.getEmail());
+    }
+  }
+
+  // Only the admin changes an IdP principal: with a SCIM token, one IdP could lock out or revive
+  // another IdP's principal, or its own. SCIM tokens are honored only with authorization
+  // enabled.
+  private void checkNotIdpPrincipalForScimToken(User user) {
+    if (!serverProperties.isAuthorizationEnabled()) {
+      return;
+    }
+    if (IdentityUtils.isScimToken() && user.getIdpName() != null) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "An IdP principal can't be changed with a SCIM token: " + user.getEmail());
+    }
+  }
+
+  // Token exchange resolves an OAuth client to the user with that external id, so a SCIM token
+  // that relinks an existing user could take it over. A null external id leaves it unchanged.
+  // Okta's PUT resends the external id it set.
+  // TODO(#2202): replace with the owner check (an IdP edits only rows it owns).
+  private void checkExternalIdUnchangedForScimToken(User user, String externalId) {
+    if (!serverProperties.isAuthorizationEnabled()) {
+      return;
+    }
+    if (IdentityUtils.isScimToken()
+        && externalId != null
+        && !externalId.equals(user.getExternalId())) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "A SCIM token can't change the external id of a user: " + user.getEmail());
+    }
+  }
+
+  // Token exchange signs in a user by email, so a SCIM token that changes a user's email could
+  // take it over. The match is exact, so a case variant is refused, and so are emails with no
+  // primary value. A PUT that sends the stored email again as the primary email, or sends no
+  // emails, is accepted: Okta's PUT resends the email it set. PATCH changes only active.
+  // TODO(#2202): replace with the owner check (an IdP edits only rows it owns).
+  private void checkEmailUnchangedForScimToken(User user, UserResource userResource) {
+    if (!serverProperties.isAuthorizationEnabled()) {
+      return;
+    }
+    List<Email> emails = userResource.getEmails();
+    if (!IdentityUtils.isScimToken() || emails == null || emails.isEmpty()) {
+      return;
+    }
+    String primaryEmail =
+        emails.stream()
+            .filter(email -> email != null && Boolean.TRUE.equals(email.getPrimary()))
+            .findFirst()
+            .map(Email::getValue)
+            .orElse(null);
+    if (!Objects.equals(primaryEmail, user.getEmail())) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "A SCIM token can't change the email of a user: " + user.getEmail());
     }
   }
 
