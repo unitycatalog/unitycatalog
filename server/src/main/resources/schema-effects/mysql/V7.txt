@@ -1,0 +1,2 @@
+- column uc_volumes.storage_location type=varchar size=255 nullable=YES default=null
++ column uc_volumes.storage_location type=varchar size=2048 nullable=YES default=null

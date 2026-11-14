@@ -42,10 +42,10 @@ public class CatalogInfoDAO extends IdentifiableDAO {
   @Column(name = "updated_by")
   private String updatedBy;
 
-  @Column(name = "storage_root")
+  @Column(name = "storage_root", length = 2048)
   private String storageRoot;
 
-  @Column(name = "storage_location")
+  @Column(name = "storage_location", length = 2048)
   private String storageLocation;
 
   public static CatalogInfoDAO from(CatalogInfo catalogInfo) {
