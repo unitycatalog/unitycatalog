@@ -52,6 +52,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.hibernate.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -383,6 +384,16 @@ public final class DeltaUpdateTableMapper {
       CollectedRequest collected,
       ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
+    boolean managed = TableType.MANAGED.toString().equals(dao.getType());
+    if (managed) {
+      rejectSyntheticPropertyChanges(c);
+    }
+    boolean changesContractInput =
+        managed
+            && changesStoredValue(
+                c, properties.asMap(), UcManagedDeltaContract.CONTRACT_INPUT_KEYS);
+    boolean changesTableId =
+        managed && changesStoredValue(c, properties.asMap(), Set.of(TableProperties.UC_TABLE_ID));
     // set-columns is validated against the table's stored mode and properties, before this
     // request's property changes apply, and against the mode the request sets, which only enabling
     // reads. The modes are parsed only for set-columns, so an unknown mode value never blocks other
@@ -422,17 +433,27 @@ public final class DeltaUpdateTableMapper {
     c.removeDomainMetadata.ifPresent(u -> applyRemoveDomainMetadata(properties, u.getDomains()));
     c.setTableComment.ifPresent(u -> applySetTableComment(dao, u));
     c.updateSnapshotVersion.ifPresent(u -> applyUpdateSnapshotVersion(dao, properties, u));
-    // Re-validate the MANAGED contract against the final post-apply state. set-protocol runs
-    // full validation; set-domain-metadata alone only needs the DM-vs-writer-features check.
-    if (TableType.MANAGED.toString().equals(dao.getType())) {
+    // Re-validate the MANAGED contract against the final post-apply state. set-protocol, or a
+    // set-/remove-properties that changes a contract input, runs full validation;
+    // set-domain-metadata alone only needs the DM-vs-writer-features check.
+    if (managed) {
       DeltaDomainMetadataUpdates effectiveDm =
           DeltaPropertyMapper.synthesizeDomainMetadataFromProperties(properties.asMap());
       if (c.setProtocol.isPresent()) {
         UcManagedDeltaContract.validate(
             c.setProtocol.get().getProtocol(), effectiveDm, properties.asMap(), serverProperties);
+      } else if (changesContractInput) {
+        UcManagedDeltaContract.validate(
+            DeltaPropertyMapper.synthesizeProtocolFromProperties(properties.asMap()),
+            effectiveDm,
+            properties.asMap(),
+            serverProperties);
       } else if (c.setDomainMetadata.isPresent()) {
         UcManagedDeltaContract.validateDomainMetadataAgainstWriterFeatures(
             DeltaPropertyMapper.extractFeaturesFromProperties(properties.asMap()), effectiveDm);
+      }
+      if (changesTableId) {
+        UcManagedDeltaContract.validateTableIdProperty(properties.asMap(), dao.getId().toString());
       }
     }
     if (c.addCommit.isPresent() || c.setLatestBackfilledVersion.isPresent()) {
@@ -445,6 +466,47 @@ public final class DeltaUpdateTableMapper {
               c.hasManagedTableMetadataChange()));
     }
     return Optional.empty();
+  }
+
+  /**
+   * True when the request changes the stored value of one of {@code keys}. Resending a stored
+   * value, or removing a key that is not stored, is a no-op and does not trigger validation.
+   */
+  private static boolean changesStoredValue(
+      CollectedUpdates c, Map<String, String> stored, Set<String> keys) {
+    Map<String, String> setValues =
+        c.setProperties.map(DeltaSetPropertiesUpdate::getUpdates).orElse(Map.of());
+    List<String> removedKeys =
+        c.removeProperties.map(DeltaRemovePropertiesUpdate::getRemovals).orElse(List.of());
+    return setValues.entrySet().stream()
+            .anyMatch(
+                e ->
+                    keys.contains(e.getKey())
+                        && !Objects.equals(stored.get(e.getKey()), e.getValue()))
+        || removedKeys.stream().anyMatch(k -> stored.containsKey(k) && keys.contains(k));
+  }
+
+  /**
+   * Rejects a MANAGED set-properties or remove-properties that names a synthetic key, before any
+   * update applies, because the server derives those keys itself.
+   */
+  private static void rejectSyntheticPropertyChanges(CollectedUpdates c) {
+    Set<String> setKeys =
+        c.setProperties.map(DeltaSetPropertiesUpdate::getUpdates).map(Map::keySet).orElse(Set.of());
+    List<String> removedKeys =
+        c.removeProperties.map(DeltaRemovePropertiesUpdate::getRemovals).orElse(List.of());
+    Optional<String> synthetic =
+        Stream.concat(setKeys.stream(), removedKeys.stream())
+            .filter(UcManagedDeltaContract::isSyntheticPropertyKey)
+            .findFirst();
+    if (synthetic.isPresent()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "MANAGED table property '"
+              + synthetic.get()
+              + "' is derived by the server and cannot be changed with set-properties or"
+              + " remove-properties.");
+    }
   }
 
   private static void applySetProperties(MutablePropertyMap properties, Map<String, String> toSet) {

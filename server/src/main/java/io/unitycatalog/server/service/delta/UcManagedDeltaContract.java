@@ -11,6 +11,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -76,6 +77,57 @@ public final class UcManagedDeltaContract {
    * values the engine substituted. This is placeholder for adding properties in the future.
    */
   public static final List<String> ENGINE_GENERATED_PROPERTY_KEYS = List.of();
+
+  /**
+   * Property keys the server derives from the protocol, the domain metadata and its own commit
+   * bookkeeping. Together with every {@code delta.feature.<name>} key (see {@link
+   * #isSyntheticPropertyKey}) they are the synthetic property keys of the managed Delta tables
+   * spec, which clients must not send in {@code set-properties} or {@code remove-properties}.
+   */
+  private static final Set<String> SYNTHETIC_PROPERTY_KEYS =
+      Set.of(
+          TableProperties.MIN_READER_VERSION,
+          TableProperties.MIN_WRITER_VERSION,
+          TableProperties.CLUSTERING_COLUMNS,
+          TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK,
+          TableProperties.LAST_UPDATE_VERSION,
+          TableProperties.LAST_COMMIT_TIMESTAMP);
+
+  /**
+   * True for a key in {@link #SYNTHETIC_PROPERTY_KEYS} or any {@code delta.feature.<name>} key,
+   * whatever the feature name. Protocol and feature changes go through {@code set-protocol}.
+   */
+  static boolean isSyntheticPropertyKey(String key) {
+    return key != null
+        && (SYNTHETIC_PROPERTY_KEYS.contains(key)
+            || key.startsWith(TableProperties.FEATURE_PREFIX));
+  }
+
+  /**
+   * Real {@code metaData.configuration} entries that carry the contract: the fixed-value and
+   * engine-generated properties and the UC table id.
+   */
+  private static final Set<String> CONTRACT_PROPERTY_KEYS = buildContractPropertyKeys();
+
+  private static Set<String> buildContractPropertyKeys() {
+    Set<String> keys = new HashSet<>(REQUIRED_FIXED_PROPERTIES.keySet());
+    keys.addAll(ENGINE_GENERATED_PROPERTY_KEYS);
+    keys.add(TableProperties.UC_TABLE_ID);
+    return Collections.unmodifiableSet(keys);
+  }
+
+  /**
+   * Keys whose stored value {@link #validate} reads: the {@link #CONTRACT_PROPERTY_KEYS} plus
+   * {@code delta.enableIcebergCompatV2}, which decides whether the deletion-vector requirement is
+   * skipped. A MANAGED update that changes the stored value of one of them is re-validated.
+   */
+  static final Set<String> CONTRACT_INPUT_KEYS = buildContractInputKeys();
+
+  private static Set<String> buildContractInputKeys() {
+    Set<String> keys = new HashSet<>(CONTRACT_PROPERTY_KEYS);
+    keys.add(TableProperties.ENABLE_ICEBERG_COMPAT_V2);
+    return Collections.unmodifiableSet(keys);
+  }
 
   /**
    * Suggested properties. Null values mean the client generates the value at commit time (required

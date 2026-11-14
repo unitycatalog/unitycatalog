@@ -40,6 +40,7 @@ import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper.CollectedRequ
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -48,6 +49,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Unit tests for {@link DeltaUpdateTableMapper}'s session-independent paths -- request
@@ -430,6 +432,386 @@ public class DeltaUpdateTableMapperTest {
                     collectUpdatesRequest(cmMode("name").action("set-properties")),
                     new ServerProperties()))
         .doesNotThrowAnyException();
+  }
+
+  // ---------- synthetic and contract properties on MANAGED tables ----------
+
+  static Stream<String> syntheticPropertyKeys() {
+    return Stream.of(
+        "delta.minReaderVersion",
+        "delta.minWriterVersion",
+        "clusteringColumns",
+        "delta.rowTracking.rowIdHighWaterMark",
+        "delta.lastUpdateVersion",
+        "delta.lastCommitTimestamp",
+        "delta.feature.catalogManaged",
+        "delta.feature.deletionVectors",
+        "delta.feature.rowTracking",
+        "delta.feature.someFutureFeature");
+  }
+
+  static Stream<String> contractPropertyKeys() {
+    return Stream.of(
+        "delta.enableDeletionVectors",
+        "delta.checkpointPolicy",
+        "delta.enableInCommitTimestamps",
+        "delta.checkpoint.writeStatsAsStruct",
+        "delta.checkpoint.writeStatsAsJson",
+        "io.unitycatalog.tableId");
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("syntheticPropertyKeys")
+  public void settingOrRemovingSyntheticPropertyOfManagedTableIsRejected(String key) {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = contractProperties(dao);
+    MutablePropertyMap props = propsFrom(stored);
+    String sameValue = stored.getOrDefault(key, "1");
+    assertManagedUpdateRejected(
+        dao, props, key, new DeltaSetPropertiesUpdate().updates(Map.of(key, sameValue)));
+    assertManagedUpdateRejected(
+        dao, props, key, new DeltaRemovePropertiesUpdate().removals(List.of(key)));
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("contractPropertyKeys")
+  public void removingContractPropertyOfManagedTableIsRejected(String key) {
+    TableInfoDAO dao = managedDao();
+    assertManagedUpdateRejected(
+        dao,
+        propsFrom(contractProperties(dao)),
+        key,
+        new DeltaRemovePropertiesUpdate().removals(List.of(key)));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("contractPropertyKeys")
+  public void resendingContractPropertyOfManagedTableIsAccepted(String key) {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = contractProperties(dao);
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(new DeltaSetPropertiesUpdate().updates(Map.of(key, stored.get(key)))),
+        new ServerProperties());
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @Test
+  public void changingContractPropertyOfManagedTableIsRejected() {
+    TableInfoDAO dao = managedDao();
+    String otherId = UUID.randomUUID().toString();
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    dao,
+                    propsFrom(contractProperties(dao)),
+                    collectUpdatesRequest(
+                        new DeltaSetPropertiesUpdate()
+                            .updates(Map.of(TableProperties.UC_TABLE_ID, otherId))),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("does not match")
+        .hasMessageContaining(otherId)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    dao,
+                    propsFrom(contractProperties(dao)),
+                    collectUpdatesRequest(
+                        new DeltaSetPropertiesUpdate()
+                            .updates(Map.of(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "false"))),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  @Test
+  public void ordinaryPropertiesOfManagedTableCanBeChanged() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put("drop_me", "v");
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaSetPropertiesUpdate()
+                .updates(Map.of("k", "v", TableProperties.UC_TABLE_ID, dao.getId().toString())),
+            new DeltaRemovePropertiesUpdate().removals(List.of("drop_me"))),
+        new ServerProperties());
+    assertThat(props.asMap()).containsEntry("k", "v").doesNotContainKey("drop_me");
+
+    // A MANAGED table whose stored properties predate the contract can still change its own keys.
+    MutablePropertyMap legacy = propsFrom(Map.of("drop_me", "v"));
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        managedDao(),
+        legacy,
+        collectUpdatesRequest(
+            new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")),
+            new DeltaRemovePropertiesUpdate().removals(List.of("drop_me"))),
+        new ServerProperties());
+    assertThat(legacy.asMap()).containsExactly(Map.entry("k", "v"));
+  }
+
+  @Test
+  public void syntheticAndContractPropertiesOfExternalTableCanBeChanged() {
+    TableInfoDAO dao = managedDao();
+    dao.setType("EXTERNAL");
+    MutablePropertyMap props = propsFrom(contractProperties(dao));
+    List<String> removed =
+        Stream.concat(syntheticPropertyKeys(), contractPropertyKeys())
+            .filter(k -> !k.equals(TableProperties.ENABLE_DELETION_VECTORS))
+            .toList();
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaRemovePropertiesUpdate().removals(removed),
+            new DeltaSetPropertiesUpdate()
+                .updates(Map.of(TableProperties.ENABLE_DELETION_VECTORS, "false"))),
+        new ServerProperties());
+    assertThat(props.asMap())
+        .doesNotContainKeys(removed.toArray(String[]::new))
+        .containsEntry(TableProperties.ENABLE_DELETION_VECTORS, "false");
+  }
+
+  @ParameterizedTest(name = "\"{0}\"")
+  @ValueSource(strings = {"false", "", "disabled"})
+  public void settingRequiredFeaturePropertyOfManagedTableToAnotherValueIsRejected(String value) {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = contractProperties(dao);
+    MutablePropertyMap props = propsFrom(stored);
+    String key = TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName();
+    assertManagedUpdateRejected(
+        dao, props, key, new DeltaSetPropertiesUpdate().updates(Map.of(key, value)));
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @Test
+  public void setProtocolWithRemovalOfRequiredFeaturePropertyIsRejected() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = contractProperties(dao);
+    MutablePropertyMap props = propsFrom(stored);
+    String key = TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName();
+    assertManagedUpdateRejected(
+        dao,
+        props,
+        key,
+        new DeltaSetProtocolUpdate().protocol(contractProtocol()),
+        new DeltaRemovePropertiesUpdate().removals(List.of(key)));
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @Test
+  public void setProtocolWithChangedVersionPropertyIsRejected() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = contractProperties(dao);
+    MutablePropertyMap props = propsFrom(stored);
+    assertManagedUpdateRejected(
+        dao,
+        props,
+        TableProperties.MIN_READER_VERSION,
+        new DeltaSetProtocolUpdate().protocol(contractProtocol()),
+        new DeltaSetPropertiesUpdate().updates(Map.of(TableProperties.MIN_READER_VERSION, "1")));
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @Test
+  public void storedFeaturePropertyThatIsNotSupportedFailsTheContract() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    String catalogManaged = TableFeature.CATALOG_MANAGED.specName();
+    stored.put(TableProperties.FEATURE_PREFIX + catalogManaged, "disabled");
+    assertManagedUpdateRejected(
+        dao,
+        propsFrom(stored),
+        catalogManaged,
+        new DeltaSetPropertiesUpdate()
+            .updates(Map.of(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true")));
+  }
+
+  @ParameterizedTest(name = "\"{0}\"")
+  @ValueSource(strings = {"disabled", ""})
+  public void setDomainMetadataNeedsStoredFeatureSupported(String value) {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put("delta.feature.clustering", value);
+    assertManagedUpdateRejected(
+        dao,
+        propsFrom(stored),
+        "clustering",
+        new DeltaSetDomainMetadataUpdate()
+            .updates(
+                new DeltaDomainMetadataUpdates()
+                    .deltaClustering(
+                        new DeltaClusteringDomainMetadata()
+                            .clusteringColumns(List.of(List.of("id"))))));
+  }
+
+  @Test
+  public void resendingStoredTableIdOfManagedTableWithoutTheFullContractIsANoOp() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = Map.of("io.unitycatalog.tableId", dao.getId().toString());
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(new DeltaSetPropertiesUpdate().updates(stored)),
+        new ServerProperties());
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @Test
+  public void removingNonIdContractInputDoesNotCheckTheTableId() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put("io.unitycatalog.tableId", UUID.randomUUID().toString());
+    stored.put("delta.enableIcebergCompatV2", "true");
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaRemovePropertiesUpdate().removals(List.of("delta.enableIcebergCompatV2"))),
+        new ServerProperties());
+    assertThat(props.asMap()).doesNotContainKey("delta.enableIcebergCompatV2");
+  }
+
+  @Test
+  public void removingContractKeysThatAreNotStoredIsANoOp() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = Map.of("k", "v");
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaRemovePropertiesUpdate()
+                .removals(List.of("delta.enableIcebergCompatV2", "delta.checkpointPolicy"))),
+        new ServerProperties());
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @ParameterizedTest(name = "\"{0}\"")
+  @ValueSource(strings = {"enabled", "ENABLED", "Supported"})
+  public void storedFeatureStatusesThatDeltaReadsAsSupportedSatisfyTheContract(String status) {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put("delta.feature.catalogManaged", status);
+    stored.put("delta.feature.clustering", status);
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaSetPropertiesUpdate().updates(Map.of("delta.enableIcebergCompatV2", "true")),
+            new DeltaSetDomainMetadataUpdate()
+                .updates(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaClustering(
+                            new DeltaClusteringDomainMetadata()
+                                .clusteringColumns(List.of(List.of("id")))))),
+        new ServerProperties());
+    assertThat(props.asMap())
+        .containsEntry("delta.enableIcebergCompatV2", "true")
+        .containsEntry("clusteringColumns", "[[\"id\"]]");
+  }
+
+  @Test
+  public void droppingIcebergCompatV2OfManagedTableWithoutDeletionVectorsIsRejected() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored =
+        new HashMap<>(TestUtils.propertiesWithoutDvAndWithIcebergCompatV2());
+    stored.put("io.unitycatalog.tableId", dao.getId().toString());
+    DeltaPropertyMapper.deriveFromProtocol(stored, TestUtils.protocolWithoutDv());
+    ServerProperties allowMissingDv = TestUtils.serverPropertiesWithAllowMissingDv();
+    assertManagedUpdateRejected(
+        dao,
+        propsFrom(stored),
+        allowMissingDv,
+        "deletionVectors",
+        new DeltaRemovePropertiesUpdate().removals(List.of("delta.enableIcebergCompatV2")));
+    assertManagedUpdateRejected(
+        dao,
+        propsFrom(stored),
+        allowMissingDv,
+        "deletionVectors",
+        new DeltaSetPropertiesUpdate().updates(Map.of("delta.enableIcebergCompatV2", "false")));
+  }
+
+  @Test
+  public void nonNumericStoredVersionIsReportedAsCorruptWithItsValue() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put(TableProperties.MIN_READER_VERSION, "three");
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    dao,
+                    propsFrom(stored),
+                    collectUpdatesRequest(
+                        new DeltaSetPropertiesUpdate()
+                            .updates(Map.of(TableProperties.CHECKPOINT_POLICY, "v1"))),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("'three'")
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INTERNAL);
+  }
+
+  private static void assertManagedUpdateRejected(
+      TableInfoDAO dao, MutablePropertyMap props, String message, DeltaTableUpdate... updates) {
+    assertManagedUpdateRejected(dao, props, new ServerProperties(), message, updates);
+  }
+
+  private static void assertManagedUpdateRejected(
+      TableInfoDAO dao,
+      MutablePropertyMap props,
+      ServerProperties serverProperties,
+      String message,
+      DeltaTableUpdate... updates) {
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null, dao, props, collectUpdatesRequest(updates), serverProperties))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(message)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  private static DeltaProtocol contractProtocol() {
+    return new DeltaProtocol()
+        .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+        .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+        .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+        .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
+  }
+
+  /** Stored properties of a MANAGED table created under the catalog-managed contract. */
+  private static Map<String, String> contractProperties(TableInfoDAO dao) {
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
+    props.put(TableProperties.UC_TABLE_ID, dao.getId().toString());
+    DeltaPropertyMapper.deriveFromProtocol(props, contractProtocol());
+    return props;
   }
 
   // --- set-columns column-mapping guards ---

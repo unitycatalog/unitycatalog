@@ -583,10 +583,10 @@ latest-table-version | int64 | The latest version tracked by Unity Catalog for t
 
 **Note:** Vended cloud storage credentials are not included in this response. Clients obtain credentials with the appropriate operation level (`READ` or `READ_WRITE`) via the dedicated [Get Table Credentials](#get-table-credentials) endpoint.
 
-**Synthetic property keys.** `metadata.properties` mixes the table's real `metaData.configuration` entries with keys the server derives from other state. The derived keys are listed below; clients must never copy them back into a `metaData.configuration` they write to the Delta log, and must not send them in `set-properties` / `remove-properties` actions:
+**Synthetic property keys.** `metadata.properties` mixes the table's real `metaData.configuration` entries with keys the server derives from other state. The derived keys are listed below; clients must never copy them back into a `metaData.configuration` they write to the Delta log, and must not send them in `set-properties` / `remove-properties` actions. For a MANAGED table the server rejects a `set-properties` or `remove-properties` that names any of these keys with a 400 `InvalidParameterValueException`, even when the value matches the stored one. Protocol versions and table features change through `set-protocol`, and the domain-metadata projections through `set-domain-metadata` / `remove-domain-metadata`:
 
 - `delta.minReaderVersion`, `delta.minWriterVersion`, `delta.feature.<name>`: projected from the table's protocol. In the Delta log these live in the `protocol` action, and `delta.feature.<name>` keys inside `configuration` are creation-time directives, not persisted properties.
-- `delta.clusteringColumns`, `delta.rowTracking.rowIdHighWaterMark`: projected from the `delta.clustering` / `delta.rowTracking` domain metadata. In the Delta log these live in `domainMetadata` actions.
+- `clusteringColumns`, `delta.rowTracking.rowIdHighWaterMark`: projected from the `delta.clustering` / `delta.rowTracking` domain metadata. In the Delta log these live in `domainMetadata` actions.
 - `delta.lastUpdateVersion`, `delta.lastCommitTimestamp`: catalog bookkeeping for the last metadata-changing commit; they have no Delta log representation.
 
 `io.unitycatalog.tableId` is not synthetic: it is a real `metaData.configuration` entry that the client itself is required to write in the initial commit.
@@ -791,8 +791,8 @@ Action | Description | Key Fields
 -|-|-
 `add-commit` | Add a new catalog-managed commit. Managed tables only. The commit `version` carries an implicit assertion that the existing version must be `v-1`. | `commit` (DeltaCommit, required): commit info. `uniform` (DeltaUniformMetadata, conditional): required only for UniForm-enabled tables.
 `set-latest-backfilled-version` | Report the last backfilled / published commit version. Used after the client publishes a ratified commit to `_delta_log`. See [Publishing and backfill](#publishing-and-backfill) for the safety rules; a premature report can destroy catalog state. | `latest-published-version` (int64, required): the version that has been published.
-`set-properties` | Set or update one or more table properties. | `updates` (object: string to string, required): key-value pairs to set.
-`remove-properties` | Remove one or more table properties. | `removals` (array of string, required): property keys to remove.
+`set-properties` | Set or update one or more table properties. On a managed table, the catalog rejects some properties. Examples, not a complete list: a [synthetic property key](#load-a-table), or a change to `io.unitycatalog.tableId`. | `updates` (object: string to string, required): key-value pairs to set.
+`remove-properties` | Remove one or more table properties. On a managed table, the catalog rejects some removals. Examples, not a complete list: a synthetic property key, or `io.unitycatalog.tableId`. | `removals` (array of string, required): property keys to remove.
 `set-protocol` | Update the Delta protocol (e.g., to enable a new table feature). | `protocol` (DeltaProtocol, required): the new protocol. Same shape as `protocol` in [Create a Table](#create-a-table).
 `set-columns` | Replace the table's column definitions. | `columns` (DeltaStructType, required): new column definitions. Same shape as `columns` in [Create a Table](#create-a-table).
 `set-partition-columns` | Replace the partition column list. Only legal in a commit that also replaces the table's data files; see [REPLACE TABLE](#replace-table). | `partition-columns` (array of string, required): partition column names.
@@ -817,7 +817,7 @@ REPLACE is expressed as a single ordinary commit, not as a drop-and-recreate (se
 - `add-commit` with the REPLACE commit's metadata;
 - `set-columns` with the new schema;
 - `set-protocol` with the full new protocol when the protocol changes (the managed-table contract is re-validated against the post-apply state, so all required features must be carried);
-- `set-properties` for properties that change, and `remove-properties` enumerating every previously-set key that does not carry forward: `set-properties` merges and cannot clear, so omitting stale keys leaves them on the table. `io.unitycatalog.tableId` must always carry forward;
+- `set-properties` for properties that change, and `remove-properties` enumerating every previously-set key that does not carry forward: `set-properties` merges and cannot clear, so omitting stale keys leaves them on the table. Synthetic property keys are never listed in either action, since the server derives them from `set-protocol` and `set-domain-metadata`, and `io.unitycatalog.tableId` and the required contract properties must always carry forward;
 - `set-partition-columns` when the partitioning changes (an empty list for an unpartitioned result), and `set-domain-metadata` / `remove-domain-metadata` for clustering or row-tracking state that changes.
 
 Facets that the REPLACE leaves unchanged need no action: lockstep mirrors the changes the staged commit makes, not the full table state.

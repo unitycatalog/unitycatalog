@@ -94,7 +94,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     //
     // The catalogManaged and clusteringColumns entries also pin the server-derived-wins
     // precedence end-to-end. The request's client properties include
-    // "delta.feature.catalogManaged" = "client-override" and "delta.clusteringColumns" =
+    // "delta.feature.catalogManaged" = "client-override" and "clusteringColumns" =
     // "[[\"wrong\"]]"; the assertions below verify the protocol-derived "supported" and the
     // domainMetadata-derived JSON encoding of clusteringColumns=[["id"]] override them.
     assertThat(resp.getMetadata().getProperties())
@@ -452,7 +452,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     // featureKey(CATALOG_MANAGED) and CLUSTERING_COLUMNS in testCreateTableEndpoint.
     //   - delta.feature.catalogManaged: protocol-derived (CATALOG_MANAGED is in writerFeatures);
     //     "client-override" loses to the derived "supported".
-    //   - delta.clusteringColumns: domain-metadata-derived (managedTableRequest carries a
+    //   - clusteringColumns: domain-metadata-derived (managedTableRequest carries a
     //     deltaClustering block with clusteringColumns=[["id"]]); "[[\"wrong\"]]" loses to the
     //     derived JSON encoding of the structured block.
     props.put(
