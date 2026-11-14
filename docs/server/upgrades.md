@@ -4,10 +4,10 @@ Unity Catalog uses [Flyway](https://flywaydb.org/) to manage the schema of its d
 release ships the schema steps it needs, and each step is applied once and recorded in the
 `uc_schema_history` table.
 
-For now the schema steps are optional, and you run them by hand. The server still lets Hibernate
-update the schema when it starts (`hibernate.hbm2ddl.auto=update` in
-`etc/conf/hibernate.properties`). The steps build the same schema, so on a database that the steps
-set up, Hibernate changes nothing.
+For now the schema steps are optional, and you run them by hand, except schema step V4 on PostgreSQL
+and MySQL (see [Credentials as text](#credentials-as-text)). The server still lets Hibernate update
+the schema when it starts (`hibernate.hbm2ddl.auto=update` in `etc/conf/hibernate.properties`). The
+steps build the same schema, so on a database that the steps set up, Hibernate changes nothing.
 
 `bin/start-uc-server --upgrade-schema` brings the database to the schema version of its release,
 then exits without starting the server: with 0 when it succeeds, and with 1 and the reason when it
@@ -114,6 +114,23 @@ a reporting tool. If `--upgrade-schema` stays at a step for long, look for such 
 them: `SELECT pid, state, query FROM pg_stat_activity WHERE datname = current_database()` on
 PostgreSQL, `SHOW PROCESSLIST` on MySQL.
 
+### Credentials as text
+
+Schema step V4 widens `uc_credentials.credential` from `tinytext` to `mediumtext` on MySQL, and changes
+nothing on H2. On PostgreSQL it rewrites `uc_credentials`: it stores each credential as text instead of
+a large object, read as UTF-8, so a database whose encoding cannot hold a stored credential's characters
+fails the step. It reads every credential's large object, so run `--upgrade-schema` as a role that can
+read them, such as their owner; if one cannot be read or is missing, the step fails and changes nothing;
+restore that large object, or delete and recreate its credential, then run it again. On PostgreSQL and
+MySQL, run schema step V4 before starting a server of this release: the server reads and writes the
+column as text, so it cannot read credentials stored as large objects, and longer ones do not fit in
+`tinytext`. The large objects stay in the database afterwards, holding the credentials as the earlier
+release stored them, including earlier versions of updated ones: remove them with `vacuumlo -v ucdb`.
+`vacuumlo` removes every large object that no column references, not only the credentials' ones, so run
+it only when the database holds nothing but Unity Catalog, and check first with `vacuumlo -n -v ucdb`.
+On PostgreSQL a release from before schema step V4 cannot read the converted column, so going back to it
+needs the backup.
+
 ## Backing up the database
 
 Take the backup with all servers stopped, so that it holds no half-written change. The examples use
@@ -133,7 +150,9 @@ To go back, stop the new release's servers and restore the backup you took befor
 
 Do not start the baseline release on the upgraded database as it is: its Hibernate setting
 `hibernate.hbm2ddl.auto=update` changes column types back (it narrows the column that step 2
-widened) while the schema history still records the step.
+widened, and on MySQL the one step 4 widened; on PostgreSQL it expects large objects where step 4
+stored text, see [Credentials as text](#credentials-as-text)) while the schema history still records
+the steps.
 
 ## Messages
 

@@ -259,10 +259,31 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.empty());
   }
 
+  @Test
+  public void testLongS3CompatibleCredential() throws ApiException {
+    // Longer than MySQL's tinytext (255 bytes) once stored, with non-ASCII text, on every database.
+    String roleArn = "arn:aws:iam::123456789012:role/réle-" + "r".repeat(1000);
+    S3AssumeRole assumeRole = new S3AssumeRole().stsEndpoint(S3_ENDPOINT).roleArn(roleArn);
+    CredentialInfo created =
+        credentialOperations.createCredential(request(keyPair().assumeRole(assumeRole)));
+    assertThat(created.getS3Compatible().getAssumeRole()).isEqualTo(assumeRole);
+    assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(created);
+    assertThat(credentialOperations.listCredentials(Optional.empty(), CredentialPurpose.STORAGE))
+        .contains(created);
+
+    String updatedArn = roleArn + "-2";
+    CredentialInfo updated =
+        credentialOperations.updateCredential(
+            CREDENTIAL_NAME,
+            new UpdateCredentialRequest()
+                .s3Compatible(keyPair().assumeRole(assumeRole.roleArn(updatedArn))));
+    assertThat(updated.getS3Compatible().getAssumeRole().getRoleArn()).isEqualTo(updatedArn);
+    assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(updated);
+    credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.empty());
+  }
+
   private record InvalidCreate(CreateCredentialRequest request, String error) {}
 
-  // Short, so a credential with assume_role fits MySQL's tinytext (255 bytes) before the
-  // credential column is widened.
   private static final String S3_ENDPOINT = "http://s3:9000";
   private static final String S3_ROLE_ARN = "arn:aws:iam::1:role/r";
 

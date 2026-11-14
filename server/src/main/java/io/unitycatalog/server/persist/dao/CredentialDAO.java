@@ -23,7 +23,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -75,8 +74,8 @@ public class CredentialDAO extends IdentifiableDAO {
   @Setter(AccessLevel.NONE)
   private CredentialType credentialType;
 
-  @Lob
-  @Column(name = "credential", nullable = false)
+  // Text, not a large object; the length makes it mediumtext rather than tinytext on MySQL.
+  @Column(name = "credential", nullable = false, length = 16777215)
   // No direct access from outside
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
@@ -204,10 +203,6 @@ public class CredentialDAO extends IdentifiableDAO {
   /**
    * Validates an {@code s3_compatible} credential and stores it, replacing the stored credential;
    * its {@code secret_access_key} goes through {@code secretStore}, bound to this credential's id.
-   *
-   * <p>TODO(#2169): on MySQL, {@code credential} is {@code tinytext} (255 bytes) until #2169 widens
-   * it, which an {@code s3_compatible} credential with {@code assume_role} and real endpoints
-   * usually exceeds.
    *
    * @param s3Compatible the credential to store
    * @param secretStore keeps its {@code secret_access_key}
