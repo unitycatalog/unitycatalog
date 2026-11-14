@@ -79,22 +79,8 @@ public class TransactionManager {
         session.setDefaultReadOnly(true);
       }
 
-      // Set the custom isolation level if specified. Hikari resets it when the connection returns
-      // to the pool.
-      // IMPORTANT: without autocommit, a pooled connection may carry an open implicit transaction
-      // from its prior use. H2's setTransactionIsolation() takes effect for the NEXT transaction,
-      // not the current implicit one, so that transaction has to end first or REPEATABLE_READ
-      // reads can see stale data from before the connection was returned to the pool. MySQL and
-      // PostgreSQL reject rollback() on an autocommit connection, so only roll back when there is
-      // something to end.
       if (isolationLevel.isPresent()) {
-        session.doWork(
-            connection -> {
-              if (!connection.getAutoCommit()) {
-                connection.rollback();
-              }
-              connection.setTransactionIsolation(isolationLevel.get());
-            });
+        setIsolationLevel(session, isolationLevel.get());
       }
 
       Transaction tx = session.beginTransaction();
@@ -109,6 +95,26 @@ public class TransactionManager {
       warnIfCleanupFailureIsUnlogged(e, errorMessage);
       throw e;
     }
+  }
+
+  /**
+   * Sets the isolation level of the transaction that {@code session} begins next. Hikari resets it
+   * when the connection returns to the pool.
+   *
+   * <p>IMPORTANT: without autocommit, a pooled connection may carry an open implicit transaction
+   * from its prior use. H2's setTransactionIsolation() takes effect for the NEXT transaction, not
+   * the current implicit one, so that transaction has to end first or REPEATABLE_READ reads can see
+   * stale data from before the connection was returned to the pool. MySQL and PostgreSQL reject
+   * rollback() on an autocommit connection, so only roll back when there is something to end.
+   */
+  public static void setIsolationLevel(Session session, int isolationLevel) {
+    session.doWork(
+        connection -> {
+          if (!connection.getAutoCommit()) {
+            connection.rollback();
+          }
+          connection.setTransactionIsolation(isolationLevel);
+        });
   }
 
   /**

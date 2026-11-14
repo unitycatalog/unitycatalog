@@ -20,6 +20,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTest;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -251,6 +252,27 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .singleElement()
         .extracting(TableInfo::getColumns)
         .isEqualTo(columns);
+  }
+
+  /** A staging table create that waits for a delete of its schema finds no schema. */
+  @Test
+  public void stagingCreateRacingASchemaDeleteFindsNoSchema() throws Exception {
+    UUID id = UUID.fromString(schemaId);
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> deleteRow(held, SchemaInfoDAO.class, id),
+                () ->
+                    localTablesApi.createStagingTable(
+                        new CreateStagingTable()
+                            .catalogName(TestUtils.CATALOG_NAME)
+                            .schemaName(TestUtils.SCHEMA_NAME)
+                            .name("orphan"))),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found");
+
+    assertThat(countChildren(StagingTableDAO.class, "schemaId", id)).isZero();
   }
 
   /**
