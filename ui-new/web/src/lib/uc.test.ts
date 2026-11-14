@@ -5,15 +5,7 @@ vi.mock("@/lib/transport", () => ({
 }));
 
 import { proxyClient } from "@/lib/transport";
-import {
-  formatEpoch,
-  prettyJson,
-  ucCall,
-  ucJson,
-  UCError,
-  withListTablesQuery,
-  LIST_TABLES_QUERY,
-} from "@/lib/uc";
+import { prettyJson, splitFullName, ucCall, ucJson, UCError } from "@/lib/uc";
 import { setToken } from "@/lib/session";
 
 const call = proxyClient.call as unknown as Mock;
@@ -23,7 +15,7 @@ beforeEach(() => {
 });
 
 describe("ucCall", () => {
-  it("forwards method/path/query and the active bearer token", async () => {
+  it("forwards method, path, and query, leaving the token to the header", async () => {
     setToken("jwt-1");
     call.mockResolvedValue({ httpStatus: 200, body: "{}", ok: true });
 
@@ -35,7 +27,8 @@ describe("ucCall", () => {
     const arg = call.mock.calls[0][0];
     expect(arg.method).toBe("GET");
     expect(arg.path).toBe("/api/2.1/unity-catalog/catalogs");
-    expect(arg.token).toBe("jwt-1");
+    // The transport sends the token as an Authorization header instead.
+    expect(arg.token).toBeUndefined();
     // Empty query values are dropped.
     expect(arg.query).toEqual([{ key: "catalog_name", value: "main" }]);
     expect(arg.jsonBody).toBe("");
@@ -43,7 +36,10 @@ describe("ucCall", () => {
 
   it("JSON-stringifies object bodies and passes a content type", async () => {
     call.mockResolvedValue({ httpStatus: 200, body: "{}", ok: true });
-    await ucCall("POST", "/x", { body: { a: 1 }, contentType: "application/json" });
+    await ucCall("POST", "/x", {
+      body: { a: 1 },
+      contentType: "application/json",
+    });
     const arg = call.mock.calls[0][0];
     expect(arg.jsonBody).toBe('{"a":1}');
     expect(arg.contentType).toBe("application/json");
@@ -58,7 +54,11 @@ describe("ucCall", () => {
 
 describe("ucJson", () => {
   it("parses a 2xx JSON body", async () => {
-    call.mockResolvedValue({ httpStatus: 200, body: '{"name":"main"}', ok: true });
+    call.mockResolvedValue({
+      httpStatus: 200,
+      body: '{"name":"main"}',
+      ok: true,
+    });
     await expect(ucJson("GET", "/x")).resolves.toEqual({ name: "main" });
   });
 
@@ -87,19 +87,14 @@ describe("helpers", () => {
     expect(new UCError(500, "boom").message).toContain("500");
   });
 
-  it("withListTablesQuery merges the omit flags", () => {
-    expect(withListTablesQuery({ catalog_name: "c" })).toEqual({
-      ...LIST_TABLES_QUERY,
-      catalog_name: "c",
-    });
-  });
-
-  it("formatEpoch renders dates and an em dash for missing/invalid", () => {
-    expect(formatEpoch(0)).toBe("—");
-    expect(formatEpoch(undefined)).toBe("—");
-    expect(formatEpoch("")).toBe("—");
-    expect(formatEpoch("not-a-number")).toBe("—");
-    expect(formatEpoch(1_700_000_000_000)).not.toBe("—");
+  it("splitFullName returns every part, with empty strings for missing ones", () => {
+    expect(splitFullName("main.default.events")).toEqual([
+      "main",
+      "default",
+      "events",
+    ]);
+    expect(splitFullName("main.default")).toEqual(["main", "default", ""]);
+    expect(splitFullName("")).toEqual(["", "", ""]);
   });
 
   it("prettyJson pretty-prints valid JSON and passes through invalid", () => {

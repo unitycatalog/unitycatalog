@@ -21,11 +21,13 @@ const EMPTY: AppConfig = {
   keycloakEnabled: false,
 };
 
+export const APP_CONFIG_QUERY_KEY = ["app-config"] as const;
+
 // useAppConfig fetches the bridge's runtime SPA config once. It never throws — a
 // missing/erroring endpoint yields auth-disabled defaults so the SPA still loads.
 export function useAppConfig() {
   return useQuery({
-    queryKey: ["app-config"],
+    queryKey: APP_CONFIG_QUERY_KEY,
     staleTime: Infinity,
     queryFn: async (): Promise<AppConfig> => {
       try {

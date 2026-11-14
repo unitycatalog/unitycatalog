@@ -1,16 +1,81 @@
-import { useUcQuery } from "@/lib/ucQuery";
-import { UC_API_PREFIX, withListTablesQuery } from "@/lib/uc";
-import type { ListTablesResponse, TableInfo } from "@/lib/types";
+import { createClient } from "@connectrpc/connect";
+import {
+  createConnectQueryKey,
+  useMutation,
+  useQuery,
+  useTransport,
+} from "@connectrpc/connect-query";
+import { useQuery as useTanstackQuery } from "@tanstack/react-query";
+import { TableService } from "@/gen/uc/v1/table_pb";
+import { objectFullName, splitFullName } from "@/lib/uc";
+import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
+import { useMarkPermissionsStale } from "@/hooks/permissions";
 
-export function useListTables(catalogName: string, schemaName: string) {
-  return useUcQuery<ListTablesResponse>("GET", `${UC_API_PREFIX}/tables`, {
-    query: withListTablesQuery({ catalog_name: catalogName, schema_name: schemaName }),
-    queryOptions: { enabled: !!catalogName && !!schemaName },
+export function useListTables(
+  catalogName: string,
+  schemaName: string,
+  enabled = true,
+) {
+  const transport = useTransport();
+  const client = createClient(TableService, transport);
+  const input = { schema: { catalogName, name: schemaName } };
+  return useTanstackQuery({
+    queryKey: createConnectQueryKey({
+      schema: TableService.method.listTables,
+      input,
+      transport,
+      cardinality: "finite",
+    }),
+    enabled: enabled && !!catalogName && !!schemaName,
+    queryFn: ({ signal }) =>
+      collectAllPages(
+        (pageToken, requestSignal) =>
+          client.listTables(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
+        "tables",
+        signal,
+      ),
   });
 }
 
 export function useGetTable(fullName: string) {
-  return useUcQuery<TableInfo>("GET", `${UC_API_PREFIX}/tables/${encodeURIComponent(fullName)}`, {
-    queryOptions: { enabled: !!fullName },
+  const [catalogName, schemaName, name] = splitFullName(fullName);
+  return useQuery(
+    TableService.method.getTable,
+    { table: { catalogName, schemaName, name } },
+    {
+      enabled: !!catalogName && !!schemaName && !!name,
+      select: (response) => response.table,
+    },
+  );
+}
+
+export function useCreateTable() {
+  const invalidateList = useInvalidateMethod(TableService.method.listTables);
+  return useMutation(TableService.method.createTable, {
+    onSuccess: invalidateList,
+  });
+}
+
+export function useDeleteTable() {
+  const invalidateList = useInvalidateMethod(TableService.method.listTables);
+  const markDetailStale = useInvalidateMethod(TableService.method.getTable, {
+    refetch: false,
+  });
+  const markPermissionsStale = useMarkPermissionsStale();
+  return useMutation(TableService.method.deleteTable, {
+    onSuccess: (_response, request) => {
+      invalidateList();
+      markDetailStale();
+      markPermissionsStale({
+        type: "table",
+        fullName: objectFullName(request.table),
+      });
+    },
   });
 }

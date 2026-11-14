@@ -4,7 +4,7 @@ export type MetaItem = { label: string; value: ReactNode };
 
 // MetaGrid renders a compact, aligned label/value grid for object metadata
 // (owner, created/updated, ids, storage location, ...). Values that are empty
-// are rendered as an em dash by the caller via `formatEpoch`/fallbacks.
+// are rendered as an em dash by the caller via `formatTimestamp`/fallbacks.
 export default function MetaGrid({ items }: { items: MetaItem[] }) {
   return (
     <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">

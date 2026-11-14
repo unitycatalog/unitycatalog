@@ -29,6 +29,14 @@ mod validation {
 
 pub use config::Config;
 
+const X_REQUESTED_WITH: HeaderName = HeaderName::from_static("x-requested-with");
+
+/// Browser request headers both bridge paths copy onto the UC request. UC's
+/// CSRF check rejects cookie-authenticated writes, the cookie token exchange,
+/// and logout unless `X-Requested-With: XMLHttpRequest` is present.
+pub(crate) const FORWARDED_HEADERS: [HeaderName; 3] =
+    [header::COOKIE, header::AUTHORIZATION, X_REQUESTED_WITH];
+
 /// Shared handler state: a reused HTTP client and the loaded config.
 #[derive(Clone)]
 pub struct AppState {
@@ -90,10 +98,7 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
     if origins.is_empty() {
         return None;
     }
-    let parsed: Vec<HeaderValue> = origins
-        .iter()
-        .filter_map(|o| o.parse::<HeaderValue>().ok())
-        .collect();
+    let parsed: Vec<HeaderValue> = origins.iter().filter_map(|o| cors_origin(o)).collect();
     Some(
         CorsLayer::new()
             .allow_origin(parsed)
@@ -101,8 +106,43 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
             .allow_headers([
                 header::CONTENT_TYPE,
                 header::AUTHORIZATION,
+                X_REQUESTED_WITH,
                 HeaderName::from_static("connect-protocol-version"),
             ])
             .allow_credentials(true),
     )
+}
+
+/// Browsers send a bare serialized origin (`scheme://host[:port]`), so any
+/// other entry, such as one with a trailing slash, can never match. Such
+/// entries are logged and skipped, so a typo shows up in the logs instead of
+/// silently rejecting every cross-origin call.
+fn cors_origin(entry: &str) -> Option<HeaderValue> {
+    let is_origin =
+        reqwest::Url::parse(entry).is_ok_and(|url| url.origin().ascii_serialization() == entry);
+    let value = is_origin.then(|| entry.parse().ok()).flatten();
+    if value.is_none() {
+        tracing::warn!(
+            entry,
+            "ignoring an ALLOWED_ORIGINS entry that is not a bare origin"
+        );
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn cors_origin_accepts_only_bare_origins() {
+        for (entry, accepted) in [
+            ("http://localhost:5173", true),
+            ("https://ui.example.com", true),
+            ("http://localhost:5173/", false),
+            ("https://ui.example.com:443", false),
+            ("localhost:5173", false),
+            ("*", false),
+        ] {
+            assert_eq!(super::cors_origin(entry).is_some(), accepted, "{entry}");
+        }
+    }
 }

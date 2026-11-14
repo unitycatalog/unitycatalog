@@ -1,13 +1,104 @@
-import { useUcQuery } from "@/lib/ucQuery";
-import { UC_API_PREFIX } from "@/lib/uc";
-import type { CatalogInfo, ListCatalogsResponse } from "@/lib/types";
+import { createClient } from "@connectrpc/connect";
+import {
+  createConnectQueryKey,
+  useMutation,
+  useQuery,
+  useTransport,
+} from "@connectrpc/connect-query";
+import { useQuery as useTanstackQuery } from "@tanstack/react-query";
+import { CatalogService } from "@/gen/uc/v1/catalog_pb";
+import { SchemaService } from "@/gen/uc/v1/schema_pb";
+import {
+  collectAllPages,
+  useInvalidateMethod,
+  useMarkDescendantsStale,
+} from "@/hooks/query";
+import { SCHEMA_OBJECT_SERVICES } from "@/hooks/schemas";
+
+const CATALOG_DESCENDANTS = [SchemaService, ...SCHEMA_OBJECT_SERVICES];
 
 export function useListCatalogs() {
-  return useUcQuery<ListCatalogsResponse>("GET", `${UC_API_PREFIX}/catalogs`);
+  const transport = useTransport();
+  const client = createClient(CatalogService, transport);
+  return useTanstackQuery({
+    queryKey: createConnectQueryKey({
+      schema: CatalogService.method.listCatalogs,
+      input: {},
+      transport,
+      cardinality: "finite",
+    }),
+    queryFn: ({ signal }) =>
+      collectAllPages(
+        (pageToken, requestSignal) =>
+          client.listCatalogs(
+            { page: pageToken ? { pageToken } : undefined },
+            { signal: requestSignal },
+          ),
+        "catalogs",
+        signal,
+      ),
+  });
 }
 
 export function useGetCatalog(name: string) {
-  return useUcQuery<CatalogInfo>("GET", `${UC_API_PREFIX}/catalogs/${encodeURIComponent(name)}`, {
-    queryOptions: { enabled: !!name },
+  return useQuery(
+    CatalogService.method.getCatalog,
+    { catalog: { name } },
+    {
+      enabled: !!name,
+      select: (response) => response.catalog,
+    },
+  );
+}
+
+export function useCreateCatalog() {
+  const invalidateList = useInvalidateMethod(
+    CatalogService.method.listCatalogs,
+  );
+  return useMutation(CatalogService.method.createCatalog, {
+    onSuccess: invalidateList,
+  });
+}
+
+export function useUpdateCatalog() {
+  const invalidateList = useInvalidateMethod(
+    CatalogService.method.listCatalogs,
+  );
+  const invalidateDetail = useInvalidateMethod(
+    CatalogService.method.getCatalog,
+  );
+  const markDetailStale = useInvalidateMethod(
+    CatalogService.method.getCatalog,
+    { refetch: false },
+  );
+  const markDescendantsStale = useMarkDescendantsStale(CATALOG_DESCENDANTS);
+  return useMutation(CatalogService.method.updateCatalog, {
+    onSuccess: (_response, request) => {
+      invalidateList();
+      if (request.newName) {
+        markDetailStale();
+        markDescendantsStale();
+      } else {
+        invalidateDetail();
+      }
+    },
+  });
+}
+
+export function useDeleteCatalog() {
+  const invalidateList = useInvalidateMethod(
+    CatalogService.method.listCatalogs,
+  );
+  const markDetailStale = useInvalidateMethod(
+    CatalogService.method.getCatalog,
+    { refetch: false },
+  );
+  const markDescendantsStale = useMarkDescendantsStale(CATALOG_DESCENDANTS);
+  return useMutation(CatalogService.method.deleteCatalog, {
+    onSuccess: () => {
+      invalidateList();
+      markDetailStale();
+      markDescendantsStale();
+    },
   });
 }
