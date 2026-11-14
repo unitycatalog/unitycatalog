@@ -170,6 +170,20 @@ jobs:
           docker build -t unitycatalog:ci .
           docker build -t unitycatalog-ui:ci ui
 
+      - name: Run the server image without the chart
+        # The chart mounts etc/conf and the database, so this checks the image's own files and
+        # modes: the server starts as its user, and bin/uc reaches it and reads a Delta table.
+        if: matrix.db == 'file'
+        run: |
+          docker run -d --name uc-image unitycatalog:ci
+          for i in $(seq 30); do
+            docker exec uc-image bin/uc catalog list > /dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec uc-image bin/uc catalog list || { docker logs uc-image; exit 1; }
+          docker exec uc-image bin/uc table read --full_name unity.default.numbers
+          docker rm -f uc-image
+
       - name: Create kind cluster
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
