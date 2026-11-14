@@ -39,6 +39,7 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import lombok.SneakyThrows;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -181,8 +182,10 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
     }
   }
 
+  @SneakyThrows
   @BeforeEach
-  public void beforeEach() throws Exception {
+  @Override
+  public void setUp() {
     super.setUp();
     session = createSparkSession();
 

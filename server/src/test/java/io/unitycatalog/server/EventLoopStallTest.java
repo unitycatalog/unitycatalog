@@ -35,6 +35,14 @@ import org.junit.jupiter.api.Test;
  */
 class EventLoopStallTest {
 
+  /**
+   * Upper bound for things that should happen: a request reaching its handler, a response, an
+   * executor task. Passing runs return as soon as they do, so the bound only matters on a slow
+   * machine. The timings that are themselves assertions, like the 3s window in which {@code stop()}
+   * must still be waiting, stay fixed.
+   */
+  private static final long WAIT_SECONDS = 30;
+
   @Test
   void secondStreamStartsWhileFirstIsBlocked() throws Exception {
     CountDownLatch entered = new CountDownLatch(1);
@@ -113,11 +121,13 @@ class EventLoopStallTest {
       server.start().join();
       int port = server.activeLocalPort();
       WebClient client =
-          WebClient.builder("h2c://127.0.0.1:" + port).responseTimeoutMillis(5_000).build();
+          WebClient.builder("h2c://127.0.0.1:" + port)
+              .responseTimeoutMillis(TimeUnit.SECONDS.toMillis(WAIT_SECONDS))
+              .build();
 
       CompletableFuture<AggregatedHttpResponse> response =
           client.get("/api/probe/hold").aggregate();
-      assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(entered.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
 
       // Armeria spends about 2s in its own quiet period even without draining, so wait past that
       // (but within the 5s shutdown timeout) before releasing: a stop that does not drain has
@@ -127,7 +137,7 @@ class EventLoopStallTest {
           .isInstanceOf(TimeoutException.class);
 
       release.countDown();
-      assertThat(response.get(5, TimeUnit.SECONDS).status()).isEqualTo(HttpStatus.OK);
+      assertThat(response.get(WAIT_SECONDS, TimeUnit.SECONDS).status()).isEqualTo(HttpStatus.OK);
       stopping.join();
 
       assertThat(blockingTaskExecutor.submit(() -> "still active").get()).isEqualTo("still active");
@@ -180,10 +190,10 @@ class EventLoopStallTest {
       // their frames in order.
       WebClient client =
           WebClient.builder("h2c://127.0.0.1:" + server.activeLocalPort())
-              .responseTimeoutMillis(5_000)
+              .responseTimeoutMillis(TimeUnit.SECONDS.toMillis(WAIT_SECONDS))
               .build();
       CompletableFuture<AggregatedHttpResponse> held = client.get("/api/probe/hold").aggregate();
-      assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(entered.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
 
       // The client gives up while the request is still queued and resets the stream, which
       // cancels the request on the server.
@@ -193,17 +203,17 @@ class EventLoopStallTest {
                   HttpRequest.of(HttpMethod.GET, "/api/probe/fast"),
                   RequestOptions.builder().responseTimeoutMillis(300).build())
               .aggregate();
-      assertThatThrownBy(() -> queued.get(5, TimeUnit.SECONDS))
+      assertThatThrownBy(() -> queued.get(WAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class);
       // Answered on the event loop without the blocking pool, so once it returns the server has
       // processed the reset sent before it.
-      assertThat(client.get("/unrouted").aggregate().get(5, TimeUnit.SECONDS).status())
+      assertThat(client.get("/unrouted").aggregate().get(WAIT_SECONDS, TimeUnit.SECONDS).status())
           .isEqualTo(HttpStatus.NOT_FOUND);
 
       release.countDown();
-      assertThat(held.get(5, TimeUnit.SECONDS).status()).isEqualTo(HttpStatus.OK);
+      assertThat(held.get(WAIT_SECONDS, TimeUnit.SECONDS).status()).isEqualTo(HttpStatus.OK);
       // Runs after the queued task on the single thread, so that task has finished.
-      assertThat(blockingTaskExecutor.submit(() -> "drained").get(5, TimeUnit.SECONDS))
+      assertThat(blockingTaskExecutor.submit(() -> "drained").get(WAIT_SECONDS, TimeUnit.SECONDS))
           .isEqualTo("drained");
       assertThat(fastAuthCalls).hasValue(0);
       assertThat(fastEntered.getCount()).isEqualTo(1);
@@ -238,15 +248,17 @@ class EventLoopStallTest {
       // h2c prior knowledge, one connection: both calls are streams on the same channel, which is
       // what a single JDK HttpClient does against this server.
       WebClient client =
-          WebClient.builder("h2c://127.0.0.1:" + port).responseTimeoutMillis(5_000).build();
+          WebClient.builder("h2c://127.0.0.1:" + port)
+              .responseTimeoutMillis(TimeUnit.SECONDS.toMillis(WAIT_SECONDS))
+              .build();
 
       CompletableFuture<AggregatedHttpResponse> held = client.get("/api/probe/hold").aggregate();
-      assertThat(entered.await(5, TimeUnit.SECONDS))
+      assertThat(entered.await(WAIT_SECONDS, TimeUnit.SECONDS))
           .as("the first stream reaches %s", blockedOn)
           .isTrue();
 
       CompletableFuture<AggregatedHttpResponse> fast = client.get("/api/probe/fast").aggregate();
-      boolean overlapped = fastEntered.await(2, TimeUnit.SECONDS);
+      boolean overlapped = fastEntered.await(WAIT_SECONDS, TimeUnit.SECONDS);
       release.countDown();
 
       assertThat(overlapped)

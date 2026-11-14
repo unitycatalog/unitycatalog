@@ -45,3 +45,5 @@ jobs:
           UC_TEST_DATABASE: ${{ matrix.test-database }}
           UC_TEST_UPGRADES: "true"
         run: build/sbt -J-Xmx2G "server/testOnly io.unitycatalog.server.migrate.RealUpgradeTest"
+      - name: Check that tests left etc/conf alone
+        run: bash project/scripts/check_etc_conf.sh
