@@ -143,6 +143,9 @@ This should return:
 
 Nicely done! You have called a Function stored in your Unity Catalog.
 
+If the function raises an error, `function call` fails with a message that ends with the Python error, for example
+`Python function failed with exit code 1: ValueError: a must be positive`.
+
 ## Adding Functions to Unity Catalog
 
 Let's create a new function and add it to your Unity Catalog.
@@ -220,8 +223,10 @@ This should output something like:
 ```
 
 You can also store more complex functions. For example, you can import Python modules and use them in your function.
-Note if you have multiple lines in complex functions, you must insert "\n" to separate lines in the function
-definition. Otherwise, the function will return "invalid syntax" error when it is called.
+To write a definition with multiple lines on the command line, separate the lines with the two characters "\n", as
+in the example below. A definition that contains a real line break other than at its end, such as one created through the REST API or
+the Python client, is split only at its real line breaks, so a "\n" inside it is kept. A definition indented as a whole
+is also accepted, and its strings and comments are kept as written.
 
 Let's take the example below of a function that uses the Numpy library to simulate a random roll of dice:
 
