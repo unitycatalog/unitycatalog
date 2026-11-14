@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import com.auth0.jwt.algorithms.Algorithm;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
+import io.unitycatalog.server.security.AdminTokenCommand;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.nio.file.Path;
@@ -150,6 +153,94 @@ public class SchemaMigratorTest {
 
     assertThat(migrator.upgradeSchema()).isOne();
     assertThat(migrator.recordedVersion()).isEqualTo("1000");
+  }
+
+  /**
+   * Step 5 makes the users, groups and memberships that exist before it the admin's: owner {@code
+   * admin}, and every membership in the admin's list.
+   */
+  @Test
+  void ownershipStepGivesExistingRowsToTheAdmin() throws SQLException {
+    UpgradeTestUtils.migrateTo(db, "4");
+    String user = idLiteral("00000000-0000-0000-0000-000000000001");
+    String group = idLiteral("00000000-0000-0000-0000-000000000002");
+    UpgradeTestUtils.execute(
+        db,
+        "INSERT INTO uc_users (id, name, email, state, created_at) VALUES ("
+            + user
+            + ", 'Alice', 'alice@localhost', 'ENABLED', CURRENT_TIMESTAMP)");
+    UpgradeTestUtils.execute(
+        db, "INSERT INTO uc_groups (id, display_name) VALUES (" + group + ", 'data-eng')");
+    UpgradeTestUtils.execute(
+        db,
+        "INSERT INTO uc_group_members (group_id, user_id) VALUES (" + group + ", " + user + ")");
+
+    UpgradeTestUtils.migrateTo(db, "5");
+
+    assertThat(queryOne("SELECT owner FROM uc_users")).isEqualTo("admin");
+    assertThat(queryOne("SELECT owner FROM uc_groups")).isEqualTo("admin");
+    assertThat(queryOne("SELECT COUNT(*) FROM uc_group_members WHERE admin_added = TRUE"))
+        .isEqualTo("1");
+    assertThat(queryOne("SELECT COUNT(*) FROM uc_group_members")).isEqualTo("1");
+  }
+
+  /** An id as an SQL literal: MySQL keeps ids as binary(16). */
+  private String idLiteral(String id) {
+    return DatabaseKind.of(db.dataSource()) == DatabaseKind.MYSQL
+        ? "UNHEX('" + id.replace("-", "") + "')"
+        : "'" + id + "'";
+  }
+
+  /** The first column of the one row {@code sql} returns, as a string. */
+  private String queryOne(String sql) throws SQLException {
+    try (Connection connection = db.dataSource().getConnection();
+        java.sql.Statement statement = connection.createStatement();
+        java.sql.ResultSet rows = statement.executeQuery(sql)) {
+      assertThat(rows.next()).as(sql).isTrue();
+      return rows.getString(1);
+    }
+  }
+
+  @Test
+  void scimTokenMintRefusesADatabaseNotAtThisRelease() {
+    UpgradeTestUtils.migrateTo(db, "2");
+    // As etc/conf/hibernate.properties sets it.
+    Properties properties = db.hibernateProperties();
+    properties.setProperty("hibernate.hbm2ddl.auto", "update");
+    properties.remove("hibernate.hbm2ddl.halt_on_error");
+    String[] args = {"--scim-principal", "okta-scim", "--idp", "okta", "--lifetime", "P90D"};
+    // The token is never signed: the mint stops before.
+    Algorithm algorithm = Algorithm.none();
+
+    assertThatThrownBy(() -> AdminTokenCommand.createScimToken(args, algorithm, properties))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(
+            "The database schema needs an upgrade: run bin/start-uc-server --upgrade-schema"
+                + " first.");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator) - 2);
+    // On the upgraded database, the mint gets past the schema check to the user.
+    assertThatThrownBy(() -> AdminTokenCommand.createScimToken(args, algorithm, properties))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("User not found: okta-scim");
+
+    // A database of a newer release: the upgrade refuses it too.
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
+    assertThatThrownBy(() -> AdminTokenCommand.createScimToken(args, algorithm, properties))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(
+            "The schema is newer than this release (version 1000, this release ends at 6). Run"
+                + " the newer release.");
+
+    // An in-memory database lives only in the server's process.
+    Properties inMemory = db.hibernateProperties();
+    inMemory.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    inMemory.setProperty("hibernate.connection.url", "jdbc:h2:mem:scim_token_mint");
+    assertThatThrownBy(() -> AdminTokenCommand.createScimToken(args, algorithm, inMemory))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(
+            "The configured database is in memory, so bin/uc-admin-token can't reach the"
+                + " server's users: the server sets up an in-memory database itself.");
   }
 
   @Test

@@ -1,0 +1,17 @@
++ column uc_group_members.group_id type=binary size=16 nullable=NO default=null
++ column uc_group_members.user_id type=binary size=16 nullable=NO default=null
++ column uc_groups.created_at type=datetime size=26 nullable=YES default=null
++ column uc_groups.display_name type=varchar size=255 nullable=NO default=null
++ column uc_groups.external_id type=varchar size=255 nullable=YES default=null
++ column uc_groups.id type=binary size=16 nullable=NO default=null
++ column uc_groups.updated_at type=datetime size=26 nullable=YES default=null
++ index uc_group_members.primary unique=true column=group_id#1
++ index uc_group_members.primary unique=true column=user_id#2
++ index uc_group_members.uc_group_members_user_idx unique=false column=user_id#1
++ index uc_groups.primary unique=true column=id#1
++ index uc_groups.uc_groups_display_name_key unique=true column=display_name#1
++ pk uc_group_members.group_id#1
++ pk uc_group_members.user_id#2
++ pk uc_groups.id#1
++ table uc_group_members
++ table uc_groups
