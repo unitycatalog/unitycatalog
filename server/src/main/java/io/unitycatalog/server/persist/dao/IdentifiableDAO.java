@@ -19,7 +19,7 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @SuperBuilder
 @EqualsAndHashCode
-public class IdentifiableDAO {
+public class IdentifiableDAO implements UuidEntity {
   @Id
   @Column(name = "id")
   private UUID id;
