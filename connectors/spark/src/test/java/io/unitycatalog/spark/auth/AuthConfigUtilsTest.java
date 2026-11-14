@@ -26,11 +26,16 @@ public class AuthConfigUtilsTest {
 
   @Test
   public void testAuthPrefixTransformation() {
-    assertThat(normalizeConfigs("auth.type", "oauth", "auth.client_id", "id123", "other", "val"))
+    assertThat(
+            normalizeConfigs(
+                "auth.type", "oauth",
+                "auth.client_id", "id123",
+                "other", "val",
+                "uri", "https://uc.example.com"))
         .hasSize(2)
         .containsEntry("type", "oauth")
         .containsEntry("client_id", "id123")
-        .doesNotContainKey("other");
+        .doesNotContainKeys("other", "uri", "catalogUri");
 
     assertThat(
             normalizeConfigs(
@@ -137,67 +142,6 @@ public class AuthConfigUtilsTest {
             "auth.oauth.scope",
             "");
     assertThat(TokenProvider.create(configs).configs()).containsEntry("oauth.scope", "");
-  }
-
-  @Test
-  public void testCatalogUriIsPassedToTokenProvider() {
-    Map<String, String> configs =
-        normalizeConfigs(
-            "uri", "https://uc.example.com",
-            "auth.type", "oauth",
-            "auth.oauth.uri", "https://auth.example.com",
-            "auth.oauth.clientId", "client-id",
-            "auth.oauth.clientSecret", "client-secret",
-            "auth.oauth.exchangeForUcToken", "true");
-    assertThat(configs).containsEntry("catalogUri", "https://uc.example.com");
-    assertThat(TokenProvider.create(configs).configs())
-        .containsEntry("catalogUri", "https://uc.example.com")
-        .containsEntry("oauth.exchangeForUcToken", "true");
-  }
-
-  @Test
-  public void testCatalogUriAlwaysComesFromCatalogUriOption() {
-    Map<String, String> configs =
-        normalizeConfigs(
-            "uri", "https://uc.example.com",
-            "auth.type", "oauth",
-            "auth.catalogUri", "https://elsewhere.example.com");
-    assertThat(configs).hasSize(2).containsEntry("catalogUri", "https://uc.example.com");
-  }
-
-  @Test
-  public void testWithAuthCatalogUriForDeltaCatalog() {
-    // With auth options, Delta's catalog gets auth.catalogUri from the catalog uri, replacing any
-    // user value. Delta builds its provider from the auth options alone, as below.
-    CaseInsensitiveStringMap options =
-        AuthConfigUtils.withAuthCatalogUri(
-            caseInsensitive(
-                "uri", "https://uc.example.com",
-                "auth.type", "oauth",
-                "auth.oauth.uri", "https://auth.example.com",
-                "auth.oauth.clientId", "client-id",
-                "auth.oauth.clientSecret", "client-secret",
-                "auth.oauth.exchangeForUcToken", "true",
-                "auth.catalogUri", "https://elsewhere.example.com"));
-    Map<String, String> deltaAuthConfigs = new HashMap<>();
-    options.forEach(
-        (k, v) -> {
-          if (k.startsWith("auth.")) {
-            deltaAuthConfigs.put(k.substring("auth.".length()), v);
-          }
-        });
-    assertThat(TokenProvider.create(deltaAuthConfigs).configs())
-        .containsEntry("catalogUri", "https://uc.example.com");
-
-    // Without auth options (legacy token) or without a uri, the options are unchanged, so Delta
-    // still falls back to the legacy token.
-    for (CaseInsensitiveStringMap unchanged :
-        new CaseInsensitiveStringMap[] {
-          caseInsensitive("uri", "https://uc.example.com", "token", "legacy"),
-          caseInsensitive("auth.type", "static", "auth.token", "t")
-        }) {
-      assertThat(AuthConfigUtils.withAuthCatalogUri(unchanged)).isSameAs(unchanged);
-    }
   }
 
   @Test

@@ -281,6 +281,99 @@ Move `server.client-secret` from `server.properties` to the `UC_SERVER_CLIENT_SE
 where you run `bin/uc auth login`; the server does not read it. The file still works, but is deprecated (see
 [Secrets](configuration.md#secrets)).
 
+Set `server.token-signing-private-key-file` to your own private key. To keep the tokens issued before the upgrade
+working, point it at the key the server already has, `etc/conf/private_key.der`, or a copy of it; a new key makes
+those tokens fail with 401. A server without the setting keeps signing with the key it generated in `etc/conf`, which
+is deprecated (see [Configuration](configuration.md#configuration)).
+
+The server no longer writes the admin token to `etc/conf/token.txt`, and deletes that file at startup. Use
+`bin/uc-admin-token` instead (see [Testing User and Admin Authentication](#testing-user-and-admin-authentication)).
+Copies of the old token stay valid until the signing key changes, so change the key to revoke them: point the token
+signing key file setting at a new key, or, with the generated key, delete `etc/conf/private_key.der` and
+`etc/conf/public_key.der` and restart the server. Every token signed with the old key stops working.
+
+Other changes to the server's own tokens:
+
+- A token signed with a different key always gets 401. Before, one with a key ID the server did not know got 500,
+  which clients such as the Spark connector retried.
+- The server's own tokens must be signed with RS512. Before, RS256 and RS384 tokens signed with the server's key were
+  also accepted; the server and the Helm chart have always signed with RS512.
+- The server no longer writes `etc/conf/key_id.txt` or `etc/conf/certs.json`, and leaves existing ones in place. An
+  earlier version generates a new key when `key_id.txt` is missing, so before rolling back a server that was first
+  started on this version, create `etc/conf/key_id.txt` with any value, for example `uc`. An earlier version also
+  ignores the key file setting, so before rolling back a server that uses it, write its key to `etc/conf` in the
+  formats an earlier version reads:
+  `openssl pkcs8 -topk8 -nocrypt -in private_key.pem -outform DER -out etc/conf/private_key.der` and
+  `openssl rsa -in private_key.pem -pubout -outform DER -out etc/conf/public_key.der`.
+- A newly generated `etc/conf/private_key.der` is readable by its owner only, on file systems with POSIX permissions.
+  Run `bin/uc-admin-token` as the user that runs the server, from the directory the server starts in, with the same
+  environment.
+- With authorization enabled and no key file setting, the server logs a warning at each start.
+- Helm: use the server image from the chart's release, which is the default. An older server image ignores the key
+  file setting and generates its own key in each pod, so tokens from other pods and from the create-users job are
+  rejected.
+- Helm: an earlier chart requires `key_id.txt` in the key Secret: with `jwtKeypairSecret.create: true` its render fails,
+  and with `create: false` its init container exits. A Secret this chart creates has none, and neither does one made
+  with the [Helm guide](helm.md#token-signing-key). Before rolling back to an earlier chart, add a `key_id.txt` key with
+  any value to the Secret.
+- Helm: if the key Secret holds both `private_key.pem` and `private_key.der`, the chart uses `private_key.pem`.
+- Helm: a key file setting set through `server.config.override` or `extraProperties` must point at the key in the key
+  Secret. The create-users job signs with that key and retries without a limit, so with another key the install or
+  upgrade waits until Helm's timeout.
+
+### External authentication mode
+
+By default (`server.authentication.type=internal`), people and machines call the server with its own token, which
+`POST /auth/tokens` issues in exchange for an identity provider's token. In `external` mode they send the identity
+provider's access token directly:
+
+```properties
+server.authorization=enable
+server.authentication.type=external
+server.authentication.idp.okta.issuer=https://example.okta.com/oauth2/<authorization server id>
+server.authentication.idp.okta.audience=unitycatalog
+server.authentication.idp.okta.subject-claim=OKTA
+```
+
+- Add one `server.authentication.idp.<name>.*` block per identity provider. `<name>` is the name you give its SCIM
+  token with `bin/uc-admin-token --idp <name>`. Set these keys in `server.properties`; a block set only through
+  environment variables is not found.
+- `issuer` must equal the token's `iss` exactly; wildcards are not supported. `audience` must be one of the token's
+  `aud` values. Two blocks can't share an issuer. Signing keys are read from the issuer's discovery document, with the
+  same rules and caching as the token exchange (see [Signing-key requests](#signing-key-requests)): when the keys
+  can't be fetched, the identity provider's tokens are refused until they can.
+- `subject-claim` names the claim that identifies the person or machine. `SUB` (the default) reads `sub`, the OIDC
+  standard, for example with Keycloak. `OKTA` reads `uid` for a person and, in a token without `uid`, `cid` for a
+  machine; it never reads Okta's `sub`, which an Okta admin can map to any value.
+- The token must be a JWT access token with an expiry. It is refused with 401 when its signature, expiry or audience
+  is wrong, and with 403 when its issuer is not configured. Its `iat` and `nbf` may be up to 60 seconds ahead of
+  the server's clock, for an identity provider whose clock runs ahead; the expiry has no such leeway.
+- `server.allowed-issuers` and `server.audiences` are not used in this mode, and the server logs a warning at startup
+  when either is set. They keep working as before in `internal` mode.
+- With no block, the server starts and logs a warning: only its own tokens (see below) are accepted. A block can't
+  use the issuer `internal`, which the server's own tokens carry.
+
+The first call of a person or machine links their UC user, found by the token's `email` claim; after that, only the
+claim from `subject-claim` counts, so a later email change in the identity provider does not matter:
+
+- The token needs an `email` claim for the first call. Okta access tokens have none by default: add a claim `email`
+  with the value `user.email` to the access tokens of your custom authorization server. For a machine, add one to its
+  application's tokens. A token without one is refused until its user is linked.
+- Only an enabled user that is not yet linked is linked, never the `admin` user or a user marked as an identity
+  provider's SCIM principal; a linked user's tokens get 403 once it is marked as one. A user linked to another
+  identity gets 403 `User not allowed: <email>`, as does a token whose email has no user: create the user first (SCIM
+  or `bin/uc user create`).
+- When SCIM reactivates a user (`active` from false to true), the link is cleared and the next call links again, so an
+  Okta rehire (which reuses the deactivated user) does not inherit the old person's identity. From then on, only a token
+  issued at or after the reactivation (its `iat`, compared in whole seconds) is accepted for the user, on the first call
+  and on every later one, even when Okta keeps the same `uid`; the old person's unexpired token, or any token without
+  `iat`, gets 403 `User not allowed: <email>`. If the identity provider's clock is behind the server's, a token issued
+  just after the reactivation can carry an earlier `iat` and is refused; a token issued later links.
+
+In `external` mode the server's own tokens work only for the bootstrap admin (`bin/uc-admin-token`) and for identity
+providers' SCIM tokens. Its access tokens get 401, and `POST /auth/tokens` returns 501 `Token exchange is disabled in
+external mode`.
+
 ### Permission-check migration
 
 `server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to
@@ -418,8 +511,8 @@ bin/start-uc-server
 
 Behind the scenes, on startup, the UC server will configure itself with the following:
 
-* Creation of internal signing keys and authentication files in `etc/conf`
-* Creation of an admin access token in `etc/conf/token.txt`
+* Creation of an internal signing key in `etc/conf` on first start, unless the
+  [token signing key file](configuration.md#configuration) is set; generating the key is deprecated
 * Creation of an admin account in the user database
 * Granting the admin account as the metastore admin for the server
 
@@ -429,11 +522,12 @@ The following steps allow you to test user and admin authentication to your loca
 
 ### Use admin token to verify admin user is in local database
 
-As noted earlier, on startup the UC server configured itself and created the admin access token at
-`etc/conf/token.txt`. The following command uses the same admin authentication token to view the user list.
+`bin/uc-admin-token` prints an admin token signed with the server's key. Like the server, it reads `etc/conf` in
+the current directory and the `UC_` environment variables, so run it from the directory you start the server in, with
+the same environment; the server does not write the token to a file. The token does not expire, so treat it like the key itself. The following command uses it to view the user list.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) user list
+bin/uc --auth_token "$(bin/uc-admin-token)" user list
 ```
 
 The output should look something like this
@@ -445,6 +539,38 @@ The output should look something like this
 │c6e354c9-ec27-4815-9212-4bdb4fdbfea4│Admin    │admin                   │null       │ENABLED│null       │1727198813231│1727220886536│
 ├────────────────────────────────────┼─────────┼────────────────────────┼───────────┼───────┼───────────┼─────────────┼─────────────┤
 ```
+
+### Give an identity provider a SCIM token
+
+An identity provider such as Okta provisions users through the SCIM API (`/api/1.0/unity-control/scim2/`) with a token
+of its own, not the admin token. Create a user for it, then mint its token; `--lifetime` is an ISO-8601 duration and
+has no default:
+
+```sh
+bin/uc --auth_token "$(bin/uc-admin-token)" user create --name "Okta SCIM" --email okta-scim
+bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
+```
+
+- The token is accepted only under `/api/1.0/unity-control/scim2/`, where it can manage users as the metastore owner
+  can, except identity provider principals: it gets 403 when it updates, deactivates or deletes one, its own included.
+  Only the admin manages those. Elsewhere it gets 403.
+- It also gets 403 when it changes the `externalId` or email of an existing user, since token exchange signs in by both.
+  An update that sends the stored values again, or omits them, is accepted. The email match is exact, so a change of
+  case is refused too.
+- `bin/uc-admin-token` opens the server's database from `etc/conf/hibernate.properties`, as
+  `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
+  longer sign in, and can't be marked for another identity provider. It refuses the `admin` user.
+- With the default H2 file database, stop the server before you run it: H2 lets one process open the file.
+- Mint after `bin/start-uc-server --upgrade-schema`: `bin/uc-admin-token` refuses a database with schema steps not
+  applied yet, one of a newer release, or an in-memory one, and does not change the schema itself.
+- To rotate the token, mint a new one, give it to the identity provider, and let the old one expire.
+- To pause the token, disable the user: the token is refused on its next request. Enabling the user again restores
+  its tokens that have not expired.
+- To revoke the token for good, delete the user, for example with
+  `bin/uc --auth_token "$(bin/uc-admin-token)" user delete --id <id>`. This works once a delete removes the user: a
+  user created again with the same email then gets a new id, so the old tokens never work again. Today a delete only
+  disables the user, so creating it again gets 409.
+  <!-- TODO(#2207): a user delete removes the row, so a user created again gets a new id. -->
 
 ### Try to log in with no user in the local database
 
@@ -486,7 +612,7 @@ To fix this error, let’s start by adding your user account to the UC local dat
 to add your account to the local database.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) user create --name "Bobbie Draper" --email bobbie@rocinante
+bin/uc --auth_token "$(bin/uc-admin-token)" user create --name "Bobbie Draper" --email bobbie@rocinante
 ```
 
 ### Try to log in with your user account
@@ -536,13 +662,13 @@ bin/uc catalog list
 bin/uc --auth_token $token catalog list
 
 # Succeeds
-bin/uc --auth_token $(cat etc/conf/token.txt) catalog list
+bin/uc --auth_token "$(bin/uc-admin-token)" catalog list
 ```
 
 But if you were to add `USE CATALOG` permission to your user account
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante 
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante 
 ```
 
 then the following command would work.
@@ -563,7 +689,7 @@ bin/uc --auth_token $token catalog create --name myfirstcatalog
 Thus, let’s provide your account with the necessary permissions.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
 ```
 
 With the permission set, the preceding command will succeed because your user account has the `CREATE CATALOG`
@@ -576,9 +702,9 @@ Notice how we’re providing access using the three-part naming convention of *c
 each level of permissions, we progress down the three parts.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante 
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type schema --name unity.default --privilege "USE SCHEMA" --principal bobbie@rocinante
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type table --name unity.default.numbers --privilege "SELECT" --principal bobbie@rocinante
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante 
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create --securable_type schema --name unity.default --privilege "USE SCHEMA" --principal bobbie@rocinante
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create --securable_type table --name unity.default.numbers --privilege "SELECT" --principal bobbie@rocinante
 ```
 
 Then start a new DuckDB session.
@@ -650,7 +776,8 @@ Key names differ by client:
 | Server | Client |
 | --- | --- |
 | `server.authorization=disable` (default) | Java: `type=static` with `token=""`. Spark: legacy `token=""` (`export UC_TOKEN=`), or `auth.type=static` with `auth.token=""`. The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
-| `server.authorization=enable` | Java: `type=static` with a real Unity Catalog token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, `oauth.clientSecret`, `oauth.exchangeForUcToken=true` and `catalogUri`, because the server only accepts tokens it issued (see [Exchanging the OAuth token for a Unity Catalog token](#exchanging-the-oauth-token-for-a-unity-catalog-token)). Spark: the same keys under the `auth.` prefix, with `catalogUri` taken from the catalog `uri` (catalog-managed Delta tables also need `auth.catalogUri` for now, see the same section); or a non-empty legacy `token`. See the sections below. |
+| `server.authorization=enable`, `server.authentication.type=internal` (default) | The server accepts only its own tokens. Java: `type=static` with a real Unity Catalog token. Spark: the same keys under the `auth.` prefix, or a non-empty legacy `token`. `type=oauth` sends the identity provider's token as is, which this mode refuses with 403. |
+| `server.authorization=enable`, `server.authentication.type=external` | The server accepts the identity provider's token (see [External authentication mode](#external-authentication-mode)). Java: `type=oauth` with `oauth.uri`, `oauth.clientId`, and `oauth.clientSecret`. Spark: the same keys under the `auth.` prefix. See the sections below. |
 
 Spark maps a present `token` catalog property to `type=static` even when the value is empty.
 Hive JDBC / Beeline URLs that omit empty query parameters cannot express an empty token;
@@ -756,67 +883,6 @@ The provider caches the token and renews it shortly before it expires. It takes 
 token response's `expires_in`, or, when the Identity Provider omits it, from the token's own `exp`
 claim if the token is a JWT. A token with neither is used for one request only, so every request
 fetches a new token; the provider logs a warning the first time.
-
-### Exchanging the OAuth token for a Unity Catalog token
-
-By default the OAuth token provider sends the Identity Provider's token to Unity Catalog as is.
-The Unity Catalog server only accepts tokens it issued itself on API calls, so against a Unity
-Catalog server with authorization enabled, set `oauth.exchangeForUcToken=true`. The provider then
-exchanges the Identity Provider's token at the server's token exchange endpoint
-(`<catalogUri>/api/1.0/unity-control/auth/tokens`, see
-[Programmatic exchange](#programmatic-exchange-service-principals)) and caches and renews the
-Unity Catalog token instead.
-
-The exchange requires `server.authorization=enable`; otherwise the endpoint rejects it with
-"Authorization is disabled". The server must also allow the token's issuer and audience. It then
-picks an enabled Unity Catalog user from the token's claims:
-
-- If the token has an `email` claim, the user with that email; failing that, the user whose
-  `externalId` matches the token's `azp` (or `client_id`).
-- Otherwise, the user whose `externalId` matches `azp` (or `client_id`); failing that, the user
-  whose email is the token's `sub`.
-
-So if your Identity Provider puts an `email` claim in client-credentials tokens and a user has that
-email, that user is chosen even if another user's `externalId` matches the client ID.
-
-The exchange endpoint is derived from the catalog URI, set with the `catalogUri` key. Spark takes
-it from the catalog `uri` option:
-
-```sh
---conf "spark.sql.catalog.<catalog_name>.uri=https://uc.example.com" \
---conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=<identity provider token endpoint>" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.exchangeForUcToken=true"
-```
-
-!!! note "Catalog-managed Delta tables"
-    With Delta releases that don't include
-    [delta-io/delta#7951](https://github.com/delta-io/delta/pull/7951), the Delta commit
-    coordinator and server-side planning build their own token provider from the Spark
-    configuration and do not get the catalog `uri`. For catalog-managed tables, also set
-    `auth.catalogUri` to the same value as `uri`:
-
-    ```sh
-    --conf "spark.sql.catalog.<catalog_name>.auth.catalogUri=https://uc.example.com"
-    ```
-
-    Unity Catalog itself ignores this key and always uses `uri`. It is no longer needed once Delta
-    includes that change (tracked in
-    [#2074](https://github.com/unitycatalog/unitycatalog/issues/2074)).
-
-Java clients set `catalogUri` themselves:
-
-```java
-Map<String, String> configs = Map.of(
-    "type", "oauth",
-    "catalogUri", "https://uc.example.com",
-    "oauth.uri", "<identity provider token endpoint>",
-    "oauth.clientId", "<client ID>",
-    "oauth.clientSecret", "<client secret>",
-    "oauth.exchangeForUcToken", "true");
-```
 
 ## Using Google Identity with Unity Catalog UI
 

@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -13,11 +14,21 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
+import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.client.ApiClientBuilder;
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CatalogsApi;
+import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +41,7 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private WebClient client;
+  private HttpServer idpTokenServer;
 
   @BeforeEach
   @Override
@@ -37,6 +49,15 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
     super.setUp();
     client = WebClient.builder(serverConfig.getServerUrl()).build();
     createEnabledUser(SERVICE_EMAIL, OAUTH_CLIENT_ID);
+  }
+
+  @AfterEach
+  @Override
+  public void tearDown() {
+    if (idpTokenServer != null) {
+      idpTokenServer.stop(0);
+    }
+    super.tearDown();
   }
 
   @Test
@@ -154,6 +175,68 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
 
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
     assertThat(response.contentUtf8()).contains("Invalid audience");
+  }
+
+  @Test
+  public void testIdentityProviderTokenIsRejectedOnApiCall() {
+    // type=oauth sends the identity provider's token as is, and the server accepts only its own.
+    TokenProvider provider =
+        TokenProvider.create(
+            Map.of(
+                "type",
+                "oauth",
+                "oauth.uri",
+                startIdpTokenServer(),
+                "oauth.clientId",
+                OAUTH_CLIENT_ID,
+                "oauth.clientSecret",
+                "client-secret"));
+    CatalogsApi catalogsApi =
+        new CatalogsApi(
+            ApiClientBuilder.create()
+                .uri(serverConfig.getServerUrl())
+                .tokenProvider(provider)
+                .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
+                .build());
+
+    assertThatThrownBy(() -> catalogsApi.listCatalogs(null, null, /* includeBrowse= */ false))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("403")
+        .hasMessageContaining("Invalid access token.");
+  }
+
+  /** Serves client credentials tokens signed by the test issuer the server trusts. */
+  private String startIdpTokenServer() {
+    try {
+      idpTokenServer = HttpServer.create(new InetSocketAddress(0), 0);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to start identity provider token server", e);
+    }
+    idpTokenServer.createContext(
+        "/token",
+        exchange -> {
+          String accessToken =
+              JWT.create()
+                  .withClaim("azp", OAUTH_CLIENT_ID)
+                  .withAudience(TEST_AUDIENCE)
+                  .withIssuer(testIssuer)
+                  .withIssuedAt(new Date())
+                  .withExpiresAt(new Date(System.currentTimeMillis() + 3_600_000))
+                  .withKeyId(testIssuerKeyId)
+                  .withJWTId(UUID.randomUUID().toString())
+                  .sign(testIssuerAlgorithm);
+          byte[] body =
+              String.format(
+                      "{\"access_token\":\"%s\",\"token_type\":\"Bearer\",\"expires_in\":3600}",
+                      accessToken)
+                  .getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().set("Content-Type", "application/json");
+          exchange.sendResponseHeaders(200, body.length);
+          exchange.getResponseBody().write(body);
+          exchange.close();
+        });
+    idpTokenServer.start();
+    return "http://localhost:" + idpTokenServer.getAddress().getPort() + "/token";
   }
 
   private static void assertIssuedUcTokenSubject(JsonNode body, String expectedSubject) {

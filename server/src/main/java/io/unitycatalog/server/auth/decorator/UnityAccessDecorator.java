@@ -25,6 +25,7 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -155,6 +156,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     Map<SecurableType, Object> resourceKeys = new HashMap<>();
     Map<String, Object> nonResourceValues = new HashMap<>();
+    // An IdP's SCIM token, which AuthDecorator accepts only on the SCIM API.
+    nonResourceValues.put("scim_token", IdentityUtils.isScimToken());
 
     // Split up the locators by type, because we have to extract the value from the request
     // different ways for different types
