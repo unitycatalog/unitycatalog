@@ -922,6 +922,7 @@ def generate_wrapped_sql_function_body(
     environment_version: str = "None",
     credentials: Optional[list[Union[str, ServiceCredential]]] = None,
     secrets: Optional[list[str]] = None,
+    body_preamble: Optional[str] = None,
 ) -> str:
     """
     Generate SQL body for creating the function in Unity Catalog.
@@ -936,6 +937,8 @@ def generate_wrapped_sql_function_body(
         environment_version: The version of the environment to use for the function. Defaults to "None".
         credentials: An optional list of service credentials to make available to the function.
         secrets: An optional list of Unity Catalog secrets to make available to the function.
+        body_preamble: Optional statements to run at the top of the primary function's body,
+            after the wrapped functions have been in-lined.
 
     Returns:
         SQL statement for creating the UDF.
@@ -946,8 +949,9 @@ def generate_wrapped_sql_function_body(
     primary_metadata = extract_function_metadata(primary_func)
 
     # Update the primary function's body with the wrapped functions in-lined into the top of the body
+    preamble = f"{body_preamble}\n" if body_preamble else ""
     primary_metadata.function_body = (
-        wrapped_function_content + "\n" + primary_metadata.function_body
+        wrapped_function_content + "\n" + preamble + primary_metadata.function_body
     )
 
     sql_metadata = create_sql_metadata(primary_metadata)
