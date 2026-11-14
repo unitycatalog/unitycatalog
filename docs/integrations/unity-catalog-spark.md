@@ -875,6 +875,14 @@ Let’s look at a visualization of our current tables:
 
 See this page to learn more about the difference between external and managed Unity Catalog tables.
 
+In a partitioned table of a file-source format (Parquet, ORC, JSON, CSV, Avro or text), Spark puts the partition columns
+after the other columns, in `PARTITIONED BY` order, as Spark's built-in catalog does. So `DESCRIBE TABLE` and `SELECT *`
+list them last, and `INSERT INTO ... VALUES` without a column list takes the values in that order. Tables of other
+formats, such as Delta and Iceberg, keep the declared order.
+Unity Catalog itself keeps the declared column order, which is what the REST API and other engines see. For example, a
+Parquet table created with columns `(a, p, b)` and `PARTITIONED BY (p)` lists `a, p, b` through the REST API and
+`a, b, p` in Spark.
+
 ## Spark write data to path
 
 > this section does not seem useful to UC. its not a general spark guide.. but spark uc integration guide
