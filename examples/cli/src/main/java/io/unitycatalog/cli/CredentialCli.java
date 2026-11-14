@@ -14,6 +14,8 @@ import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.ListCredentialsResponse;
+import io.unitycatalog.client.model.S3AssumeRole;
+import io.unitycatalog.client.model.S3CompatibleRequest;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import java.util.List;
 import java.util.Optional;
@@ -63,6 +65,36 @@ public class CredentialCli {
     }
   }
 
+  /** Builds an S3 access key from the {@code s3_*} options, if any of them is given. */
+  private static Optional<S3CompatibleRequest> extractS3Compatible(JSONObject json) {
+    List<CliParams> params =
+        List.of(
+            CliParams.S3_ACCESS_KEY_ID,
+            CliParams.S3_SECRET_ACCESS_KEY,
+            CliParams.S3_ENDPOINT,
+            CliParams.S3_STS_ENDPOINT,
+            CliParams.S3_ROLE_ARN,
+            CliParams.S3_STS_REGION);
+    if (params.stream().noneMatch(param -> json.has(param.getServerParam()))) {
+      return Optional.empty();
+    }
+    String stsEndpoint = json.optString(CliParams.S3_STS_ENDPOINT.getServerParam(), null);
+    String roleArn = json.optString(CliParams.S3_ROLE_ARN.getServerParam(), null);
+    String stsRegion = json.optString(CliParams.S3_STS_REGION.getServerParam(), null);
+    return Optional.of(
+        new S3CompatibleRequest()
+            .accessKeyId(json.optString(CliParams.S3_ACCESS_KEY_ID.getServerParam(), null))
+            .secretAccessKey(json.optString(CliParams.S3_SECRET_ACCESS_KEY.getServerParam(), null))
+            .s3Endpoint(json.optString(CliParams.S3_ENDPOINT.getServerParam(), null))
+            .assumeRole(
+                stsEndpoint == null && roleArn == null && stsRegion == null
+                    ? null
+                    : new S3AssumeRole()
+                        .stsEndpoint(stsEndpoint)
+                        .roleArn(roleArn)
+                        .stsRegion(stsRegion)));
+  }
+
   private static String createCredential(CredentialsApi credentialsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     CreateCredentialRequest createCredentialRequest =
@@ -70,7 +102,8 @@ public class CredentialCli {
             .name(json.getString(CliParams.NAME.getServerParam()))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
             .purpose(CredentialPurpose.STORAGE)
-            .awsIamRole(extractAwsIamRole(json).orElse(null));
+            .awsIamRole(extractAwsIamRole(json).orElse(null))
+            .s3Compatible(extractS3Compatible(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.createCredential(createCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }
@@ -101,7 +134,8 @@ public class CredentialCli {
         new UpdateCredentialRequest()
             .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
-            .awsIamRole(extractAwsIamRole(json).orElse(null));
+            .awsIamRole(extractAwsIamRole(json).orElse(null))
+            .s3Compatible(extractS3Compatible(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.updateCredential(name, updateCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }
