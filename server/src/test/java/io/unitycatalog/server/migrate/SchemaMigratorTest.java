@@ -492,9 +492,12 @@ public class SchemaMigratorTest {
         });
   }
 
-  /** Whether {@code sql} is a statement of step 1, which creates every table "if not exists". */
+  /**
+   * Whether {@code sql} is the statement of step 1 that creates uc_catalogs. Later steps that add a
+   * table also create it "if not exists", so the table name tells step 1 apart.
+   */
   private static boolean isStep1(String sql) {
-    return sql.toLowerCase(Locale.ROOT).contains("create table if not exists uc_");
+    return sql.toLowerCase(Locale.ROOT).contains("create table if not exists uc_catalogs ");
   }
 
   /** Whether {@code sql} is the statement of step 2, which widens uc_function_params.type_json. */

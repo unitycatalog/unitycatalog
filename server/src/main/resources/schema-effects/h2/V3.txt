@@ -1,0 +1,6 @@
++ column uc_token_revocations.expires_at type=timestamp size=26 nullable=YES default=null
++ column uc_token_revocations.jti type=uuid size=16 nullable=NO default=null
++ index uc_token_revocations.idx_token_revocations_expires_at unique=false column=expires_at#1
++ index uc_token_revocations.primary_key_* unique=true column=jti#1
++ pk uc_token_revocations.jti#1
++ table uc_token_revocations
