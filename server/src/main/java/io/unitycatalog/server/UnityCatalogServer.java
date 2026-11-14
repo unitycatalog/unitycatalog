@@ -54,6 +54,7 @@ import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.service.sharing.OpenSharingLifecycle;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
@@ -105,6 +106,7 @@ public class UnityCatalogServer implements AutoCloseable {
   private MetricsRegistries.PrometheusMetrics metrics;
 
   static {
+    useWoodstoxForStax();
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
   }
@@ -432,6 +434,7 @@ public class UnityCatalogServer implements AutoCloseable {
         armeriaServerBuilder, authorizer, repositories, fileOperations, serverProperties);
     addDeltaApiServices(
         armeriaServerBuilder, authorizer, repositories, serverProperties, storageCredentialVendor);
+    addOpenSharingApiServices(armeriaServerBuilder, authorizer, repositories, serverProperties);
   }
 
   private void addIcebergApiServices(
@@ -464,6 +467,21 @@ public class UnityCatalogServer implements AutoCloseable {
     armeriaServerBuilder.annotate("", deltaApiService);
   }
 
+  private void addOpenSharingApiServices(
+      ArmeriaServerBuilder armeriaServerBuilder,
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    if (!serverProperties.isOpenSharingEnabled()) {
+      return;
+    }
+    LOGGER.info("Adding embedded OpenSharing services...");
+    OpenSharingLifecycle openSharing =
+        OpenSharingLifecycle.start(serverProperties, repositories, authorizer);
+    armeriaServerBuilder.annotate("opensharing/provider", openSharing.providerService());
+    armeriaServerBuilder.selfAuthenticated(openSharing::mountRecipientApi);
+  }
+
   private void addSecurityDecorators(
       ArmeriaServerBuilder armeriaServerBuilder,
       ServerProperties serverProperties,
@@ -476,6 +494,19 @@ public class UnityCatalogServer implements AutoCloseable {
           new UnityAccessDecorator(authorizer, repositories, serverProperties),
           new AuthDecorator(securityContext, repositories));
     }
+  }
+
+  /**
+   * hadoop-client-runtime registers a relocated Woodstox that Jackson XML can't use. System
+   * properties beat META-INF/services whatever the classpath order; an operator's -D still wins.
+   */
+  public static void useWoodstoxForStax() {
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLInputFactory", "com.ctc.wstx.stax.WstxInputFactory");
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLOutputFactory", "com.ctc.wstx.stax.WstxOutputFactory");
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLEventFactory", "com.ctc.wstx.stax.WstxEventFactory");
   }
 
   public static void main(String[] args) {

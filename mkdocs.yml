@@ -35,6 +35,7 @@ nav:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
       - Users and Privileges: server/users-privileges.md
+      - Sharing: server/opensharing.md
       - Deployment: server/deployment.md
       - Deploy with Helm: server/helm.md
       - Deploy for AWS: server/aws.md

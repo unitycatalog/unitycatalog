@@ -427,6 +427,14 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       // Delta Kernel validates set-columns schema evolution.
       "io.delta" % "delta-kernel-api" % deltaVersion,
+      // Keep OpenSharing's Delta Kernel transitives explicit in the published POM, without the
+      // older published Unity Catalog integrations that would shadow the server's own classes.
+      "io.delta" % "delta-kernel-defaults" % deltaVersion
+        exclude("io.unitycatalog", "unitycatalog-client")
+        exclude("io.unitycatalog", "unitycatalog-hadoop"),
+      "io.delta" % "delta-storage" % deltaVersion
+        exclude("io.unitycatalog", "unitycatalog-client")
+        exclude("io.unitycatalog", "unitycatalog-hadoop"),
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.github.ben-manes.caffeine" % "caffeine" % caffeineVersion,
@@ -471,8 +479,20 @@ lazy val server = (project in file("server"))
       // apache5-client instead, so declare apache-client explicitly
       "software.amazon.awssdk" % "apache-client" % awsSdkV2Version,
 
-      // Hadoop dependencies for ExternalLocationUtils
+      // Hadoop dependencies for ExternalLocationUtils and OpenSharing's published runtime.
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion % Runtime,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Runtime,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Runtime
+        exclude("com.microsoft.azure", "azure-storage")
+        exclude("com.microsoft.azure", "azure-keyvault-core")
+        exclude("org.eclipse.jetty", "jetty-util")
+        exclude("org.eclipse.jetty", "jetty-util-ajax"),
+
+      // Embedded OpenSharing: shares and recipients, and the Delta Sharing protocol. It runs on the
+      // Hibernate and the Armeria server above, and brings Delta Kernel's defaults, Parquet, and
+      // Hadoop's S3, Azure and GCS file systems, which read the shared tables.
+      "io.opensharing" % "opensharing-server-core" % "0.1.1",
 
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.2.0",
@@ -530,6 +550,8 @@ lazy val server = (project in file("server"))
       "software.amazon.awssdk" % "sts" % awsSdkV2Version,
       "software.amazon.awssdk" % "kms" % awsSdkV2Version,
       "software.amazon.awssdk" % "auth" % awsSdkV2Version,
+      "io.delta" % "delta-kernel-defaults" % deltaVersion,
+      "io.delta" % "delta-storage" % deltaVersion,
       "io.netty" % "netty-all" % nettyVersion,
       "io.netty" % "netty-tcnative-classes" % nettyTcnativeVersion,
       "io.netty" % "netty-tcnative-boringssl-static" % nettyTcnativeVersion,
@@ -539,6 +561,11 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+      // OpenSharing builds against a newer Hadoop. Keep the server on Unity Catalog's own release.
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
     ),
 
     Compile / sourceGenerators += Def.task {
@@ -557,6 +584,11 @@ lazy val server = (project in file("server"))
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    // Same StAX providers UnityCatalogServer sets when it loads, over hadoop-client-runtime's one.
+    Test / javaOptions ++= Seq(
+      "-Djavax.xml.stream.XMLInputFactory=com.ctc.wstx.stax.WstxInputFactory",
+      "-Djavax.xml.stream.XMLOutputFactory=com.ctc.wstx.stax.WstxOutputFactory",
+      "-Djavax.xml.stream.XMLEventFactory=com.ctc.wstx.stax.WstxEventFactory"),
     // Include server and control models in the bin package for server
     // This will allow us to have a single maven artifact and not multiple (server, server models, control models)
     Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
@@ -724,7 +756,18 @@ lazy val serverShaded = (project in file("server-shaded"))
     ),
     assemblyPackageScala / assembleArtifact := false,
     assembly / fullClasspath := {
+      // Embedded OpenSharing is never enabled where the shaded server runs, the Spark connector
+      // tests, and the Hadoop, Parquet and cloud file system jars it brings would clash with the
+      // ones Spark and Delta put on those classpaths. Only modules that the OpenSharing dependency
+      // adds are left out; Delta Kernel's API and everything else the server had stays.
+      val sharingOnlyModules = Set(
+        "analyticsaccelerator-s3", "commons-pool", "delta-kernel-defaults", "delta-storage",
+        "gcs-connector", "hadoop-aws", "hadoop-azure", "hadoop-client-runtime",
+        "hadoop-shaded-guava", "jts-core", "parquet-column", "parquet-common",
+        "parquet-encoding", "parquet-format-structures",
+        "parquet-hadoop", "parquet-jackson", "s3-transfer-manager", "wildfly-openssl", "zstd-jni")
       val compileClasspath = (server / Compile / fullClasspath).value
+        .filterNot(entry => entry.get(moduleID.key).exists(m => sharingOnlyModules(m.name)))
       val testClasses = (server / Test / products).value
       compileClasspath ++ testClasses.map(Attributed.blank)
     }
