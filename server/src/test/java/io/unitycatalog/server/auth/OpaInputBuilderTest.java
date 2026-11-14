@@ -196,10 +196,7 @@ public class OpaInputBuilderTest {
         .getSessionFactory()
         .inTransaction(
             session -> session.get(UserDAO.class, user.getId()).setExternalId("subject-123"));
-    assertThat(
-            inputBuilder
-                .build(user.getId(), TABLE, otherTable.getId(), Privileges.SELECT)
-                .at("/input/principal"))
+    assertThat(inputBuilder.build(user.getId(), TABLE, otherTable.getId()).at("/input/principal"))
         .isEqualTo(
             JsonUtils.getInstance()
                 .valueToTree(
@@ -260,7 +257,7 @@ public class OpaInputBuilderTest {
   }
 
   private void assertInput(SecurableType type, UUID resourceId, Map<String, ?> expectedResource) {
-    assertThat(inputBuilder.build(user.getId(), type, resourceId, Privileges.CREATE_TABLE))
+    assertThat(inputBuilder.build(user.getId(), type, resourceId))
         .as("input for %s %s", type, resourceId)
         .isEqualTo(
             JsonUtils.getInstance()
@@ -270,8 +267,6 @@ public class OpaInputBuilderTest {
                         Map.of(
                             "principal",
                             Map.of("id", user.getId().toString(), "email", user.getEmail()),
-                            "privilege",
-                            "CREATE_TABLE",
                             "resource",
                             expectedResource))));
   }
@@ -280,7 +275,7 @@ public class OpaInputBuilderTest {
       UUID principalId, SecurableType type, UUID resourceId, UUID missingId) {
     assertThatExceptionOfType(BaseException.class)
         .as("metadata for %s %s and principal %s", type, resourceId, principalId)
-        .isThrownBy(() -> inputBuilder.build(principalId, type, resourceId, Privileges.SELECT))
+        .isThrownBy(() -> inputBuilder.build(principalId, type, resourceId))
         .withMessageStartingWith("Could not resolve authorization metadata: ")
         .withMessageEndingWith(" " + missingId)
         .satisfies(
