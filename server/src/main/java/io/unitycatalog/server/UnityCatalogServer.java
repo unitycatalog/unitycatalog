@@ -105,6 +105,7 @@ public class UnityCatalogServer implements AutoCloseable {
   private MetricsRegistries.PrometheusMetrics metrics;
 
   static {
+    useWoodstoxForStax();
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
   }
@@ -476,6 +477,19 @@ public class UnityCatalogServer implements AutoCloseable {
           new UnityAccessDecorator(authorizer, repositories, serverProperties),
           new AuthDecorator(securityContext, repositories));
     }
+  }
+
+  /**
+   * hadoop-client-runtime registers a relocated Woodstox that Jackson XML can't use. System
+   * properties beat META-INF/services whatever the classpath order; an operator's -D still wins.
+   */
+  public static void useWoodstoxForStax() {
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLInputFactory", "com.ctc.wstx.stax.WstxInputFactory");
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLOutputFactory", "com.ctc.wstx.stax.WstxOutputFactory");
+    System.getProperties()
+        .putIfAbsent("javax.xml.stream.XMLEventFactory", "com.ctc.wstx.stax.WstxEventFactory");
   }
 
   public static void main(String[] args) {
