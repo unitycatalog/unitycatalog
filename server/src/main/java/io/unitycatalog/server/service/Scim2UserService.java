@@ -3,7 +3,7 @@ package io.unitycatalog.server.service;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
@@ -14,6 +14,7 @@ import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.Produces;
 import com.linecorp.armeria.server.annotation.Put;
 import com.linecorp.armeria.server.annotation.StatusCode;
+import com.unboundid.scim2.common.Path;
 import com.unboundid.scim2.common.exceptions.BadRequestException;
 import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
@@ -26,6 +27,7 @@ import com.unboundid.scim2.common.messages.PatchOperation;
 import com.unboundid.scim2.common.messages.PatchRequest;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
+import com.unboundid.scim2.common.types.Name;
 import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
@@ -49,6 +51,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * SCIM2-compliant user management.
@@ -65,6 +69,10 @@ import java.util.UUID;
  * </ul>
  */
 public class Scim2UserService implements ScimService {
+  private static final String ACTIVE = "active";
+  private static final String CORE_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
+  // The uc_users.name column is varchar(255).
+  private static final int MAX_NAME_LENGTH = 255;
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
   private final MetastoreRepository metastoreRepository;
@@ -93,13 +101,14 @@ public class Scim2UserService implements ScimService {
         filter.filter(f -> !f.isEmpty()).<Filter>map(this::parseFilter).orElse(null);
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
+    // totalResults is the number of matches, so the page is cut after matching (RFC 7644 3.4.2).
+    List<User> matches =
+        userRepository.listUsers(m -> match(filterEvaluator, userFilter, asUserResource(m)));
+    int firstIndex = Math.max(startIndex.orElse(1), 1);
     List<UserResource> userResourcesList =
-        userRepository
-            .listUsers(
-                startIndex.orElse(1) - 1,
-                count.orElse(50),
-                m -> match(filterEvaluator, userFilter, asUserResource(m)))
-            .stream()
+        matches.stream()
+            .skip(firstIndex - 1)
+            .limit(Math.max(count.orElse(50), 0))
             .map(Scim2Utils::asUserResource)
             .toList();
 
@@ -109,11 +118,7 @@ public class Scim2UserService implements ScimService {
     meta.setResourceType("User");
 
     ListResponse<UserResource> userResources =
-        new ListResponse<>(
-            userResourcesList.size(),
-            userResourcesList,
-            startIndex.orElse(1),
-            userResourcesList.size());
+        new ListResponse<>(matches.size(), userResourcesList, firstIndex, userResourcesList.size());
     userResources.setMeta(meta);
 
     return userResources;
@@ -135,6 +140,13 @@ public class Scim2UserService implements ScimService {
                     new Scim2RuntimeException(
                         new PreconditionFailedException("User does not have a primary email.")));
 
+    String name =
+        userName(userResource)
+            .orElseThrow(
+                () ->
+                    new Scim2RuntimeException(
+                        BadRequestException.invalidValue("A user needs displayName or name.")));
+
     String pictureUrl = "";
     if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
       pictureUrl = userResource.getPhotos().get(0).getValue().toString();
@@ -143,7 +155,7 @@ public class Scim2UserService implements ScimService {
       User user =
           userRepository.createUser(
               CreateUser.builder()
-                  .name(userResource.getDisplayName())
+                  .name(name)
                   .email(primaryEmail.getValue())
                   .active(userResource.getActive())
                   .externalId(userResource.getExternalId())
@@ -187,7 +199,7 @@ public class Scim2UserService implements ScimService {
 
     UpdateUser updateUser =
         UpdateUser.builder()
-            .name(userResource.getDisplayName())
+            .name(userName(userResource).orElse(null))
             .active(userResource.getActive())
             .externalId(userResource.getExternalId())
             .build();
@@ -211,28 +223,94 @@ public class Scim2UserService implements ScimService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
-    return patchRequest.getOperations().stream()
-        .filter(
-            op ->
-                op.getOpType() == PatchOpType.REPLACE
-                    && op.getPath() == null) // Only support patch for okta
-        .findFirst()
-        .map(op -> handleUserUpdate(id, op))
-        .orElse(HttpResponse.of(HttpStatus.NOT_IMPLEMENTED));
+    // Only a replace of "active" is supported. Any other operation, path or attribute is refused
+    // as a whole, so no part of the request is applied.
+    List<PatchOperation> operations = patchRequest.getOperations();
+    if (operations.isEmpty() || !operations.stream().allMatch(Scim2UserService::isActiveReplace)) {
+      // TODO(#2205): throw the SCIM NotImplementedException so the 501 carries a SCIM Error body.
+      return HttpResponse.of(HttpStatus.NOT_IMPLEMENTED);
+    }
+    // Every value is validated before anything is applied; the last operation wins.
+    List<Boolean> values = operations.stream().map(op -> parseActive(activeValue(op))).toList();
+    boolean active = values.get(values.size() - 1);
+    if (!active) {
+      checkNotMetastoreOwner(userRepository.getUser(id));
+    }
+    userRepository.updateUser(id, UpdateUser.builder().active(active).build());
+    return HttpResponse.of(HttpStatus.OK);
   }
 
-  private HttpResponse handleUserUpdate(String id, PatchOperation operation) {
-    try {
-      Boolean value = operation.getValues(Boolean.class).get(0);
-      if (Boolean.FALSE.equals(value)) {
-        checkNotMetastoreOwner(userRepository.getUser(id));
-      }
-      UpdateUser updateUser = UpdateUser.builder().active(value).build();
-      userRepository.updateUser(id, updateUser);
-      return HttpResponse.of(HttpStatus.OK);
-    } catch (ScimException | JsonProcessingException e) {
-      return handleExceptionDuringPatch(e);
+  /** The single name UC stores for a SCIM user; empty if the request carries none. */
+  private static Optional<String> userName(UserResource user) {
+    Name name = user.getName();
+    String formatted = name == null ? null : name.getFormatted();
+    String givenAndFamily =
+        name == null
+            ? null
+            : Stream.of(name.getGivenName(), name.getFamilyName())
+                .filter(Scim2UserService::isNotBlank)
+                .collect(Collectors.joining(" "));
+    return Stream.of(user.getDisplayName(), formatted, givenAndFamily)
+        .filter(Scim2UserService::isNotBlank)
+        .findFirst()
+        .map(Scim2UserService::checkNameLength);
+  }
+
+  /** A longer name is refused as a bad request, not a 500. */
+  private static String checkNameLength(String name) {
+    if (name.length() > MAX_NAME_LENGTH) {
+      throw new Scim2RuntimeException(
+          BadRequestException.invalidValue(
+              "A user name can have at most " + MAX_NAME_LENGTH + " characters."));
     }
+    return name;
+  }
+
+  private static boolean isNotBlank(String value) {
+    return value != null && !value.isBlank();
+  }
+
+  private static boolean isActiveReplace(PatchOperation operation) {
+    return operation.getOpType() == PatchOpType.REPLACE && activeValue(operation) != null;
+  }
+
+  /** The value a replace sets "active" to, or null if the operation touches anything else. */
+  private static JsonNode activeValue(PatchOperation operation) {
+    JsonNode value = operation.getJsonNode();
+    Path path = operation.getPath();
+    if (path != null) {
+      return isActivePath(path) ? unwrapSingleValue(value) : null;
+    }
+    boolean isOnlyActive =
+        value.isObject() && value.size() == 1 && ACTIVE.equalsIgnoreCase(value.fieldNames().next());
+    return isOnlyActive ? unwrapSingleValue(value.elements().next()) : null;
+  }
+
+  /** The attribute "active", with no filter, optionally under the core User schema URN. */
+  private static boolean isActivePath(Path path) {
+    boolean isCoreSchema =
+        path.getSchemaUrn() == null || CORE_USER_SCHEMA.equalsIgnoreCase(path.getSchemaUrn());
+    return isCoreSchema
+        && path.size() == 1
+        && ACTIVE.equalsIgnoreCase(path.getElement(0).getAttribute())
+        && path.getElement(0).getValueFilter() == null;
+  }
+
+  private static JsonNode unwrapSingleValue(JsonNode value) {
+    return value.isArray() && value.size() == 1 ? value.get(0) : value;
+  }
+
+  private boolean parseActive(JsonNode value) {
+    if (value.isBoolean()) {
+      return value.booleanValue();
+    }
+    if (value.isTextual() && "true".equalsIgnoreCase(value.textValue())) {
+      return true;
+    }
+    if (value.isTextual() && "false".equalsIgnoreCase(value.textValue())) {
+      return false;
+    }
+    throw new Scim2RuntimeException(new BadRequestException("active must be true or false."));
   }
 
   // With authorization disabled, every authorize() call returns true, so the owner check only
@@ -247,15 +325,6 @@ public class Scim2UserService implements ScimService {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           "The metastore owner can't be deleted or deactivated: " + user.getEmail());
-    }
-  }
-
-  private HttpResponse handleExceptionDuringPatch(Exception ex) {
-    if (ex instanceof ScimException) {
-      throw new Scim2RuntimeException((ScimException) ex);
-    } else {
-      throw new Scim2RuntimeException(
-          new ServerErrorException("Problem with patch operation", ex.getMessage(), ex));
     }
   }
 
