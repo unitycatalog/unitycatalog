@@ -8,13 +8,16 @@ import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import lombok.SneakyThrows;
 
@@ -27,6 +30,7 @@ public abstract class AuthorizedService {
   protected final UserRepository userRepository;
   protected final KeyMapper keyMapper;
   protected final ServerProperties serverProperties;
+  private final MetastoreRepository metastoreRepository;
 
   @SneakyThrows
   protected AuthorizedService(
@@ -37,6 +41,46 @@ public abstract class AuthorizedService {
     this.userRepository = repositories.getUserRepository();
     this.keyMapper = repositories.getKeyMapper();
     this.serverProperties = serverProperties;
+    this.metastoreRepository = repositories.getMetastoreRepository();
+  }
+
+  /** Views, functions, and models can be transferred to another user only by a metastore admin. */
+  protected void validateOwnerTransfer(String newOwner) {
+    if (newOwner != null
+        && serverProperties.isAuthorizationEnabled()
+        && !newOwner.equals(IdentityUtils.findPrincipalEmailAddress())
+        && !authorizer.authorize(
+            userRepository.findPrincipalId(),
+            SecurableType.METASTORE,
+            metastoreRepository.getMetastoreId(),
+            Privileges.OWNER)) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "Only a metastore admin can transfer a view, function, or model to another user.");
+    }
+  }
+
+  /** Reloads ownership policy even when session cleanup fails after a commit. */
+  protected <T> T updateWithOwnerReload(String newOwner, Supplier<T> update) {
+    if (newOwner == null) {
+      return update.get();
+    }
+    Throwable updateError = null;
+    try {
+      return update.get();
+    } catch (RuntimeException | Error e) {
+      updateError = e;
+      throw e;
+    } finally {
+      try {
+        authorizer.reloadAuthorizations();
+      } catch (RuntimeException | Error reloadError) {
+        if (updateError == null) {
+          throw reloadError;
+        }
+        updateError.addSuppressed(reloadError);
+      }
+    }
   }
 
   /**

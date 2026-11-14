@@ -120,7 +120,9 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
       "("
           + AuthorizeExpressions.UPDATE_SCHEMA
           + """
-          ) &&
+          || (#owner != null && #new_name == null && #comment == null &&
+              (#properties == null || #properties.isEmpty()) &&
+                  #authorize(#principal, #metastore, OWNER))) &&
           (#new_name == null ||
             (#authorize(#principal, #catalog, USE_CATALOG) &&
               #authorize(#principal, #schema, OWNER)) || (
@@ -130,8 +132,15 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
-      @AuthorizeKey(key = "new_name") UpdateSchema updateSchema) {
-    return HttpResponse.ofJson(schemaRepository.updateSchema(fullName, updateSchema));
+      @AuthorizeKey(key = "owner")
+          @AuthorizeKey(key = "new_name")
+          @AuthorizeKey(key = "comment")
+          @AuthorizeKey(key = "properties")
+          UpdateSchema updateSchema) {
+    SchemaInfo result =
+        updateWithOwnerReload(
+            updateSchema.getOwner(), () -> schemaRepository.updateSchema(fullName, updateSchema));
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{full_name}")

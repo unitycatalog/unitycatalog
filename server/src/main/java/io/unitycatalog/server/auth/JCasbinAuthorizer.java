@@ -58,6 +58,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   private final CasbinPolicyRefresher refresher;
 
   private final boolean refreshEnabled;
+  private volatile boolean reloadRequired;
 
   private static final int PRINCIPAL_INDEX = 0;
   private static final int RESOURCE_INDEX = 1;
@@ -137,6 +138,37 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     reloadLock.writeLock().lock();
     try {
       currentEnforcer.set(newEnforcer());
+      reloadRequired = false;
+    } finally {
+      reloadLock.writeLock().unlock();
+    }
+  }
+
+  /**
+   * Reloads this instance's policy after an ownership update. On failure, permission checks deny
+   * every user, including metastore admins, until a reload succeeds. A denied request retries the
+   * reload even when policy refresh is disabled. The caller receives the failure even if the
+   * ownership update already committed.
+   */
+  @Override
+  public void reloadAuthorizations() {
+    reloadLock.writeLock().lock();
+    try {
+      try {
+        currentEnforcer.set(newEnforcer());
+        reloadRequired = false;
+      } catch (RuntimeException | Error e) {
+        // A committed transfer must not retain the previous owner's access after a failed reload.
+        Model model = new Model();
+        model.loadModelFromText(modelText);
+        SyncedEnforcer denying = new SyncedEnforcer(model);
+        denying.setAdapter(adapter);
+        denying.enableAutoSave(true);
+        currentEnforcer.set(denying);
+        reloadRequired = true;
+        LOGGER.error("Could not reload policy after ownership transfer; access is denied", e);
+        throw e;
+      }
     } finally {
       reloadLock.writeLock().unlock();
     }
@@ -269,6 +301,10 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
    */
   @Override
   public boolean refreshAuthorizations(long operationStartNanos) {
+    if (reloadRequired) {
+      reloadAuthorizations();
+      return true;
+    }
     if (!refreshEnabled) {
       return false;
     }
