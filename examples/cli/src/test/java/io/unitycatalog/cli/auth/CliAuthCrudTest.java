@@ -61,7 +61,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     // The exchanged principal must be an enabled user, so create one with the bootstrap admin
     // token before exchanging as that user.
-    String adminToken = Files.readString(Path.of("etc", "conf", "token.txt"));
+    String adminToken = Files.readString(configurationFolder.resolve("token.txt"));
     serverConfig.setAuthToken(adminToken);
     executeCliCommand(
         serverConfig,
@@ -156,7 +156,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
         .isInstanceOf(RuntimeException.class);
 
     // Test with Authentication on authenticated end point
-    Path path = Path.of("etc", "conf", "token.txt");
+    Path path = configurationFolder.resolve("token.txt");
     String token = Files.readString(path);
 
     serverConfig.setAuthToken(token);
@@ -212,7 +212,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
   @Test
   public void testUserCrud() throws IOException {
     // Test with Authentication on authenticated end point
-    Path path = Path.of("etc", "conf", "token.txt");
+    Path path = configurationFolder.resolve("token.txt");
     String token = Files.readString(path);
 
     serverConfig.setAuthToken(token);

@@ -1068,7 +1068,18 @@ private[spark] class UCProxy(
       enableServerSidePlanningConfig(identifier)
     }
 
-    val storageProperties = (t.getProperties.asScala.toMap ++ extraSerdeProps).asJava
+    val isDelta = t.getDataSourceFormat == DataSourceFormat.DELTA
+    // Delta tables keep all UC properties as storage properties, unchanged (Delta reads
+    // UC_TABLE_ID_KEY there), and take their comment and table properties from the Delta log.
+    // Other formats split them like Spark's session catalog: OPTIONS become reader and writer
+    // options, and the rest, minus Spark's bare duplicate of each option, are table properties.
+    val (tableProperties, dataSourceOptions) = if (isDelta) {
+      (Map.empty[String, String], t.getProperties.asScala.toMap)
+    } else {
+      (UCTableProperties.tablePropertiesWithoutOptions(t.getProperties).asScala.toMap,
+        UCTableProperties.dataSourceOptions(t.getProperties).asScala.toMap)
+    }
+    val storageProperties = (dataSourceOptions ++ extraSerdeProps).asJava
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -1080,6 +1091,8 @@ private[spark] class UCProxy(
         locationUri, storageProperties),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
+      properties = tableProperties,
+      comment = if (isDelta) None else Option(t.getComment),
       createTime = t.getCreatedAt,
       tracksPartitionsInCatalog = false,
       partitionColumnNames = partitionCols.sortBy(_._2).map(_._1).toSeq
@@ -1091,7 +1104,11 @@ private[spark] class UCProxy(
   }
 
   private[spark] def toStructField(col: ColumnInfo): StructField =
-    StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
+    StructField(
+      col.getName,
+      DataType.fromDDL(col.getTypeText),
+      col.getNullable,
+      UCColumnConversions.metadataOf(col.getName, col.getTypeJson))
       .withComment(col.getComment)
 
   private[spark] def asV1Table(catalogTable: CatalogTable): Table = {

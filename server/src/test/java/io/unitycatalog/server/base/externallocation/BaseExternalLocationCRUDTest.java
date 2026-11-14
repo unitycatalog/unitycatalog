@@ -358,6 +358,50 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testExternalLocationSurvivesForceDeletedCredential() throws ApiException {
+    String doomedCredentialName = CREDENTIAL_NAME + "_doomed";
+    CredentialInfo doomedCredential =
+        credentialOperations.createCredential(
+            new CreateCredentialRequest()
+                .name(doomedCredentialName)
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)));
+    externalLocationOperations.createExternalLocation(
+        new CreateExternalLocation()
+            .name(EXTERNAL_LOCATION_NAME)
+            .url(testUrl())
+            .comment("before")
+            .credentialName(doomedCredentialName));
+    externalLocationsToDelete.add(EXTERNAL_LOCATION_NAME);
+
+    credentialOperations.deleteCredential(doomedCredentialName, Optional.of(true));
+
+    ExternalLocationInfo orphaned =
+        externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME);
+    assertThat(orphaned.getUrl()).isEqualTo(testUrl());
+    assertThat(orphaned.getComment()).isEqualTo("before");
+    assertThat(orphaned.getCredentialId()).isEqualTo(doomedCredential.getId());
+    assertThat(orphaned.getCredentialName()).isNull();
+    assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
+        .contains(orphaned);
+
+    ExternalLocationInfo commented =
+        externalLocationOperations.updateExternalLocation(
+            EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().comment("after"));
+    assertThat(commented.getComment()).isEqualTo("after");
+    assertThat(commented.getCredentialName()).isNull();
+
+    ExternalLocationInfo repaired =
+        externalLocationOperations.updateExternalLocation(
+            EXTERNAL_LOCATION_NAME,
+            new UpdateExternalLocation().credentialName(ANOTHER_CREDENTIAL_NAME));
+    assertThat(repaired.getCredentialId()).isEqualTo(anotherCredentialInfo.getId());
+    assertThat(repaired.getCredentialName()).isEqualTo(ANOTHER_CREDENTIAL_NAME);
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME))
+        .isEqualTo(repaired);
+  }
+
+  @Test
   public void testPendingCleanupBlocksNormalLocationDeletion() throws ApiException {
     String externalLocationName = EXTERNAL_LOCATION_NAME + "_cleanup";
     String externalLocationRoot = testUrl() + "/cleanup";

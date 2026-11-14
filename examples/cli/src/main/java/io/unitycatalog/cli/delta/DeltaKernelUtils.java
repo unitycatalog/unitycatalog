@@ -12,6 +12,7 @@ import io.delta.kernel.engine.Engine;
 import io.delta.kernel.internal.SnapshotImpl;
 import io.delta.kernel.types.BasePrimitiveType;
 import io.delta.kernel.types.DataType;
+import io.delta.kernel.types.DecimalType;
 import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.types.VariantType;
@@ -23,6 +24,7 @@ import io.unitycatalog.cli.utils.Constants;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.net.URI;
 import java.util.HashMap;
@@ -223,6 +225,13 @@ public class DeltaKernelUtils {
     if (column.getTypeName() == null) {
       throw new IllegalArgumentException("Column type is missing: " + column.getName());
     }
+    if (column.getTypeName() == ColumnTypeName.DECIMAL) {
+      if (column.getTypePrecision() == null || column.getTypeScale() == null) {
+        throw new IllegalArgumentException(
+            "DECIMAL column is missing precision or scale: " + column.getName());
+      }
+      return new DecimalType(column.getTypePrecision(), column.getTypeScale());
+    }
     return findBasicTypeFromString(column.getTypeName().toString());
   }
 
@@ -243,7 +252,6 @@ public class DeltaKernelUtils {
       case "TIMESTAMP":
       case "TIMESTAMP_NTZ":
       case "BINARY":
-      case "DECIMAL":
         dataType = BasePrimitiveType.createPrimitive(typeText.toLowerCase(Locale.ROOT));
         break;
       case "VARIANT":

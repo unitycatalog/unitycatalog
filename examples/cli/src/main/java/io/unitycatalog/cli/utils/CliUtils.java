@@ -737,19 +737,44 @@ public class CliUtils {
 
   private static String setPrecisionAndScale(
       ColumnInfo columnInfo, String typeText, String params) {
-    if (params != null) {
-      String[] paramArray = params.split(",");
-      if (typeText.equals("DECIMAL") && paramArray.length == 2) {
-        columnInfo.setTypePrecision(Integer.valueOf(paramArray[0].trim()));
-        columnInfo.setTypeScale(Integer.valueOf(paramArray[1].trim()));
-        return "(" + paramArray[0].trim() + "," + paramArray[1].trim() + ")";
+    if (typeText.equals("DECIMAL")) {
+      String[] paramArray = params == null ? new String[0] : params.split(",", -1);
+      if (paramArray.length > 2) {
+        throw new IllegalArgumentException("DECIMAL takes at most 2 parameters: (" + params + ")");
       }
-    } else {
+      int precision = paramArray.length > 0 ? parseDecimalParam(paramArray[0], params) : 10;
+      int scale = paramArray.length > 1 ? parseDecimalParam(paramArray[1], params) : 0;
+      if (precision < 1 || precision > 38) {
+        throw new IllegalArgumentException(
+            "DECIMAL precision must be between 1 and 38: " + precision);
+      }
+      if (scale < 0 || scale > precision) {
+        throw new IllegalArgumentException(
+            "DECIMAL scale must be between 0 and precision " + precision + ": " + scale);
+      }
+      columnInfo.setTypePrecision(precision);
+      columnInfo.setTypeScale(scale);
+      return "(" + precision + "," + scale + ")";
+    }
+    if (params == null) {
       columnInfo.setTypePrecision(0);
       columnInfo.setTypeScale(0);
     }
     return "";
   }
+
+  private static int parseDecimalParam(String token, String params) {
+    String trimmed = token.trim();
+    if (!trimmed.matches("\\d{1,9}")) {
+      throw new IllegalArgumentException("Invalid DECIMAL parameters: (" + params + ")");
+    }
+    return Integer.parseInt(trimmed);
+  }
+
+  private static final Pattern COLUMN_PATTERN =
+      Pattern.compile("(\\w+)\\s+(\\w+)(?:\\(([^)]+)\\)|(?<=(?i:decimal))\\s*\\(([^)]*)\\))?");
+
+  private static final Pattern UNPARSED_PARAMS = Pattern.compile("\\s*[(\\[\\d]");
 
   /**
    * Method to convert the columns string to a list of ColumnInfo objects the columns string is
@@ -761,8 +786,8 @@ public class CliUtils {
    */
   public static List<ColumnInfo> parseColumns(String columnsString) {
     List<ColumnInfo> columns = new ArrayList<>();
-    Pattern pattern = Pattern.compile("(\\w+)\\s+(\\w+)(\\(([^)]+)\\))?");
-    Matcher matcher = pattern.matcher(columnsString);
+    Matcher matcher = COLUMN_PATTERN.matcher(columnsString);
+    Matcher unparsedParams = UNPARSED_PARAMS.matcher(columnsString);
     int position = 0;
 
     while (matcher.find()) {
@@ -771,17 +796,26 @@ public class CliUtils {
 
         String name = matcher.group(1); // e.g., column name
         String typeName = matcher.group(2).toUpperCase(); // e.g., DECIMAL, VARCHAR, INT
-        String params = matcher.group(4); // e.g., 10,2 or 255
+        String params = matcher.group(3) != null ? matcher.group(3) : matcher.group(4);
+        if (typeName.equals("DECIMAL")
+            && params == null
+            && unparsedParams.region(matcher.end(), columnsString.length()).lookingAt()) {
+          throw new IllegalArgumentException(
+              "Malformed DECIMAL parameters, expected DECIMAL(p) or DECIMAL(p,s)");
+        }
+
+        String precisionAndScale = setPrecisionAndScale(columnInfo, typeName, params);
 
         columnInfo.setName(name);
-        columnInfo.setTypeText(typeNameVsTypeText.getOrDefault(typeName, typeName.toLowerCase()));
+        columnInfo.setTypeText(
+            typeNameVsTypeText.getOrDefault(typeName, typeName.toLowerCase()) + precisionAndScale);
         columnInfo.setTypeName(ColumnTypeName.valueOf(typeName));
         columnInfo.setTypeJson(
             String.format(
                 "{\"name\":\"%s\",\"type\":\"%s\",\"nullable\":%s,\"metadata\":{}}",
                 name,
                 typeNameVsJsonText.getOrDefault(typeName, typeName.toLowerCase(Locale.ROOT))
-                    + setPrecisionAndScale(columnInfo, typeName, params),
+                    + precisionAndScale,
                 "true"));
         columnInfo.setPosition(position++);
         columns.add(columnInfo);

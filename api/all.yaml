@@ -1359,7 +1359,7 @@ paths:
       parameters:
         - name: force
           in: query
-          description: Force deletion even if there are dependent external locations.
+          description: Force deletion even if there are dependent external locations. The dependent external locations are kept, and they have no credential until they are updated with a new credential_name.
           required: false
           schema:
             type: boolean
@@ -3056,7 +3056,7 @@ components:
           description: Path URL of the external location.
           type: string
         credential_name:
-          description: Name of the storage credential used with this location.
+          description: Name of the storage credential used with this location. Omitted when the credential no longer exists, for example after it was force-deleted. Updating the external location with a new credential_name repairs it.
           type: string
         comment:
           description: User-provided free-form text description.
@@ -3107,7 +3107,7 @@ components:
           description: Path URL of the external location.
           type: string
         credential_name:
-          description: Name of the storage credential used with this location.
+          description: Name of the storage credential used with this location. Setting it on an external location whose credential was force-deleted repairs the location.
           type: string
         comment:
           description: User-provided free-form text description.

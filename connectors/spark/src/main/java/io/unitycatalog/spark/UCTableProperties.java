@@ -1,6 +1,8 @@
 package io.unitycatalog.spark;
 
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 
 public class UCTableProperties {
@@ -57,6 +59,28 @@ public class UCTableProperties {
       return key.substring(TableCatalog.OPTION_PREFIX.length());
     }
     return key;
+  }
+
+  /**
+   * Reader and writer options of a non-Delta table: the {@code option.}-prefixed properties, with
+   * the prefix removed.
+   */
+  public static Map<String, String> dataSourceOptions(Map<String, String> properties) {
+    return properties.entrySet().stream()
+        .filter(e -> e.getKey().startsWith(TableCatalog.OPTION_PREFIX))
+        .collect(Collectors.toMap(e -> withoutOptionPrefix(e.getKey()), Map.Entry::getValue));
+  }
+
+  /**
+   * Table properties of a non-Delta table: the properties without the {@code option.} prefix, minus
+   * each bare copy Spark writes next to an option. A bare key is dropped only when {@code
+   * option.<key>} (same case) holds the same value; otherwise it stays a table property.
+   */
+  public static Map<String, String> tablePropertiesWithoutOptions(Map<String, String> properties) {
+    return properties.entrySet().stream()
+        .filter(e -> !e.getKey().startsWith(TableCatalog.OPTION_PREFIX))
+        .filter(e -> !e.getValue().equals(properties.get(TableCatalog.OPTION_PREFIX + e.getKey())))
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
   }
 
   public static boolean isSparkDatasourceSchemaProperty(String key) {

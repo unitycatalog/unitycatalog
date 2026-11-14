@@ -13,8 +13,16 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.callback.Callback;
+import org.flywaydb.core.api.callback.Context;
+import org.flywaydb.core.api.callback.Event;
 
 /** Databases and statements the schema migration tests share. */
 final class UpgradeTestUtils {
@@ -65,6 +73,57 @@ final class UpgradeTestUtils {
         .target(version)
         .load()
         .migrate();
+  }
+
+  /**
+   * Runs this build's steps on {@code db}, a new database, and returns the SQL statements Flyway
+   * sent to the database while it ran each step's own SQL, by version: what the database ran, as
+   * Flyway's parser split the step.
+   */
+  static Map<String, List<String>> sentStatements(TestDatabase db) {
+    Map<String, List<String>> sent = new LinkedHashMap<>();
+    AtomicReference<List<String>> step = new AtomicReference<>();
+    Callback recorder =
+        new Callback() {
+          @Override
+          public boolean supports(Event event, Context context) {
+            return event == Event.BEFORE_EACH_MIGRATE
+                || event == Event.AFTER_EACH_MIGRATE
+                || event == Event.AFTER_EACH_MIGRATE_ERROR;
+          }
+
+          @Override
+          public boolean canHandleInTransaction(Event event, Context context) {
+            return true;
+          }
+
+          @Override
+          public void handle(Event event, Context context) {
+            if (event == Event.BEFORE_EACH_MIGRATE) {
+              step.set(new ArrayList<>());
+              sent.put(context.getMigrationInfo().getVersion().getVersion(), step.get());
+            } else {
+              step.set(null);
+            }
+          }
+
+          @Override
+          public String getCallbackName() {
+            return "sent statements";
+          }
+        };
+    DataSource watched =
+        watched(
+            db.dataSource(),
+            (sql, prepared) -> {
+              if (step.get() != null && !prepared) {
+                step.get().add(sql);
+              }
+              return sql;
+            });
+    // The server's own configuration, so the recorder sees the steps the server would run.
+    new SchemaMigrator(watched).flyway().callbacks(recorder).load().migrate();
+    return sent;
   }
 
   /** What {@link #watched} calls with each SQL statement before it is sent. */

@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
 /**
  * Helper class to write a sample Delta table. Generates random data conforming to the given schema
  * and writes it to the given table path. For adding more data types, add the corresponding methods
- * in the ColumnVectorUtil class. Most of the code in this class has been copied from <a
+ * in the ColumnVectorUtils class. Most of the code in this class has been copied from <a
  * href="https://github.com/delta-io/delta/blob/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples/BaseTableWriter.java">BaseTableWriter.java</a>
  */
 public class DeltaKernelWriteUtils {
@@ -186,8 +186,10 @@ public class DeltaKernelWriteUtils {
       } else if (dataType == ShortType.SHORT) {
         values = generateRandomValues(dataType, count, false, offset);
         vectors[i] = shortVector((List<Short>) values);
+      } else {
+        throw new UnsupportedOperationException(
+            "table write does not support column " + field.getName() + " of type " + dataType);
       }
-      // Add more types as needed
     }
     return vectors;
   }
@@ -211,7 +213,8 @@ public class DeltaKernelWriteUtils {
         } else if (dataType == IntegerType.INTEGER) {
           values.add((T) (Integer) random.nextInt(1000)); // Random integer values
         } else if (dataType == ByteType.BYTE) {
-          values.add((T) (Byte) (byte) random.nextInt(1000)); // Random byte values
+          // A bound above Byte.MAX_VALUE + 1 would wrap into negative values
+          values.add((T) (Byte) (byte) random.nextInt(Byte.MAX_VALUE + 1));
         } else if (dataType == LongType.LONG) {
           values.add((T) (Long) (long) random.nextInt(1000)); // Random long values
         } else if (dataType == FloatType.FLOAT) {
@@ -260,9 +263,5 @@ public class DeltaKernelWriteUtils {
 
   static ColumnVector shortVector(List<Short> data) {
     return ColumnVectorUtils.createVector(data, ShortType.SHORT, data::get);
-  }
-
-  static ColumnVector stringSingleValueVector(String value, int size) {
-    return ColumnVectorUtils.createSingleValueVector(value, size, StringType.STRING);
   }
 }

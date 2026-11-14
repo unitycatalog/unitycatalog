@@ -415,12 +415,18 @@ bin/uc table create \
 1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
    schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 2. `columns`: The columns of the table in SQL-like format `"column_name column_data_type"`.
-   Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
-   (e.g., `"id INT, name STRING"`).
+   Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL(p,s)`. A bare `DECIMAL` means `DECIMAL(10,0)`. Separate multiple columns with a comma
+   (e.g., `"id INT, price DECIMAL(10,2)"`).
 3. `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
 4. `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
 5. `properties`: _\[Optional\]_ The properties of the table in JSON format
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
+   For non-Delta tables read or written through the Unity Catalog Spark connector, only keys prefixed with `option.`
+   become reader and writer options, with the prefix removed (e.g., `'{"option.header": "true"}'` for a CSV file with
+   a header row). Other keys, such as a bare `header`, are table properties. This applies to tables created through
+   the REST API too. To fix an existing table that uses a bare key as a reader option, delete it with
+   `bin/uc table delete` and create it again with the same storage location and the `option.`-prefixed key. Deleting
+   an external table does not delete its data files.
 
 Here's an example to create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with storage location `/path/to/storage`:
 
@@ -460,7 +466,8 @@ bin/uc table write \
 1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
    schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 
-This is an experimental feature and only some primitive types are supported for writing sample data.
+This is an experimental feature and only `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE` and `STRING` columns are
+supported for writing sample data. Writing to a table with any other column type fails.
 
 ### Delete a Table
 

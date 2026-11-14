@@ -74,12 +74,10 @@ public class CredentialRepository {
         /* readOnly= */ true);
   }
 
+  /** Returns null if the credential no longer exists, e.g. after a force delete. */
   protected String getCredentialName(Session session, UUID id) {
     CredentialDAO credentialDAO = session.get(CredentialDAO.class, id);
-    if (credentialDAO == null) {
-      throw new BaseException(ErrorCode.INTERNAL, "Credential not found: " + id);
-    }
-    return credentialDAO.getName();
+    return credentialDAO == null ? null : credentialDAO.getName();
   }
 
   protected CredentialDAO getCredentialDAO(Session session, String name) {

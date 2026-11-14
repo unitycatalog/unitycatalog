@@ -352,7 +352,8 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  private FluentConfiguration flyway() {
+  /** This build's Flyway configuration; tests add callbacks to it. */
+  FluentConfiguration flyway() {
     return Flyway.configure()
         .dataSource(dataSource)
         .locations(locations)
@@ -565,8 +566,26 @@ public final class SchemaMigrator implements AutoCloseable {
     return schema;
   }
 
-  /** Throws for a database that {@link #upgradeSchema()} must not change. */
+  /**
+   * Throws for a database that {@link #upgradeSchema()} must not change, or a build with a
+   * repeatable step.
+   */
   private void refuseIfUnsupported(SchemaState state) {
+    String repeatable =
+        Arrays.stream(flyway().load().info().all())
+            // Only this build's steps: the history may record steps of another build.
+            .filter(
+                m ->
+                    m.getState().isResolved()
+                        && m.getVersion() == null
+                        && !m.getType().isSynthetic())
+            .map(MigrationInfo::getScript)
+            .findFirst()
+            .orElse(null);
+    if (repeatable != null) {
+      throw new IllegalStateException(
+          "This build has a repeatable schema step, which is not supported: " + repeatable);
+    }
     String refusal =
         switch (state) {
           case AHEAD ->
