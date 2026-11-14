@@ -25,7 +25,11 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -286,6 +290,21 @@ public class CredentialDAO extends IdentifiableDAO {
           String.format("Storage credential '%s' has no stored secret_access_key.", getName()));
     }
     return secretStore.load(stored.asText(), getS3SecretAccessKeyContext());
+  }
+
+  /**
+   * @return a fingerprint of the stored credential: any change of its payload changes it, while
+   *     changes of other fields, such as the comment, keep it
+   */
+  public String getCredentialFingerprint() {
+    try {
+      return HexFormat.of()
+          .formatHex(
+              MessageDigest.getInstance("SHA-256")
+                  .digest(credential.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   /** What the {@code secret_access_key} belongs to, for its store. */

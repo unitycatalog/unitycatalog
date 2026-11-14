@@ -41,6 +41,32 @@ public class CredentialContext {
   // If a storage credential of external location for this path is found, the credential will
   // be generated according to it.
   private final Optional<CredentialDAO> credentialDAO;
+  // The S3 endpoint of the external location for this path, set for S3-compatible storage.
+  @Builder.Default private final Optional<String> s3Endpoint = Optional.empty();
+  // The region to sign requests to that S3 endpoint with, set together with s3Endpoint.
+  @Builder.Default private final Optional<String> s3Region = Optional.empty();
+  // Whether the credentials are for the server's own storage access rather than for a client. The
+  // server always needs usable keys, even when its credential does not vend keys to clients.
+  private final boolean isServerAccess;
+
+  /**
+   * Creates a CredentialContext for a single storage location that is not on S3-compatible storage.
+   *
+   * @param location the storage location URL (e.g., s3://bucket/path)
+   * @param privileges the set of privileges required (SELECT for read, UPDATE for write)
+   * @param credentialDAO optional storage credential from an external location
+   * @return a new CredentialContext instance
+   */
+  public static CredentialContext create(
+      NormalizedURL location, Set<Privilege> privileges, Optional<CredentialDAO> credentialDAO) {
+    return create(
+        location,
+        privileges,
+        credentialDAO,
+        Optional.empty(),
+        Optional.empty(),
+        /* isServerAccess= */ false);
+  }
 
   /**
    * Creates a CredentialContext for a single storage location.
@@ -50,10 +76,18 @@ public class CredentialContext {
    * @param credentialDAO optional storage credential from an external location; if present, the
    *     credential vendor will use it to generate credential instead of using per-bucket
    *     configuration.
+   * @param s3Endpoint the external location's S3 endpoint for S3-compatible storage, empty for AWS
+   * @param s3Region the region of the storage at {@code s3Endpoint}, empty for AWS
+   * @param isServerAccess whether the credentials are for the server's own storage access
    * @return a new CredentialContext instance
    */
   public static CredentialContext create(
-      NormalizedURL location, Set<Privilege> privileges, Optional<CredentialDAO> credentialDAO) {
+      NormalizedURL location,
+      Set<Privilege> privileges,
+      Optional<CredentialDAO> credentialDAO,
+      Optional<String> s3Endpoint,
+      Optional<String> s3Region,
+      boolean isServerAccess) {
     URI locationURI = location.toUri();
     return CredentialContext.builder()
         .privileges(privileges)
@@ -61,6 +95,9 @@ public class CredentialContext {
         .storageBase(location.getStorageBase())
         .locations(List.of(location))
         .credentialDAO(credentialDAO)
+        .s3Endpoint(s3Endpoint)
+        .s3Region(s3Region)
+        .isServerAccess(isServerAccess)
         .build();
   }
 }
