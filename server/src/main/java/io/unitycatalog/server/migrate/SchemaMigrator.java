@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -28,20 +29,22 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.CoreErrorCode;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.flywaydb.core.api.output.MigrateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
- * up an empty database, adopts a database without schema history whose schema is that of the
- * baseline release (recording step 1 without running it) or of this build's last step, and applies
- * the pending steps, checking at the end the schema against the steps' effect files ({@code
- * schema-effects/<database>}). On PostgreSQL and MySQL, each {@link #upgradeSchema()} holds a
- * {@link RunLock} from classifying the database to the last step.
+ * up an empty database, adopts a database of the baseline release (recording step 1 without running
+ * it) or of this build's last step (recording every step without running it) and applies the
+ * pending steps, checking the schema against the steps' effect files ({@code
+ * schema-effects/<database>}) before each step and at the end. On PostgreSQL and MySQL, each {@link
+ * #upgradeSchema()} holds a {@link RunLock} from classifying the database to the last step.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -98,6 +101,10 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
+  private static final Pattern CREATE_INDEX =
+      Pattern.compile(
+          "(?i)create\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?(\\w+)\\s+on\\s+(\\w+)");
+
   private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrator.class);
   private static final String HISTORY_TABLE = "uc_schema_history";
 
@@ -110,13 +117,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * The baseline Flyway records on a database that holds only other tables (Casbin's, another
-   * application's), below step 1 so that step 1 runs.
+   * application's), below step 1 so that step 1 runs; also the version before the first step.
    */
   private static final String EMPTY_BASELINE_VERSION = "0";
 
   /**
-   * The run lock's connection, Flyway's two (PostgreSQL), and one to spare for reading the
-   * database's state.
+   * The run lock's connection, Flyway's two (PostgreSQL), and one to spare for reading the schema
+   * between steps.
    */
   private static final int POOL_SIZE = 4;
 
@@ -363,96 +370,255 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, applies this build's
-   * pending steps and checks that the database ends with the schema of the last step. This also
-   * sets up an empty database, and adopts a database without schema history when its schema is
-   * exactly that of {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's
-   * last step (every step is recorded without running). On PostgreSQL and MySQL, a second run at
-   * the same time waits for the first. Returns the number of steps it ran or recorded.
+   * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, brings the database to
+   * this build's schema one step at a time, and checks that it ends with the schema of the last
+   * step. Before each pending step the whole schema is compared with the steps' effect files
+   * ({@code schema-effects/<database>}): it must be the schema before the step, so the step runs,
+   * or after it (a run stopped before Flyway recorded the step) or after this build's last step (an
+   * adoption that stopped part way), so the step is recorded without running; otherwise the run
+   * stops, changing nothing more. Once the schema check accepts a step, its record as a failed step
+   * (MySQL and H2 keep one) is deleted, so that the step is tried again. This also sets up an empty
+   * database, and adopts a database without schema history when its schema is exactly that of
+   * {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's last step (every
+   * step is recorded without running). On PostgreSQL and MySQL, a second run at the same time waits
+   * for the first. Returns the number of steps it ran or recorded.
    */
   public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      SchemaState state = state();
-      refuseIfUnsupported(state);
+      refuseIfUnsupported(state());
       requireValidHistory(true);
-      int recorded = state == SchemaState.UNVERSIONED_UC ? adopt() : 0;
-      int ran =
-          flyway()
-              .baselineOnMigrate(true)
-              .baselineVersion(EMPTY_BASELINE_VERSION)
-              .baselineDescription("empty")
-              .load()
-              .migrate()
-              .migrationsExecuted;
+      boolean adopted = hasLastStepsSchemaWithoutHistory();
+      int changed = 0;
+      for (String step : pendingSteps()) {
+        SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+        boolean record = adopted || !runs(step, schema);
+        // Only once the schema check passed, so that a run that refuses leaves the history as is.
+        deleteFailedRecord(step);
+        MigrateResult result =
+            flyway()
+                .baselineOnMigrate(true)
+                .baselineVersion(EMPTY_BASELINE_VERSION)
+                .baselineDescription("empty")
+                .target(step)
+                .skipExecutingMigrations(record)
+                .load()
+                .migrate();
+        if (result.migrationsExecuted != 1 || !step.equals(recordedVersion())) {
+          throw new IllegalStateException(
+              "Schema step " + step + " was not recorded as the only change of its run.");
+        }
+        LOGGER.info(
+            record
+                ? "Recorded schema step {} without running it: the database already has its change"
+                : "Ran schema step {}",
+            step);
+        changed++;
+      }
       requireCurrent();
-      return recorded + ran;
+      return changed;
     }
   }
 
   /**
-   * Adopts a database without schema history whose schema is exactly that of {@link
-   * #ADOPTED_RELEASE} (step 1) or of this build's last step: records the steps up to that one
-   * without running them, and returns their number.
+   * Whether pending {@code step} runs on a database with {@code schema}: true when the schema is
+   * the one before the step, false when it already has the step's change or is the schema of this
+   * build's last step (an adoption that stopped after recording some steps), and for a first step
+   * whose earlier run stopped part way (the schema history exists and holds part of its schema)
+   * true, since the first step skips what is already there.
    *
-   * @throws IllegalStateException for any other schema, naming its differences from step 1
+   * @throws IllegalStateException when the schema is neither, naming the differences
    */
-  private int adopt() {
-    String first = steps().get(0);
-    String latest = latestVersion();
-    SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
-    String adoptedAt =
-        schema.equals(expected(latest)) ? latest : schema.equals(expected(first)) ? first : null;
-    if (adoptedAt == null) {
-      throw new IllegalStateException(
-          "The database has no schema history, and its schema is neither the schema of version "
-              + first
-              + " nor that of version "
-              + latest
-              + ". It differs from version "
-              + first
-              + " in:\n"
-              + differences(schema, expected(first))
-              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup,"
-              + " then run bin/start-uc-server --upgrade-schema again. A database from a release"
-              + " before "
-              + ADOPTED_RELEASE
-              + " must be started once on a "
-              + ADOPTED_RELEASE
-              + " server first (see docs/server/upgrades.md, \"Repairing a database from"
-              + " before 0.7.0\").");
+  private boolean runs(String step, SchemaSnapshot schema) {
+    String previous = previousStep(step);
+    SchemaSnapshot before = expected(previous);
+    SchemaSnapshot after = expected(step);
+    if (schema.equals(before)) {
+      return true;
     }
-    int recorded =
-        flyway()
-            .baselineOnMigrate(true)
-            .baselineVersion(EMPTY_BASELINE_VERSION)
-            .baselineDescription("empty")
-            .target(adoptedAt)
-            .skipExecutingMigrations(true)
-            .load()
-            .migrate()
-            .migrationsExecuted;
-    LOGGER.info(
-        "Adopted the database without schema history at version {}: recorded the steps up to it"
-            + " without running them",
-        adoptedAt);
-    return recorded;
+    if (schema.equals(after) || schema.equals(expected(latestVersion()))) {
+      return false;
+    }
+    if (previous.equals(EMPTY_BASELINE_VERSION)
+        && tableNamesLowerCase().contains(HISTORY_TABLE)
+        && isLeftByAStoppedRun(step, schema, after)) {
+      return true;
+    }
+    String nearer =
+        schema.differencesFrom(before).lines().count()
+                <= schema.differencesFrom(after).lines().count()
+            ? previous
+            : step;
+    throw new IllegalStateException(
+        "The database schema is neither the schema of version "
+            + previous
+            + " nor that of version "
+            + step
+            + ", so schema step "
+            + step
+            + " can't run. It differs from version "
+            + nearer
+            + " in:\n"
+            + differences(schema, expected(nearer))
+            + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup,"
+            + " then run bin/start-uc-server --upgrade-schema again."
+            + (tableNamesLowerCase().contains(HISTORY_TABLE)
+                ? ""
+                : " A database from a release before "
+                    + ADOPTED_RELEASE
+                    + " must be started once on a "
+                    + ADOPTED_RELEASE
+                    + " server first (see docs/server/upgrades.md, \"Repairing a database from"
+                    + " before 0.7.0\")."));
+  }
+
+  /**
+   * Whether {@code schema} is what a run of first step {@code step} that stopped part way leaves,
+   * and a rerun completes into {@code after}: some of its tables, each whole except for the indexes
+   * that the step creates in statements of their own. The step creates each table and index only if
+   * it does not exist, so it can't add what a table lacks.
+   */
+  private boolean isLeftByAStoppedRun(String step, SchemaSnapshot schema, SchemaSnapshot after) {
+    if (!after.entries().containsAll(schema.entries())) {
+      return false;
+    }
+    Set<String> tables =
+        schema.entries().stream()
+            .filter(e -> e.startsWith("table "))
+            .map(e -> e.substring("table ".length()))
+            .collect(Collectors.toSet());
+    Set<String> ownIndexes = indexesCreatedSeparately(step);
+    return after.entries().stream()
+        .filter(e -> !schema.entries().contains(e) && tables.contains(tableOf(e)))
+        .allMatch(e -> e.startsWith("index ") && ownIndexes.contains(e.split(" ")[1]));
+  }
+
+  /** The table of a schema entry: the first part of its second word. */
+  private static String tableOf(String entry) {
+    String object = entry.split(" ")[1];
+    int dot = object.indexOf('.');
+    return dot < 0 ? object : object.substring(0, dot);
+  }
+
+  /**
+   * The indexes, as {@code table.index}, that {@code step}'s script creates in a {@code CREATE
+   * INDEX} statement of their own.
+   */
+  private Set<String> indexesCreatedSeparately(String step) {
+    String script =
+        resolvedSteps(flyway().load().info()).stream()
+            .filter(m -> m.getVersion().getVersion().equals(step))
+            .map(MigrationInfo::getScript)
+            .findFirst()
+            .orElseThrow();
+    String path = "db/migration/" + kind.folder() + "/" + script;
+    try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException(
+            "This build has no script " + path + " for its step " + step);
+      }
+      Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+      Set<String> indexes = new HashSet<>();
+      while (m.find()) {
+        indexes.add(
+            m.group(2).toLowerCase(Locale.ROOT) + "." + m.group(1).toLowerCase(Locale.ROOT));
+      }
+      return indexes;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /**
+   * Whether the database has no applied step in its schema history (no history table, an empty one,
+   * or one holding only Flyway's baseline row, as a run leaves that stopped before step 1's record)
+   * and the schema of this build's last step, exactly: what Hibernate's update builds from the
+   * entities on a new database, with a {@code uc_*} table other than the history table. Every step
+   * is then recorded without running.
+   */
+  private boolean hasLastStepsSchemaWithoutHistory() {
+    String recorded = recordedVersion();
+    boolean noAppliedStep = recorded == null || recorded.equals(EMPTY_BASELINE_VERSION);
+    return noAppliedStep
+        && tableNamesLowerCase().stream()
+            .anyMatch(t -> t.startsWith("uc_") && !t.equals(HISTORY_TABLE))
+        && SchemaSnapshot.of(dataSource).equals(expected(latestVersion()));
+  }
+
+  /** The step before {@code step} in this build, {@value #EMPTY_BASELINE_VERSION} for the first. */
+  private String previousStep(String step) {
+    String previous = EMPTY_BASELINE_VERSION;
+    for (String s : steps()) {
+      if (s.equals(step)) {
+        return previous;
+      }
+      previous = s;
+    }
+    throw new IllegalArgumentException("Not a step of this build: " + step);
+  }
+
+  /** This build's steps after the recorded version. */
+  private List<String> pendingSteps() {
+    MigrationInfoService info = flyway().load().info();
+    String recorded = tableNamesLowerCase().contains(HISTORY_TABLE) ? recordedVersion(info) : null;
+    return stepVersions(info).stream()
+        .filter(
+            step ->
+                recorded == null
+                    || MigrationVersion.fromVersion(step)
+                            .compareTo(MigrationVersion.fromVersion(recorded))
+                        > 0)
+        .toList();
+  }
+
+  /**
+   * Deletes the schema history's record of {@code step} as a failed step, if it has one, so that
+   * the step is tried again. Plain SQL: Flyway's repair would also rewrite the other records'
+   * checksums.
+   */
+  private void deleteFailedRecord(String step) {
+    if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
+      return;
+    }
+    try (Connection connection = dataSource.getConnection()) {
+      // The caller's pool may not commit by itself, and a rollback would keep the record.
+      connection.setAutoCommit(true);
+      String q = connection.getMetaData().getIdentifierQuoteString();
+      try (PreparedStatement delete =
+          connection.prepareStatement(
+              "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
+                  .formatted(q, HISTORY_TABLE))) {
+        delete.setString(1, step);
+        if (delete.executeUpdate() > 0) {
+          LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
+        }
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException(
+          "Could not delete the record of a failed schema step: " + e.getMessage(), e);
+    }
   }
 
   /**
    * Throws unless Flyway's validation of the schema history passes: no failed step, no edited step
    * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
-   * recorded version may be pending: the upgrade runs them.
+   * recorded version may be pending and may have failed: the upgrade runs them. A failed step that
+   * is not one of this build's pending steps, such as a newer release's, is still refused.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
       return;
     }
     FluentConfiguration configuration = flyway();
+    Set<String> retried = upgrading ? Set.copyOf(pendingSteps()) : Set.of();
     if (upgrading) {
       configuration.ignoreMigrationPatterns("*:pending");
     }
     String errors =
         configuration.load().validateWithResult().invalidMigrations.stream()
+            .filter(
+                m ->
+                    !(m.errorDetails.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION
+                        && retried.contains(m.version)))
             .map(m -> m.errorDetails.errorMessage)
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
