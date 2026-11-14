@@ -328,19 +328,24 @@ lazy val pythonClient = (project in file("clients/python"))
           outputDir = outputDir,
           generatorName = "python",
           specs = Seq(
+            // The delta.yaml run goes first because its "__init__.py" filter matches by file name: besides the
+            // delta api/ and models/ inits (patchDeltaDataTypeModule needs the models one), it also writes
+            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite.
+            OpenApiSpec(
+              inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
+              packageName = s"$artifactNamePrefix.client",
+              apiPackage = "delta.api",
+              modelPackage = "delta.models",
+              additionalProperties = commonProps,
+              globalProperties = Map("apis" -> "", "models" -> "", "supportingFiles" -> "__init__.py")
+            ),
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
               additionalProperties = commonProps,
-              // Overrides python/asyncio/rest.mustache with the v7.11.0 version. See the header of
-              // build/templates/asyncio/rest.mustache for when to remove it.
+              // Overrides python/asyncio/rest.mustache with the v7.11.0 version (see its header for when to
+              // remove it) and python/api_client.mustache so the shared ApiClient also resolves Delta models.
               templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath
-            ),
-            OpenApiSpec(
-              inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
-              packageName = s"$artifactNamePrefix.delta",
-              additionalProperties = commonProps,
-              globalProperties = Map("apis" -> "", "models" -> "")
             )
           )
         )

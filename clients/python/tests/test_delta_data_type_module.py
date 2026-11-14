@@ -10,20 +10,22 @@ These tests do NOT require a running server. They require generated models
 """
 
 import json
+import subprocess
+import sys
+import textwrap
 
 import pytest
 
-from unitycatalog.delta.models.delta_array_type import DeltaArrayType
-from unitycatalog.delta.models.delta_decimal_type import DeltaDecimalType
-from unitycatalog.delta.models.delta_map_type import DeltaMapType
-from unitycatalog.delta.models.delta_primitive_type import DeltaPrimitiveType
-from unitycatalog.delta.models.delta_struct_field import DeltaStructField
-from unitycatalog.delta.models.delta_struct_field_metadata import DeltaStructFieldMetadata
-from unitycatalog.delta.models.delta_struct_type import DeltaStructType
+from unitycatalog.client.delta.models.delta_array_type import DeltaArrayType
+from unitycatalog.client.delta.models.delta_data_type import DeltaDataType
+from unitycatalog.client.delta.models.delta_decimal_type import DeltaDecimalType
+from unitycatalog.client.delta.models.delta_map_type import DeltaMapType
+from unitycatalog.client.delta.models.delta_primitive_type import DeltaPrimitiveType
+from unitycatalog.client.delta.models.delta_struct_field import DeltaStructField
+from unitycatalog.client.delta.models.delta_struct_field_metadata import DeltaStructFieldMetadata
+from unitycatalog.client.delta.models.delta_struct_type import DeltaStructType
 
-# Importing delta_data_type_module applies the monkey-patches
-import unitycatalog.delta.internal.serde.delta_data_type_module  # noqa: F401
-from unitycatalog.delta.internal.serde.delta_data_type_module import (
+from unitycatalog.client.delta.internal.serde.delta_data_type_module import (
     _parse_type,
     _type_to_dict,
 )
@@ -215,6 +217,38 @@ class TestJsonRoundTrip:
         reserialized = json.loads(col.to_json())
         assert reserialized == original
 
+    def test_table_columns_struct(self):
+        # DeltaTableMetadata.columns and DeltaCreateTableRequest.columns parse via DeltaStructType.
+        original = {
+            "type": "struct",
+            "fields": [
+                {"name": "id", "type": "long", "nullable": False, "metadata": {}},
+                {
+                    "name": "prices",
+                    "type": {
+                        "type": "map",
+                        "key-type": "string",
+                        "value-type": "decimal(10,2)",
+                        "value-contains-null": True,
+                    },
+                    "nullable": True,
+                    "metadata": {},
+                },
+            ],
+        }
+        columns = DeltaStructType.from_json(json.dumps(original))
+        assert isinstance(columns.fields[1].type.value_type, DeltaDecimalType)
+        assert json.loads(columns.to_json()) == original
+
+    @pytest.mark.parametrize("wire", [
+        "long",
+        {"type": "struct"},
+        {"type": "array", "element-type": "long", "contains-null": True, "fields": []},
+    ])
+    def test_table_columns_rejects_non_struct(self, wire):
+        with pytest.raises(ValueError):
+            DeltaStructType.from_json(json.dumps(wire))
+
 
 class TestParseTypeEdgeCases:
     """Error handling for _parse_type."""
@@ -270,6 +304,10 @@ class TestParseTypeDirect:
         assert len(dt.fields) == 1
         assert dt.fields[0].name == "zip"
 
+    @pytest.mark.parametrize("cls", [DeltaDataType, DeltaStructType, DeltaStructField])
+    def test_from_dict_none(self, cls):
+        assert cls.from_dict(None) is None
+
 
 class TestTypeToDictDirect:
     """Direct unit tests for _type_to_dict -- serialization logic without going through the wire."""
@@ -303,3 +341,28 @@ class TestTypeToDictDirect:
             "value-contains-null": True,
         }
         assert _type_to_dict(_parse_type(original)) == original
+
+
+class TestAutoRegistration:
+    """The patch must be active for users who never import the serde module."""
+
+    def test_model_import_alone_applies_patch(self):
+        # A fresh interpreter, since this module already imported the serde module.
+        script = textwrap.dedent("""
+            import json
+            from unitycatalog.client.delta.models.delta_struct_field import DeltaStructField
+
+            for wire in (
+                {"name": "id", "type": "long", "nullable": True, "metadata": {}},
+                {"name": "tags", "type": {"type": "array", "element-type": "string",
+                                          "contains-null": True},
+                 "nullable": True, "metadata": {}},
+            ):
+                field = DeltaStructField.from_json(json.dumps(wire))
+                print(type(field.type).__name__, field.to_dict() == wire)
+        """)
+        result = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.splitlines() == [
+            "DeltaPrimitiveType True", "DeltaArrayType True"]

@@ -1,9 +1,8 @@
 """
 Python counterpart of the server/client Java ``DeltaDataTypeModule``: patches
-``DeltaDataType.from_dict``/``to_dict`` and ``DeltaStructField.from_dict``/
-``to_dict`` to handle Delta's string-or-object wire form (e.g. ``"long"`` /
-``"decimal(10,2)"`` as bare JSON strings for primitives, vs. JSON objects
-for ``array`` / ``map`` / ``struct``).
+``DeltaDataType``, its subtypes, and ``DeltaStructField`` to handle Delta's
+string-or-object wire form (e.g. ``"long"`` / ``"decimal(10,2)"`` as bare JSON
+strings for primitives, vs. JSON objects for ``array`` / ``map`` / ``struct``).
 
 This module lives under ``internal/serde/`` because it is implementation
 detail -- it is auto-imported by the generated ``models/__init__.py`` via
@@ -13,13 +12,13 @@ import it manually.
 
 import re
 
-from unitycatalog.delta.models.delta_array_type import DeltaArrayType
-from unitycatalog.delta.models.delta_data_type import DeltaDataType
-from unitycatalog.delta.models.delta_decimal_type import DeltaDecimalType
-from unitycatalog.delta.models.delta_map_type import DeltaMapType
-from unitycatalog.delta.models.delta_primitive_type import DeltaPrimitiveType
-from unitycatalog.delta.models.delta_struct_field import DeltaStructField
-from unitycatalog.delta.models.delta_struct_type import DeltaStructType
+from unitycatalog.client.delta.models.delta_array_type import DeltaArrayType
+from unitycatalog.client.delta.models.delta_data_type import DeltaDataType
+from unitycatalog.client.delta.models.delta_decimal_type import DeltaDecimalType
+from unitycatalog.client.delta.models.delta_map_type import DeltaMapType
+from unitycatalog.client.delta.models.delta_primitive_type import DeltaPrimitiveType
+from unitycatalog.client.delta.models.delta_struct_field import DeltaStructField
+from unitycatalog.client.delta.models.delta_struct_type import DeltaStructType
 
 _DECIMAL_PATTERN = re.compile(r"decimal\((\d+),\s*(\d+)\)")
 
@@ -99,7 +98,19 @@ def _field_to_dict(sf):
 # Patch class methods
 @classmethod
 def _patched_dt_from_dict(cls, obj):
+    if obj is None:
+        return None
     return _parse_type(obj)
+
+
+@classmethod
+def _patched_struct_from_dict(cls, obj):
+    if obj is None:
+        return None
+    parsed = _parse_type(obj)
+    if not isinstance(parsed, DeltaStructType) or "fields" not in obj:
+        raise ValueError("Expected a struct type with 'fields', got: {}".format(obj))
+    return parsed
 
 
 @classmethod
@@ -108,6 +119,7 @@ def _patched_sf_from_dict(cls, obj):
 
 
 DeltaDataType.from_dict = _patched_dt_from_dict
+DeltaStructType.from_dict = _patched_struct_from_dict
 DeltaStructField.from_dict = _patched_sf_from_dict
 
 # Patch instance methods
