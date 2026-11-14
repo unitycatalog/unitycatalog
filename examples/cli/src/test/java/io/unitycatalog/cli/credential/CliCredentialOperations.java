@@ -6,11 +6,14 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.S3CompatibleRequest;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.credential.CredentialOperations;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class CliCredentialOperations extends BaseCliOperations implements CredentialOperations {
@@ -32,6 +35,7 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add("--aws_iam_role_arn");
       argsList.add(createCredentialRequest.getAwsIamRole().getRoleArn());
     }
+    addS3CompatibleArgs(argsList, createCredentialRequest.getS3Compatible());
     return execute(CredentialInfo.class, "create", argsList);
   }
 
@@ -68,6 +72,7 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add("--aws_iam_role_arn");
       argsList.add(updateCredentialRequest.getAwsIamRole().getRoleArn());
     }
+    addS3CompatibleArgs(argsList, updateCredentialRequest.getS3Compatible());
     return executeUpdate(
         CredentialInfo.class,
         /* catchEmptyUpdateCliException= */ true,
@@ -83,5 +88,27 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add(force.get().toString());
     }
     execute(Void.class, "delete", argsList);
+  }
+
+  private static void addS3CompatibleArgs(List<String> argsList, S3CompatibleRequest s3Compatible) {
+    if (s3Compatible == null) {
+      return;
+    }
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("--s3_access_key_id", s3Compatible.getAccessKeyId());
+    args.put("--s3_secret_access_key", s3Compatible.getSecretAccessKey());
+    args.put("--s3_endpoint", s3Compatible.getS3Endpoint());
+    if (s3Compatible.getAssumeRole() != null) {
+      args.put("--s3_sts_endpoint", s3Compatible.getAssumeRole().getStsEndpoint());
+      args.put("--s3_role_arn", s3Compatible.getAssumeRole().getRoleArn());
+      args.put("--s3_sts_region", s3Compatible.getAssumeRole().getStsRegion());
+    }
+    args.forEach(
+        (option, value) -> {
+          if (value != null) {
+            argsList.add(option);
+            argsList.add(value.toString());
+          }
+        });
   }
 }

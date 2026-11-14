@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import java.sql.SQLException;
 import java.util.Optional;
@@ -123,6 +124,31 @@ public class RepositoryUtilsTest {
   /**
    * Any non-lock failure must propagate unchanged rather than be masked as a lock-contention error.
    */
+  @ParameterizedTest
+  @MethodSource("lockAcquisitionFailures")
+  public void rowLockFailureIsRetryable(RuntimeException lockFailure) {
+    Session session = mock();
+    when(session.get(CredentialDAO.class, TABLE_ID, LockMode.PESSIMISTIC_WRITE))
+        .thenThrow(lockFailure);
+
+    assertThatThrownBy(() -> RepositoryUtils.getForUpdate(session, CredentialDAO.class, TABLE_ID))
+        .isInstanceOf(BaseException.class)
+        .hasCause(lockFailure)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.UNAVAILABLE);
+  }
+
+  @Test
+  public void rowLockOtherFailurePropagatesUnchanged() {
+    Session session = mock();
+    IllegalStateException unexpected = new IllegalStateException("boom");
+    when(session.get(CredentialDAO.class, TABLE_ID, LockMode.PESSIMISTIC_WRITE))
+        .thenThrow(unexpected);
+
+    assertThatThrownBy(() -> RepositoryUtils.getForUpdate(session, CredentialDAO.class, TABLE_ID))
+        .isSameAs(unexpected);
+  }
+
   @Test
   public void nonLockFailurePropagatesUnchanged() {
     Session session = mock();
