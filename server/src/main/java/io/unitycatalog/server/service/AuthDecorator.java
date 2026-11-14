@@ -21,9 +21,13 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import java.util.Set;
+import java.util.function.Supplier;
+import org.apache.commons.lang3.EnumUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,8 +37,12 @@ import org.slf4j.LoggerFactory;
  * <p>This decorator accepts an Authorization header with a Bearer token, or a UC_TOKEN cookie when
  * no Bearer token is present. Cookie requests other than GET, HEAD, and OPTIONS require
  * X-Requested-With: XMLHttpRequest. The token is verified to be from the "internal" issuer and the
- * token signature is checked against the internal issuer key. If all these checks pass, the request
- * is allowed to continue.
+ * token signature is checked against the internal issuer key. The token must carry a known {@code
+ * type}, and an {@code ACCESS} or {@code SCIM} token must carry an expiry; the bootstrap {@code
+ * SERVICE} token has none. The token's user must be enabled. A {@code SCIM} token, an IdP's token
+ * from {@code bin/uc-admin-token}, is accepted only on the SCIM API, and names its user by id; that
+ * user must have an IdP name, and only a SCIM token is accepted for a user with one. If all these
+ * checks pass, the request is allowed to continue.
  *
  * <p>The decoded token is also added to the request attributes so it can be referenced by the
  * request if needed.
@@ -47,6 +55,10 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   public static final String UC_TOKEN_KEY = "UC_TOKEN";
 
   private static final String BEARER_PREFIX = "Bearer ";
+
+  /** The only paths that accept a SCIM token. */
+  private static final String SCIM_PATH_PREFIX = "/api/1.0/unity-control/scim2/";
+
   private static final Set<HttpMethod> SAFE_METHODS =
       Set.of(HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS);
 
@@ -91,22 +103,27 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     // Internal tokens don't need audience validation
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
     decodedJWT = jwtVerifier.verify(decodedJWT);
+    boolean isScimToken = validateTypeAndExpiry(decodedJWT) == JwtTokenType.SCIM;
+    if (isScimToken && !ctx.path().startsWith(SCIM_PATH_PREFIX)) {
+      throw new AuthorizationException(
+          ErrorCode.PERMISSION_DENIED,
+          "A SCIM token is accepted only under " + SCIM_PATH_PREFIX + ".");
+    }
 
     String subject = decodedJWT.getSubject();
 
-    User user;
-    try {
-      user = userRepository.getUserByEmail(subject);
-    } catch (BaseException failure) {
-      // A missing user is a denial. Anything other than NOT_FOUND is a server failure, not a
-      // denial; let it propagate.
-      if (failure.getErrorCode() != ErrorCode.NOT_FOUND) {
-        throw failure;
-      }
-      LOGGER.debug("User not found: {}", subject);
-      user = null;
-    }
-    if (user == null || user.getState() != User.StateEnum.ENABLED) {
+    // A SCIM token names its principal by the user's id, other tokens by email.
+    User user =
+        findUser(
+            subject,
+            () ->
+                isScimToken
+                    ? userRepository.getUser(subject)
+                    : userRepository.getUserByEmail(subject));
+    if (user == null
+        || user.getState() != User.StateEnum.ENABLED
+        // Only a SCIM token acts as an IdP principal, and a SCIM token only as one.
+        || isScimToken != (user.getIdpName() != null)) {
       throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + subject);
     }
 
@@ -115,6 +132,37 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
 
     return delegate.serve(ctx, req);
+  }
+
+  /** Returns the user, or null when there is none; a failed lookup propagates. */
+  private static User findUser(String subject, Supplier<User> lookup) {
+    try {
+      return lookup.get();
+    } catch (BaseException failure) {
+      // A missing user is a denial. Anything other than NOT_FOUND is a server failure, not a
+      // denial; let it propagate.
+      if (failure.getErrorCode() != ErrorCode.NOT_FOUND) {
+        throw failure;
+      }
+      LOGGER.debug("User not found: {}", subject);
+      return null;
+    }
+  }
+
+  private static JwtTokenType validateTypeAndExpiry(DecodedJWT jwt) {
+    JwtTokenType type =
+        EnumUtils.getEnum(JwtTokenType.class, jwt.getClaim(JwtClaim.TOKEN_TYPE.key()).asString());
+    if (type == null) {
+      throw new AuthorizationException(
+          ErrorCode.UNAUTHENTICATED,
+          "Access token has a missing or unknown type. Get a new token from this server.");
+    }
+    if (type != JwtTokenType.SERVICE && jwt.getExpiresAt() == null) {
+      throw new AuthorizationException(
+          ErrorCode.UNAUTHENTICATED,
+          "Access token has no expiry. Get a new token from this server.");
+    }
+    return type;
   }
 
   private String getAccessTokenFromCookieOrAuthHeader(

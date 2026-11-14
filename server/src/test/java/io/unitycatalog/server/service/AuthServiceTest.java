@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -10,6 +11,7 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.Cookie;
@@ -20,9 +22,14 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.exception.BaseExceptionHandler;
+import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.security.AdminTokenCommand;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
+import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
@@ -31,10 +38,19 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -45,6 +61,20 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final String EMPTY_RESPONSE = "{}";
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  // Okta's SCIM 2.0 requests, from developer.okta.com/docs/api/openapi/okta-scim/guides/scim-20/.
+  private static final String OKTA_CREATE_USER =
+      """
+      {"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"test.user@okta.local",
+      "name":{"givenName":"Test","familyName":"User"},
+      "emails":[{"primary":true,"value":"test.user@okta.local","type":"work"}],
+      "displayName":"Test User","locale":"en-US","externalId":"00ujl29u0le5T6Aj10h7","groups":[],
+      "password":"1mz050nq","active":true}\
+      """;
+  private static final String OKTA_DEACTIVATE_USER =
+      """
+      {"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+      "Operations":[{"op":"replace","value":{"active":false}}]}\
+      """;
 
   private WebClient client;
 
@@ -90,7 +120,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     for (String requestedWith : List.of("", "fetch")) {
       RequestHeadersBuilder headers =
           RequestHeaders.builder(HttpMethod.POST, "/api/1.0/unity-control/scim2/Users")
-              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken());
+              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken());
       if (!requestedWith.isEmpty()) {
         headers.add(HttpHeaderNames.X_REQUESTED_WITH, requestedWith);
       }
@@ -105,14 +135,14 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
     RequestHeaders read =
         RequestHeaders.builder(HttpMethod.GET, "/api/1.0/unity-control/scim2/Me")
-            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken())
             .build();
     assertThat(client.execute(read).aggregate().join().status()).isEqualTo(HttpStatus.OK);
 
     // An explicit bearer token takes precedence over cookies and needs no AJAX header.
     RequestHeaders bearer =
         RequestHeaders.builder(HttpMethod.POST, LOGOUT_ENDPOINT)
-            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.getServiceToken())
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.createServiceToken())
             .add(HttpHeaderNames.COOKIE, "UC_TOKEN=invalid")
             .build();
     assertThat(client.execute(bearer).aggregate().join().status()).isEqualTo(HttpStatus.OK);
@@ -153,7 +183,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest");
 
     if (includeCookie) {
-      builder.add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken());
+      builder.add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken());
     }
 
     return builder.build();
@@ -178,7 +208,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         .withIssuer(INTERNAL)
         .withIssuedAt(issuedAt)
         .withExpiresAt(expiresAt)
-        .withKeyId(securityContext.getKeyId())
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
         .withClaim(JwtClaim.SUBJECT.key(), "admin")
@@ -302,6 +331,467 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             accessJwt.getIssuedAt().toInstant().plus(expectedTtl), within(2, ChronoUnit.SECONDS));
   }
 
+  /**
+   * Journey for the UC tokens the server accepts: a token from the exchange and the bootstrap
+   * SERVICE token (no expiry) work; a token with a missing or unknown type, or an ACCESS token with
+   * no expiry, gets 401; disabling the user refuses its still-valid token on the next request.
+   */
+  @Test
+  public void testUcTokenChecksJourney() throws Exception {
+    createEnabledUser(ENABLED_USER_EMAIL);
+    String identityToken =
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+    String accessToken =
+        MAPPER.readTree(exchangeToken(identityToken).contentUtf8()).get("access_token").asText();
+    assertThat(listCatalogs(accessToken).status()).isEqualTo(HttpStatus.OK);
+    String serviceToken = securityContext.createServiceToken();
+    assertThat(JWT.decode(serviceToken).getExpiresAt()).isNull();
+    assertThat(listCatalogs(serviceToken).status()).isEqualTo(HttpStatus.OK);
+
+    String typeMessage =
+        "Access token has a missing or unknown type. Get a new token from this server.";
+    Date expiresAt = Date.from(Instant.now().plus(Duration.ofMinutes(5)));
+    Map<String, String> rejected =
+        Map.of(
+            ucSignedToken(null, expiresAt), typeMessage,
+            ucSignedToken("BOGUS", expiresAt), typeMessage,
+            ucSignedToken(JwtTokenType.ACCESS.name(), null),
+                "Access token has no expiry. Get a new token from this server.");
+    for (Map.Entry<String, String> entry : rejected.entrySet()) {
+      AggregatedHttpResponse response = listCatalogs(entry.getKey());
+      assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+      JsonNode error = MAPPER.readTree(response.contentUtf8());
+      assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
+      assertThat(error.get("message").asText()).isEqualTo(entry.getValue());
+    }
+
+    // The admin disables the user; the token it already holds is refused on the next request.
+    JsonNode users = MAPPER.readTree(scim(HttpMethod.GET, "", null).contentUtf8());
+    ObjectNode user = null;
+    for (JsonNode resource : users.get("Resources")) {
+      if (resource.get("emails").get(0).get("value").asText().equals(ENABLED_USER_EMAIL)) {
+        user = (ObjectNode) resource;
+      }
+    }
+    assertThat(user).isNotNull();
+    user.put("active", false);
+    String id = user.get("id").asText();
+    assertThat(scim(HttpMethod.PUT, "/" + id, user.toString()).status()).isEqualTo(HttpStatus.OK);
+    AggregatedHttpResponse refused = listCatalogs(accessToken);
+    assertThat(refused.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(MAPPER.readTree(refused.contentUtf8()).get("message").asText())
+        .isEqualTo("User not allowed: " + ENABLED_USER_EMAIL);
+  }
+
+  /**
+   * An unknown key id on an exchanged IdP token is the caller's error: 401, with no per-request
+   * ERROR log and no WARN from the key lookup. It is sent twice so it also hits the rate-limited
+   * key refresh. (The server ignores the key id of its own tokens.)
+   */
+  @Test
+  public void testUnknownSigningKeyIdIsUnauthenticated() throws Exception {
+    createEnabledUser(ENABLED_USER_EMAIL);
+    Logger logger = (Logger) LogManager.getLogger(BaseExceptionHandler.class);
+    CapturingAppender appender = new CapturingAppender();
+    appender.start();
+    logger.addAppender(appender);
+    Logger jwksLogger = (Logger) LogManager.getLogger(JwksOperations.class);
+    Level previousJwksLevel = jwksLogger.getLevel();
+    CapturingAppender jwksAppender = new CapturingAppender();
+    jwksAppender.start();
+    jwksLogger.addAppender(jwksAppender);
+    Configurator.setLevel(jwksLogger.getName(), Level.DEBUG);
+    try {
+      for (int i = 0; i < 2; i++) {
+        String identityToken =
+            createIdentityToken(
+                ENABLED_USER_EMAIL,
+                testIssuer,
+                TEST_AUDIENCE,
+                testIssuerAlgorithm,
+                "unknown-kid-" + i);
+        AggregatedHttpResponse response = exchangeToken(identityToken);
+        assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        JsonNode error = MAPPER.readTree(response.contentUtf8());
+        assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
+        assertThat(error.get("message").asText()).isEqualTo("Unknown signing key");
+      }
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+      jwksLogger.removeAppender(jwksAppender);
+      Configurator.setLevel(jwksLogger.getName(), previousJwksLevel);
+      jwksAppender.stop();
+    }
+    assertThat(appender.messages).doesNotContain("Request failed");
+    assertThat(jwksAppender.messages).anyMatch(m -> m.startsWith("No usable signing key"));
+    assertThat(jwksAppender.levels).allMatch(level -> level.isLessSpecificThan(Level.INFO));
+  }
+
+  /** A token signed with the server's key for the enabled user; null leaves the claim out. */
+  private String ucSignedToken(String type, Date expiresAt) {
+    var builder =
+        JWT.create()
+            .withIssuer(INTERNAL)
+            .withExpiresAt(expiresAt)
+            .withClaim(JwtClaim.SUBJECT.key(), ENABLED_USER_EMAIL);
+    if (type != null) {
+      builder.withClaim(JwtClaim.TOKEN_TYPE.key(), type);
+    }
+    return builder.sign(securityContext.getAlgorithm());
+  }
+
+  private AggregatedHttpResponse listCatalogs(String token) {
+    return client
+        .execute(
+            RequestHeaders.builder(HttpMethod.GET, "/api/2.1/unity-catalog/catalogs")
+                .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + token)
+                .build())
+        .aggregate()
+        .join();
+  }
+
+  /**
+   * Journey for an IdP's SCIM token: the admin creates the IdP principal, mints its token with
+   * {@code bin/uc-admin-token}, and the IdP provisions a user with Okta's request. The token is
+   * refused off the SCIM API, the principal can't sign in, and disabling it revokes the token.
+   */
+  @Test
+  public void testIdpScimTokenJourney() throws Exception {
+    // 1. The admin creates the IdP principal.
+    AggregatedHttpResponse created =
+        scim(
+            HttpMethod.POST,
+            "",
+            "{\"displayName\":\"Okta"
+                + " SCIM\",\"emails\":[{\"value\":\"okta-scim\",\"primary\":true}]}");
+    assertThat(created.status()).isEqualTo(HttpStatus.CREATED);
+    String principalId = MAPPER.readTree(created.contentUtf8()).get("id").asText();
+
+    // 2. The admin mints its SCIM token, as bin/uc-admin-token does.
+    String scimToken =
+        AdminTokenCommand.createScimToken(
+            new String[] {"--scim-principal", "okta-scim", "--idp", "okta", "--lifetime", "P90D"},
+            securityContext.getAlgorithm(),
+            new UserRepository(null, hibernateConfigurator.getSessionFactory()));
+    DecodedJWT claims = JWT.decode(scimToken);
+    assertThat(claims.getClaim(JwtClaim.TOKEN_TYPE.key()).asString()).isEqualTo("SCIM");
+    assertThat(claims.getSubject()).isEqualTo(principalId);
+    assertThat(claims.getClaim(JwtClaim.IDP.key()).asString()).isEqualTo("okta");
+    assertThat(claims.getExpiresAt().toInstant())
+        .isCloseTo(Instant.now().plus(Duration.ofDays(90)), within(1, ChronoUnit.MINUTES));
+
+    // 3. Okta checks for the user, then creates it (Okta's SCIM 2.0 requests).
+    AggregatedHttpResponse lookup =
+        scimAs(
+            scimToken,
+            HttpMethod.GET,
+            "?filter=userName%20eq%20%22test.user%40okta.local%22&startIndex=1&count=100",
+            null);
+    assertThat(lookup.status()).isEqualTo(HttpStatus.OK);
+    assertThat(MAPPER.readTree(lookup.contentUtf8()).get("totalResults").asInt()).isZero();
+    AggregatedHttpResponse oktaCreate = scimAs(scimToken, HttpMethod.POST, "", OKTA_CREATE_USER);
+    assertThat(oktaCreate.status()).isEqualTo(HttpStatus.CREATED);
+    assertThat(MAPPER.readTree(oktaCreate.contentUtf8()).get("emails").get(0).get("value").asText())
+        .isEqualTo("test.user@okta.local");
+
+    // 3b. With the SCIM token, not metastore OWNER, read the user, update it with Okta's PUT, then
+    // deactivate it with Okta's PATCH and delete it (Okta itself never sends DELETE).
+    String userId = MAPPER.readTree(oktaCreate.contentUtf8()).get("id").asText();
+    assertThat(scimAs(scimToken, HttpMethod.GET, "/" + userId, null).status())
+        .isEqualTo(HttpStatus.OK);
+    AggregatedHttpResponse renamed =
+        scimAs(
+            scimToken,
+            HttpMethod.PUT,
+            "/" + userId,
+            OKTA_CREATE_USER
+                .replace("\"userName\"", "\"id\":\"" + userId + "\",\"userName\"")
+                .replace("Test User", "Renamed User"));
+    assertThat(renamed.status()).isEqualTo(HttpStatus.OK);
+    assertThat(MAPPER.readTree(renamed.contentUtf8()).get("displayName").asText())
+        .isEqualTo("Renamed User");
+    assertThat(scimAs(scimToken, HttpMethod.PATCH, "/" + userId, OKTA_DEACTIVATE_USER).status())
+        .isEqualTo(HttpStatus.OK);
+    assertThat(scimAs(scimToken, HttpMethod.DELETE, "/" + userId, null).status())
+        .isEqualTo(HttpStatus.OK);
+
+    // 4. The token is refused off the SCIM API.
+    AggregatedHttpResponse catalogs = listCatalogs(scimToken);
+    assertThat(catalogs.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(MAPPER.readTree(catalogs.contentUtf8()).get("message").asText())
+        .isEqualTo("A SCIM token is accepted only under /api/1.0/unity-control/scim2/.");
+
+    // 5. The IdP principal can't sign in.
+    assertExchangeRejectedAsInvalid(
+        "email=okta-scim",
+        createIdentityToken(
+            "okta-scim", testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId));
+
+    // 6. The admin disables the principal (Okta's deactivate request); its token stops working.
+    assertThat(scim(HttpMethod.PATCH, "/" + principalId, OKTA_DEACTIVATE_USER).status())
+        .isEqualTo(HttpStatus.OK);
+    AggregatedHttpResponse disabled = scimAs(scimToken, HttpMethod.GET, "", null);
+    assertThat(disabled.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(MAPPER.readTree(disabled.contentUtf8()).get("message").asText())
+        .isEqualTo("User not allowed: " + principalId);
+  }
+
+  /** {@code bin/uc-admin-token} refuses SCIM options it can't mint a token from. */
+  @Test
+  public void testScimTokenMintRefusals() {
+    UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
+    String usage =
+        "Usage: bin/uc-admin-token [--scim-principal <email> --idp <name> --lifetime <ISO-8601"
+            + " duration>]";
+    Map<List<String>, String> refusals =
+        Map.of(
+            List.of("--scim-principal", "okta-scim", "--idp", "okta"),
+            "--lifetime is required with --scim-principal. " + usage,
+            List.of("--scim-principal", "okta-scim", "--lifetime", "P90D"),
+            "--idp is required with --scim-principal. " + usage,
+            List.of("--idp", "okta", "--lifetime", "P90D"),
+            "--scim-principal is required with --idp and --lifetime. " + usage,
+            List.of("--scim-principal", "okta-scim", "--idp", "okta", "--lifetime", "90 days"),
+            "--lifetime must be an ISO-8601 duration of at least 1 second, such as P90D: 90 days",
+            List.of("--scim-principal", "okta-scim", "--idp", "okta", "--lifetime", "-P1D"),
+            "--lifetime must be an ISO-8601 duration of at least 1 second, such as P90D: -P1D",
+            List.of("--scim-principal", "okta-scim", "--idp"),
+            "--idp needs a value. " + usage,
+            List.of("--kid", "x"),
+            "Unknown option: --kid. " + usage);
+    refusals.forEach(
+        (args, message) ->
+            assertThatThrownBy(
+                    () ->
+                        AdminTokenCommand.createScimToken(
+                            args.toArray(String[]::new), securityContext.getAlgorithm(), users))
+                .as(String.join(" ", args))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage(message));
+
+    // The lifetime is checked before the user is marked: empty, zero, too short, or an expiry out
+    // of range.
+    createEnabledUser("okta-scim");
+    Map.of(
+            "",
+            "--lifetime needs a value. " + usage,
+            "PT0S",
+            "--lifetime must be an ISO-8601 duration of at least 1 second, such as P90D: PT0S",
+            "PT0.5S",
+            "--lifetime must be an ISO-8601 duration of at least 1 second, such as P90D: PT0.5S",
+            "PT9223372036854775807S",
+            "--lifetime is too long: PT9223372036854775807S",
+            "P200000000000D",
+            "--lifetime is too long: P200000000000D")
+        .forEach(
+            (lifetime, message) ->
+                assertThatThrownBy(
+                        () ->
+                            AdminTokenCommand.createScimToken(
+                                new String[] {
+                                  "--scim-principal",
+                                  "okta-scim",
+                                  "--idp",
+                                  "okta",
+                                  "--lifetime",
+                                  lifetime
+                                },
+                                securityContext.getAlgorithm(),
+                                users))
+                    .as(lifetime)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage(message));
+    assertThat(users.getUserByEmail("okta-scim").getIdpName()).isNull();
+  }
+
+  /**
+   * A SCIM token can't PUT, PATCH or DELETE an IdP principal, its own or another IdP's, so one IdP
+   * can't lock out or revive another; the admin still can.
+   */
+  @Test
+  public void testScimTokenCannotChangeIdpPrincipals() throws Exception {
+    UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
+    createEnabledUser("okta-scim");
+    createEnabledUser("entra-scim");
+    String okta = mintScimToken(users, "okta-scim", "okta");
+    String entra = mintScimToken(users, "entra-scim", "entra");
+    String oktaId = JWT.decode(okta).getSubject();
+    String entraId = JWT.decode(entra).getSubject();
+    String put =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"%s\","
+            + "\"userName\":\"%s\",\"emails\":[{\"primary\":true,\"value\":\"%s\"}],"
+            + "\"displayName\":\"Renamed\",\"active\":false}";
+    String reactivate = OKTA_DEACTIVATE_USER.replace("false", "true");
+    Map<String, String> principalIds = Map.of("okta-scim", oktaId, "entra-scim", entraId);
+    for (String token : List.of(okta, entra)) {
+      for (Map.Entry<String, String> principal : principalIds.entrySet()) {
+        String email = principal.getKey();
+        String id = principal.getValue();
+        for (AggregatedHttpResponse response :
+            List.of(
+                scimAs(token, HttpMethod.PUT, "/" + id, String.format(put, id, email, email)),
+                scimAs(token, HttpMethod.PATCH, "/" + id, OKTA_DEACTIVATE_USER),
+                scimAs(token, HttpMethod.DELETE, "/" + id, null))) {
+          assertThat(response.status()).as(email).isEqualTo(HttpStatus.FORBIDDEN);
+          assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+              .isEqualTo("An IdP principal can't be changed with a SCIM token: " + email);
+        }
+      }
+    }
+    assertThat(users.getUserByEmail("entra-scim").getState()).isEqualTo(User.StateEnum.ENABLED);
+    assertThat(users.getUserByEmail("okta-scim").getName()).isNotEqualTo("Renamed");
+
+    // The admin disables Okta's principal; Entra's token can't revive it.
+    assertThat(scim(HttpMethod.PATCH, "/" + oktaId, OKTA_DEACTIVATE_USER).status())
+        .isEqualTo(HttpStatus.OK);
+    assertThat(scimAs(entra, HttpMethod.PATCH, "/" + oktaId, reactivate).status())
+        .isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(scimAs(okta, HttpMethod.GET, "", null).status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(scimAs(entra, HttpMethod.GET, "", null).status()).isEqualTo(HttpStatus.OK);
+  }
+
+  /**
+   * A SCIM token can't relink an existing user: it can't change the external id that token exchange
+   * resolves an OAuth client to, so it can't take over the user. Okta's own PUT, which resends the
+   * external id it set, still works.
+   */
+  @Test
+  public void testScimTokenCannotRelinkAnExistingUser() throws Exception {
+    UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
+    createEnabledUser("victim@example.com");
+    String victimId = users.getUserByEmail("victim@example.com").getId();
+    createEnabledUser("okta-scim");
+    String okta = mintScimToken(users, "okta-scim", "okta");
+
+    // Okta creates a user, then sends its full-object PUT with the same values: 200.
+    AggregatedHttpResponse oktaCreate = scimAs(okta, HttpMethod.POST, "", OKTA_CREATE_USER);
+    String oktaUserId = MAPPER.readTree(oktaCreate.contentUtf8()).get("id").asText();
+    String oktaPut =
+        OKTA_CREATE_USER.replace("\"userName\"", "\"id\":\"" + oktaUserId + "\",\"userName\"");
+    assertThat(scimAs(okta, HttpMethod.PUT, "/" + oktaUserId, oktaPut).status())
+        .isEqualTo(HttpStatus.OK);
+
+    // A PUT that changes the external id is refused, on any existing user.
+    String put =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"%s\","
+            + "\"userName\":\"%s\",\"emails\":[{\"primary\":true,\"value\":\"%s\"}],"
+            + "\"displayName\":\"Test User\",\"active\":true,\"externalId\":\"attacker-client\"}";
+    for (String email : List.of("victim@example.com", "test.user@okta.local")) {
+      String id = users.getUserByEmail(email).getId();
+      AggregatedHttpResponse response =
+          scimAs(okta, HttpMethod.PUT, "/" + id, String.format(put, id, email, email));
+      assertThat(response.status()).as(email).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+          .isEqualTo("A SCIM token can't change the external id of a user: " + email);
+    }
+    // A PUT that changes the primary email is refused, a case variant included: token exchange
+    // signs in a user by email. So is one with no primary email, or a primary with no value.
+    String emailPut = put.replace(",\"externalId\":\"attacker-client\"", "");
+    String storedEmails = "[{\"primary\":true,\"value\":\"victim@example.com\"}]";
+    for (String emails :
+        List.of(
+            "[{\"primary\":true,\"value\":\"attacker@example.com\"}]",
+            "[{\"primary\":true,\"value\":\"Victim@example.com\"}]",
+            "[{\"primary\":false,\"value\":\"victim@example.com\"},{\"value\":\"x@example.com\"}]",
+            "[{\"primary\":true}]",
+            "[null]",
+            "[null,{\"primary\":true,\"value\":\"attacker@example.com\"}]")) {
+      String body =
+          String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
+              .replace(storedEmails, emails);
+      AggregatedHttpResponse response = scimAs(okta, HttpMethod.PUT, "/" + victimId, body);
+      assertThat(response.status()).as(emails).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+          .isEqualTo("A SCIM token can't change the email of a user: victim@example.com");
+    }
+    // A PUT that resends the stored email as the primary email, or sends no emails, is accepted.
+    for (String body :
+        List.of(
+            String.format(emailPut, victimId, "victim@example.com", "victim@example.com"),
+            String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
+                .replace(storedEmails, "[null," + storedEmails.substring(1)),
+            String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
+                .replace(
+                    "\"emails\":[{\"primary\":true,\"value\":\"victim@example.com\"}],", ""))) {
+      assertThat(scimAs(okta, HttpMethod.PUT, "/" + victimId, body).status())
+          .as(body)
+          .isEqualTo(HttpStatus.OK);
+    }
+    // PATCH changes only active.
+    for (String patch :
+        List.of(
+            "{\"op\":\"replace\",\"value\":{\"externalId\":\"attacker-client\"}}",
+            "{\"op\":\"replace\",\"path\":\"externalId\",\"value\":\"attacker-client\"}",
+            "{\"op\":\"replace\",\"path\":\"emails\",\"value\":[{\"primary\":true,"
+                + "\"value\":\"attacker@example.com\"}]}")) {
+      scimAs(
+          okta,
+          HttpMethod.PATCH,
+          "/" + victimId,
+          "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+              + patch
+              + "]}");
+    }
+    User victim = users.getUser(victimId);
+    assertThat(victim.getExternalId()).isNull();
+    assertThat(victim.getEmail()).isEqualTo("victim@example.com");
+    assertThat(users.getUser(oktaUserId).getExternalId()).isEqualTo("00ujl29u0le5T6Aj10h7");
+  }
+
+  private String mintScimToken(UserRepository users, String email, String idp) {
+    return AdminTokenCommand.createScimToken(
+        new String[] {"--scim-principal", email, "--idp", idp, "--lifetime", "P1D"},
+        securityContext.getAlgorithm(),
+        users);
+  }
+
+  /** Calls the SCIM users endpoint as the admin. */
+  private AggregatedHttpResponse scim(HttpMethod method, String path, String body) {
+    return scimAs(securityContext.createServiceToken(), method, path, body);
+  }
+
+  /** Calls the SCIM users endpoint with {@code token}, as Okta does. */
+  private AggregatedHttpResponse scimAs(String token, HttpMethod method, String path, String body) {
+    RequestHeaders headers =
+        RequestHeaders.builder(method, "/api/1.0/unity-control/scim2/Users" + path)
+            .contentType(MediaType.parse("application/scim+json"))
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + token)
+            .build();
+    return client
+        .execute(headers, body == null ? HttpData.empty() : HttpData.ofUtf8(body))
+        .aggregate()
+        .join();
+  }
+
+  @Test
+  public void testTokenExchangeDebugLogOmitsSubjectToken() {
+    createEnabledUser(ENABLED_USER_EMAIL);
+    String token =
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+    Logger logger = (Logger) LogManager.getLogger(AuthService.class);
+    Level previousLevel = logger.getLevel();
+    CapturingAppender appender = new CapturingAppender();
+    appender.start();
+    logger.addAppender(appender);
+    Configurator.setLevel(logger.getName(), Level.DEBUG);
+    try {
+      assertThat(exchangeToken(token).status()).isEqualTo(HttpStatus.OK);
+    } finally {
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
+    assertThat(appender.messages)
+        .contains(
+            "Token exchange request: grant_type=urn:ietf:params:oauth:grant-type:token-exchange,"
+                + " requested_token_type=urn:ietf:params:oauth:token-type:access_token,"
+                + " subject_token_type=urn:ietf:params:oauth:token-type:id_token");
+    assertThat(String.join("\n", appender.messages)).doesNotContain(token);
+  }
+
   @Test
   public void testTokenExchangeWithCorrectIssuerAndWrongAudience() {
     String token =
@@ -395,7 +885,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             .path(scimUsersPath)
             .contentType(MediaType.JSON)
             .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
-            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken())
             .build();
 
     // First create succeeds
@@ -455,7 +945,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
               .method(HttpMethod.POST)
               .path("/api/1.0/unity-control/scim2/Users")
               .contentType(MediaType.JSON)
-              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken())
               .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
               .build();
       String userJson =
@@ -479,5 +969,26 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     hibernateConfigurator
         .getSessionFactory()
         .inTransaction(session -> session.createNativeMutationQuery(sql).executeUpdate());
+  }
+
+  private static final class CapturingAppender extends AbstractAppender {
+
+    private final List<String> messages = new CopyOnWriteArrayList<>();
+    private final List<Level> levels = new CopyOnWriteArrayList<>();
+
+    private CapturingAppender() {
+      super(
+          "AuthServiceTest",
+          null,
+          null,
+          true,
+          org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY);
+    }
+
+    @Override
+    public void append(LogEvent event) {
+      messages.add(event.getMessage().getFormattedMessage());
+      levels.add(event.getLevel());
+    }
   }
 }
