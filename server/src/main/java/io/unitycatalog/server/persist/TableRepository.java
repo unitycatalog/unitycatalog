@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_READ_COMMITTED;
 import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
@@ -1243,7 +1244,8 @@ public class TableRepository {
           return deleteTable(session, schemaId, table, check);
         },
         "Failed to delete table",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
@@ -1252,15 +1254,22 @@ public class TableRepository {
 
   private TableInfoDAO deleteTable(
       Session session, UUID schemaId, String tableName, Consumer<TableInfoDAO> check) {
-    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
-    if (tableInfoDAO == null) {
-      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
+    TableInfoDAO found = findBySchemaIdAndName(session, schemaId, tableName);
+    if (found == null) {
+      throw tableNotFound(tableName);
     }
+    Map<String, Object> key = Map.of("name", tableName);
+    // A commit rewrites the table's columns under this lock; waiting for it lets the column delete
+    // below see the rows the commit wrote.
+    TableInfoDAO tableInfoDAO =
+        RepositoryUtils.lockByKey(
+            session,
+            TableInfoDAO.class,
+            found.getId(),
+            key,
+            "table " + tableName,
+            () -> tableNotFound(tableName));
     check.accept(tableInfoDAO);
-    // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
-    // from deleting column rows the commit is replacing.
-    RepositoryUtils.lockTableForCommit(
-        session, tableInfoDAO, tableInfoDAO.getId(), Optional.of(tableName), ErrorCode.UNAVAILABLE);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()
@@ -1281,8 +1290,20 @@ public class TableRepository {
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
-    session.remove(tableInfoDAO);
+    // Delete the columns with one statement, not through the session's cascade. A commit can
+    // replace the column rows while this drop waits for the lock; a DELETE reads the latest rows,
+    // while the cascade first loads the columns with a plain read, which on MySQL REPEATABLE READ
+    // returns the snapshot from before the wait and fails the drop on rows already gone.
+    session
+        .createMutationQuery("delete from ColumnInfoDAO where table.id = :id")
+        .setParameter("id", tableInfoDAO.getId())
+        .executeUpdate();
+    RepositoryUtils.deleteByKey(session, tableInfoDAO, key, () -> tableNotFound(tableName));
     return tableInfoDAO;
+  }
+
+  private static BaseException tableNotFound(String tableName) {
+    return new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
   }
 
   /**
