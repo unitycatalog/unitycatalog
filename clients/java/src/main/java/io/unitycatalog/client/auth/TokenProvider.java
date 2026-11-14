@@ -34,8 +34,8 @@ public interface TokenProvider {
   /**
    * Returns the configuration associated with this token provider.
    *
-   * <p>The returned configuration map can be passed to {@link #create(Map)} to create a new token
-   * provider instance with the same configuration:
+   * <p>The returned configuration map can be passed to {@link #create(Map)} to create a token
+   * provider with the same configuration:
    *
    * <pre>{@code
    * TokenProvider existingProvider = ...;
@@ -63,6 +63,12 @@ public interface TokenProvider {
    *   <li><b>Custom authentication:</b> Set {@code "type"} to the fully qualified class name of a
    *       custom {@link TokenProvider} implementation
    * </ul>
+   *
+   * <p>OAuth providers are shared JVM-wide: every call with the same configuration returns the same
+   * provider, so callers that build a client per operation reuse its cached token instead of
+   * fetching a new one each time. Configurations that differ in any entry get separate providers,
+   * even entries the provider ignores or fills in with a default, such as {@code "oauth.scope"} in
+   * {@link #configs()}.
    *
    * <p>Example usage with static token:
    *
@@ -94,7 +100,7 @@ public interface TokenProvider {
    * }</pre>
    *
    * <p>You can also use {@link #configs()} to obtain the configuration from an existing token
-   * provider and pass it to this method to create a new instance:
+   * provider and pass it to this method to create a provider with the same configuration:
    *
    * <pre>{@code
    * TokenProvider existingProvider = ...;
@@ -128,8 +134,8 @@ public interface TokenProvider {
         break;
 
       case AuthConfigs.OAUTH_TYPE_VALUE:
-        tokenProvider = new OAuthTokenProvider();
-        break;
+        // Shared JVM-wide, and initialized on first use.
+        return SharedTokenProviders.get(normalizedConfigs);
 
       default:
         try {

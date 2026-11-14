@@ -211,6 +211,58 @@ public class HttpRetryHandlerTest {
   }
 
   @Test
+  public void testRetriesConnectTimeoutButNotRequestTimeout()
+      throws IOException, InterruptedException {
+    // java.net.http raises HttpConnectTimeoutException for HttpClient.connectTimeout() and its
+    // superclass HttpTimeoutException for HttpRequest.timeout(), never SocketTimeoutException. A
+    // request that timed out may already have been applied, so only the connect timeout is retried.
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder()
+            .maxAttempts(3)
+            .initDelayMs(10L)
+            .delayMultiplier(1.0)
+            .delayJitterFactor(0.0)
+            .build();
+
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/api/slow"))
+            .POST(HttpRequest.BodyPublishers.ofString("{}"))
+            .build();
+    HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
+
+    HttpResponse<String> response200 = createMockResponse(200, "Success");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenThrow(new java.net.http.HttpConnectTimeoutException("connect timed out"))
+        .thenReturn(response200);
+    HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
+
+    assertThat(handler.call(mockClient, mockRequest, bodyHandler).statusCode()).isEqualTo(200);
+    verify(mockClient, times(2))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+
+    HttpClient timingOutClient = mock(HttpClient.class);
+    when(timingOutClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenThrow(new java.net.http.HttpTimeoutException("request timed out"))
+        .thenReturn(response200);
+
+    assertThatThrownBy(() -> handler.call(timingOutClient, mockRequest, bodyHandler))
+        .isInstanceOf(java.net.http.HttpTimeoutException.class)
+        .hasMessage("request timed out");
+    verify(timingOutClient, times(1))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+  }
+
+  @Test
   public void testRetriesExhaustedOnRetryableStatusReturnsLastResponse()
       throws IOException, InterruptedException {
     // When every attempt returns a retryable status (e.g., 429), the handler should return the
