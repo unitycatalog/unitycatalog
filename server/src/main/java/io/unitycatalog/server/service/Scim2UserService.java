@@ -15,6 +15,7 @@ import com.linecorp.armeria.server.annotation.Produces;
 import com.linecorp.armeria.server.annotation.Put;
 import com.linecorp.armeria.server.annotation.StatusCode;
 import com.unboundid.scim2.common.exceptions.BadRequestException;
+import com.unboundid.scim2.common.exceptions.NotImplementedException;
 import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
 import com.unboundid.scim2.common.exceptions.ScimException;
@@ -152,7 +153,7 @@ public class Scim2UserService implements ScimService {
       return asUserResource(user);
     } catch (BaseException e) {
       if (e.getErrorCode() == ErrorCode.ALREADY_EXISTS) {
-        throw new Scim2RuntimeException(new ResourceConflictException(e.getMessage()));
+        throw new Scim2RuntimeException(ResourceConflictException.uniqueness(e.getMessage()));
       } else if (e.getErrorCode().getHttpStatus().isServerError()) {
         // A server failure, such as a database error, is not the caller's fault.
         throw new Scim2RuntimeException(new ServerErrorException(e.getMessage(), null, e));
@@ -218,7 +219,11 @@ public class Scim2UserService implements ScimService {
                     && op.getPath() == null) // Only support patch for okta
         .findFirst()
         .map(op -> handleUserUpdate(id, op))
-        .orElse(HttpResponse.of(HttpStatus.NOT_IMPLEMENTED));
+        .orElseThrow(
+            () ->
+                new Scim2RuntimeException(
+                    new NotImplementedException(
+                        "PATCH supports only a replace operation without a path.")));
   }
 
   private HttpResponse handleUserUpdate(String id, PatchOperation operation) {

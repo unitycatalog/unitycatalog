@@ -1,5 +1,9 @@
 package io.unitycatalog.server.utils;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
 import com.unboundid.scim2.common.types.Photo;
@@ -10,6 +14,13 @@ import java.util.Calendar;
 import java.util.List;
 
 public class Scim2Utils {
+  /** Serializes SCIM responses, successes and errors alike: no nulls, dates as strings. */
+  public static final ObjectMapper SCIM_MAPPER =
+      JsonMapper.builder()
+          .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+          .serializationInclusion(JsonInclude.Include.NON_NULL)
+          .build();
+
   public static UserResource asUserResource(User user) {
     Meta meta = new Meta();
     Calendar created = Calendar.getInstance();

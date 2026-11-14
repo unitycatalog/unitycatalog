@@ -120,8 +120,15 @@ public class UserRepository {
   }
 
   public UserDAO getUserById(Session session, String id) {
+    UUID userId;
+    try {
+      userId = UUID.fromString(id);
+    } catch (IllegalArgumentException e) {
+      // No user has an id that is not a UUID.
+      return null;
+    }
     Query<UserDAO> query = session.createQuery("FROM UserDAO WHERE id = :id", UserDAO.class);
-    query.setParameter("id", UUID.fromString(id));
+    query.setParameter("id", userId);
     query.setMaxResults(1);
     return query.uniqueResult();
   }
