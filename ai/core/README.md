@@ -37,6 +37,7 @@ When using the `UnitycatalogFunctionClient` for UC, be mindful of the following 
     - The `UnitycatalogFunctionClient` is built on top of the asynchronous [unitycatalog-client SDK](https://pypi.org/project/unitycatalog/), which utilizes aiohttp for REST communication with the UC server.
     - The function client for Unity Catalog offers **both asynchronous and synchronous methods**. The synchronous methods are wrappers around the asynchronous counterparts, ensuring compatibility with environments that may not support asynchronous operations.
     - **Important**: Avoid creating additional event loops in environments that already have a running loop (e.g., Jupyter Notebooks) to prevent conflicts and potential runtime errors.
+    - The client sends every request from its own event loop on a background thread, so both the synchronous and asynchronous methods can be called from any thread or event loop, such as the worker threads that agent frameworks run tools in. This includes requests made directly through the `ApiClient` that you pass in. Call `close()` or `close_async()` when you are done to close the connections and stop that thread.
 - **Security Considerations**:
     - **WARNING** Function execution occurs **locally** within the environment where your application is running.
     - **Caution**: Executing GenAI-generated Python code can pose security risks, especially if the code includes operations like file system access or network requests.

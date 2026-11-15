@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import decimal
 import importlib.util
@@ -6,7 +7,9 @@ import logging
 import multiprocessing
 import re
 import textwrap
-from contextlib import contextmanager
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Union
@@ -2770,3 +2773,135 @@ def test_sql_function_with_null_default(uc_client: UnitycatalogFunctionClient):
         function_name=function_name, parameters={"a": "custom-value"}
     )
     assert result.value == "a is custom-value, b is non-null-default"
+
+
+def weather_report() -> str:
+    """
+    Reports the weather.
+    """
+    return "sunny"
+
+
+LARGE_ROUTINE_DEFINITION = "return 'sunny'\n#" + "x" * 1_000_000
+
+
+def create_functions(client: UnitycatalogFunctionClient, schema: str) -> list[str]:
+    client.uc.create_catalog(name=CATALOG)
+    client.uc.create_schema(name=schema, catalog_name=CATALOG)
+    client.create_python_function(func=weather_report, catalog=CATALOG, schema=schema)
+    wrapped = client.create_wrapped_function(
+        primary_func=weather_report, functions=[], catalog=CATALOG, schema=schema, replace=True
+    )
+    large = client.create_function(
+        function_name=f"{CATALOG}.{schema}.large_report",
+        routine_definition=LARGE_ROUTINE_DEFINITION,
+        data_type="STRING",
+        full_data_type="STRING",
+        comment="Reports the weather at length.",
+        parameters=[],
+    )
+    return [wrapped.full_name, large.full_name]
+
+
+async def create_functions_async(client: UnitycatalogFunctionClient, schema: str) -> list[str]:
+    await client.uc.create_catalog_async(name=CATALOG)
+    await client.uc.create_schema_async(name=schema, catalog_name=CATALOG)
+    await client.create_python_function_async(func=weather_report, catalog=CATALOG, schema=schema)
+    wrapped = await client.create_wrapped_function_async(
+        primary_func=weather_report, functions=[], catalog=CATALOG, schema=schema, replace=True
+    )
+    large = await client.create_function_async(
+        function_name=f"{CATALOG}.{schema}.large_report",
+        routine_definition=LARGE_ROUTINE_DEFINITION,
+        data_type="STRING",
+        full_data_type="STRING",
+        comment="Reports the weather at length.",
+        parameters=[],
+    )
+    return [wrapped.full_name, large.full_name]
+
+
+def sync_calls(client: UnitycatalogFunctionClient, schema: str):
+    names = create_functions(client, schema)
+    result = (
+        sorted(function.full_name for function in client.list_functions(CATALOG, schema)),
+        [client.get_function(name).full_name for name in names],
+        client.get_function(names[1]).routine_definition == LARGE_ROUTINE_DEFINITION,
+        [client.execute_function(name).value for name in names],
+    )
+    for name in names:
+        client.delete_function(name)
+    return result
+
+
+async def async_calls(client: UnitycatalogFunctionClient, schema: str):
+    names = await create_functions_async(client, schema)
+    functions = await client.list_functions_async(CATALOG, schema)
+    result = (
+        sorted(function.full_name for function in functions),
+        [(await client.get_function_async(name)).full_name for name in names],
+        (await client.get_function_async(names[1])).routine_definition == LARGE_ROUTINE_DEFINITION,
+        [(await client.execute_function_async(name)).value for name in names],
+    )
+    for name in names:
+        await client.delete_function_async(name)
+    return result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("threads", [1, 4])
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_methods_work_from_other_threads_and_event_loops(uc_client, use_async, threads):
+    uc_client.execution_mode = "local"
+    schemas = [f"{SCHEMA}_thread_{i}" for i in range(threads)]
+
+    def run(schema):
+        if use_async:
+            return asyncio.run(async_calls(uc_client, schema))
+        return sync_calls(uc_client, schema)
+
+    try:
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            results = list(executor.map(run, schemas))
+    finally:
+        for schema in schemas:
+            with suppress(NotFoundException):
+                await uc_client.uc.schemas_client.delete_schema(
+                    full_name=f"{CATALOG}.{schema}", force=True
+                )
+
+    assert results == [
+        (
+            [f"{CATALOG}.{schema}.large_report", f"{CATALOG}.{schema}.weather_report"],
+            [f"{CATALOG}.{schema}.weather_report", f"{CATALOG}.{schema}.large_report"],
+            True,
+            ["sunny", "sunny"],
+        )
+        for schema in schemas
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_close_releases_the_client_and_later_calls_raise(use_async):
+    threads_before = set(threading.enumerate())
+    api_client = ApiClient(
+        configuration=Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
+    )
+    api_client.rest_client = mock.AsyncMock(wraps=api_client.rest_client)
+    replaced_rest_client = api_client.rest_client
+    client = UnitycatalogFunctionClient(api_client=api_client)
+    client.uc.create_catalog(name=CATALOG)
+
+    for _ in range(2):
+        if use_async:
+            await client.close_async()
+        else:
+            client.close()
+
+    replaced_rest_client.close.assert_awaited_once()
+    assert [thread for thread in threading.enumerate() if thread not in threads_before] == []
+    with pytest.raises(RuntimeError, match="Session is closed"):
+        client.uc.create_catalog(name=CATALOG)
+    with pytest.raises(RuntimeError, match="Session is closed"):
+        await client.get_function_async(f"{CATALOG}.{SCHEMA}.weather_report")

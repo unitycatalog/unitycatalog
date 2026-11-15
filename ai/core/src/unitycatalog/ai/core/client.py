@@ -4,6 +4,7 @@ import base64
 import datetime
 import decimal
 import logging
+import threading
 from enum import Enum
 from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -54,6 +55,7 @@ from unitycatalog.client import (
     SchemasApi,
 )
 from unitycatalog.client.exceptions import NotFoundException, ServiceException
+from unitycatalog.client.rest import RESTClientObject
 
 nest_asyncio.apply()
 
@@ -129,8 +131,61 @@ def syncify_method(sync_method):
     return wrapper
 
 
+class _SingleLoopRESTClient:
+    """
+    Takes the place of an ApiClient's REST client and sends every request from one event loop,
+    which it runs on a daemon thread, so the ApiClient works from any thread or event loop.
+
+    An aiohttp session only works on the event loop it is created on, so sharing the ApiClient's
+    own session fails with "Timeout context manager should be used inside a task" anywhere else.
+    Response bodies are read on the owned loop before the response is returned.
+    """
+
+    def __init__(self, api_client: ApiClient):
+        self._configuration = api_client.configuration
+        self._replaced_rest_client = api_client.rest_client
+        self._rest_client = None
+        self._closed = False
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._thread.start()
+
+    async def request(self, *args, **kwargs):
+        if self._closed:
+            raise RuntimeError("Session is closed")
+        future = asyncio.run_coroutine_threadsafe(self._request(*args, **kwargs), self._loop)
+        return await asyncio.wrap_future(future)
+
+    async def close(self):
+        self.shutdown()
+
+    def shutdown(self):
+        """Closes the replaced and the owned sessions, then stops the owned event loop."""
+        if self._closed:
+            return
+        self._closed = True
+        asyncio.run_coroutine_threadsafe(self._close(), self._loop).result()
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join()
+        self._loop.close()
+
+    async def _request(self, *args, **kwargs):
+        if self._rest_client is None:
+            self._rest_client = RESTClientObject(self._configuration)
+        response = await self._rest_client.request(*args, **kwargs)
+        await response.read()
+        return response
+
+    async def _close(self):
+        await self._replaced_rest_client.close()
+        if self._rest_client is not None:
+            await self._rest_client.close()
+        await self._loop.shutdown_default_executor()
+
+
 class UnitycatalogClient:
     def __init__(self, api_client: ApiClient):
+        self._rest_client = api_client.rest_client = _SingleLoopRESTClient(api_client)
         self.api_client = api_client
         self.functions_client = FunctionsApi(api_client=api_client)
         self.catalogs_client = CatalogsApi(api_client=api_client)
@@ -158,11 +213,8 @@ class UnitycatalogClient:
             return
         self._closed = True
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.ensure_future(self.close_async())
-            else:
-                loop.run_until_complete(self.close_async())
+            self._rest_client.shutdown()
+            _logger.info("ApiClient successfully closed.")
         except Exception as e:
             _logger.error(f"Error while closing ApiClient: {e}")
 
@@ -364,6 +416,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Args:
             api_client: An instance of unitycatalog.client.ApiClient that has been constructed with the desired Configuration.
+                Its requests are sent from an event loop that the client runs on a background thread
+                until the client is closed, so the client can be used from any thread or event loop.
             execution_mode: Set the function execution mode of the client. Options are:
                 - "local": Execute functions directly in the local Python main process. This mode is not recommended for
                     production use as it may lead to unwanted side effects, potential security issues,
@@ -397,28 +451,11 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     async def close_async(self):
         """Asynchronously close the underlying ApiClient."""
-        if getattr(self, "_closed", None):
-            return
-        self._closed = True
-        try:
-            await self.uc.api_client.close()
-            _logger.info("ApiClient successfully closed.")
-        except Exception as e:
-            _logger.error(f"Error while closing ApiClient: {e}")
+        await self.uc.close_async()
 
     def close(self):
         """Synchronously close the underlying ApiClient."""
-        if getattr(self, "_closed", None):
-            return
-        self._closed = True
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.ensure_future(self.close_async())
-            else:
-                loop.run_until_complete(self.close_async())
-        except Exception as e:
-            _logger.error(f"Error while closing ApiClient: {e}")
+        self.uc.close()
 
     def __enter__(self):
         """Enter the context manager."""
