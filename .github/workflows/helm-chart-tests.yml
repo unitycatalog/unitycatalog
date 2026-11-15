@@ -6,6 +6,17 @@ on:
     paths:
       - "helm/**"
       - "ui/**"
+      - "build/**"
+      - "project/**"
+      - "examples/**"
+      - "server/**"
+      - "api/**"
+      - "clients/**"
+      - "bin/**"
+      - "dev/**"
+      - "etc/**"
+      - "build.sbt"
+      - "version.sbt"
       - "Dockerfile"
       - ".github/workflows/helm-chart-tests.yml"
 
@@ -171,18 +182,39 @@ jobs:
           docker build -t unitycatalog-ui:ci ui
 
       - name: Run the server image without the chart
-        # The chart mounts etc/conf and the database, so this checks the image's own files and
-        # modes: the server starts as its user, and bin/uc reaches it and reads a Delta table.
+        # The chart mounts etc/conf and the database. Check the standalone image's permissions
+        # and CLI output too: bin/uc can exit 0 without running Java if its source marker is missing.
         if: matrix.db == 'file'
         run: |
-          docker run -d --name uc-image unitycatalog:ci
-          for i in $(seq 30); do
-            docker exec uc-image bin/uc catalog list > /dev/null 2>&1 && break
+          container="$(docker run -d unitycatalog:ci)"
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              docker logs "$container" || true
+              docker exec "$container" sh -c 'cat etc/logs/server.log' || true
+            fi
+            docker rm -f "$container" > /dev/null || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+          docker exec "$container" sh -ec '
+            [ "$(id -u):$(id -g)" = 100:101 ]
+            [ "$(stat -c %a "$HOME")" = 550 ]
+            [ "$(stat -c %a etc)" = 755 ]
+            [ "$(stat -c %a etc/conf)" = 755 ]
+            [ ! -w "$HOME" ] && [ -w etc ] && [ -w etc/conf ]
+          '
+          for _ in $(seq 30); do
+            output="$(docker exec "$container" bin/uc catalog list 2>&1)" &&
+              grep -qF 'Main catalog' <<<"$output" && break
             sleep 2
           done
-          docker exec uc-image bin/uc catalog list || { docker logs uc-image; exit 1; }
-          docker exec uc-image bin/uc table read --full_name unity.default.numbers
-          docker rm -f uc-image
+          printf '%s\n' "$output"
+          grep -qF 'Main catalog' <<<"$output"
+          output="$(docker exec "$container" bin/uc table read --full_name unity.default.numbers)"
+          printf '%s\n' "$output"
+          grep -qF 'as_int(integer)' <<<"$output"
+          grep -qE '│[0-9]+[[:space:]]+│' <<<"$output"
 
       - name: Create kind cluster
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
@@ -223,7 +255,7 @@ jobs:
                 -- --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_bin
               ready=(mysqladmin ping --host 127.0.0.1 --user root --password=ci-password) ;;
           esac
-          for i in $(seq 60); do
+          for _ in $(seq 60); do
             kubectl exec --namespace uc "$DB" -- "${ready[@]}" > /dev/null 2>&1 && exit 0
             sleep 5
           done

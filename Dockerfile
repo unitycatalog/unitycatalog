@@ -48,6 +48,7 @@ set -eo pipefail
   for classpath in $HOME/server/target/classpath $HOME/examples/cli/target/classpath; do
     echo $classpath
     tr ':' '\n' < $classpath
+    # build.sbt writes the classpath without a trailing newline.
     echo
   done
   echo $HOME/server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java
@@ -79,13 +80,14 @@ ENV HOME=$HOME \
 # they set owner and mode as they write: a recursive chown or chmod in a later
 # layer would store every file a second time. The Helm chart expects uid 100 and
 # gid 101 (its fsGroup and its chown of etc/conf).
-RUN apk add --no-cache bash \
+# Snappy's amd64 JNI library needs the glibc loader supplied by gcompat.
+RUN apk add --no-cache bash gcompat \
     && addgroup -S -g 101 $USER \
     && adduser -S -H -u 100 -h $HOME -G $USER $USER
 
 COPY --from=base /jre $JAVA_HOME
 
-# Build artifacts are read and execute only for the service user
+# Build artifacts are read and execute only for the service user and its group
 COPY --from=base --chown=$USER:$USER --chmod=550 /staging$HOME/ $HOME/
 
 USER $USER
@@ -93,6 +95,10 @@ USER $USER
 # Copy remaining directories here for caching optimization. The server writes
 # its database, data, and logs under etc/.
 COPY --chown=$USER:$USER --parents bin/ etc/ $HOME/
+
+# COPY may create its destination with mode 755; change only the home directory,
+# not its contents, so this does not duplicate the artifact layer.
+RUN chmod 550 "$HOME"
 
 WORKDIR $HOME
 
