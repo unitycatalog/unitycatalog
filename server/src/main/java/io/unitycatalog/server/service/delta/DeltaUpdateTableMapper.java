@@ -374,8 +374,8 @@ public final class DeltaUpdateTableMapper {
    * <p>Actions run in canonical order (not request order): schema + partition columns first (one
    * combined pass via {@link #applySchemaAndPartitionColumns} when both are present); then protocol
    * / properties / domain-metadata / comment / snapshot version so the UniForm-presence check sees
-   * the post-update property map; finally the commit + backfill pair is shaped into a {@link
-   * CommitDispatch}.
+   * the post-update property map, and UniForm metadata that map no longer enables is cleared;
+   * finally the commit + backfill pair is shaped into a {@link CommitDispatch}.
    */
   public static Optional<CommitDispatch> applyUpdates(
       Session session,
@@ -433,6 +433,7 @@ public final class DeltaUpdateTableMapper {
     c.removeDomainMetadata.ifPresent(u -> applyRemoveDomainMetadata(properties, u.getDomains()));
     c.setTableComment.ifPresent(u -> applySetTableComment(dao, u));
     c.updateSnapshotVersion.ifPresent(u -> applyUpdateSnapshotVersion(dao, properties, u));
+    DeltaUniformUtils.clearUnlessIcebergEnabled(dao, properties.asMap());
     // Re-validate the MANAGED contract against the final post-apply state. set-protocol, or a
     // set-/remove-properties that changes a contract input, runs full validation;
     // set-domain-metadata alone only needs the DM-vs-writer-features check.

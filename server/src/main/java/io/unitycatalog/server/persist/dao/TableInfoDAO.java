@@ -171,4 +171,11 @@ public class TableInfoDAO extends IdentifiableDAO {
     setUniformIcebergConvertedDeltaVersion(convertedDeltaVersion);
     setUniformIcebergConvertedDeltaTimestamp(new Date(convertedDeltaTimestampMs));
   }
+
+  /** Clear the UniForm Iceberg metadata fields as an atomic triple. */
+  public void clearUniformIcebergMetadata() {
+    setIcebergMetadataLocation(null);
+    setUniformIcebergConvertedDeltaVersion(null);
+    setUniformIcebergConvertedDeltaTimestamp(null);
+  }
 }
