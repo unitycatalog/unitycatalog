@@ -374,7 +374,10 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
                 .schemaName(SCHEMA_NAME)
                 .volumeType(VolumeType.EXTERNAL)
                 .storageLocation(root + "/volume"));
-    String usedByVolume = "External location still used by volume '" + volume.getVolumeId() + "'";
+    String usedByVolume =
+        "External location still used by volume '"
+            + volume.getVolumeId()
+            + "'. Set force to true to skip this check.";
 
     // A new URL that does not cover the old one would leave the volume without credentials.
     for (String url : List.of(anotherTestUrl(), root + "/other", testUrl() + "/in")) {
@@ -386,6 +389,14 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
           usedByVolume);
     }
     assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(root);
+
+    // Resending the current URL is not a change.
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(root).force(false))
+                .getUrl())
         .isEqualTo(root);
 
     assertThat(
@@ -445,7 +456,18 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
                   locationName, new UpdateExternalLocation().url(anotherTestUrl())),
           ErrorCode.INVALID_ARGUMENT,
           usedBy);
-      delete(locationName, Optional.of(true));
+    }
+
+    schemaOperations.deleteSchema(CATALOG_NAME + "." + ROOTED_SCHEMA_NAME, Optional.of(true));
+    catalogOperations.deleteCatalog(ROOTED_CATALOG_NAME, Optional.of(true));
+    for (String locationName : List.of(catalogLocationName, schemaLocationName)) {
+      String newUrl = anotherTestUrl() + "/" + locationName;
+      assertThat(
+              externalLocationOperations
+                  .updateExternalLocation(locationName, new UpdateExternalLocation().url(newUrl))
+                  .getUrl())
+          .isEqualTo(newUrl);
+      delete(locationName, Optional.of(false));
     }
   }
 
@@ -534,7 +556,9 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
 
   private void assertPendingCleanupDenied(Executable action) {
     assertApiException(
-        action, ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup");
+        action,
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup. Set force to true to skip this check.");
   }
 
   private UUID createCleanupTask(String storageLocation) {

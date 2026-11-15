@@ -159,7 +159,7 @@ bin/uc external_location update \
 6. `force`: _\[Optional\]_ Change the URL even if the external location is in use. Whatever is stored under the old
    URL can no longer get credentials from this external location.
 
-!!! note "At least one of the optional parameters must be specified."
+!!! note "At least one of the optional parameters other than `force` must be specified."
 
 ### Delete an External Location
 

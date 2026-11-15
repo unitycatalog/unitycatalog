@@ -65,7 +65,7 @@ public enum CliParams {
       "To indicate CLI output format preference. Supported values are json and jsonPretty.",
       "output"),
   VERSION("version", "Version number of a registered model entity.", "version"),
-  FORCE("force", "To force the operation even if the entity is in use", "force"),
+  FORCE("force", "To force the operation even if it would otherwise be refused", "force"),
   SECURABLE_TYPE("securable_type", "The type of the securable", "securable_type"),
   PRINCIPAL("principal", "The target principal of the permission change", "principal"),
   PRIVILEGE("privilege", "The privilege to grant or revoke", "privilege"),

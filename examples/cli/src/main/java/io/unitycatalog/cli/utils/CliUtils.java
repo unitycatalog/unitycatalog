@@ -873,12 +873,15 @@ public class CliUtils {
   }
 
   public static void validateUpdateParameters(JSONObject json, String command, String subCommand) {
-    if (json.isEmpty()) {
+    // --force only changes how an update is checked, so it is not an update by itself.
+    if (json.keySet().stream().allMatch(CliParams.FORCE.getServerParam()::equals)) {
       List<CliParams> optionalParams =
           CliUtils.cliOptions.get(command).get(subCommand).getOptionalParams();
       String errorMessage = "No parameters to update, please provide one of:";
       for (CliParams param : optionalParams) {
-        errorMessage += "\n  --" + param.val();
+        if (param != CliParams.FORCE) {
+          errorMessage += "\n  --" + param.val();
+        }
       }
       throw new CliException(errorMessage);
     }

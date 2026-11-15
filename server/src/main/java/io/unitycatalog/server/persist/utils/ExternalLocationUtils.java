@@ -106,7 +106,13 @@ public class ExternalLocationUtils {
   private static final List<SecurableType> MANAGED_SECURABLE_TYPE_CONTAINERS =
       List.of(SecurableType.CATALOG, SecurableType.SCHEMA);
 
-  /** Securables that store data under an external location and get credentials from it. */
+  private static final String FORCE_HINT = " Set force to true to skip this check.";
+
+  /**
+   * Securables that store data under an external location and get credentials from it. Uncommitted
+   * staging tables are left out, unlike in the create-time overlap check, because orphaned staging
+   * rows are never removed and would keep the location in use forever.
+   */
   private static final List<SecurableType> STORAGE_USER_TYPES =
       Stream.concat(DATA_SECURABLE_TYPES.stream(), MANAGED_SECURABLE_TYPE_CONTAINERS.stream())
           .toList();
@@ -634,9 +640,23 @@ public class ExternalLocationUtils {
   public static void validateExternalLocationNotInUse(Session session, NormalizedURL url) {
     if (hasPendingCleanupOverlap(session, url)) {
       throw new BaseException(
-          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup." + FORCE_HINT);
     }
-    getAllEntityDAOsWithURLOverlap(
+    findStorageUser(session, url)
+        .ifPresent(
+            user -> {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "External location still used by " + user + "." + FORCE_HINT);
+            });
+  }
+
+  /**
+   * Describes the first securable found that stores data at or under the URL, such as {@code volume
+   * '<id>'}, or returns empty if there is none.
+   */
+  public static Optional<String> findStorageUser(Session session, NormalizedURL url) {
+    return getAllEntityDAOsWithURLOverlap(
             session,
             url,
             STORAGE_USER_TYPES,
@@ -646,14 +666,7 @@ public class ExternalLocationUtils {
             /* includeSubdir= */ true)
         .stream()
         .findAny()
-        .ifPresent(
-            pair -> {
-              throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT,
-                  String.format(
-                      "External location still used by %s '%s'",
-                      pair.getLeft(), pair.getRight().getId()));
-            });
+        .map(pair -> String.format("%s '%s'", pair.getLeft(), pair.getRight().getId()));
   }
 
   /** Returns whether {@code url} is {@code ancestor} itself or a path under it. */
