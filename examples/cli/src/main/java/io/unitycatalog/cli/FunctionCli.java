@@ -25,6 +25,7 @@ import io.unitycatalog.client.model.CreateFunction;
 import io.unitycatalog.client.model.CreateFunctionRequest;
 import io.unitycatalog.client.model.FunctionParameterInfos;
 import io.unitycatalog.client.model.ListFunctionsResponse;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -124,10 +125,12 @@ public class FunctionCli {
     try {
       return PythonInvoker.invokePython(
           functionsApi.getFunction(functionFullName, /* includeBrowse= */ false),
-          "etc/data/function/python_engine.py",
+          Paths.get(System.getProperty("user.dir"), "etc", "data", "function", "python_engine.py")
+              .toString(),
           Arrays.stream(args.split(",")).map(String::trim).toArray(String[]::new));
     } catch (Exception e) {
-      throw new CliException("Failed to execute function " + functionFullName, e);
+      throw new CliException(
+          "Failed to execute function " + functionFullName + ": " + e.getMessage(), e);
     }
   }
 

@@ -144,7 +144,7 @@ This should return:
 Nicely done! You have called a Function stored in your Unity Catalog.
 
 If the function raises an error, `function call` fails with a message that ends with the Python error, for example
-`Python function failed with exit code 1: ValueError: a must be positive`.
+`Failed to execute function <full_name>: Python function failed with exit code 1: ValueError: a must be positive`.
 
 ## Adding Functions to Unity Catalog
 
