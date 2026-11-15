@@ -683,7 +683,7 @@ lazy val cli = (project in file("examples") / "cli")
       "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     ),
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    Test / forkOptions := (Test / forkOptions).value.withWorkingDirectory((ThisBuild / baseDirectory).value),
   )
 
 // What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
