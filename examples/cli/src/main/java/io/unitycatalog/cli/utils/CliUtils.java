@@ -49,6 +49,7 @@ public class CliUtils {
   public static final String MODEL_VERSION = "model_version";
   public static final String PERMISSION = "permission";
   public static final String USER = "user";
+  public static final String GROUP = "group";
 
   public static final String CREATE = "create";
   public static final String LIST = "list";
@@ -59,6 +60,8 @@ public class CliUtils {
   public static final String EXECUTE = "call";
   public static final String UPDATE = "update";
   public static final String DELETE = "delete";
+  public static final String ADD_MEMBER = "add-member";
+  public static final String REMOVE_MEMBER = "remove-member";
   public static final String LOGIN = "login";
 
   public static final String EMPTY = "";
@@ -310,6 +313,31 @@ public class CliUtils {
                           List.of(CliParams.ID),
                           List.of(CliParams.NAME, CliParams.EXTERNAL_ID, CliParams.EMAIL)));
                   put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
+                }
+              });
+          put(
+              GROUP,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.EXTERNAL_ID, CliParams.MEMBERS)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(),
+                          List.of(CliParams.FILTER, CliParams.START_INDEX, CliParams.COUNT)));
+                  put(GET, new CliOptions(List.of(CliParams.ID), List.of()));
+                  put(UPDATE, new CliOptions(List.of(CliParams.ID, CliParams.NAME), List.of()));
+                  put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
+                  put(
+                      ADD_MEMBER,
+                      new CliOptions(List.of(CliParams.ID, CliParams.MEMBER), List.of()));
+                  put(
+                      REMOVE_MEMBER,
+                      new CliOptions(List.of(CliParams.ID, CliParams.MEMBER), List.of()));
                 }
               });
           put(

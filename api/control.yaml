@@ -6,6 +6,9 @@ tags:
   - name: Users
     description: |
       A user is the identity recognized by Unity Catalog.
+  - name: Groups
+    description: |
+      A group is a named set of users.
 
 paths:
   /scim2/Users:
@@ -117,6 +120,137 @@ paths:
           content:
             application/scim+json:
               schema: {}
+  /scim2/Groups:
+    post:
+      tags:
+        - Groups
+      operationId: createGroup
+      summary: Create a group
+      description: |
+        Creates a new group. The displayName must not be used by another group (409 otherwise),
+        and every member must be an existing user (400 otherwise, and nothing is created).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupResource'
+      responses:
+        '201':
+          description: The new group was successfully created.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResource'
+    get:
+      tags:
+        - Groups
+      parameters:
+        - name: filter
+          in: query
+          description: Query by which the results have to be filtered, for example `displayName eq "data-eng"`.
+          schema:
+            type: string
+          required: false
+        - name: startIndex
+          in: query
+          description: Specifies the index of the first result. First item is number 1.
+          schema:
+            type: integer
+            format: int32
+          required: false
+        - name: count
+          in: query
+          description: Desired number of results per page. If no count is provided, it defaults to 50.
+          schema:
+            type: integer
+            format: int32
+          required: false
+      operationId: listGroups
+      summary: List groups
+      description: |
+        Gets the groups that match the filter, ordered by name.
+      responses:
+        '200':
+          description: The group list was successfully retrieved.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResourceList'
+  /scim2/Groups/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: The id of the group.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Groups
+      operationId: getGroup
+      summary: Get a group
+      description: |
+        Gets the specified group.
+      responses:
+        '200':
+          description: The group was successfully retrieved.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResource'
+    put:
+      tags:
+        - Groups
+      operationId: updateGroup
+      summary: Update a group
+      description: |
+        Replaces the displayName, externalId and members of the group; what the request leaves out
+        is cleared.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupResource'
+      responses:
+        '200':
+          description: The group was successfully updated.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResource'
+    patch:
+      tags:
+        - Groups
+      operationId: patchGroup
+      summary: Patch a group
+      description: |
+        Adds, removes or replaces the members of the group (path `members`, or `members[value eq "<user id>"]`
+        for remove), or replaces its displayName. The operations are applied together or not at all.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: |
+                A SCIM PATCH request (RFC 7644, section 3.5.2): `schemas` and an `Operations` array of
+                `{op, path, value}`. `op` is `add`, `remove` or `replace`, in any case.
+              type: object
+      responses:
+        '200':
+          description: The group was successfully patched.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResource'
+    delete:
+      tags:
+        - Groups
+      operationId: deleteGroup
+      summary: Delete a group
+      description: |
+        Deletes the group, its memberships and the privileges granted to it.
+      responses:
+        '204':
+          description: The group was successfully deleted.
   /scim2/Me:
     get:
       tags:
@@ -363,6 +497,65 @@ components:
               value:
                 description: The url of the user's photo.
                 type: string
+    GroupResourceList:
+      description: List of SCIM Group resources.
+      type: object
+      properties:
+        totalResults:
+          description: The total number of results that match the request.
+          type: integer
+          format: int32
+        itemsPerPage:
+          description: The number of items in this page.
+          type: integer
+          format: int32
+        startIndex:
+          description: The index of the first result.
+          type: integer
+          format: int32
+        Resources:
+          description: The list of Group resources.
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupResource'
+    GroupResource:
+      description: SCIM provides a resource type for "Group" resources.
+      type: object
+      properties:
+        id:
+          description: The id of the group.
+          type: string
+        displayName:
+          description: The name of the group. It is unique across the server.
+          type: string
+        externalId:
+          description: The SCIM external id.
+          type: string
+        members:
+          description: The users in the group.
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupMember'
+        meta:
+          description: The metadata of the group.
+          type: object
+          properties:
+            resourceType:
+              type: string
+            created:
+              type: string
+            lastModified:
+              type: string
+    GroupMember:
+      description: A user in a SCIM group.
+      type: object
+      properties:
+        value:
+          description: The id of the user.
+          type: string
+        type:
+          description: The type of the member, always User.
+          type: string
     Email:
       description: SCIM email for a user.
       type: object

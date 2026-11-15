@@ -811,7 +811,7 @@ _Optional Params:_
 
     -- server: UC Server to connect to. Default is reference server.
     -- auth_token: PAT token to authorize uc requests.
-    -- external_id: The identity provider's id for the user
+    -- external_id: The identity provider's id for the user or group
     -- output: To indicate CLI output format preference. Supported values are json and jsonPretty.
 
 ### Delete User
@@ -883,8 +883,147 @@ _Optional Params:_
     --auth_token PAT token to authorize uc requests.
     --output To indicate CLI output format preference. Supported values are json and jsonPretty.
     --name The name of the entity.
-    --external_id The identity provider's id for the user
+    --external_id The identity provider's id for the user or group
     --email The email address for the user
+
+## Manage Groups
+
+This section outlines the usage of the `bin/uc` script for managing groups within UC.
+A group is a named set of users. The script supports creating, getting, updating, listing, and deleting groups,
+and adding users to or removing users from a group. Group commands are for the metastore owner.
+Group members are identified by user id (see `bin/uc user list`).
+
+### Create Group
+
+```sh
+bin/uc group create [options]
+```
+
+The group name must not be used by another group, and every member must be an existing user. Otherwise nothing
+is created.
+
+_Required Params:_
+
+    --name The name of the entity.
+
+_Optional Params:_
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+    --external_id The identity provider's id for the group
+    --members The ids of the users to put in the group, separated by a comma.
+
+### Delete Group
+
+```sh
+bin/uc group delete [options]
+```
+
+Deletes the group, its memberships, and the privileges granted to it. The users stay.
+
+_Required Params:_
+
+    --id The unique id of the group
+
+_Optional Params:_
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+
+### Get Group
+
+```sh
+bin/uc group get [options]
+```
+
+_Required Params:_
+
+    --id The unique id of the group
+
+_Optional Params:_
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+
+### List Groups
+
+```sh
+bin/uc group list [options]
+```
+
+_Required Params:_
+
+    None
+
+_Optional Params:_
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+    --filter Query by which the results have to be filtered, for example: displayName eq "data-eng"
+    --start_index Specifies the index (starting at 1) of the first result.
+    --count Desired number of results per page
+
+### Update Group
+
+```sh
+bin/uc group update [options]
+```
+
+Renames the group; the members stay as they are.
+The new name must not be used by another group.
+
+_Required Params:_
+
+    --id The unique id of the group
+    --name The name of the entity.
+
+_Optional Params:_
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+
+### Add a Member to a Group
+
+```sh
+bin/uc group add-member [options]
+```
+
+Adding a user that is already a member changes nothing.
+
+_Required Params:_
+
+    --id The unique id of the group
+    --member The id of the user to add to the group
+
+_Optional Params:_
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+
+### Remove a Member from a Group
+
+```sh
+bin/uc group remove-member [options]
+```
+
+Removing a user that is not a member changes nothing.
+
+_Required Params:_
+
+    --id The unique id of the group
+    --member The id of the user to remove from the group
+
+_Optional Params:_
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
 
 ## Metastore Management CLI Usage
 
