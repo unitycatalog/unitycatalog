@@ -9,6 +9,7 @@
 ### Bug Fixes
 
 - Fixed sandbox results being lost, with a misleading "no output was produced" message, when the application uses more memory than `EXECUTOR_MAX_MEMORY_LIMIT`. The sandbox now reports the exit code when the process exits without a result, and reports a result that cannot be read as a failure instead of raising.
+- Fixed tool calls sending `STRUCT` and `BINARY` arguments in a form the function client cannot use. LangChain and DSPy tools sent a struct, including a struct inside an `ARRAY` or a `MAP`, as text such as `"city='Oslo' zip=150"`, and LangChain, DSPy and CrewAI tools sent a binary argument as `"b'aGk='"`. AutoGen tools sent a binary argument as the bytes of its base64 text, so the function received that text instead of the decoded data. Gemini tools sent every `STRUCT`, `ARRAY` and `MAP` argument of a function call as the text of a protobuf object. All of them now send the JSON value the model passed, the same as the OpenAI, Anthropic and LiteLLM integrations.
 
 ### Change Log
 

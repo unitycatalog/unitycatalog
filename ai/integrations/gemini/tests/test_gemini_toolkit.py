@@ -8,10 +8,11 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
-from google.generativeai import GenerativeModel
+from google.generativeai import GenerativeModel, protos
 from google.generativeai.types import CallableFunctionDeclaration
 from pydantic import ValidationError
 
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
@@ -24,10 +25,13 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
     create_function_and_cleanup,
     create_table_function_and_cleanup,
+    generate_function_info_with_params,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_gemini_test")
@@ -414,3 +418,58 @@ def test_generate_callable_tool_list(client):
     )
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."
+
+
+PLACE_TYPE_JSON = {
+    "type": "struct",
+    "fields": [
+        {"name": "city", "type": "string", "nullable": False, "metadata": {}},
+        {"name": "country", "type": "string", "nullable": False, "metadata": {}},
+    ],
+}
+
+GEMINI_JSON_ARGUMENT_PARAMS = {
+    "address": ("struct<city:string,country:string>", PLACE_TYPE_JSON),
+    "stops": (
+        "array<struct<city:string,country:string>>",
+        {"type": "array", "elementType": PLACE_TYPE_JSON, "containsNull": False},
+    ),
+    "by_name": (
+        "map<string,struct<city:string,country:string>>",
+        {
+            "type": "map",
+            "keyType": "string",
+            "valueType": PLACE_TYPE_JSON,
+            "valueContainsNull": False,
+        },
+    ),
+    "data": ("binary", "binary"),
+}
+
+
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(GEMINI_JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(GEMINI_JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+def test_function_call_sends_arguments_as_json_values(function_info, encoded):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    declaration = toolkit.generate_callable_tool_list()[0]
+    arguments = {
+        "address": {"city": "Oslo", "country": "NO"},
+        "stops": [{"city": "Bergen", "country": "NO"}, {"city": "Lund", "country": "SE"}],
+        "by_name": {"home": {"city": "Oslo", "country": "NO"}},
+        "data": encoded,
+    }
+
+    declaration(protos.FunctionCall(name=declaration.name, args=arguments))
+
+    assert client.execute_function.call_args.kwargs["parameters"] == arguments

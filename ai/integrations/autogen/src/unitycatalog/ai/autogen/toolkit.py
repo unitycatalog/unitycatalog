@@ -52,7 +52,7 @@ class UCFunctionTool(BaseTool):
         """
         Actually call the UC function with the provided parameters.
         """
-        param_dict = args.model_dump()
+        param_dict = args.model_dump(mode="json")
 
         result = self._client.execute_function(
             function_name=self._function_full_name,

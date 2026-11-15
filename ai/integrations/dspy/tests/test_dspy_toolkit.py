@@ -25,10 +25,15 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
+    JSON_ARGUMENT_PARAMS,
+    JSON_ARGUMENTS,
     create_function_and_cleanup,
     create_table_function_and_cleanup,
+    generate_function_info_with_params,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_dspy_test")
@@ -585,3 +590,31 @@ def test_toolkit_creation_without_properties_argument_mocked():
         assert tool.name == "catalog__schema__test_function"
         assert tool.desc == "A test function without properties argument"
         assert result == "some_string"
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+@pytest.mark.asyncio
+async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_async):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+    arguments = {**JSON_ARGUMENTS, "data": encoded}
+    tool_call_arguments = json.loads(json.dumps(arguments))
+
+    if use_async:
+        await tool.acall(**tool_call_arguments)
+    else:
+        tool(**tool_call_arguments)
+
+    assert client.execute_function.call_args.kwargs["parameters"] == arguments

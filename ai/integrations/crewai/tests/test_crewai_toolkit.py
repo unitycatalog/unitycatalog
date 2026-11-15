@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from src.unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.base import (
+    BaseFunctionClient,
     FunctionExecutionResult,
 )
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
@@ -24,13 +25,18 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
+    JSON_ARGUMENT_PARAMS,
+    JSON_ARGUMENTS,
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
     RETRIEVER_TABLE_FULL_DATA_TYPE,
     RETRIEVER_TABLE_RETURN_PARAMS,
     create_function_and_cleanup,
+    generate_function_info_with_params,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
 
@@ -320,3 +326,32 @@ def test_toolkit_crewai_kwarg_passthrough(client):
         assert tool.cache_function()
         assert tool.result_as_answer
         assert tool.description_updated
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+@pytest.mark.asyncio
+async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_async):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    tool = toolkit.tools[0].to_structured_tool()
+    arguments = {**JSON_ARGUMENTS, "data": encoded}
+    tool_call_arguments = json.loads(json.dumps(arguments))
+
+    if use_async:
+        await tool.ainvoke(tool_call_arguments)
+    else:
+        tool.invoke(tool_call_arguments)
+
+    assert client.execute_function.call_args.kwargs["parameters"] == arguments

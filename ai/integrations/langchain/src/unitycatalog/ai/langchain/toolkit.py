@@ -1,9 +1,9 @@
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, model_validator
+from pydantic_core import to_jsonable_python
 
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
@@ -94,10 +94,9 @@ class UCFunctionToolkit(BaseModel):
             raise e
 
         def func(*args: Any, **kwargs: Any) -> str:
-            args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,
-                parameters=args_json,
+                parameters=to_jsonable_python(kwargs, fallback=str),
                 enable_retriever_tracing=mlflow_tracing_enabled("langchain"),
             )
             return result.to_json()

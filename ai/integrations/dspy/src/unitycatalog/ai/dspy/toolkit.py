@@ -1,8 +1,8 @@
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic_core import to_jsonable_python
 
 import dspy
 from unitycatalog.ai.core.base import BaseFunctionClient
@@ -166,10 +166,9 @@ class UCFunctionToolkit(BaseModel):
         schema_data = UCFunctionToolkit.convert_to_dspy_schema(function_info, strict=True)
 
         def func(**kwargs: Any) -> str:
-            args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,
-                parameters=args_json,
+                parameters=to_jsonable_python(kwargs, fallback=str),
                 enable_retriever_tracing=mlflow_tracing_enabled("dspy"),
             )
             return result.to_json()

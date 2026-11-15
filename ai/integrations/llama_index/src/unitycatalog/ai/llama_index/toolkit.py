@@ -1,9 +1,9 @@
-import json
 import logging
 from dataclasses import asdict
 from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import to_jsonable_python
 
 from llama_index.core.tools import FunctionTool
 from llama_index.core.tools.types import ToolMetadata
@@ -177,10 +177,9 @@ class UCFunctionToolkit(BaseModel):
                 str: The JSON result of the function execution.
             """
             kwargs = extract_properties(kwargs)
-            args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,
-                parameters=args_json,
+                parameters=to_jsonable_python(kwargs, fallback=str),
                 enable_retriever_tracing=mlflow_tracing_enabled("llama_index"),
             )
             return result.to_json()

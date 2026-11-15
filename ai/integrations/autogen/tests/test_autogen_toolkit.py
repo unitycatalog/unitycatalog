@@ -15,6 +15,7 @@ from packaging import version
 from pydantic import ValidationError
 
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.test_utils.client_utils import (
@@ -24,13 +25,18 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
+    JSON_ARGUMENT_PARAMS,
+    JSON_ARGUMENTS,
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
     RETRIEVER_TABLE_FULL_DATA_TYPE,
     RETRIEVER_TABLE_RETURN_PARAMS,
     create_function_and_cleanup,
+    generate_function_info_with_params,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
 
@@ -347,3 +353,26 @@ async def test_toolkit_with_invalid_function_input(dbx_client):
 
         with pytest.raises(ValueError, match="Extra inputs are not permitted"):
             await tool.run_json(invalid_inputs, CancellationToken())
+
+
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+@pytest.mark.asyncio
+async def test_tool_sends_arguments_as_json_values(function_info, encoded):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+    arguments = {**JSON_ARGUMENTS, "data": encoded}
+
+    await tool.run_json(json.loads(json.dumps(arguments)), CancellationToken())
+
+    assert client.execute_function.call_args.kwargs["parameters"] == arguments

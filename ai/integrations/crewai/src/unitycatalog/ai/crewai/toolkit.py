@@ -1,9 +1,9 @@
 import importlib
-import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import to_jsonable_python
 
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
@@ -163,10 +163,9 @@ class UCFunctionToolkit(BaseModel):
             raise e
 
         def func(**kwargs: Any) -> str:
-            args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,
-                parameters=args_json,
+                parameters=to_jsonable_python(kwargs, fallback=str),
                 enable_retriever_tracing=mlflow_tracing_enabled("crewai"),
             )
 
