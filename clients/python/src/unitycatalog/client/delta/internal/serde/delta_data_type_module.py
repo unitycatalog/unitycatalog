@@ -18,6 +18,7 @@ from unitycatalog.client.delta.models.delta_decimal_type import DeltaDecimalType
 from unitycatalog.client.delta.models.delta_map_type import DeltaMapType
 from unitycatalog.client.delta.models.delta_primitive_type import DeltaPrimitiveType
 from unitycatalog.client.delta.models.delta_struct_field import DeltaStructField
+from unitycatalog.client.delta.models.delta_struct_field_metadata import DeltaStructFieldMetadata
 from unitycatalog.client.delta.models.delta_struct_type import DeltaStructType
 
 _DECIMAL_PATTERN = re.compile(r"decimal\((\d+),\s*(\d+)\)")
@@ -63,7 +64,7 @@ def _parse_field(obj):
         name=obj.get("name"),
         type=_parse_type(obj.get("type")),
         nullable=obj.get("nullable", True),
-        metadata=obj.get("metadata", {}))
+        metadata=DeltaStructFieldMetadata.from_dict(obj.get("metadata", {})))
 
 
 def _type_to_dict(dt):
@@ -108,7 +109,7 @@ def _patched_struct_from_dict(cls, obj):
     if obj is None:
         return None
     parsed = _parse_type(obj)
-    if not isinstance(parsed, DeltaStructType) or "fields" not in obj:
+    if not isinstance(obj, dict) or "fields" not in obj or not isinstance(parsed, DeltaStructType):
         raise ValueError("Expected a struct type with 'fields', got: {}".format(obj))
     return parsed
 

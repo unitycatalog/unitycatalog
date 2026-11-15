@@ -43,8 +43,8 @@ class TestDeserFromJson:
             col = DeltaStructField.from_json(json_str)
             assert isinstance(col.type, DeltaPrimitiveType)
             assert col.type.type == t
-            # Pydantic must coerce the dict `metadata` into a typed DeltaStructFieldMetadata
-            # instance -- _field_to_dict relies on this to call `.to_dict()` on serialization.
+            # `metadata` must be a typed DeltaStructFieldMetadata -- _field_to_dict relies on this to
+            # call `.to_dict()` on serialization.
             assert isinstance(col.metadata, DeltaStructFieldMetadata)
 
     def test_decimal_type(self):
@@ -239,6 +239,76 @@ class TestJsonRoundTrip:
         columns = DeltaStructType.from_json(json.dumps(original))
         assert isinstance(columns.fields[1].type.value_type, DeltaDecimalType)
         assert json.loads(columns.to_json()) == original
+
+    def test_table_columns_keep_field_metadata(self):
+        # Field metadata holds arbitrary keys, at every nesting level.
+        original = {
+            "type": "struct",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "long",
+                    "nullable": False,
+                    "metadata": {
+                        "comment": "c",
+                        "delta.columnMapping.id": 1,
+                        "delta.columnMapping.physicalName": "col-1",
+                        "nested": {"a": [1, None]},
+                    },
+                },
+                {
+                    "name": "points",
+                    "type": {
+                        "type": "array",
+                        "element-type": {
+                            "type": "struct",
+                            "fields": [
+                                {"name": "x", "type": "double", "nullable": True,
+                                 "metadata": {"comment": "in an array"}},
+                            ],
+                        },
+                        "contains-null": True,
+                    },
+                    "nullable": True,
+                    "metadata": {},
+                },
+                {
+                    "name": "by_name",
+                    "type": {
+                        "type": "map",
+                        "key-type": "string",
+                        "value-type": {
+                            "type": "struct",
+                            "fields": [
+                                {"name": "y", "type": "long", "nullable": True,
+                                 "metadata": {"delta.columnMapping.id": 3}},
+                            ],
+                        },
+                        "value-contains-null": True,
+                    },
+                    "nullable": True,
+                    "metadata": {"comment": "a map"},
+                },
+            ],
+        }
+        columns = DeltaStructType.from_json(json.dumps(original))
+        assert columns.fields[0].metadata.to_dict() == original["fields"][0]["metadata"]
+        assert columns.fields[1].type.element_type.fields[0].metadata.to_dict() == {
+            "comment": "in an array"
+        }
+        assert columns.fields[2].type.value_type.fields[0].metadata.to_dict() == {
+            "delta.columnMapping.id": 3
+        }
+        assert json.loads(columns.to_json()) == original
+
+        field = DeltaStructField.from_json(json.dumps(original["fields"][0]))
+        assert json.loads(field.to_json()) == original["fields"][0]
+
+    def test_field_without_metadata_gets_empty_metadata(self):
+        field = DeltaStructField.from_json(
+            json.dumps({"name": "id", "type": "long", "nullable": False}))
+        assert field.metadata.to_dict() == {}
+        assert json.loads(field.to_json())["metadata"] == {}
 
     @pytest.mark.parametrize("wire", [
         "long",

@@ -5,6 +5,8 @@ import inspect
 import json
 import pkgutil
 
+import pytest
+
 import unitycatalog.client.delta.api as delta_api
 import unitycatalog.client.delta.models as delta_models
 from unitycatalog.client import ApiClient, CatalogsApi, Configuration
@@ -91,7 +93,14 @@ def test_api_client_deserializes_delta_responses_with_delta_models():
             "updated-time": 1700000000000,
             "columns": {
                 "type": "struct",
-                "fields": [{"name": "id", "type": "long", "nullable": False, "metadata": {}}],
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "long",
+                        "nullable": False,
+                        "metadata": {"comment": "c", "delta.columnMapping.id": 1},
+                    }
+                ],
             },
             "properties": {},
         },
@@ -107,6 +116,11 @@ def test_api_client_deserializes_delta_responses_with_delta_models():
     assert [type(c) for c in table.commits] == [DeltaCommit]
     assert table.commits[0].to_dict() == commit
     assert table.metadata.columns.fields[0].type.to_dict() == "long"
+    assert table.metadata.columns.fields[0].metadata.to_dict() == {
+        "comment": "c",
+        "delta.columnMapping.id": 1,
+    }
+    assert table.metadata.columns.to_dict() == response["metadata"]["columns"]
 
 
 def _delta_api_response_types():
@@ -127,3 +141,12 @@ def test_every_delta_api_response_type_resolves_to_its_delta_model():
     resolved = {name: api_client._lookup_model(name) for name in response_types}
 
     assert resolved == {name: getattr(delta_models, name) for name in response_types}
+
+
+def test_lookup_model_raises_for_an_unknown_name():
+    api_client = ApiClient(
+        Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
+    )
+
+    with pytest.raises(AttributeError, match="no model named 'NoSuchModel'"):
+        api_client._lookup_model("NoSuchModel")

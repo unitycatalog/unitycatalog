@@ -1,5 +1,7 @@
 {{! Copied from OpenAPI Generator v7.9.0 (python/api_client.mustache), with _lookup_model added so the
     shared ApiClient also resolves response types from the Delta models in the client's delta.models package.
+    _lookup_model imports the model packages itself, so the module-level model package import is dropped, and
+    so is the generator's TODO on the 'long' type mapping.
     Re-sync this copy from the new version whenever sbt-openapi-generator in project/plugins.sbt is
     upgraded. }}
 # coding: utf-8
@@ -26,7 +28,6 @@ import tornado.gen
 
 from {{packageName}}.configuration import Configuration
 from {{packageName}}.api_response import ApiResponse, T as ApiResponseT
-import {{modelPackage}}
 from {{packageName}} import rest
 from {{packageName}}.exceptions import (
     ApiValueError,
@@ -59,7 +60,7 @@ class ApiClient:
     PRIMITIVE_TYPES = (float, bool, bytes, str, int)
     NATIVE_TYPES_MAPPING = {
         'int': int,
-        'long': int, # TODO remove as only py3 is supported?
+        'long': int,
         'float': float,
         'str': str,
         'bool': bool,
@@ -433,9 +434,9 @@ class ApiClient:
         return self.__deserialize(data, response_type)
 
     def _lookup_model(self, name):
-        # The UC models win a name clash, so no Delta API may return a type named like a UC model
-        # (test_api_client.py checks this). Imported on first use so importing the UC client does not
-        # load the Delta models.
+        # The UC models win a name clash. That is safe because no Delta API returns a type named like a
+        # UC model, which the client tests assert for every Delta API response type. Imported on first use
+        # so importing the UC client does not load the Delta models.
         packages = ("{{modelPackage}}", "{{packageName}}.delta.models")
         for package in packages:
             module = importlib.import_module(package)

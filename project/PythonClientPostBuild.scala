@@ -111,7 +111,7 @@ object PythonClientPostBuild {
   }
 
   private val unrelocatedDeltaImports = Seq(
-    """unitycatalog\.client\.models\b""".r,
+    """(?m)^\s*(from|import)\s+unitycatalog\.client\.models\b""".r,
     """(?m)^\s*(from|import)\s+delta\.""".r
   )
 
@@ -121,7 +121,7 @@ object PythonClientPostBuild {
    * <packageName>.models, and the api/__init__.py imports from the bare apiPackage. Also writes an empty
    * unitycatalog/client/delta/__init__.py, which the generator does not emit, so delta is a regular package.
    * Runs before patchDeltaDataTypeModule copies the serde module in. Fails the build if client/delta is
-   * missing, or if any module under it still refers to unitycatalog.client.models or imports the bare delta
+   * missing, or if any module under it still imports from unitycatalog.client.models or the bare delta
    * package after the rewrite, so a change in how the generator spells these imports breaks the build
    * instead of leaving the Delta APIs on the UC models.
    */
