@@ -15,6 +15,7 @@
 
 - Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
 - Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #2223
+- Run OSS function client calls on one event loop so they work from any thread by @maharanay22 in #2242
 
 ## Unity Catalog AI 0.4.0
 
