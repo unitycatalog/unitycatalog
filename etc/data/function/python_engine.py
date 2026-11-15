@@ -27,7 +27,10 @@ def parse_body(routine_body):
 
 def define_function(func_name, routine_body, param_names):
     func_def = ast.parse(f"def {func_name}({', '.join(param_names)}):\n    pass")
-    func_def.body[0].body = parse_body(routine_body)
+    body = parse_body(routine_body)
+    if not body:
+        raise SyntaxError("the routine definition has no statements")
+    func_def.body[0].body = body
     exec(compile(func_def, '<routine_definition>', 'exec'), globals())
 
 def execute_function(func_name, routine_body, params_str, args_str):

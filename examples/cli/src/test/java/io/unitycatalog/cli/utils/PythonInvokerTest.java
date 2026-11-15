@@ -71,7 +71,12 @@ public class PythonInvokerTest {
         Arguments.of(
             "trailing statement at column 0 after an indented body",
             "    b = a + 1\n    return b\nraise ValueError('x')",
-            "IndentationError: unexpected indent"));
+            "IndentationError: unexpected indent"),
+        Arguments.of("empty body", "", "SyntaxError: the routine definition has no statements"),
+        Arguments.of(
+            "comment-only body",
+            "# nothing to run",
+            "SyntaxError: the routine definition has no statements"));
   }
 
   @ParameterizedTest(name = "{0}")
