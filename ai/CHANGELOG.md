@@ -15,6 +15,7 @@
 
 - Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
 - Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #2223
+- Build Gemini and DSPy tools for functions without parameters by @maharanay22 in #2245
 
 ## Unity Catalog AI 0.4.0
 
