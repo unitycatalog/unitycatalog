@@ -105,6 +105,26 @@ public class PythonInvokerTest {
         .hasMessageStartingWith("Not enough parameters provided: 0, expected: 1");
   }
 
+  static Stream<Arguments> longErrorOutputs() {
+    return Stream.of(
+        Arguments.of("exactly the limit", "b'x' * 4096", "x".repeat(4096)),
+        Arguments.of("one byte over the limit", "b'y' + b'x' * 4096", "..." + "x".repeat(4096)),
+        Arguments.of(
+            "cut inside a UTF-8 character",
+            "'\\u00e9'.encode() * 3000 + b'x'",
+            "..." + "é".repeat(2047) + "x"));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("longErrorOutputs")
+  public void testErrorMessageKeepsTheEndOfLongErrorOutput(
+      String description, String errorBytes, String errorOutput) {
+    String body = "import sys\nsys.stderr.buffer.write(" + errorBytes + ")\nsys.exit(2)";
+    assertThatThrownBy(() -> PythonInvoker.invokePython(intFunction(body), PYTHON_ENGINE, "5"))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("Python function failed with exit code 2: " + errorOutput);
+  }
+
   @Test
   @Timeout(60)
   public void testLargeErrorOutputDoesNotBlockTheCall() throws ApiException {
