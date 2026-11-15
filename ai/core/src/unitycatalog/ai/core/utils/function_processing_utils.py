@@ -224,7 +224,7 @@ def parse_parameter_default(parameter_default: str) -> Any:
     """
     default_str = parameter_default.strip()
     upper_str = default_str.upper()
-    # NB: Pydantic requires a NoneType definition to be explicity set directly. If retrieiving
+    # NB: Pydantic requires a NoneType definition to be explicitly set directly. If retrieving
     # this type from a lookup mapping (as is done with True / False as registered in
     # UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING), it will not be recognized
     # as a NoneType properly.
@@ -248,7 +248,11 @@ def parse_parameter_default(parameter_default: str) -> Any:
     else:
         try:
             return ast.literal_eval(default_str)
-        except (ValueError, SyntaxError):
+        except (ValueError, SyntaxError, TypeError):
+            # TypeError covers literals literal_eval parses but cannot
+            # build, such as a dict with an unhashable key ({[1]: 2});
+            # they fall through to the raw-string fallback like any
+            # other unparseable default.
             try:
                 return json.loads(default_str)
             except json.JSONDecodeError:
@@ -326,7 +330,14 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(params_name, **fields, __config__={"extra": "forbid"})
+    model = create_model(
+        params_name,
+        **fields,
+        # ser_json_bytes: bytes defaults (from X'...' literals) must appear
+        # in the JSON schema as base64; the default UTF-8 mode corrupts
+        # them and fails outright on non-UTF-8 bytes such as b'\xff'.
+        __config__={"extra": "forbid", "ser_json_bytes": "base64"},
+    )
 
     return PydanticFunctionInputParams(pydantic_model=model, strict=strict)
 

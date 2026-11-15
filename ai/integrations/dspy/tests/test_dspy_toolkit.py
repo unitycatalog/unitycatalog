@@ -479,6 +479,31 @@ def test_toolkit_convert_to_dspy_schema_non_strict_mode():
     assert "x" in schema["args_type"]
 
 
+def test_toolkit_convert_to_dspy_schema_with_binary_default():
+    mock_function_info = generate_function_info()
+    mock_function_info.input_params.parameters = [
+        FunctionParameterInfo(
+            name="b",
+            type_name="BINARY",
+            type_text="binary",
+            type_json='{"name":"b","type":"binary","nullable":true,"metadata":{}}',
+            type_precision=0,
+            type_scale=0,
+            position=0,
+            parameter_type=FunctionParameterType.PARAM,
+            parameter_default="X'0102'",
+        )
+    ]
+
+    schema = UCFunctionToolkit.convert_to_dspy_schema(mock_function_info)
+
+    # A bytes default is represented as base64 in the args, matching the
+    # JSON schema, so the args stay JSON-serializable for to_dict()
+    assert schema["args_dict"]["b"]["default"] == "AQI="
+    assert schema["args_type"]["b"] == bytes
+    json.dumps(schema["args_dict"])
+
+
 @requires_databricks
 def test_toolkit_filter_accessible_functions(client):
     with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
