@@ -877,6 +877,11 @@ For a non-Delta external table, `OPTIONS (...)` such as a CSV `header` or `delim
 writing the table, while `TBLPROPERTIES (...)` and `COMMENT` are only metadata. Tables created outside Spark follow the
 same rule through `option.`-prefixed properties; see [table create](../usage/cli.md#create-a-table) in the CLI docs.
 
+`CREATE OR REPLACE TABLE ... LOCATION '<path>'` creates an external table at that location when the table does not
+exist yet. Unity Catalog can only replace catalog-managed Delta tables, so `REPLACE TABLE` or `CREATE OR REPLACE TABLE`
+with a `LOCATION` fails when the table already exists, and the table is left as it was. To move an existing external
+table to a new location, drop it and create it again.
+
 Let’s look at a visualization of our current tables:
 
 ![UC Spark 2](../assets/images/uc_spark2.png)

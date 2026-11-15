@@ -392,11 +392,6 @@ class UCSingleCatalog
     // a REPLACE against a non-managed-Delta table still surfaces the precise error rather than
     // tripping the more generic "only supported for catalog-managed UC Delta tables" gate.
     rejectSystemManagedProperties(properties)
-    if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
-      throw new ApiException(
-        s"$operation cannot specify property '${TableCatalog.PROP_LOCATION}' " +
-          s"on an existing UC-managed Delta table.")
-    }
     // Second, make sure UC says this is an existing catalog-managed Delta table and that the
     // metadata we need to reuse it for replace (storage location and table ID) is present.
     if (!isCatalogManagedDeltaTable(tableInfo)) {
@@ -615,6 +610,13 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("REPLACE TABLE")
+    if (UCSingleCatalog.isPathTable(ident)) {
+      return stagingCatalog.stageReplace(ident, schema, partitions, properties)
+    }
+    if (!UCSingleCatalog.isManagedTable(properties, ident)) {
+      resolveExistingTableForReplace(ident, allowMissingTable = false)
+      throw locationOnExistingTableError("REPLACE TABLE", ident)
+    }
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer load + augment to the Delta-side `buildReplaceProps`. UCSingleCatalog no longer
       // loads the existing table and prepare the properties for replace as this will be done by
@@ -651,6 +653,15 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("CREATE OR REPLACE TABLE")
+    if (UCSingleCatalog.isPathTable(ident)) {
+      return stagingCatalog.stageCreateOrReplace(ident, schema, partitions, properties)
+    }
+    if (!UCSingleCatalog.isManagedTable(properties, ident)) {
+      if (resolveExistingTableForReplace(ident, allowMissingTable = true).isDefined) {
+        throw locationOnExistingTableError("CREATE OR REPLACE TABLE", ident)
+      }
+      return stageCreate(ident, schema, partitions, properties)
+    }
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer existence-probe + branch (create-staging vs replace) to the Delta catalog.
       // UCSingleCatalog no longer loads the existing table and prepare the properties for replace,
@@ -694,6 +705,12 @@ class UCSingleCatalog
       case e: ApiException if e.getCode == 404 => throw new NoSuchTableException(ident)
     }
   }
+
+  private def locationOnExistingTableError(operation: String, ident: Identifier): ApiException =
+    new ApiException(
+      s"$operation cannot specify LOCATION when " +
+        s"${UCSingleCatalog.fullTableNameForApi(name(), ident)} already exists: only " +
+        "catalog-managed Delta tables can be replaced, and Unity Catalog chooses their location.")
 
   private def requireStagingCatalog(operation: String): StagingTableCatalog = delegate match {
     case catalog: StagingTableCatalog => catalog
@@ -872,9 +889,12 @@ object UCSingleCatalog {
   private def isManagedTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
-    val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
-    !hasExternalClause && !hasLocationClause && !isPathTable
+    !hasExternalClause && !hasLocationClause && !isPathTable(ident)
   }
+
+  /** True for a path-based identifier such as delta.`/tmp/table`. */
+  private def isPathTable(ident: Identifier): Boolean =
+    ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {
