@@ -6,12 +6,14 @@ import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.FunctionsApi;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateFunction;
 import io.unitycatalog.client.model.CreateFunctionRequest;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.client.model.FunctionParameterInfos;
+import io.unitycatalog.client.model.ListFunctionsResponse;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.function.BaseFunctionCRUDTest;
@@ -122,6 +124,12 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
             + "\"price\":\"1.50\"}"
       },
       {"fn_max_key", "{\"" + maxLengthKey + "\":\"v\"}", "{\"" + maxLengthKey + "\":\"v\"}"},
+      {"fn_max_digits", "{\"n\":" + "9".repeat(1000) + "}", "{\"n\":\"" + "9".repeat(1000) + "\"}"},
+      {
+        "fn_max_nesting",
+        "{\"n\":" + "[".repeat(999) + "]".repeat(999) + "}",
+        "{\"n\":\"" + "[".repeat(999) + "]".repeat(999) + "\"}"
+      },
       {"fn_absent", null, null},
       {"fn_json_null", "null", null},
       {"fn_empty", "{}", null},
@@ -179,9 +187,68 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
         () -> createFunction("fn_invalid", "{\"n\":1e9999999999}"),
         ErrorCode.INVALID_ARGUMENT,
         "Function properties contain a number whose exponent is out of range");
+    for (String properties :
+        List.of(
+            "{\"n\":" + "9".repeat(1001) + "}",
+            "{\"n\":" + "[".repeat(1000) + "]".repeat(1000) + "}")) {
+      assertApiException(
+          () -> createFunction("fn_invalid", properties),
+          ErrorCode.INVALID_ARGUMENT,
+          "Function properties are too large: numbers can have at most 1000 digits, strings at"
+              + " most 20000000 characters, and nesting at most 1000 levels.");
+    }
     assertThat(functionOperations.listFunctions(CATALOG_NAME, SCHEMA_NAME, Optional.empty()))
         .isEmpty();
     assertThat(countFunctionPropertyRows()).isZero();
+  }
+
+  @Test
+  public void testListPagesKeepEachFunctionsProperties() throws ApiException {
+    createCommonResources();
+    Map<String, String> expected = new HashMap<>();
+    expected.put("fn_a", "{\"a\":\"1\"}");
+    expected.put("fn_b", null);
+    expected.put("fn_c", "{\"c\":\"3\",\"x\":\"y\"}");
+    expected.put("fn_d", null);
+    createFunction("fn_a", "{\"a\": \"1\"}");
+    createFunction("fn_b", null);
+    createFunction("fn_c", "{\"x\": \"y\", \"c\": 3}");
+    createFunction("fn_d", "{}");
+
+    FunctionsApi functionsApi = new FunctionsApi(TestUtils.createApiClient(serverConfig));
+    Map<String, String> listed = new HashMap<>();
+    int pages = 0;
+    String pageToken = null;
+    do {
+      ListFunctionsResponse page =
+          functionsApi.listFunctions(
+              CATALOG_NAME, SCHEMA_NAME, 1, pageToken, /* includeBrowse= */ false);
+      pages++;
+      for (FunctionInfo f : page.getFunctions()) {
+        listed.put(f.getName(), f.getProperties());
+      }
+      pageToken = page.getNextPageToken();
+    } while (pageToken != null && !pageToken.isEmpty());
+    assertThat(listed).isEqualTo(expected);
+    assertThat(pages).isGreaterThanOrEqualTo(expected.size());
+  }
+
+  @Test
+  public void testDuplicateCreateKeepsTheExistingProperties() throws ApiException {
+    createCommonResources();
+    String functionId = createFunction("fn_dup", "{\"k\":\"v1\"}").getFunctionId();
+
+    assertApiException(
+        () -> createFunction("fn_dup", "{\"k\":\"v2\",\"other\":\"x\"}"),
+        ErrorCode.RESOURCE_ALREADY_EXISTS,
+        "Function already exists: fn_dup");
+    assertThat(functionOperations.getFunction(CATALOG_NAME + "." + SCHEMA_NAME + ".fn_dup"))
+        .extracting(FunctionInfo::getFunctionId, FunctionInfo::getProperties)
+        .containsExactly(functionId, "{\"k\":\"v1\"}");
+    assertThat(functionOperations.listFunctions(CATALOG_NAME, SCHEMA_NAME, Optional.empty()))
+        .hasSize(1);
+    assertThat(countPropertyRows(functionId)).isEqualTo(1);
+    assertThat(countFunctionPropertyRows()).isEqualTo(1);
   }
 
   @Test

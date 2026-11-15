@@ -1,7 +1,9 @@
 package io.unitycatalog.server.persist;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.core.exc.StreamConstraintsException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
@@ -129,6 +131,8 @@ public class FunctionRepository {
                     p.setFunction(dao);
                   });
           session.persist(dao);
+          // Write the function and its parameters first, so only property rows reach
+          // flushProperties and its mapping of database errors to property errors.
           session.flush();
           PropertyDAO.from(properties, dao.getId(), Constants.FUNCTION).forEach(session::persist);
           flushProperties(session);
@@ -277,8 +281,9 @@ public class FunctionRepository {
    * no properties.
    *
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for any other value, for a key
-   *     longer than {@link PropertyDAO#MAX_KEY_LENGTH} characters, or for a NUL character in a key
-   *     or value, which PostgreSQL text cannot store
+   *     longer than {@link PropertyDAO#MAX_KEY_LENGTH} characters, for a NUL character in a key or
+   *     value, which PostgreSQL text cannot store, for a number whose exponent is out of range, or
+   *     for JSON over the parser's {@link StreamReadConstraints}
    */
   private static Map<String, String> parseProperties(String properties) {
     if (properties == null || properties.isBlank()) {
@@ -287,6 +292,16 @@ public class FunctionRepository {
     JsonNode node;
     try {
       node = STRICT_JSON_READER.readTree(properties);
+    } catch (StreamConstraintsException e) {
+      StreamReadConstraints limits = STRICT_JSON_READER.getFactory().streamReadConstraints();
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "Function properties are too large: numbers can have at most %d digits, strings at"
+                  + " most %d characters, and nesting at most %d levels.",
+              limits.getMaxNumberLength(),
+              limits.getMaxStringLength(),
+              limits.getMaxNestingDepth()));
     } catch (JsonProcessingException e) {
       throw invalidProperties();
     } catch (NumberFormatException e) {
@@ -327,6 +342,10 @@ public class FunctionRepository {
    * ErrorCode#INVALID_ARGUMENT}: keys its collation treats as equal (such as MySQL's default
    * case-insensitive one), or a key over the column size where the database counts UTF-16 units
    * (H2).
+   *
+   * <p>This mapping stays here rather than in {@code DatabaseErrors}, which maps a SQLSTATE for
+   * every repository and keeps the database's own message. A unique or data violation is only known
+   * to be the caller's fault here, where the flush writes nothing but property rows.
    */
   private static void flushProperties(Session session) {
     try {
