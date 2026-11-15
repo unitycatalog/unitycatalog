@@ -135,6 +135,45 @@ bin/uc external_location get \
 
 1. `name`: The name of the External Location.
 
+### Update an External Location
+
+You can update an existing external location using:
+
+```sh
+bin/uc external_location update \
+--name <name> \ # (1)
+[--new_name <new_name>] \ # (2)
+[--url <url>] \ # (3)
+[--credential_name <credential_name>] \ # (4)
+[--comment <comment>] \ # (5)
+[--force true] # (6)
+```
+
+1. `name`: The name of the existing external location.
+2. `new_name`: _\[Optional\]_ The new name of the external location.
+3. `url`: _\[Optional\]_ The new URL of the external location. Changing it fails while the external location is in
+   use, unless the new URL covers the old one. It is in use while a table, volume or registered model is stored under
+   it, a catalog or schema keeps its managed storage under it, or a storage cleanup is pending there.
+4. `credential_name`: _\[Optional\]_ The name of the credential to be associated with.
+5. `comment`: _\[Optional\]_ The new description of the external location.
+6. `force`: _\[Optional\]_ Change the URL even if the external location is in use. Whatever is stored under the old
+   URL can no longer get credentials from this external location.
+
+!!! note "At least one of the optional parameters must be specified."
+
+### Delete an External Location
+
+You can delete an existing external location using:
+
+```sh
+bin/uc external_location delete \
+  --name <name> \ # (1)
+  [--force true] # (2)
+```
+
+1. `name`: The name of the external location. Deleting it fails while it is in use, as described for `url` above.
+2. `force`: _\[Optional\]_ Delete the external location even if it is in use.
+
 ## Catalog Management CLI Usage
 
 You can use the Unity Catalog CLI to manage catalogs within your system. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting catalogs. Let's take a look at each operation.

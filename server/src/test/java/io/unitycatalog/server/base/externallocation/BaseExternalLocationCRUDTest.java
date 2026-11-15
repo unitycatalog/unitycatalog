@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -21,8 +22,10 @@ import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
+import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
@@ -54,6 +57,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   private static final String CREDENTIAL_NAME = "uc_testcredential";
   private static final String ANOTHER_CREDENTIAL_NAME = "uc_testcredential_another";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
+  private static final String ROOTED_CATALOG_NAME = "uc_testrootedcatalog";
+  private static final String ROOTED_SCHEMA_NAME = "uc_testrootedschema";
   protected ExternalLocationOperations externalLocationOperations;
   protected SchemaOperations schemaOperations;
   protected VolumeOperations volumeOperations;
@@ -358,6 +363,93 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testUrlChangeWhileInUse() throws ApiException {
+    String root = testUrl() + "/in-use";
+    create(EXTERNAL_LOCATION_NAME, root);
+    VolumeInfo volume =
+        volumeOperations.createVolume(
+            new CreateVolumeRequestContent()
+                .name(VOLUME_NAME)
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .volumeType(VolumeType.EXTERNAL)
+                .storageLocation(root + "/volume"));
+    String usedByVolume = "External location still used by volume '" + volume.getVolumeId() + "'";
+
+    // A new URL that does not cover the old one would leave the volume without credentials.
+    for (String url : List.of(anotherTestUrl(), root + "/other", testUrl() + "/in")) {
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(url).force(false)),
+          ErrorCode.INVALID_ARGUMENT,
+          usedByVolume);
+    }
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(root);
+
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().comment("in use"))
+                .getComment())
+        .isEqualTo("in use");
+
+    // A parent URL still covers the volume.
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(testUrl()))
+                .getUrl())
+        .isEqualTo(testUrl());
+
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME,
+                    new UpdateExternalLocation().url(anotherTestUrl()).force(true))
+                .getUrl())
+        .isEqualTo(anotherTestUrl());
+  }
+
+  @Test
+  public void testCatalogAndSchemaManagedStorageKeepLocationInUse() throws ApiException {
+    String catalogLocationName = EXTERNAL_LOCATION_NAME + "_catalog";
+    String catalogRoot = testUrl() + "/catalog-root";
+    create(catalogLocationName, catalogRoot);
+    CatalogInfo catalog =
+        catalogOperations.createCatalog(
+            new CreateCatalog().name(ROOTED_CATALOG_NAME).storageRoot(catalogRoot));
+
+    String schemaLocationName = EXTERNAL_LOCATION_NAME + "_schema";
+    String schemaRoot = testUrl() + "/schema-root";
+    create(schemaLocationName, schemaRoot);
+    SchemaInfo schema =
+        schemaOperations.createSchema(
+            new CreateSchema()
+                .catalogName(CATALOG_NAME)
+                .name(ROOTED_SCHEMA_NAME)
+                .storageRoot(schemaRoot));
+
+    for (List<String> locationAndUser :
+        List.of(
+            List.of(catalogLocationName, "catalog '" + catalog.getId() + "'"),
+            List.of(schemaLocationName, "schema '" + schema.getSchemaId() + "'"))) {
+      String locationName = locationAndUser.get(0);
+      String usedBy = "External location still used by " + locationAndUser.get(1);
+      assertApiException(
+          () -> delete(locationName, Optional.of(false)), ErrorCode.INVALID_ARGUMENT, usedBy);
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  locationName, new UpdateExternalLocation().url(anotherTestUrl())),
+          ErrorCode.INVALID_ARGUMENT,
+          usedBy);
+      delete(locationName, Optional.of(true));
+    }
+  }
+
+  @Test
   public void testExternalLocationSurvivesForceDeletedCredential() throws ApiException {
     String doomedCredentialName = CREDENTIAL_NAME + "_doomed";
     CredentialInfo doomedCredential =
@@ -416,6 +508,10 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
           () ->
               externalLocationOperations.deleteExternalLocation(
                   externalLocationName, Optional.of(false)));
+      assertPendingCleanupDenied(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  externalLocationName, new UpdateExternalLocation().url(anotherTestUrl())));
       int deleted =
           TransactionManager.executeWithTransaction(
               hibernateConfigurator.getSessionFactory(),

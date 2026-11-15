@@ -393,7 +393,8 @@ public class CliUtils {
                               CliParams.NEW_NAME,
                               CliParams.URL,
                               CliParams.CREDENTIAL_NAME,
-                              CliParams.COMMENT)));
+                              CliParams.COMMENT,
+                              CliParams.FORCE)));
                   put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });

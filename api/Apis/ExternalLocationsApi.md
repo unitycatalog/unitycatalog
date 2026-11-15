@@ -44,14 +44,14 @@ No authorization required
 
 Delete an external location
 
-    Deletes the specified external location from the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location.
+    Deletes the specified external location from the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location. Unless force is true, the deletion fails while the location is in use: a table, volume or registered model is stored under it, a catalog or schema keeps its managed storage under it, or a storage cleanup is pending there.
 
 ### Parameters
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| Name of the external location. | [default to null] |
-| **force** | **Boolean**| Force deletion even if there are dependent external tables or mounts. | [optional] [default to null] |
+| **force** | **Boolean**| Force deletion even if the external location is in use. | [optional] [default to null] |
 
 ### Return type
 
@@ -129,7 +129,7 @@ No authorization required
 
 Update an external location
 
-    Updates an external location in the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location.
+    Updates an external location in the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location. Unless force is true, changing the url fails while the location is in use, as described for deleting it, and the new url does not cover the old one.
 
 ### Parameters
 

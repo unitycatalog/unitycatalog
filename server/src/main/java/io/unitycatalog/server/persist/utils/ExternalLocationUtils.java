@@ -106,6 +106,11 @@ public class ExternalLocationUtils {
   private static final List<SecurableType> MANAGED_SECURABLE_TYPE_CONTAINERS =
       List.of(SecurableType.CATALOG, SecurableType.SCHEMA);
 
+  /** Securables that store data under an external location and get credentials from it. */
+  private static final List<SecurableType> STORAGE_USER_TYPES =
+      Stream.concat(DATA_SECURABLE_TYPES.stream(), MANAGED_SECURABLE_TYPE_CONTAINERS.stream())
+          .toList();
+
   /**
    * For a input URL, find out the actual owner securables of the URL.
    *
@@ -610,6 +615,50 @@ public class ExternalLocationUtils {
   public static void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
     validateNotSameOrUnderManagedStoragePrefix(url);
     validateNotAboveManagedStorage(session, url);
+  }
+
+  /**
+   * Validates that an external location at the given URL is not in use, so that removing the URL
+   * from it does not leave anything without credentials. It is in use when:
+   *
+   * <ul>
+   *   <li>a storage cleanup is pending above, at, or under the URL
+   *   <li>a table, volume, or registered model is stored at or under the URL
+   *   <li>a catalog or schema keeps its managed storage under the URL
+   * </ul>
+   *
+   * @param session the caller's Hibernate session
+   * @param url the URL of the external location
+   * @throws BaseException with PERMISSION_DENIED for a pending cleanup, INVALID_ARGUMENT otherwise
+   */
+  public static void validateExternalLocationNotInUse(Session session, NormalizedURL url) {
+    if (hasPendingCleanupOverlap(session, url)) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+    }
+    getAllEntityDAOsWithURLOverlap(
+            session,
+            url,
+            STORAGE_USER_TYPES,
+            /* limit= */ 1,
+            /* includeParent= */ false,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ true)
+        .stream()
+        .findAny()
+        .ifPresent(
+            pair -> {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  String.format(
+                      "External location still used by %s '%s'",
+                      pair.getLeft(), pair.getRight().getId()));
+            });
+  }
+
+  /** Returns whether {@code url} is {@code ancestor} itself or a path under it. */
+  public static boolean isSameOrUnder(NormalizedURL url, NormalizedURL ancestor) {
+    return url.equals(ancestor) || getParentPathsList(url).contains(ancestor);
   }
 
   /**

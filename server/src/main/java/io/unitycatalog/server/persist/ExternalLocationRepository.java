@@ -178,6 +178,11 @@ public class ExternalLocationRepository {
             ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(url);
             validateUrlNotUsedByAnyExternalLocation(
                 session, url, Optional.of(existingLocation.getId()));
+            NormalizedURL currentUrl = NormalizedURL.from(existingLocation.getUrl());
+            if (!Boolean.TRUE.equals(updateExternalLocation.getForce())
+                && !ExternalLocationUtils.isSameOrUnder(currentUrl, url)) {
+              ExternalLocationUtils.validateExternalLocationNotInUse(session, currentUrl);
+            }
             existingLocation.setUrl(url.toString());
           }
           if (updateExternalLocation.getComment() != null) {
@@ -212,8 +217,9 @@ public class ExternalLocationRepository {
    * Deletes an external location by name.
    *
    * <p>By default, deletion will fail if the external location is still in use by any tables,
-   * volumes, or registered models. Use the force parameter to bypass this check and delete the
-   * external location even if it is still referenced.
+   * volumes, registered models, managed storage of catalogs or schemas, or pending storage cleanup.
+   * Use the force parameter to bypass this check and delete the external location even if it is
+   * still referenced.
    *
    * @param name The name of the external location to delete
    * @param force If true, delete the external location even if it's still in use by other entities
@@ -230,31 +236,9 @@ public class ExternalLocationRepository {
           if (existingLocation == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
-          // Check if the external location is in use by any data objects (tables, volumes, models)
           if (!force) {
-            if (ExternalLocationUtils.hasPendingCleanupOverlap(
-                session, NormalizedURL.from(existingLocation.getUrl()))) {
-              throw new BaseException(
-                  ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
-            }
-            ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
-                    session,
-                    NormalizedURL.from(existingLocation.getUrl()),
-                    ExternalLocationUtils.DATA_SECURABLE_TYPES,
-                    /* limit= */ 1,
-                    /* includeParent= */ false,
-                    /* includeSelf= */ true,
-                    /* includeSubdir= */ true)
-                .stream()
-                .findAny()
-                .ifPresent(
-                    pair -> {
-                      throw new BaseException(
-                          ErrorCode.INVALID_ARGUMENT,
-                          String.format(
-                              "External location still used by %s '%s'",
-                              pair.getLeft(), pair.getRight().getId()));
-                    });
+            ExternalLocationUtils.validateExternalLocationNotInUse(
+                session, NormalizedURL.from(existingLocation.getUrl()));
           }
           session.remove(existingLocation);
           LOGGER.info("Deleted external location: {}", name);
