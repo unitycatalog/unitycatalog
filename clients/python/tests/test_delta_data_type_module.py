@@ -313,10 +313,12 @@ class TestJsonRoundTrip:
     @pytest.mark.parametrize("wire", [
         "long",
         {"type": "struct"},
+        {"type": "struct", "fields": None},
+        {"type": "struct", "fields": {"name": "id"}},
         {"type": "array", "element-type": "long", "contains-null": True, "fields": []},
     ])
     def test_table_columns_rejects_non_struct(self, wire):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Expected a struct type with 'fields'"):
             DeltaStructType.from_json(json.dumps(wire))
 
 

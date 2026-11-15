@@ -106,13 +106,35 @@ object PythonClientPostBuild {
       }
     }
     moveGeneratedUnityCatalog(log, openApiOutputDir)
+    checkClientPackageInit(openApiOutputDir)
     relocateDeltaImports(log, openApiOutputDir)
     patchDeltaDataTypeModule(log, baseDir, openApiOutputDir)
   }
 
+  /**
+   * Fails the build unless unitycatalog/client/__init__.py is the one from the all.yaml run. The delta.yaml
+   * run writes this file too, with imports from the bare delta package, so it has to run first. Both versions
+   * export ApiClient, so the check looks for the UC API imports and for no bare delta import instead.
+   */
+  private def checkClientPackageInit(openApiOutputDir: String): Unit = {
+    val clientInit = Paths.get(openApiOutputDir, "src", "unitycatalog", "client", "__init__.py")
+    val content =
+      if (Files.exists(clientInit)) new String(Files.readAllBytes(clientInit), StandardCharsets.UTF_8) else ""
+    val fromAllYaml = content.contains("from unitycatalog.client.api.") &&
+      content.contains("from unitycatalog.client.api_client import ApiClient") &&
+      bareDeltaImport.findFirstIn(content).isEmpty
+    if (!fromAllYaml) {
+      sys.error(
+        s"$clientInit is not the one from the all.yaml run. The all.yaml run in pythonClient/generate must " +
+          "run last, after the delta.yaml run.")
+    }
+  }
+
+  private val bareDeltaImport = """(?m)^\s*(from|import)\s+delta\.""".r
+
   private val unrelocatedDeltaImports = Seq(
     """(?m)^\s*(from|import)\s+unitycatalog\.client\.models\b""".r,
-    """(?m)^\s*(from|import)\s+delta\.""".r
+    bareDeltaImport
   )
 
   /**

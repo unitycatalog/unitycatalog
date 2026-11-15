@@ -108,8 +108,10 @@ def _patched_dt_from_dict(cls, obj):
 def _patched_struct_from_dict(cls, obj):
     if obj is None:
         return None
+    if not isinstance(obj, dict) or not isinstance(obj.get("fields"), list):
+        raise ValueError("Expected a struct type with 'fields', got: {}".format(obj))
     parsed = _parse_type(obj)
-    if not isinstance(obj, dict) or "fields" not in obj or not isinstance(parsed, DeltaStructType):
+    if not isinstance(parsed, DeltaStructType):
         raise ValueError("Expected a struct type with 'fields', got: {}".format(obj))
     return parsed
 
