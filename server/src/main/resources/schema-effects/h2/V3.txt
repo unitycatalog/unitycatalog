@@ -1,0 +1,3 @@
++ column uc_model_versions.created_by_id type=uuid size=16 nullable=YES default=null
++ column uc_staging_tables.created_by_id type=uuid size=16 nullable=YES default=null
++ index uc_users.uc_users_email_key_index_* unique=true column=email#1

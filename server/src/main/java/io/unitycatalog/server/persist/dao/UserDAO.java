@@ -18,7 +18,8 @@ import lombok.experimental.SuperBuilder;
 @Table(
     name = "uc_users",
     uniqueConstraints = {
-      @UniqueConstraint(name = "uc_users_external_id_key", columnNames = "external_id")
+      @UniqueConstraint(name = "uc_users_external_id_key", columnNames = "external_id"),
+      @UniqueConstraint(name = "uc_users_email_key", columnNames = "email")
     })
 // Lombok annotations
 @Getter

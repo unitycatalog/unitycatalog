@@ -594,6 +594,8 @@ public class ModelRepository {
         modelVersionInfo.setStorageLocation(storageLocation.toString());
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);
         modelVersionInfoDAO.setRegisteredModelId(modelId);
+        modelVersionInfoDAO.setCreatedById(
+            repositories.getUserRepository().findUserId(session, callerId));
         session.persist(modelVersionInfoDAO);
         FileOperations.createStorageLocationDir(storageLocation);
         // update the registered model
@@ -818,7 +820,14 @@ public class ModelRepository {
 
         // Check the creator here so the check and status update use the same stored version.
         if (serverProperties.isAuthorizationEnabled()
-            && (callerId == null || !callerId.equals(origModelVersionInfoDAO.getCreatedBy()))) {
+            && (callerId == null
+                || !repositories
+                    .getUserRepository()
+                    .isCreator(
+                        session,
+                        origModelVersionInfoDAO.getCreatedById(),
+                        origModelVersionInfoDAO.getCreatedBy(),
+                        callerId))) {
           throw new BaseException(
               ErrorCode.PERMISSION_DENIED, "Only model version creator can finalize model version");
         }

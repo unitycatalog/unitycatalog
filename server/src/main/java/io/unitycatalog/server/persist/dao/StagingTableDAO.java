@@ -43,6 +43,10 @@ public class StagingTableDAO extends IdentifiableDAO {
   @Column(name = "created_by")
   private String createdBy;
 
+  /** The creator's user id; null for a staging table created before it was stored. */
+  @Column(name = "created_by_id")
+  private UUID createdById;
+
   @Column(name = "accessed_at", nullable = false)
   private Date accessedAt;
 
