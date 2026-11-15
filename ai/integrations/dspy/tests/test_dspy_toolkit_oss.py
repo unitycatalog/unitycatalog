@@ -487,3 +487,23 @@ def test_toolkit_convert_to_dspy_schema_non_strict_mode():
     # Should still work but with potentially different type handling
     assert "x" in schema["args_dict"]
     assert "x" in schema["args_type"]
+
+
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
+@pytest.mark.asyncio
+async def test_toolkit_e2e_tools_with_no_params(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
+
+    def get_weather() -> str:
+        """
+        Get the weather.
+        """
+        return "sunny"
+
+    with create_function_and_cleanup_oss(
+        uc_client, schema=SCHEMA, callable=get_weather
+    ) as func_obj:
+        for function_name in [func_obj.full_function_name, f"{CATALOG}.{SCHEMA}.*"]:
+            toolkit = UCFunctionToolkit(function_names=[function_name], client=uc_client)
+            tool = {tool.name: tool for tool in toolkit.tools}[func_obj.tool_name]
+            assert json.loads(tool())["value"] == "sunny"
