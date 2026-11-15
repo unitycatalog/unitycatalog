@@ -8,8 +8,14 @@ import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.client.model.FunctionParameterInfo;
 import io.unitycatalog.client.model.FunctionParameterInfos;
+import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -72,6 +78,10 @@ public class PythonInvokerTest {
             "trailing statement at column 0 after an indented body",
             "    b = a + 1\n    return b\nraise ValueError('x')",
             "IndentationError: unexpected indent"),
+        Arguments.of(
+            "else at column 0 after an indented body",
+            "    return a\nelse:\n    return 0",
+            "IndentationError: unexpected indent"),
         Arguments.of("empty body", "", "SyntaxError: the routine definition has no statements"),
         Arguments.of(
             "comment-only body",
@@ -112,7 +122,15 @@ public class PythonInvokerTest {
         Arguments.of(
             "cut inside a UTF-8 character",
             "'\\u00e9'.encode() * 3000 + b'x'",
-            "..." + "é".repeat(2047) + "x"));
+            "..." + "é".repeat(2047) + "x"),
+        Arguments.of(
+            "cut inside a 3-byte UTF-8 character",
+            "'\\u20ac'.encode() * 3000 + b'xx'",
+            "..." + "€".repeat(1364) + "xx"),
+        Arguments.of(
+            "cut inside a 4-byte UTF-8 character",
+            "'\\U0001f600'.encode() * 3000 + b'x'",
+            "..." + "😀".repeat(1023) + "x"));
   }
 
   @ParameterizedTest(name = "{0}")
@@ -131,6 +149,30 @@ public class PythonInvokerTest {
     String body = "import sys\nsys.stderr.write('x' * 1000000)\nreturn a";
     assertThat(PythonInvoker.invokePython(intFunction(body), PYTHON_ENGINE, "5").strip())
         .isEqualTo("5");
+  }
+
+  @Test
+  public void testCallsLeaveNoErrorOutputFile() throws IOException, ApiException {
+    Set<Path> before = errorOutputFiles();
+
+    PythonInvoker.invokePython(intFunction("return a"), PYTHON_ENGINE, "5");
+    assertThatThrownBy(
+            () ->
+                PythonInvoker.invokePython(
+                    intFunction("raise ValueError('x')"), PYTHON_ENGINE, "5"))
+        .isInstanceOf(ApiException.class);
+
+    assertThat(errorOutputFiles()).isSubsetOf(before);
+  }
+
+  private static Set<Path> errorOutputFiles() throws IOException {
+    try (DirectoryStream<Path> files =
+        Files.newDirectoryStream(
+            Paths.get(System.getProperty("java.io.tmpdir")), "uc-function-*.stderr")) {
+      Set<Path> result = new HashSet<>();
+      files.forEach(result::add);
+      return result;
+    }
   }
 
   private static FunctionInfo intFunction(String body) {
