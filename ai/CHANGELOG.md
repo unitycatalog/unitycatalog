@@ -15,6 +15,7 @@
 
 - Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
 - Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #2223
+- Send STRUCT and BINARY tool arguments as JSON values in every integration by @maharanay22 in #2244
 
 ## Unity Catalog AI 0.4.0
 
