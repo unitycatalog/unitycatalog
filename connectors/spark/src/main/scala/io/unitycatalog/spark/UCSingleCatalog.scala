@@ -749,6 +749,14 @@ object UCSingleCatalog {
   // before it reaches the vend site in `UCProxy.loadV1Table`.
   private[spark] val WRITE_INTENT = ThreadLocal.withInitial[Boolean](() => false)
 
+  private[spark] val FILE_SOURCE_FORMATS: Set[DataSourceFormat] = Set(
+    DataSourceFormat.PARQUET,
+    DataSourceFormat.ORC,
+    DataSourceFormat.JSON,
+    DataSourceFormat.CSV,
+    DataSourceFormat.AVRO,
+    DataSourceFormat.TEXT)
+
   /**
    * UC external locations and the temporary path-credentials API use canonical lowercase
    * `s3://` URLs on the server. Hadoop clients may reference the same storage as `s3a://`
@@ -1027,13 +1035,16 @@ private[spark] class UCProxy(
 
   private[spark] def loadV1Table(t: UCTableInfo): Table = {
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
-    val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
-    val fields = t.getColumns.asScala.map { col =>
-      Option(col.getPartitionIndex).foreach { index =>
-        partitionCols += col.getName -> index
-      }
-      toStructField(col)
-    }.toArray
+    val columns = t.getColumns.asScala.toSeq
+    val (partitionCols, dataCols) = columns.partition(_.getPartitionIndex != null)
+    val sortedPartitionCols = partitionCols.sortBy(_.getPartitionIndex.intValue)
+    // Spark's file sources read and write a table as its data columns followed by its partition
+    // columns, the order Spark's own catalog stores. Other formats keep the declared order.
+    val fields = (if (UCSingleCatalog.FILE_SOURCE_FORMATS.contains(t.getDataSourceFormat)) {
+      dataCols ++ sortedPartitionCols
+    } else {
+      columns
+    }).map(toStructField).toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
 
@@ -1095,7 +1106,7 @@ private[spark] class UCProxy(
       comment = if (isDelta) None else Option(t.getComment),
       createTime = t.getCreatedAt,
       tracksPartitionsInCatalog = false,
-      partitionColumnNames = partitionCols.sortBy(_._2).map(_._1).toSeq
+      partitionColumnNames = sortedPartitionCols.map(_.getName)
     )
     // Spark separates table lookup and data source resolution. To support Spark native data
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will

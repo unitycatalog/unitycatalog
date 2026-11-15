@@ -5,9 +5,14 @@ import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.client.model.FunctionParameterInfo;
 import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.json.JSONArray;
 
@@ -68,19 +73,48 @@ public class PythonInvoker {
       // Invoke the Python script
       ProcessBuilder pb = new ProcessBuilder(argsList);
       Process p = pb.start();
+      try {
+        // Read stderr on another thread, so that a full stderr pipe cannot block the script while
+        // stdout is read below.
+        CompletableFuture<String> error =
+            CompletableFuture.supplyAsync(() -> readFully(p.getErrorStream()));
 
-      // Get the output from the Python script
-      BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
-      String resultLine;
-      StringBuilder result = new StringBuilder();
-      while ((resultLine = in.readLine()) != null) {
-        result.append(resultLine).append("\n");
+        StringBuilder result = new StringBuilder();
+        try (BufferedReader in =
+            new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+          String resultLine;
+          while ((resultLine = in.readLine()) != null) {
+            result.append(resultLine).append("\n");
+          }
+        }
+        int exitCode = p.waitFor();
+        if (exitCode != 0) {
+          String stderr = error.join().strip();
+          throw new ApiException(
+              "Python function failed with exit code "
+                  + exitCode
+                  + (stderr.isEmpty() ? "" : ": " + stderr));
+        }
+        return result.toString();
+      } finally {
+        p.destroy();
       }
-      in.close();
-      return result.toString();
+    } catch (ApiException e) {
+      throw e;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new ApiException("Interrupted while invoking Python script");
     } catch (Exception e) {
       e.printStackTrace();
       throw new ApiException("Error invoking Python script: " + e.getMessage());
+    }
+  }
+
+  private static String readFully(InputStream stream) {
+    try (stream) {
+      return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
     }
   }
 }

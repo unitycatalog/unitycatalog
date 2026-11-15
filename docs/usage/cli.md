@@ -15,6 +15,14 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
 
     where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
 
+!!! note "Results of list commands"
+
+    A `list` command returns all the results, requesting as many pages from the server as it takes.
+    Without `--max_results`, a `list` command used to return at most 100 results and now returns all of them.
+    This applies to every `list` command except `user list`, which uses `--start_index` and `--count`.
+    `--max_results` limits the total number of results across those pages, and `0` means no limit, the same as leaving it out.
+    `--page_token` starts the listing at the page that a `next_page_token` from the REST API points to.
+
 ## Credential Management CLI Usage
 
 You can use the Unity Catalog CLI to manage Credentials within your system. The `bin/uc` script
@@ -691,6 +699,7 @@ bin/uc function call \
 
 This is an experimental feature and only supported for Python functions that take in primitive types as input
 parameters. It runs the functions using the Python engine script at `etc/data/function/python_engine.py`.
+If the function raises an error, the command fails with the Python error message.
 
 Here's an example that invokes a Python sum function that takes two integer inputs:
 
