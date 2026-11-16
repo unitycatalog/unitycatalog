@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.dspy.toolkit import UCFunctionToolkit, UnityCatalogDSPyToolWrapper
@@ -34,6 +35,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     generate_function_info_with_params,
 )
 from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
+from unitycatalog.client import FunctionInfo as OSSFunctionInfo
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_dspy_test")
@@ -590,6 +592,62 @@ def test_toolkit_creation_without_properties_argument_mocked():
         assert tool.name == "catalog__schema__test_function"
         assert tool.desc == "A test function without properties argument"
         assert result == "some_string"
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize(
+    "function_names",
+    [["catalog.schema.get_weather", "catalog.schema.test"], ["catalog.schema.*"]],
+    ids=["by_name", "wildcard"],
+)
+@pytest.mark.parametrize(
+    "no_params_function_info",
+    [
+        FunctionInfo(
+            catalog_name="catalog",
+            schema_name="schema",
+            name="get_weather",
+            full_name="catalog.schema.get_weather",
+            comment="Get the weather.",
+            input_params=None,
+        ),
+        OSSFunctionInfo(
+            catalog_name="catalog",
+            schema_name="schema",
+            name="get_weather",
+            full_name="catalog.schema.get_weather",
+            comment="Get the weather.",
+            data_type="STRING",
+            full_data_type="STRING",
+            input_params=None,
+        ),
+    ],
+    ids=["databricks", "oss"],
+)
+@pytest.mark.asyncio
+async def test_toolkit_with_function_without_params(
+    no_params_function_info, function_names, use_async
+):
+    function_infos = {
+        info.full_name: info for info in [no_params_function_info, generate_function_info()]
+    }
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.side_effect = function_infos.get
+    client.list_functions.return_value = PagedList(list(function_infos.values()), None)
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="sunny")
+
+    toolkit = UCFunctionToolkit(function_names=function_names, client=client)
+    tools = {tool.name: tool for tool in toolkit.tools}
+    tool = tools["catalog__schema__get_weather"]
+
+    assert (tool.args, tool.arg_types, tool.arg_desc) == ({}, {}, {})
+    assert list(tools["catalog__schema__test"].args) == ["x"]
+    result = await tool.acall() if use_async else tool()
+    client.execute_function.assert_called_once_with(
+        function_name="catalog.schema.get_weather", parameters={}, enable_retriever_tracing=False
+    )
+    assert json.loads(result) == {"format": "SCALAR", "value": "sunny"}
 
 
 @pytest.mark.parametrize("use_async", [False, True])

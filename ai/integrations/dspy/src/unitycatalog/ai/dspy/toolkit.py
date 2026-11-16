@@ -97,7 +97,7 @@ class UCFunctionToolkit(BaseModel):
         Returns:
             Dict[str, Any]: A dictionary containing the DSPy-compatible function schema with args_dict, args_desc, and args_type.
         """
-        param_infos = function_info.input_params.parameters
+        param_infos = function_info.input_params.parameters if function_info.input_params else []
         if param_infos is None:
             raise ValueError("Function input parameters are None.")
 

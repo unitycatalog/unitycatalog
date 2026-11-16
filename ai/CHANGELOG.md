@@ -10,12 +10,14 @@
 
 - Fixed sandbox results being lost, with a misleading "no output was produced" message, when the application uses more memory than `EXECUTOR_MAX_MEMORY_LIMIT`. The sandbox now reports the exit code when the process exits without a result, and reports a result that cannot be read as a failure instead of raising.
 - Fixed tool calls sending `STRUCT` and `BINARY` arguments in a form the function client cannot use. LangChain and DSPy tools sent a struct, including a struct inside an `ARRAY` or a `MAP`, as text such as `"city='Oslo' zip=150"`, and LangChain, DSPy and CrewAI tools sent a binary argument as `"b'aGk='"`. AutoGen tools sent a binary argument as the bytes of its base64 text, so the function received that text instead of the decoded data. Gemini tools sent every `STRUCT`, `ARRAY` and `MAP` argument of a function call as the text of a protobuf object. All of them now send the JSON value the model passed, the same as the OpenAI, Anthropic and LiteLLM integrations.
+- Fixed the Gemini and DSPy toolkits failing with `AttributeError: 'NoneType' object has no attribute 'parameters'` for a function without parameters, including when such a function is matched by a `catalog.schema.*` function name. Gemini now declares the tool without parameters and DSPy builds it with no arguments, like the other integrations.
 
 ### Change Log
 
 - Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
 - Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #2223
 - Send STRUCT and BINARY tool arguments as JSON values in every integration by @maharanay22 in #2244
+- Build Gemini and DSPy tools for functions without parameters by @maharanay22 in #2245
 
 ## Unity Catalog AI 0.4.0
 

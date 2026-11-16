@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
@@ -32,6 +33,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     generate_function_info_with_params,
 )
 from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
+from unitycatalog.client import FunctionInfo as OSSFunctionInfo
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_gemini_test")
@@ -418,6 +420,64 @@ def test_generate_callable_tool_list(client):
     )
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."
+
+
+@pytest.mark.parametrize(
+    "function_names",
+    [["catalog.schema.get_weather", "catalog.schema.test"], ["catalog.schema.*"]],
+    ids=["by_name", "wildcard"],
+)
+@pytest.mark.parametrize(
+    "no_params_function_info",
+    [
+        FunctionInfo(
+            catalog_name="catalog",
+            schema_name="schema",
+            name="get_weather",
+            full_name="catalog.schema.get_weather",
+            comment="Get the weather.",
+            input_params=None,
+        ),
+        OSSFunctionInfo(
+            catalog_name="catalog",
+            schema_name="schema",
+            name="get_weather",
+            full_name="catalog.schema.get_weather",
+            comment="Get the weather.",
+            data_type="STRING",
+            full_data_type="STRING",
+            input_params=None,
+        ),
+    ],
+    ids=["databricks", "oss"],
+)
+def test_toolkit_with_function_without_params(no_params_function_info, function_names):
+    function_infos = {
+        info.full_name: info for info in [no_params_function_info, generate_function_info()]
+    }
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.side_effect = function_infos.get
+    client.list_functions.return_value = PagedList(list(function_infos.values()), None)
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="sunny")
+
+    toolkit = UCFunctionToolkit(function_names=function_names, client=client)
+    declarations = {
+        declaration.name: declaration for declaration in toolkit.generate_callable_tool_list()
+    }
+
+    assert {tool.name: tool.schema for tool in toolkit.tools}["catalog__schema__get_weather"] == {
+        "name": "get_weather",
+        "description": "Get the weather.",
+    }
+    assert declarations["test"].to_proto().parameters.required == ["x"]
+    response = declarations["get_weather"](protos.FunctionCall(name="get_weather", args={}))
+    client.execute_function.assert_called_once_with(
+        function_name="catalog.schema.get_weather", parameters={}, enable_retriever_tracing=False
+    )
+    assert type(response).to_dict(response)["response"]["result"] == (
+        '{"format": "SCALAR", "value": "sunny"}'
+    )
 
 
 PLACE_TYPE_JSON = {
