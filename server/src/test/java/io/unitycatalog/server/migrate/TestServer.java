@@ -1,11 +1,14 @@
 package io.unitycatalog.server.migrate;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.security.SecurityConfiguration;
+import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -24,10 +27,12 @@ final class TestServer implements AutoCloseable {
 
   private final UnityCatalogServer server;
   private final int port;
+  private final String serviceToken;
 
-  private TestServer(UnityCatalogServer server, int port) {
+  private TestServer(UnityCatalogServer server, int port, String serviceToken) {
     this.server = server;
     this.port = port;
+    this.serviceToken = serviceToken;
   }
 
   /** Starts the server on {@code db}, with its table storage under {@code storageRoot}. */
@@ -41,6 +46,7 @@ final class TestServer implements AutoCloseable {
       try (ServerSocket socket = new ServerSocket(0)) {
         port = socket.getLocalPort();
       }
+      Path configurationFolder = Files.createDirectories(storageRoot.resolve("conf"));
       Properties properties = new Properties();
       properties.setProperty(Property.SERVER_ENV.getKey(), "test");
       properties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
@@ -51,6 +57,7 @@ final class TestServer implements AutoCloseable {
               .port(port)
               .serverProperties(new ServerProperties(properties))
               .hibernateConfigurator(configurator)
+              .configurationFolder(configurationFolder)
               .build();
       try {
         server.start();
@@ -58,7 +65,14 @@ final class TestServer implements AutoCloseable {
         server.close();
         throw t;
       }
-      return new TestServer(server, port);
+      // The server keeps no token file, so mint one from the signing keys it generated.
+      SecurityContext securityContext =
+          new SecurityContext(
+              configurationFolder,
+              new SecurityConfiguration(configurationFolder),
+              "server",
+              INTERNAL);
+      return new TestServer(server, port, securityContext.createServiceToken());
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
@@ -66,12 +80,7 @@ final class TestServer implements AutoCloseable {
 
   /** A client for this server, authenticated with the server's own service token. */
   ApiClient apiClient() {
-    try {
-      String token = Files.readString(Path.of("etc/conf/token.txt")).trim();
-      return createApiClient(new ServerConfig("http://localhost:" + port, token));
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
+    return createApiClient(new ServerConfig("http://localhost:" + port, serviceToken));
   }
 
   @Override
