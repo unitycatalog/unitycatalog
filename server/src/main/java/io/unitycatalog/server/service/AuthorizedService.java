@@ -65,6 +65,11 @@ public abstract class AuthorizedService {
     if (newOwner == null) {
       return update.get();
     }
+    if (newOwner.isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New owner must be specified.");
+    }
+    // Reject invalid recipients before entering the reload-on-cleanup-failure path.
+    userRepository.getUserByEmail(newOwner);
     Throwable updateError = null;
     try {
       return update.get();

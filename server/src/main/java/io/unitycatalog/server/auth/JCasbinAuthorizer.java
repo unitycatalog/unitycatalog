@@ -24,6 +24,7 @@ import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
 import org.casbin.jcasbin.main.SyncedEnforcer;
 import org.casbin.jcasbin.model.Model;
+import org.hibernate.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -128,6 +129,42 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     SyncedEnforcer enforcer = new SyncedEnforcer(model, adapter);
     enforcer.enableAutoSave(true);
     return enforcer;
+  }
+
+  /**
+   * Replaces native OWNER grants in the caller's transaction and returns the removed owners. The
+   * caller must reload the live authorizer after commit.
+   */
+  public static List<UUID> replaceOwner(Session session, UUID resource, UUID newOwner) {
+    // A locking read sees the latest committed owners under MySQL REPEATABLE READ too.
+    List<UUID> oldOwners =
+        session
+            .createNativeQuery(
+                "SELECT v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND"
+                    + " v2 = :owner FOR UPDATE",
+                String.class)
+            .setParameter("resource", resource.toString())
+            .setParameter("owner", Privileges.OWNER.getValue())
+            .getResultList()
+            .stream()
+            .map(UUID::fromString)
+            .toList();
+    // The JDBC adapter commits on a separate connection. Use this transaction for both writes.
+    session
+        .createNativeMutationQuery(
+            "DELETE FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND v2 = :owner")
+        .setParameter("resource", resource.toString())
+        .setParameter("owner", Privileges.OWNER.getValue())
+        .executeUpdate();
+    session
+        .createNativeMutationQuery(
+            "INSERT INTO casbin_rule (ptype, v0, v1, v2) VALUES ('p', :principal, :resource,"
+                + " :owner)")
+        .setParameter("principal", newOwner.toString())
+        .setParameter("resource", resource.toString())
+        .setParameter("owner", Privileges.OWNER.getValue())
+        .executeUpdate();
+    return oldOwners;
   }
 
   /**

@@ -156,9 +156,10 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeExpression(
       "("
           + AuthorizeExpressions.UPDATE_VOLUME
+          + " || ("
+          + AuthorizeExpressions.UPDATE_OWNER
           + """
-          || (#owner != null && #new_name == null && #comment == null &&
-              #authorize(#principal, #metastore, OWNER))) &&
+          )) &&
           (#new_name == null ||
             (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
               #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&

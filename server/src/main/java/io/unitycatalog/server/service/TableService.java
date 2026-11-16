@@ -31,7 +31,6 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
 import lombok.SneakyThrows;
@@ -146,12 +145,12 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateTable(
       @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName, UpdateTable updateTable) {
-    if (RepositoryUtils.isViewLike(tableRepository.getTable(fullName).getTableType().getValue())) {
-      validateOwnerTransfer(updateTable.getOwner());
-    }
     TableInfo result =
         updateWithOwnerReload(
-            updateTable.getOwner(), () -> tableRepository.updateTable(fullName, updateTable));
+            updateTable.getOwner(),
+            () ->
+                tableRepository.updateTable(
+                    fullName, updateTable, () -> validateOwnerTransfer(updateTable.getOwner())));
     return HttpResponse.ofJson(result);
   }
 

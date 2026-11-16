@@ -119,10 +119,10 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeExpression(
       "("
           + AuthorizeExpressions.UPDATE_SCHEMA
+          + " || ("
+          + AuthorizeExpressions.UPDATE_OWNER
           + """
-          || (#owner != null && #new_name == null && #comment == null &&
-              (#properties == null || #properties.isEmpty()) &&
-                  #authorize(#principal, #metastore, OWNER))) &&
+          )) &&
           (#new_name == null ||
             (#authorize(#principal, #catalog, USE_CATALOG) &&
               #authorize(#principal, #schema, OWNER)) || (

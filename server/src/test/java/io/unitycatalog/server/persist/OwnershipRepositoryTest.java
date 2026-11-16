@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,13 +24,20 @@ import io.unitycatalog.server.auth.CasbinPolicyRefresher;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.model.UpdateCatalog;
+import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.CatalogService;
+import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -170,7 +178,13 @@ public class OwnershipRepositoryTest {
     assertThat(repositories.getCatalogRepository().getCatalog(CATALOG).getComment())
         .isEqualTo("original");
 
+    UnityCatalogAuthorizer serviceAuthorizer =
+        mock(UnityCatalogAuthorizer.class, delegatesTo(authorizer));
+    CatalogService service = new CatalogService(serviceAuthorizer, repositories, properties);
     for (String invalidOwner : List.of("", "missing-owner@localhost")) {
+      assertThatThrownBy(
+              () -> service.updateCatalog(CATALOG, new UpdateCatalog().owner(invalidOwner)))
+          .isInstanceOf(BaseException.class);
       assertThatThrownBy(
               () ->
                   repositories
@@ -180,6 +194,7 @@ public class OwnershipRepositoryTest {
       authorizer.reloadAuthorizations();
       assertOwnership(FIRST_OWNER, firstId);
     }
+    verify(serviceAuthorizer, never()).reloadAuthorizations();
     assertThat(CapturingAuditSink.RECORDS).isEmpty();
   }
 
@@ -328,11 +343,63 @@ public class OwnershipRepositoryTest {
       second.get(10, TimeUnit.SECONDS);
       authorizer.reloadAuthorizations();
       assertOwnership(FIRST_OWNER, firstId);
+      assertThat(CapturingAuditSink.RECORDS)
+          .extracting(AuditRecord::getAction, AuditRecord::getPrincipalId)
+          .containsExactlyInAnyOrder(
+              tuple(AuditRecord.Action.REVOKE, firstId),
+              tuple(AuditRecord.Action.GRANT, secondId),
+              tuple(AuditRecord.Action.REVOKE, secondId),
+              tuple(AuditRecord.Action.GRANT, firstId));
     } finally {
       transfer.countDown();
       executor.shutdownNow();
       assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
     }
+  }
+
+  @Test
+  void viewTransferValidatesTheLockedResource() {
+    UUID schemaId = UUID.randomUUID();
+    UUID tableId = UUID.randomUUID();
+    String fullName = CATALOG + ".schema.table";
+    sessionFactory.inTransaction(
+        session -> {
+          session.persist(
+              SchemaInfoDAO.builder().id(schemaId).name("schema").catalogId(resourceId).build());
+          session.persist(
+              TableInfoDAO.builder()
+                  .id(tableId)
+                  .name("table")
+                  .schemaId(schemaId)
+                  .type(TableType.VIEW.getValue())
+                  .owner(FIRST_OWNER)
+                  .build());
+        });
+    authorizer.grantAuthorization(firstId, tableId, Privileges.OWNER);
+    TableRepository tableRepository = spy(repositories.getTableRepository());
+    // The old pre-update lookup could see an external table before a DROP and CREATE VIEW.
+    doReturn(new TableInfo().tableType(TableType.EXTERNAL))
+        .when(tableRepository)
+        .getTable(fullName);
+    Repositories serviceRepositories = spy(repositories);
+    doReturn(tableRepository).when(serviceRepositories).getTableRepository();
+    BaseException denied = new BaseException(ErrorCode.PERMISSION_DENIED, "View transfer denied");
+    TableService service =
+        new TableService(authorizer, serviceRepositories, properties) {
+          @Override
+          protected void validateOwnerTransfer(String newOwner) {
+            throw denied;
+          }
+        };
+
+    assertThatThrownBy(() -> service.updateTable(fullName, new UpdateTable().owner(SECOND_OWNER)))
+        .isSameAs(denied);
+    String storedOwner =
+        sessionFactory.fromSession(session -> session.get(TableInfoDAO.class, tableId).getOwner());
+    assertThat(storedOwner).isEqualTo(FIRST_OWNER);
+    assertThat(authorizer.listAuthorizations(firstId, tableId)).contains(Privileges.OWNER);
+    assertThat(authorizer.listAuthorizations(secondId, tableId)).doesNotContain(Privileges.OWNER);
+    assertThat(CapturingAuditSink.RECORDS).isEmpty();
   }
 
   @Test

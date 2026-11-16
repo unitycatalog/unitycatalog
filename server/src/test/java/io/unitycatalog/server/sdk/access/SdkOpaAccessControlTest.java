@@ -32,6 +32,7 @@ import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateTable;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
@@ -153,6 +154,10 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
     policyGrants.removeIf(grant -> grant.get("privilege").equals("SELECT"));
     updateGrants();
     assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null, null));
+
+    String bobId = createTestUser(BOB).getId();
+    adminTables.updateTable(fullName, new UpdateTable().owner(BOB));
+    assertOwnerGrants(table.getTableId(), bobId);
   }
 
   @Test

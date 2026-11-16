@@ -1212,8 +1212,9 @@ public class TableRepository {
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
   }
 
-  /** Transfers ownership while preserving the table's data and metadata. */
-  public TableInfo updateTable(String fullName, UpdateTable updateTable) {
+  /** Transfers ownership, validating view recipients against the locked table. */
+  public TableInfo updateTable(
+      String fullName, UpdateTable updateTable, Runnable validateViewOwnerTransfer) {
     String[] parts = ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
@@ -1224,10 +1225,14 @@ public class TableRepository {
           if (dao == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + fullName);
           }
-          dao.setOwner(
+          String owner =
               repositories
                   .getOwnershipRepository()
-                  .updateOwner(session, dao, updateTable.getOwner()));
+                  .updateOwner(session, dao, updateTable.getOwner());
+          if (RepositoryUtils.isViewLike(dao.getType())) {
+            validateViewOwnerTransfer.run();
+          }
+          dao.setOwner(owner);
           dao.setUpdatedAt(new Date());
           dao.setUpdatedBy(IdentityUtils.findPrincipalEmailAddress());
           TableInfo result = dao.toTableInfo(true, parts[0], parts[1]);

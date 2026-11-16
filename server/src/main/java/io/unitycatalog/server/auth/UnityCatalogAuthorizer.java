@@ -45,7 +45,10 @@ public interface UnityCatalogAuthorizer {
 
   Map<UUID, List<Privileges>> listAuthorizations(UUID resource);
 
-  /** Reloads policy after a committed ownership transfer. Uncached authorizers need no action. */
+  /**
+   * Reloads native policy after a committed ownership transfer. Wrappers must forward this to the
+   * authorizer that maintains native grants, even when it does not make permission decisions.
+   */
   default void reloadAuthorizations() {}
 
   /**

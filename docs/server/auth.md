@@ -338,9 +338,11 @@ Optional tuning:
 | `server.authorization.policy-refresh-interval` | `PT1M` | How often each instance polls `casbin_rule` |
 | `server.authorization.policy-refresh-min-probe-interval` | `PT1S` | Minimum gap between deny-path `max(id)` probes. Quiet traffic is unlikely to wait. Lower toward `PT0S` under heavy 403 load for faster grant visibility; that increases `casbin_rule` queries. |
 
-Revocations propagate on the poll interval. A stale deny can trigger one `max(id)` probe
-before returning 403. Concurrent denials and list-filter items share a probe that started after the
-request.
+Each poll compares the policy row count and maximum row ID. Concurrent commits can leave both
+values unchanged, so a poll can miss an ownership transfer until another detectable policy change
+or a restart. The poll interval is not a guaranteed revocation deadline. A stale deny can trigger
+one `max(id)` probe before returning 403. Concurrent denials and list-filter items share a probe
+that started after the request.
 
 ### Valid privilege grants
 
@@ -421,13 +423,13 @@ is set. Update clients that copy an object's old owner into PATCH requests. No d
 migration is required.
 
 The object owner and its `OWNER` grant are saved in one database transaction. After commit,
-the server reloads its local permission cache. Other server instances receive the change
-through [policy refresh](#multiple-server-instances); enable it on every instance.
+the server reloads its local permission cache. Enable [policy refresh](#multiple-server-instances)
+on every instance to detect changes from other servers, subject to its concurrent-commit limitation.
 
 If the local reload fails, the request returns an error even though the transfer may have
-committed. Permission checks on this instance deny every user, including metastore admins,
-until a reload succeeds. A denied request retries the reload even when policy refresh is
-disabled. Read the owner after recovery before retrying a transfer.
+committed. With native authorization, permission checks on this instance deny every user,
+including metastore admins, until a reload succeeds. A denied request retries the reload even
+when policy refresh is disabled. Read the owner after recovery before retrying a transfer.
 
 ### Restart the UC Server
 
