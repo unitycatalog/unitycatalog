@@ -503,7 +503,7 @@ public class SchemaMigratorTest {
     EDITED_STEP,
     /** Step 2 is not recorded, below the recorded step 1000. */
     STEP_MISSING_BELOW,
-    /** The database is at step 1000 and the release ends at step 2. */
+    /** The database is at step 1000, after this release's last step. */
     AHEAD,
     /** The history records step 1000, but the schema has a column no step adds. */
     SCHEMA_DIFFERS
