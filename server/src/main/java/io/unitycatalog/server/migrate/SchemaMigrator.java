@@ -43,7 +43,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
  * up an empty database, adopts a database of the baseline release (recording step 1 without running
- * it) or of this build's last step (recording every step without running it) and applies the
+ * it) or of a later step (recording the steps up to it without running them) and applies the
  * pending steps, checking the schema against the steps' effect files ({@code
  * schema-effects/<database>}) before each step and at the end. On PostgreSQL and MySQL, each {@link
  * #upgradeSchema()} holds a {@link RunLock} from classifying the database to the last step.
@@ -428,14 +428,14 @@ public final class SchemaMigrator implements AutoCloseable {
    * this build's schema one step at a time, and checks that it ends with the schema of the last
    * step. Before each pending step the whole schema is compared with the steps' effect files
    * ({@code schema-effects/<database>}): it must be the schema before the step, so the step runs,
-   * or after it (a run stopped before Flyway recorded the step) or after this build's last step (an
-   * adoption that stopped part way), so the step is recorded without running; otherwise the run
-   * stops, changing nothing more. Once the schema check accepts a step, its record as a failed step
-   * (MySQL and H2 keep one) is deleted, so that the step is tried again. This also sets up an empty
-   * database, and adopts a database without schema history when its schema is exactly that of
-   * {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's last step (every
-   * step is recorded without running). On PostgreSQL and MySQL, a second run at the same time waits
-   * for the first. Returns the number of steps it ran or recorded.
+   * or after it or a later step (a run stopped before Flyway recorded the step, or an adoption), so
+   * the step is recorded without running; otherwise the run stops, changing nothing more. Once the
+   * schema check accepts a step, its record as a failed step (MySQL and H2 keep one) is deleted, so
+   * that the step is tried again. This also sets up an empty database, and adopts a database
+   * without schema history when its schema is exactly that of {@link #ADOPTED_RELEASE} (the steps
+   * after the first run) or of a later step (the steps up to it are recorded without running, and
+   * the steps after it run). On PostgreSQL and MySQL, a second run at the same time waits for the
+   * first. Returns the number of steps it ran or recorded.
    */
   public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
@@ -545,10 +545,12 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * Whether pending {@code step} runs on a database with {@code schema}: true when the schema is
-   * the one before the step, false when it already has the step's change or is the schema of this
-   * build's last step (an adoption that stopped after recording some steps), and for a first step
-   * whose earlier run stopped part way (the schema history exists and holds part of its schema)
-   * true, since the first step skips what is already there.
+   * the one before the step, false when it is the schema of the step or of a later step (it already
+   * has the step's change: a run that stopped before the step's record, or a database without
+   * schema history at a later step, such as an adoption that stopped after recording some steps or
+   * a database that Hibernate set up or updated), and for a first step whose earlier run stopped
+   * part way (the schema history exists and holds part of its schema) true, since the first step
+   * skips what is already there.
    *
    * @throws IllegalStateException when the schema is neither, naming the differences
    */
@@ -559,7 +561,9 @@ public final class SchemaMigrator implements AutoCloseable {
     if (schema.equals(before)) {
       return true;
     }
-    if (schema.equals(after) || schema.equals(expected(latestVersion()))) {
+    List<String> steps = steps();
+    if (steps.subList(steps.indexOf(step), steps.size()).stream()
+        .anyMatch(later -> schema.equals(expected(later)))) {
       return false;
     }
     if (previous.equals(EMPTY_BASELINE_VERSION)

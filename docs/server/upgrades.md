@@ -27,9 +27,9 @@ exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
 ## The baseline release
 
 The first baseline release is 0.7.0: schema version 1 is its schema. A database without schema
-history is adopted as version 1 when its schema matches version 1 exactly, and as the latest version
-when it matches that exactly, such as a database that a server of this release set up when it
-started; `--check-schema` lists every difference. A database from an earlier release must be
+history is adopted at the version whose schema it matches exactly: version 1, the latest version,
+such as a database that a server of this release set up when it started, or a version between
+them; `--check-schema` lists every difference. A database from an earlier release must be
 upgraded to 0.7.0 first: start a 0.7.0 server on it once, stop it, then upgrade it to this release.
 Such a database still differs from version 1 in two checks, so repair it first (see
 [Repairing a database from before 0.7.0](#repairing-a-database-from-before-070)).
