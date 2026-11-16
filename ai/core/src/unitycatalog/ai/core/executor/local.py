@@ -3,6 +3,7 @@ import builtins
 import logging
 import multiprocessing
 import multiprocessing.connection
+import pickle
 import traceback
 from typing import Any, Callable, Optional
 
@@ -27,6 +28,7 @@ from unitycatalog.ai.core.executor.common import (
     SANDBOX_UNSUPPORTED_MESSAGE,
     TERMINATED_MESSAGE_TEMPLATE,
     TIMEOUT_ERROR_MESSAGE,
+    UNREADABLE_RESULT_MESSAGE_TEMPLATE,
 )
 
 _logger = logging.getLogger(__name__)
@@ -158,20 +160,37 @@ def _receive_result(
 
     The result is read before joining the process, so a result larger than the pipe
     buffer cannot block the process from exiting. When the process exits without
-    sending anything, the returned error describes how it exited.
+    sending anything, or sends something that cannot be read, the returned error
+    describes how it exited.
     """
-    with receiver:
-        multiprocessing.connection.wait([receiver, process.sentinel])
+    payload = None
+    read_error = None
+    try:
+        with receiver:
+            multiprocessing.connection.wait([receiver, process.sentinel])
+            if receiver.poll():
+                payload = receiver.recv_bytes()
+    except EOFError:
+        pass
+    except Exception as e:
+        read_error = f"{type(e).__name__}: {e}"
+    finally:
+        process.join()
+    result = None
+    if payload is not None:
         try:
-            result = receiver.recv() if receiver.poll() else None
-        except EOFError:
-            result = None
-    process.join()
+            result = pickle.loads(payload)
+        except Exception as e:
+            read_error = f"{type(e).__name__}: {e}"
+    exit_code = process.exitcode
     if result is not None:
         return result
-    exit_code = process.exitcode
     if exit_code is not None and exit_code < 0:
         return False, TERMINATED_MESSAGE_TEMPLATE.format(signal_num=-exit_code)
+    if read_error is not None:
+        return False, UNREADABLE_RESULT_MESSAGE_TEMPLATE.format(
+            exit_code=exit_code, error=read_error
+        )
     return False, EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE.format(exit_code=exit_code)
 
 
@@ -187,7 +206,12 @@ async def run_in_sandbox_async(
     Executes a Python callable in a sandboxed subprocess using multiprocessing.
     Specific core Python modules are restricted to prevent unwanted behavior.
     The function is executed with a timeout and resource limits for CPU and memory.
-    The function's result or any exception's full stack trace is returned.
+    The function's result, or a description of the failure, is returned.
+
+    On a timeout, the process is terminated and the thread reading its result
+    finishes once the process is gone. Known limitation: if the process dies partway
+    through sending its result while another process forked from this one still holds
+    the sending end of the pipe, that thread stays blocked until the other process exits.
 
     Parameters:
         func: The callable to execute.

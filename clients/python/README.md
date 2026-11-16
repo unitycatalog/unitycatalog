@@ -4,7 +4,8 @@ The Python SDK for Unity Catalog that is published to https://pypi.org/project/u
 
 ## Generate Client Library
 
-To generate the client library code from the API specification in `api/all.yaml`, run:
+To generate the client library code from the API specifications in `api/all.yaml` (the `unitycatalog.client`
+package) and `api/delta.yaml` (the `unitycatalog.client.delta` package), run:
 
 ```sh
 build/sbt pythonClient/generate

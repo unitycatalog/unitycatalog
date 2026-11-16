@@ -47,7 +47,9 @@ tags:
   - name: DeltaTemporaryCredentials
     description: |
       Temporary credential vending for accessing table data in cloud storage.
-      Credentials are scoped by operation level (READ or READ_WRITE).
+      Credentials are scoped by operation level (READ or READ_WRITE). EXPERIMENTAL: a key pair
+      without `s3.session-token`, for S3-compatible storage, is not narrowed to it (see
+      `s3.endpoint`).
 
 paths:
   /delta/v1/config:
@@ -357,7 +359,9 @@ paths:
       parameters:
         - name: operation
           in: query
-          description: The operation the credential is scoped to.
+          description: |
+            The operation the request is authorized for. Session credentials are narrowed to it;
+            EXPERIMENTAL: a key pair without `s3.session-token` is not (see `s3.endpoint`).
           required: true
           schema:
             $ref: '#/components/schemas/DeltaCredentialOperation'
@@ -607,6 +611,22 @@ components:
             s3.session-token:
               type: string
               description: AWS session token for temporary credentials
+            s3.endpoint:
+              type: string
+              description: |
+                EXPERIMENTAL. S3 API endpoint of the S3-compatible storage holding the prefix, for
+                example `https://minio.example.com:9000`: the `s3_endpoint` of the storage credential
+                of the external location covering the prefix. Requests to it always use path-style
+                addressing. Absent for AWS S3. When that credential does not vend keys, this and
+                `client.region` are the only S3 keys set, and the client brings its own. A key pair
+                without `s3.session-token`, and the client's own keys, are not narrowed to the
+                requested operation or prefix; only session credentials are. A client that does not
+                support this key must not use the credential, and must not send its requests to AWS
+                S3.
+            client.region:
+              type: string
+              description: |
+                EXPERIMENTAL. Region to sign S3 requests with, set together with `s3.endpoint`.
             azure.sas-token:
               type: string
               description: Azure SAS (Shared Access Signature) token
@@ -620,6 +640,11 @@ components:
             Credential expiration time in epoch milliseconds.
             This standardized field avoids the need for provider-specific expiration keys
             (e.g., s3.session-token-expires-at-ms, adls.sas-token-expires-at-ms, etc.)
+            EXPERIMENTAL: when the config has `s3.endpoint` but no `s3.session-token`, it is a
+            refetch time an hour ahead, not when the keys expire: a key pair without a session token
+            stays valid until the storage rotates or revokes it, and a config without keys has none
+            to expire. A running client need not fetch again then; the UC Hadoop connector picks up
+            a changed endpoint on its first table load after this time.
 
     DeltaCredentialsResponse:
       type: object
@@ -863,11 +888,10 @@ components:
         properties:
           type: object
           description: |
-            Table properties. Besides the table's metaData.configuration entries, the map carries
-            server-derived keys (delta.minReaderVersion, delta.minWriterVersion, delta.feature.*,
-            delta.clusteringColumns, delta.rowTracking.rowIdHighWaterMark, delta.lastUpdateVersion,
-            delta.lastCommitTimestamp) that clients must not write back to the Delta log or send in
-            set-properties / remove-properties.
+            Table properties. Besides the table's metaData.configuration entries, the map can carry
+            server-derived keys that clients must not write back to the Delta log or send in
+            set-properties / remove-properties. Examples, not a complete list: delta.minReaderVersion,
+            delta.feature.* and delta.lastCommitTimestamp.
           additionalProperties:
             type: string
         last-commit-version:
@@ -1004,7 +1028,10 @@ components:
           const: "set-properties"
         updates:
           type: object
-          description: Properties to set
+          description: |
+            Properties to set. On a MANAGED table, the server rejects some properties with a 400
+            InvalidParameterValueException. Examples, not a complete list: a server-derived key such
+            as delta.minReaderVersion, or a change to io.unitycatalog.tableId.
           additionalProperties:
             type: string
 
@@ -1018,7 +1045,10 @@ components:
           const: "remove-properties"
         removals:
           type: array
-          description: Property keys to remove
+          description: |
+            Property keys to remove. On a MANAGED table, the server rejects some removals with a 400
+            InvalidParameterValueException. Examples, not a complete list: a server-derived key such
+            as delta.minReaderVersion, or io.unitycatalog.tableId.
           items:
             type: string
       required:
