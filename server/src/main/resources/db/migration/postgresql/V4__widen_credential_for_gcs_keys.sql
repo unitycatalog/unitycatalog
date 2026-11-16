@@ -1,0 +1,1 @@
+-- Changes nothing on PostgreSQL, where the credential column is already a large object.

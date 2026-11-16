@@ -1,0 +1,2 @@
+- column uc_credentials.credential_type type=enum size=12 nullable=NO default=null values=enum('AWS_IAM_ROLE')
++ column uc_credentials.credential_type type=enum size=23 nullable=NO default=null values=enum('AWS_IAM_ROLE','AZURE_SERVICE_PRINCIPAL','GCP_SERVICE_ACCOUNT_KEY')

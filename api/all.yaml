@@ -1209,8 +1209,8 @@ paths:
       summary: Create a credential
       description: |-
         Creates a new credential. The type of credential to be created is determined by the **purpose** field.
-        Set exactly one of `aws_iam_role` and `s3_compatible`; otherwise the request fails with
-        `INVALID_ARGUMENT`.
+        Set exactly one of `aws_iam_role`, `s3_compatible`, `azure_service_principal` and
+        `gcp_service_account_key`; otherwise the request fails with `INVALID_ARGUMENT`.
 
         EXPERIMENTAL: `s3_compatible` is available only when the server property
         `server.s3-compatible-storage.enabled` is `true`. Otherwise a create or update request that
@@ -2944,6 +2944,10 @@ components:
           $ref: '#/components/schemas/AwsIamRoleResponse'
         s3_compatible:
           $ref: '#/components/schemas/S3CompatibleResponse'
+        azure_service_principal:
+          $ref: '#/components/schemas/AzureServicePrincipalResponse'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyResponse'
         comment:
           description: Comment associated with the credential.
           type: string
@@ -2987,6 +2991,10 @@ components:
           $ref: '#/components/schemas/AwsIamRoleRequest'
         s3_compatible:
           $ref: '#/components/schemas/S3CompatibleRequest'
+        azure_service_principal:
+          $ref: '#/components/schemas/AzureServicePrincipalRequest'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyRequest'
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     UpdateCredentialRequest:
@@ -3121,6 +3129,70 @@ components:
             '_' and '-'. If not set, the region of the S3-compatible storage holding the requested
             path is used.
           type: string
+    AzureDirectoryId:
+      description: The directory (tenant) ID of the Microsoft Entra ID tenant that the service principal belongs to.
+      type: string
+    AzureApplicationId:
+      description: The application (client) ID of the service principal.
+      type: string
+    AzureServicePrincipalRequest:
+      description: A Microsoft Entra ID service principal with access to Azure storage. Exactly one cloud identity must be set on a credential.
+      type: object
+      required:
+        - directory_id
+        - application_id
+        - client_secret
+      properties:
+        directory_id:
+          $ref: "#/components/schemas/AzureDirectoryId"
+        application_id:
+          $ref: "#/components/schemas/AzureApplicationId"
+        client_secret:
+          description: A client secret of the service principal. It is never returned.
+          type: string
+    AzureServicePrincipalResponse:
+      description: The service principal of an Azure credential. The client secret is not returned.
+      type: object
+      required:
+        - directory_id
+        - application_id
+      properties:
+        directory_id:
+          $ref: "#/components/schemas/AzureDirectoryId"
+        application_id:
+          $ref: "#/components/schemas/AzureApplicationId"
+    GcpServiceAccountEmail:
+      description: The email of the Google Cloud service account.
+      type: string
+    GcpPrivateKeyId:
+      description: The ID of the service account key.
+      type: string
+    GcpServiceAccountKeyRequest:
+      description: A key of a Google Cloud service account with access to Google Cloud Storage, with the fields of the service account's JSON key file. Exactly one cloud identity must be set on a credential.
+      type: object
+      required:
+        - email
+        - private_key_id
+        - private_key
+      properties:
+        email:
+          $ref: "#/components/schemas/GcpServiceAccountEmail"
+        private_key_id:
+          $ref: "#/components/schemas/GcpPrivateKeyId"
+        private_key:
+          description: The PEM-encoded PKCS#8 private key of the service account key. It is never returned.
+          type: string
+    GcpServiceAccountKeyResponse:
+      description: The service account key of a GCS credential. The private key is not returned.
+      type: object
+      required:
+        - email
+        - private_key_id
+      properties:
+        email:
+          $ref: "#/components/schemas/GcpServiceAccountEmail"
+        private_key_id:
+          $ref: "#/components/schemas/GcpPrivateKeyId"
     ListCredentialsResponse:
       type: object
       properties:

@@ -1,0 +1,2 @@
+- column uc_credentials.credential type=tinytext size=255 nullable=NO default=null
++ column uc_credentials.credential type=mediumtext size=16777215 nullable=NO default=null
