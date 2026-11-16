@@ -1,8 +1,8 @@
 package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
+import io.unitycatalog.server.delta.model.DeltaStagingTableResponseRequiredProtocol;
 import io.unitycatalog.server.delta.model.DeltaStagingTableResponseSuggestedProtocol;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.model.StagingTableInfo;
@@ -47,7 +47,7 @@ public final class DeltaStagingTableMapper {
         .location(info.getStagingLocation())
         .storageCredentials(creds.getStorageCredentials())
         .requiredProtocol(
-            new DeltaProtocol()
+            new DeltaStagingTableResponseRequiredProtocol()
                 .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
                 .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
                 .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)

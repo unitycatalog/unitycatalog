@@ -40,11 +40,12 @@ case class OpenApiSpec(
  *   skipOverwrite, auth, gitHost, importMappings,
  *   typeMappings, etc.). These all have sensible defaults in
  *   CodegenConfigurator.
- * - The Java runs drop `const` from discriminator properties of subtypes
- *   (see keepDiscriminatorsAsStrings) and `@JsonFormat(shape=OBJECT)` from
- *   models that extend HashMap (see keepMapModelsAsMaps). Apart from that,
- *   the output is identical to what the plugin would produce with the same
- *   inputs.
+ * - Every run moves a property that only adds a description to a `$ref` into
+ *   a model of its own (see keepDescribedRefsAsModels). The Java runs also
+ *   drop `const` from discriminator properties of subtypes (see
+ *   keepDiscriminatorsAsStrings) and `@JsonFormat(shape=OBJECT)` from models
+ *   that extend HashMap (see keepMapModelsAsMaps). Apart from that, the
+ *   output is identical to what the plugin would produce with the same inputs.
  *
  * Projects that only generate from a single spec (controlApi,
  * controlModels) still use the plugin directly.
@@ -73,6 +74,7 @@ object OpenApiHelper {
       gen.setGeneratorPropertyDefault(CodegenConstants.MODEL_TESTS, "false")
       gen.setGenerateMetadata(false)
       val input = config.toClientOptInput()
+      keepDescribedRefsAsModels(input.getOpenAPI)
       if (generatorName == "java") keepDiscriminatorsAsStrings(input.getOpenAPI)
       val files = gen.opts(input).generate().asScala
       if (generatorName == "java") files.filter(_.getName.endsWith(".java")).foreach(keepMapModelsAsMaps)
@@ -92,6 +94,30 @@ object OpenApiHelper {
     val source = new String(Files.readAllBytes(path), StandardCharsets.UTF_8)
     if (source.contains(" extends HashMap<") && objectShape.findFirstIn(source).isDefined) {
       Files.write(path, objectShape.replaceAllIn(source, "").getBytes(StandardCharsets.UTF_8))
+    }
+  }
+
+  /**
+   * A property written as `allOf: [$ref, {description}]` used to get a model of its own, named
+   * `<Schema>_<property>`, such as DeltaStagingTableResponseRequiredProtocol. The generator now
+   * types it as the referenced model instead, which breaks callers of the published clients, such
+   * as Delta's Unity Catalog client. Moving the property into a component of that name keeps the
+   * model, its API docs and the client's binary compatibility.
+   */
+  private def keepDescribedRefsAsModels(openAPI: OpenAPI): Unit = {
+    val schemas = Option(openAPI.getComponents).flatMap(c => Option(c.getSchemas))
+    for {
+      components <- schemas.toList
+      (schemaName, schema) <- components.asScala.toList
+      properties <- Option(schema.getProperties).toList
+      (propertyName, property) <- properties.asScala.toList
+      allOf <- Option(property.getAllOf).map(_.asScala.toList)
+      if allOf.count(_.get$ref != null) == 1 && allOf.size == 2
+      if allOf.forall(s => s.get$ref != null || (s.getType == null && s.getProperties == null))
+    } {
+      val name = s"${schemaName}_${propertyName.replace('-', '_')}"
+      components.put(name, property)
+      properties.put(propertyName, new Schema[AnyRef]().$ref(s"#/components/schemas/$name"))
     }
   }
 

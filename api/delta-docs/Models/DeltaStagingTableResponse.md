@@ -7,7 +7,7 @@
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) | Table type (always MANAGED for staging tables) | [default to null] |
 | **location** | **String** | UC allocated storage location for this table | [default to null] |
 | **storage-credentials** | [**List**](DeltaStorageCredential.md) | Temporary credentials for initial commit | [default to null] |
-| **required-protocol** | [**DeltaProtocol**](DeltaProtocol.md) | Required protocol - client must write an initial commit with at least this protocol. | [default to null] |
+| **required-protocol** | [**DeltaStagingTableResponse_required_protocol**](DeltaStagingTableResponse_required_protocol.md) |  | [default to null] |
 | **suggested-protocol** | [**DeltaStagingTableResponse_suggested_protocol**](DeltaStagingTableResponse_suggested_protocol.md) |  | [optional] [default to null] |
 | **required-properties** | **Map** | Table properties that must be set; null values mean any valid value is allowed | [default to null] |
 | **suggested-properties** | **Map** | Table properties that should be set whenever possible; null values mean client generates the value | [optional] [default to null] |

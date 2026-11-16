@@ -29,6 +29,8 @@ import io.unitycatalog.client.delta.model.DeltaSetPropertiesUpdate;
 import io.unitycatalog.client.delta.model.DeltaSetProtocolUpdate;
 import io.unitycatalog.client.delta.model.DeltaSetSchemaUpdate;
 import io.unitycatalog.client.delta.model.DeltaSetTableCommentUpdate;
+import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
+import io.unitycatalog.client.delta.model.DeltaStagingTableResponseRequiredProtocol;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
@@ -183,6 +185,26 @@ public class DeltaModelSerializationTest {
         (DeltaUpdateSnapshotVersionUpdate) updates.get(10);
     assertThat(snapUpdate.getLastCommitVersion()).isEqualTo(42);
     assertThat(snapUpdate.getLastCommitTimestampMs()).isEqualTo(1700000000000L);
+  }
+
+  /**
+   * Delta's Unity Catalog client reads the required protocol as a
+   * DeltaStagingTableResponseRequiredProtocol, so the client must keep that model.
+   */
+  @Test
+  public void testStagingTableResponseKeepsItsRequiredProtocolModel() throws Exception {
+    String json =
+        "{\"required-protocol\": {\"min-reader-version\": 3, \"min-writer-version\": 7,"
+            + " \"reader-features\": [\"catalogManaged\"],"
+            + " \"writer-features\": [\"catalogManaged\", \"inCommitTimestamp\"]}}";
+
+    DeltaStagingTableResponseRequiredProtocol protocol =
+        MAPPER.readValue(json, DeltaStagingTableResponse.class).getRequiredProtocol();
+
+    assertThat(protocol.getMinReaderVersion()).isEqualTo(3);
+    assertThat(protocol.getMinWriterVersion()).isEqualTo(7);
+    assertThat(protocol.getReaderFeatures()).containsExactly("catalogManaged");
+    assertThat(protocol.getWriterFeatures()).containsExactly("catalogManaged", "inCommitTimestamp");
   }
 
   @Test

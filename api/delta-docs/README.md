@@ -62,6 +62,7 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [DeltaSetSchemaUpdate](./Models/DeltaSetSchemaUpdate.md)
  - [DeltaSetTableCommentUpdate](./Models/DeltaSetTableCommentUpdate.md)
  - [DeltaStagingTableResponse](./Models/DeltaStagingTableResponse.md)
+ - [DeltaStagingTableResponse_required_protocol](./Models/DeltaStagingTableResponse_required_protocol.md)
  - [DeltaStagingTableResponse_suggested_protocol](./Models/DeltaStagingTableResponse_suggested_protocol.md)
  - [DeltaStorageCredential](./Models/DeltaStorageCredential.md)
  - [DeltaStorageCredential_config](./Models/DeltaStorageCredential_config.md)
