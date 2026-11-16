@@ -9,6 +9,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
@@ -148,6 +149,22 @@ public class SchemaMigratorTest {
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
+  @Test
+  void adoptsADatabaseAtAnEarlierStepsSchemaWithoutHistory() {
+    // What Hibernate leaves when it updates a database but makes only some steps' changes: the
+    // schema of a step before the last, and no schema history. Here, this release's schema, under
+    // a build with one more step.
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+
+    // This release's steps are recorded without running, and the step after them runs.
+    assertThat(migrator.upgradeSchema()).isEqualTo(migrator.steps().size());
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    UpgradeTestUtils.execute(db, "SELECT id FROM uc_test_only_step");
+  }
+
   /** What makes a run with a failed step in the schema history refuse. */
   enum RefusalWithAFailedStep {
     /** A step that was edited after it ran. */
@@ -205,27 +222,21 @@ public class SchemaMigratorTest {
   @Test
   void runsAgainAFailedStepOnTheConfiguredPool() {
     // The pool that the server's configuration sets does not commit by itself.
-    new SchemaMigrator(db.dataSource()).upgradeSchema();
-    UpgradeTestUtils.execute(
-        db,
-        switch (DatabaseKind.of(db.dataSource())) {
-          case H2 -> "ALTER TABLE uc_function_params ALTER COLUMN type_json VARCHAR(255)";
-          case MYSQL -> "ALTER TABLE uc_function_params MODIFY type_json VARCHAR(255)";
-          case POSTGRESQL ->
-              "ALTER TABLE uc_function_params ALTER COLUMN type_json TYPE VARCHAR(255)";
-        });
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
     UpgradeTestUtils.execute(
         db,
         ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
-                + " WHERE %1$sversion%1$s = '2'")
+                + " WHERE %1$sversion%1$s = '1000'")
             .formatted(identifierQuote(db.dataSource())));
 
-    try (SchemaMigrator migrator =
-        SchemaMigrator.fromHibernateProperties(db.hibernateProperties())) {
-      assertThat(migrator.upgradeSchema()).isOne();
+    try (HikariDataSource pool =
+        new HikariDataSource(HibernateConfigurator.hikariConfig(db.hibernateProperties()))) {
+      assertThat(new SchemaMigrator(pool, NEXT_RELEASE).upgradeSchema()).isOne();
     }
     assertThat(failedRecords()).isZero();
-    assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
+    assertThat(new SchemaMigrator(db.dataSource(), NEXT_RELEASE).state())
+        .isEqualTo(SchemaState.CURRENT);
   }
 
   @ParameterizedTest
@@ -340,11 +351,11 @@ public class SchemaMigratorTest {
   }
 
   /**
-   * Adopting a database at the last step's schema stopped at the history record of step 1, 2 or
-   * 1000 of a build with three steps: after Flyway created the history table, with the steps before
-   * that one recorded. The rerun records the remaining steps. {@code stoppedRecord} counts the
-   * inserts into the history table that the watched pool sees, and each is a step's record: the
-   * rerun records {@code stoppedRecord - 1} steps fewer than the build has.
+   * Adopting a database at the last step's schema stopped at the history record of the build's
+   * first, second or third step: after Flyway created the history table, with the steps before that
+   * one recorded. The rerun records the remaining steps. {@code stoppedRecord} counts the inserts
+   * into the history table that the watched pool sees, and each is a step's record: the rerun
+   * records {@code stoppedRecord - 1} steps fewer than the build has.
    */
   @ParameterizedTest
   @CsvSource({"1", "2", "3"})
