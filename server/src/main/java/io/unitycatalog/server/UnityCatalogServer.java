@@ -40,6 +40,7 @@ import io.unitycatalog.server.service.MetastoreService;
 import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.PermissionService;
 import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.Scim2GroupService;
 import io.unitycatalog.server.service.Scim2SelfService;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.StagingTableService;
@@ -114,7 +115,8 @@ public class UnityCatalogServer implements AutoCloseable {
     unityCatalogServerBuilder.serverProperties.validateProperties();
     this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
     Path configurationFolder = unityCatalogServerBuilder.configurationFolder;
-    SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
+    SecurityConfiguration securityConfiguration =
+        SecurityConfiguration.load(unityCatalogServerBuilder.serverProperties, configurationFolder);
 
     this.securityContext =
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
@@ -397,6 +399,7 @@ public class UnityCatalogServer implements AutoCloseable {
     armeriaServerBuilder
         .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
         .annotate("scim2/Users", new Scim2UserService(authorizer, repositories, serverProperties))
+        .annotate("scim2/Groups", new Scim2GroupService(authorizer, repositories))
         .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
         .annotate("permissions", new PermissionService(authorizer, repositories, serverProperties))
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
@@ -474,7 +477,7 @@ public class UnityCatalogServer implements AutoCloseable {
       LOGGER.info("Enabling security decorators...");
       armeriaServerBuilder.withSecurityDecorators(
           new UnityAccessDecorator(authorizer, repositories, serverProperties),
-          new AuthDecorator(securityContext, repositories));
+          new AuthDecorator(securityContext, repositories, serverProperties));
     }
   }
 
@@ -648,15 +651,13 @@ public class UnityCatalogServer implements AutoCloseable {
     }
 
     /**
-     * Sets the folder holding the signing keys, which the server creates if missing, and the {@code
-     * certs.json} and {@code token.txt} it writes when constructed. Defaults to {@code etc/conf};
-     * tests pass their own folder so concurrent servers do not share these files.
+     * Sets the folder holding the signing keys, which the server creates if missing. Defaults to
+     * {@code etc/conf}; tests pass their own folder so concurrent servers do not share the keys.
      *
-     * <p>Only these files move: {@code server.properties}, {@code hibernate.properties} and the
-     * log4j configuration are still read from {@code etc/conf}.
+     * <p>Only the keys move: {@code server.properties}, {@code hibernate.properties} and the log4j
+     * configuration are still read from {@code etc/conf}.
      *
-     * @param configurationFolder the folder for the signing keys, {@code certs.json} and {@code
-     *     token.txt}
+     * @param configurationFolder the folder for the signing keys
      * @return this builder
      */
     public UnityCatalogServer.Builder configurationFolder(Path configurationFolder) {

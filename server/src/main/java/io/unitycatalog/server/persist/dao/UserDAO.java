@@ -18,7 +18,10 @@ import lombok.experimental.SuperBuilder;
 @Table(
     name = "uc_users",
     uniqueConstraints = {
-      @UniqueConstraint(name = "uc_users_external_id_key", columnNames = "external_id")
+      @UniqueConstraint(name = "uc_users_external_id_key", columnNames = "external_id"),
+      @UniqueConstraint(
+          name = "uc_users_link_key",
+          columnNames = {"link_issuer", "link_claim", "link_value"})
     })
 // Lombok annotations
 @Getter
@@ -46,6 +49,28 @@ public class UserDAO extends IdentifiableDAO {
   @Column(name = "picture_url")
   private String pictureUrl;
 
+  @Column(name = "idp_name")
+  private String idpName;
+
+  @Column(name = "owner", nullable = false)
+  private String owner;
+
+  // The identity provider identity this row is linked to in external mode; see UserLink.
+  @Column(name = "link_issuer")
+  private String linkIssuer;
+
+  @Column(name = "link_claim", length = 16)
+  private String linkClaim;
+
+  @Column(name = "link_value")
+  private String linkValue;
+
+  // When SCIM last reactivated the row, in epoch seconds: an instant, unlike a wall-clock
+  // timestamp, so it compares with a token's iat in any JVM zone. A token issued before it can't
+  // use the row.
+  @Column(name = "reactivated_epoch_second")
+  private Long reactivatedEpochSecond;
+
   public static UserDAO from(User user) {
     return UserDAO.builder()
         .id(UUID.fromString(user.getId()))
@@ -54,6 +79,8 @@ public class UserDAO extends IdentifiableDAO {
         .externalId(user.getExternalId())
         .state(user.getState().name())
         .pictureUrl(user.getPictureUrl())
+        .idpName(user.getIdpName())
+        .owner(user.getOwner())
         .createdAt(new Date(user.getCreatedAt()))
         .updatedAt(user.getUpdatedAt() == null ? null : new Date(user.getUpdatedAt()))
         .build();
@@ -67,6 +94,8 @@ public class UserDAO extends IdentifiableDAO {
         .externalId(getExternalId())
         .state(User.StateEnum.fromValue(getState()))
         .pictureUrl(getPictureUrl())
+        .idpName(getIdpName())
+        .owner(getOwner())
         .createdAt(getCreatedAt().getTime())
         .updatedAt(getUpdatedAt() == null ? null : getUpdatedAt().getTime());
   }

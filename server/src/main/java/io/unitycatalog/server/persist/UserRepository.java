@@ -6,17 +6,22 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.persist.model.UserLink;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.query.MutationQuery;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +43,7 @@ public class UserRepository {
             .name(createUser.getName())
             .email(createUser.getEmail())
             .externalId(createUser.getExternalId())
+            .owner(createUser.getOwner())
             .state(User.StateEnum.ENABLED)
             .createdAt(System.currentTimeMillis());
 
@@ -181,6 +187,16 @@ public class UserRepository {
             userDAO.setName(updateUser.getName());
           }
           if (updateUser.getActive() != null) {
+            // Reactivation clears the link: the IdP may reuse the row for a new person (a rehire),
+            // so the next first call links whoever the IdP now names by this email, with a token
+            // issued since (see linkUser).
+            if (updateUser.getActive()
+                && User.StateEnum.DISABLED.toString().equals(userDAO.getState())) {
+              userDAO.setLinkIssuer(null);
+              userDAO.setLinkClaim(null);
+              userDAO.setLinkValue(null);
+              userDAO.setReactivatedEpochSecond(Instant.now().getEpochSecond());
+            }
             userDAO.setState(
                 updateUser.getActive()
                     ? User.StateEnum.ENABLED.toString()
@@ -204,6 +220,209 @@ public class UserRepository {
         /* readOnly= */ false);
   }
 
+  /**
+   * Marks the user as the principal of the identity provider {@code idpName}, for its SCIM token.
+   * Refuses the admin user, a user an identity provider owns (only the admin manages a principal),
+   * and a user that is already the principal of another identity provider.
+   */
+  public User setIdpName(String email, String idpName) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserByEmail(session, email);
+          if (userDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
+          }
+          // The stored email, so that a case variant of "admin" is refused as well.
+          if ("admin".equals(userDAO.getEmail())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "The admin user can't be an IdP principal.");
+          }
+          if (!IdentityUtils.ADMIN_OWNER.equals(userDAO.getOwner())) {
+            throw new BaseException(
+                ErrorCode.FAILED_PRECONDITION,
+                String.format(
+                    "%s is managed by identity provider %s; the SCIM principal must be a user the"
+                        + " admin owns",
+                    email, userDAO.getOwner()));
+          }
+          if (userDAO.getIdpName() != null && !userDAO.getIdpName().equals(idpName)) {
+            throw new BaseException(
+                ErrorCode.FAILED_PRECONDITION,
+                String.format(
+                    "User %s is already the IdP principal of %s, not %s.",
+                    email, userDAO.getIdpName(), idpName));
+          }
+          userDAO.setIdpName(idpName);
+          session.merge(userDAO);
+          return userDAO.toUser();
+        },
+        "Failed to set the IdP name of the user",
+        /* readOnly= */ false);
+  }
+
+  /**
+   * Returns the user linked to {@code link}, or null if no row is linked to it or the token was
+   * issued before the row's last reactivation (see {@link #linkUser}).
+   *
+   * @param issuedAt the token's {@code iat}, or null if it has none
+   */
+  public User findLinkedUser(UserLink link, Instant issuedAt) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          Query<UserDAO> query =
+              session.createQuery(
+                  "FROM UserDAO WHERE linkIssuer = :issuer AND linkClaim = :claim"
+                      + " AND linkValue = :value"
+                      + issuedSinceReactivation(issuedAt),
+                  UserDAO.class);
+          query.setParameter("issuer", link.issuer());
+          query.setParameter("claim", link.claim());
+          query.setParameter("value", link.value());
+          if (issuedAt != null) {
+            query.setParameter("issuedAt", issuedAt.getEpochSecond());
+          }
+          // A MySQL database at its default collation compares case- and accent-insensitively, so
+          // the query can return a row for another identity; only an exact match is the link.
+          return query.list().stream()
+              .filter(
+                  userDAO ->
+                      link.equals(
+                          new UserLink(
+                              userDAO.getLinkIssuer(),
+                              userDAO.getLinkClaim(),
+                              userDAO.getLinkValue())))
+              .findFirst()
+              .map(UserDAO::toUser)
+              .orElse(null);
+        },
+        "Failed to get user by link",
+        /* readOnly= */ true);
+  }
+
+  /**
+   * Links {@code link} to the user with {@code email}, in one conditional update, so concurrent
+   * first calls link the row at most once. Only an ENABLED, unlinked row that is neither the
+   * bootstrap admin nor an IdP principal is linked, and only if the admin or the identity provider
+   * {@code idpName} owns it: another IdP's row is never linked through this one. A reactivated row
+   * is linked only by a token issued at or after its reactivation, so a token issued before it (or
+   * without {@code iat}) can't link the row first. Both times are compared in epoch seconds, so a
+   * token issued in the second of the reactivation links it.
+   *
+   * @param idpName the name of the identity provider that issued the token
+   * @param issuedAt the token's {@code iat}, or null if it has none
+   * @return the linked user, or null if no such row exists or {@code link} is already on another
+   *     row
+   */
+  public User linkUser(String idpName, String email, UserLink link, Instant issuedAt) {
+    try {
+      return TransactionManager.executeWithTransaction(
+          sessionFactory,
+          session -> {
+            // The owner is compared here, exactly: a MySQL database at its default collation
+            // would match okta to Okta, and admin to Admin, in the query.
+            // TODO(#2207): with two rows of this email, the read may pick another owner's row, and
+            // this IdP's own row is then not linked (403). uc_users_email_key removes this.
+            UserDAO userDAO = getUserByEmail(session, email);
+            if (userDAO == null
+                || !(IdentityUtils.ADMIN_OWNER.equals(userDAO.getOwner())
+                    || idpName.equals(userDAO.getOwner()))) {
+              return null;
+            }
+            MutationQuery update =
+                session
+                    .createMutationQuery(
+                        "UPDATE UserDAO SET linkIssuer = :issuer, linkClaim = :claim,"
+                            + " linkValue = :value WHERE id = :id AND linkIssuer IS NULL"
+                            + " AND state = :enabled AND email <> 'admin' AND idpName IS NULL"
+                            + issuedSinceReactivation(issuedAt))
+                    .setParameter("issuer", link.issuer())
+                    .setParameter("claim", link.claim())
+                    .setParameter("value", link.value())
+                    .setParameter("id", userDAO.getId())
+                    .setParameter("enabled", User.StateEnum.ENABLED.toString());
+            if (issuedAt != null) {
+              update.setParameter("issuedAt", issuedAt.getEpochSecond());
+            }
+            if (update.executeUpdate() == 0) {
+              return null;
+            }
+            // The row as updated: another transaction may have changed it since the read.
+            session.refresh(userDAO);
+            return userDAO.toUser();
+          },
+          "Failed to link user",
+          /* readOnly= */ false);
+    } catch (RuntimeException e) {
+      // A concurrent call linked this identity to another row (uc_users_link_key).
+      if (ExceptionUtils.indexOfType(e, ConstraintViolationException.class) < 0) {
+        throw e;
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Creates the user {@code email} on its first call through the identity provider {@code idpName},
+   * owned by that IdP and linked to {@code link}, with no grants. Its name is the email until the
+   * IdP's SCIM sets one. Nothing is created if a row with {@code email} exists, whatever its owner
+   * or state, or if a concurrent call linked {@code link} first (uc_users_link_key).
+   *
+   * @return the new user, or null if none was created
+   */
+  public User createLinkedUser(String idpName, String email, UserLink link) {
+    try {
+      User created =
+          TransactionManager.executeWithTransaction(
+              sessionFactory,
+              session -> {
+                if (getUserByEmail(session, email) != null) {
+                  return null;
+                }
+                User user =
+                    new User()
+                        .id(UUID.randomUUID().toString())
+                        .name(email)
+                        .email(email)
+                        .owner(idpName)
+                        .state(User.StateEnum.ENABLED)
+                        .createdAt(System.currentTimeMillis());
+                UserDAO userDAO = UserDAO.from(user);
+                userDAO.setLinkIssuer(link.issuer());
+                userDAO.setLinkClaim(link.claim());
+                userDAO.setLinkValue(link.value());
+                session.persist(userDAO);
+                return user;
+              },
+              "Failed to create user",
+              /* readOnly= */ false);
+      if (created != null) {
+        LOGGER.info("Created user {} on its first call through {}", created.getId(), idpName);
+      }
+      return created;
+    } catch (RuntimeException e) {
+      // A concurrent first call of the same identity created its row first (uc_users_link_key).
+      // TODO(#2207): uc_users_email_key also refuses a concurrent first call of another identity
+      // with the same email; until then both rows are created.
+      if (ExceptionUtils.indexOfType(e, ConstraintViolationException.class) < 0) {
+        throw e;
+      }
+      return null;
+    }
+  }
+
+  /**
+   * The HQL condition that a token issued at {@code issuedAt} (bound as {@code :issuedAt} when not
+   * null) was issued at or after the row's last reactivation; without {@code iat}, only a row that
+   * was never reactivated passes.
+   */
+  private static String issuedSinceReactivation(Instant issuedAt) {
+    return issuedAt == null
+        ? " AND reactivatedEpochSecond IS NULL"
+        : " AND (reactivatedEpochSecond IS NULL OR reactivatedEpochSecond <= :issuedAt)";
+  }
+
   public void deleteUser(String id) {
     TransactionManager.executeWithTransaction(
         sessionFactory,
@@ -212,6 +431,13 @@ public class UserRepository {
           if (userDAO != null) {
             userDAO.setState(User.StateEnum.DISABLED.toString());
             session.merge(userDAO);
+            // Write the user row before the memberships: a group add reads it and then adds a
+            // membership, so the other order can deadlock with that add.
+            session.flush();
+            session
+                .createMutationQuery("DELETE FROM GroupMemberDAO WHERE userId = :userId")
+                .setParameter("userId", userDAO.getId())
+                .executeUpdate();
             LOGGER.info("Deleted user: {}", id);
             return null;
           } else {
@@ -224,10 +450,13 @@ public class UserRepository {
 
   public UUID findPrincipalId() {
     String principalEmailAddress = IdentityUtils.findPrincipalEmailAddress();
-    if (principalEmailAddress != null) {
-      return UUID.fromString(getUserByEmail(principalEmailAddress).getId());
-    } else {
+    if (principalEmailAddress == null) {
       return null;
     }
+    // A SCIM token's subject is already the user's id; AuthDecorator looked the user up by it.
+    if (IdentityUtils.isScimToken()) {
+      return UUID.fromString(principalEmailAddress);
+    }
+    return UUID.fromString(getUserByEmail(principalEmailAddress).getId());
   }
 }

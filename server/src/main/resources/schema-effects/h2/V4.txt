@@ -1,0 +1,1 @@
++ column uc_users.idp_name type=character varying size=255 nullable=YES default=null

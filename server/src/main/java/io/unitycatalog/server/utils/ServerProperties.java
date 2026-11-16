@@ -1,9 +1,13 @@
 package io.unitycatalog.server.utils;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import com.linecorp.armeria.client.Endpoint;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.security.IdentityProvider;
+import io.unitycatalog.server.security.SubjectClaim;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
@@ -18,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,10 +31,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntPredicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import lombok.Getter;
+import org.apache.commons.lang3.EnumUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,6 +62,11 @@ public class ServerProperties {
       Pattern.compile(
           "server\\.client-secret|aws\\.secretKey"
               + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+");
+
+  // One block per identity provider in external authentication mode; see getIdentityProviders.
+  private static final String IDP_PREFIX = "server.authentication.idp.";
+  private static final Pattern IDP_KEY =
+      Pattern.compile(Pattern.quote(IDP_PREFIX) + "([^.]+)\\.(issuer|audience|subject-claim)");
 
   private final Properties properties = new Properties(generateDefaults());
   private final Map<String, String> env;
@@ -324,11 +338,17 @@ public class ServerProperties {
     CLIENT_ID("server.client-id"),
     CLIENT_SECRET("server.client-secret"),
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
+    // internal: the server's own tokens, IdP tokens only through the token exchange. external: IdP
+    // access tokens directly (see server.authentication.idp.<name>.*).
+    AUTHENTICATION_TYPE(
+        "server.authentication.type", "internal", new EnumValidator(true, "internal", "external")),
     ALLOWED_ISSUERS("server.allowed-issuers"),
     ALLOWED_JWKS_URIS("server.allowed-jwks-uris"),
     AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
+    // The operator's token signing private key; see SecurityConfiguration.
+    TOKEN_SIGNING_PRIVATE_KEY_FILE("server.token-signing-private-key-file"),
     READINESS_PROBE_INTERVAL(
         "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
     READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),
@@ -426,6 +446,7 @@ public class ServerProperties {
     }
     validateAuthAllowlistConfiguration();
     validateStorageCleanupConfiguration();
+    warnAboutExternalModeConfiguration(getIdentityProviders());
     validateOpaConfiguration();
   }
 
@@ -711,6 +732,126 @@ public class ServerProperties {
 
   private boolean isTrueOrEnable(String value) {
     return value != null && (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("enable"));
+  }
+
+  /** Whether IdP access tokens are accepted directly ({@code server.authentication.type}). */
+  public boolean isExternalAuthentication() {
+    return "external".equalsIgnoreCase(get(Property.AUTHENTICATION_TYPE));
+  }
+
+  /**
+   * The identity providers configured as {@code server.authentication.idp.<name>.issuer}, {@code
+   * .audience} and {@code .subject-claim} (default {@code SUB}). Only external mode uses them.
+   *
+   * @throws BaseException if a block is named {@code admin}, misses its issuer or audience, has an
+   *     unknown key or subject claim, or two blocks share an issuer
+   */
+  public List<IdentityProvider> getIdentityProviders() {
+    Set<String> names = new TreeSet<>();
+    for (String key : properties.stringPropertyNames()) {
+      if (!key.startsWith(IDP_PREFIX)) {
+        continue;
+      }
+      Matcher matcher = IDP_KEY.matcher(key);
+      if (!matcher.matches()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Unknown property %s; expected %s<name>.issuer, .audience or .subject-claim",
+                key, IDP_PREFIX));
+      }
+      names.add(matcher.group(1));
+    }
+    List<IdentityProvider> identityProviders = new ArrayList<>();
+    Map<String, String> nameByIssuer = new HashMap<>();
+    for (String name : names) {
+      // A first sign-in through the block would create users the admin seems to own.
+      if (name.equals(IdentityUtils.ADMIN_OWNER)) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Identity provider can't be named admin: that name is the owner of the admin's users"
+                + " and groups");
+      }
+      IdentityProvider identityProvider =
+          new IdentityProvider(
+              name,
+              requiredIdpProperty(name, "issuer"),
+              requiredIdpProperty(name, "audience"),
+              subjectClaim(name));
+      // AuthDecorator matches IdP issuers first, so this block would take the server's own tokens.
+      if (INTERNAL.equals(identityProvider.issuer())) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Identity provider %s can't use issuer %s, the issuer of this server's own tokens",
+                name, INTERNAL));
+      }
+      String other = nameByIssuer.putIfAbsent(identityProvider.issuer(), name);
+      if (other != null) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Identity providers %s and %s have the same issuer %s",
+                other, name, identityProvider.issuer()));
+      }
+      identityProviders.add(identityProvider);
+    }
+    return identityProviders;
+  }
+
+  private String requiredIdpProperty(String name, String attribute) {
+    String key = IDP_PREFIX + name + "." + attribute;
+    String value = getProperty(key);
+    if (value == null || value.isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, key + " is required");
+    }
+    return value.trim();
+  }
+
+  private SubjectClaim subjectClaim(String name) {
+    String key = IDP_PREFIX + name + ".subject-claim";
+    String value = getProperty(key);
+    if (value == null) {
+      return SubjectClaim.SUB;
+    }
+    SubjectClaim subjectClaim = EnumUtils.getEnumIgnoreCase(SubjectClaim.class, value.trim());
+    if (subjectClaim == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "Invalid value '%s' for property '%s'. Allowed values: %s",
+              value, key, Arrays.toString(SubjectClaim.values())));
+    }
+    return subjectClaim;
+  }
+
+  /**
+   * The exchange's allowlists don't apply to IdP tokens sent directly; without an IdP block only
+   * the bootstrap admin's SERVICE token and SCIM tokens work.
+   */
+  private void warnAboutExternalModeConfiguration(List<IdentityProvider> identityProviders) {
+    if (!isExternalAuthentication()) {
+      return;
+    }
+    if (identityProviders.isEmpty()) {
+      LOGGER.warn(
+          "No identity provider is configured; only the bootstrap admin's service token and SCIM"
+              + " tokens are accepted. Set {}<name>.issuer and .audience.",
+          IDP_PREFIX);
+    }
+    List<String> unused =
+        Stream.of(Property.ALLOWED_ISSUERS, Property.AUDIENCES)
+            .filter(property -> get(property) != null)
+            .map(Property::getKey)
+            .toList();
+    if (!unused.isEmpty()) {
+      LOGGER.warn(
+          "{} {} not used in external authentication mode; set {}<name>.issuer and .audience"
+              + " instead",
+          String.join(" and ", unused),
+          unused.size() == 1 ? "is" : "are",
+          IDP_PREFIX);
+    }
   }
 
   public boolean isAuthorizationEnabled() {
