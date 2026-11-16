@@ -1,8 +1,6 @@
 package io.unitycatalog.server.service.sharing;
 
-import static io.opensharing.auth.Privilege.USE_SHARE;
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -89,20 +87,17 @@ public class UnityCatalogCatalogConnectorTest {
   }
 
   @Test
-  public void authorizesAnEnabledUserWithTheMetastoreOwnersAdminFlag() {
+  public void authorizesAnEnabledUserWithoutTheAdminFlag() {
     when(users.getUser(USER_ID))
         .thenReturn(
             new User().id(USER_ID).email("alice@example.com").state(User.StateEnum.ENABLED));
-    UUID metastoreId = UUID.randomUUID();
-    when(metastore.getMetastoreId()).thenReturn(metastoreId);
+    // Even the metastore OWNER: OpenSharingProviderService, not the connector, sets the admin flag.
+    when(authorizer.authorize(any(), any(), any(), any())).thenReturn(true);
     for (Privilege privilege : Privilege.values()) {
-      assertThat(connector.authorize(auth(), privilege).userId()).isEqualTo(USER_ID);
+      UserContext user = connector.authorize(auth(), privilege);
+      assertThat(user.userId()).isEqualTo(USER_ID);
+      assertThat(user.admin()).isFalse();
     }
-    // Only the metastore OWNER may transfer the ownership of a share or recipient.
-    assertThat(connector.authorize(auth(), USE_SHARE).admin()).isFalse();
-    when(authorizer.authorize(UUID.fromString(USER_ID), METASTORE, metastoreId, Privileges.OWNER))
-        .thenReturn(true);
-    assertThat(connector.authorize(auth(), USE_SHARE).admin()).isTrue();
   }
 
   @Test

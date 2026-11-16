@@ -98,22 +98,19 @@ public final class UnityCatalogCatalogConnector implements CatalogConnector {
   }
 
   /**
-   * Checks only that the caller is an enabled UC user, and ignores {@code privilege}. The sharing
-   * privileges OpenSharing asks for here are checked by the {@code AuthorizeExpression} annotations
-   * on the methods of {@code OpenSharingProviderService}. A new call into OpenSharing needs such an
-   * annotation first. The returned context's admin flag is UC's own answer: whether the caller owns
-   * the metastore, which lets them transfer the ownership of any share or recipient.
+   * A no-op beyond checking that the caller is an enabled UC user: {@code privilege} is ignored.
+   * The sharing privileges OpenSharing asks for here are checked by the {@code AuthorizeExpression}
+   * annotations on the methods of {@code OpenSharingProviderService}, and a new call into
+   * OpenSharing needs such an annotation first.
+   *
+   * <p>The admin flag guards transferring the ownership of a share or recipient. UC checks that on
+   * the annotation too, and {@code OpenSharingProviderService} sets the flag on the context it
+   * passes to OpenSharing, so the context returned here is never an admin.
    */
   @Override
   public UserContext authorize(AuthContext auth, Privilege privilege) {
     User user = user(auth);
-    boolean admin =
-        evaluator.evaluate(
-            UUID.fromString(user.getId()),
-            "#authorize(#principal, #metastore, OWNER)",
-            Map.of(METASTORE, metastore.getMetastoreId()),
-            Map.of());
-    return new UserContext(user.getId(), null, user.getEmail(), admin);
+    return new UserContext(user.getId(), null, user.getEmail(), false);
   }
 
   /** Resolves a table the caller may read the data of. Shares hold only tables. */
