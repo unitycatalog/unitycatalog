@@ -28,6 +28,7 @@ def parse_body(routine_body):
 def define_function(func_name, routine_body, param_names):
     func_def = ast.parse(f"def {func_name}({', '.join(param_names)}):\n    pass")
     body = parse_body(routine_body)
+    # An empty or comment-only body parses to no statements.
     if not body:
         raise SyntaxError("the routine definition has no statements")
     func_def.body[0].body = body

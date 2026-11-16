@@ -10,12 +10,14 @@
 
 - Fixed `UnitycatalogFunctionClient` and `UnitycatalogClient` calls failing with `RuntimeError: Timeout context manager should be used inside a task` or `... attached to a different loop` when made from a thread or event loop other than the one the `ApiClient` was created or first used on. This broke tools run by LangGraph agents (sync and async), LangChain `ainvoke`, and LlamaIndex `acall` and `FunctionAgent`. The client now sends every request from its own event loop on a background thread, which `close()` and `close_async()` stop.
 - Fixed sandbox results being lost, with a misleading "no output was produced" message, when the application uses more memory than `EXECUTOR_MAX_MEMORY_LIMIT`. The sandbox now reports the exit code when the process exits without a result, and reports a result that cannot be read as a failure instead of raising.
+- Fixed the Gemini and DSPy toolkits failing with `AttributeError: 'NoneType' object has no attribute 'parameters'` for a function without parameters, including when such a function is matched by a `catalog.schema.*` function name. Gemini now declares the tool without parameters and DSPy builds it with no arguments, like the other integrations.
 
 ### Change Log
 
 - Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
 - Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #2223
 - Run OSS function client calls on one event loop so they work from any thread by @maharanay22 in #2242
+- Build Gemini and DSPy tools for functions without parameters by @maharanay22 in #2245
 
 ## Unity Catalog AI 0.4.0
 

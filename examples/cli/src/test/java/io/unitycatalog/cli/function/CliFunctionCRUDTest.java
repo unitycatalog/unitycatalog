@@ -2,6 +2,7 @@ package io.unitycatalog.cli.function;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.cli.TestUtils;
@@ -31,6 +32,31 @@ public class CliFunctionCRUDTest extends BaseFunctionCRUDTest {
   @Override
   protected FunctionOperations createFunctionOperations(ServerConfig serverConfig) {
     return new CliFunctionOperations(serverConfig);
+  }
+
+  @Test
+  public void testFunctionCallPrintsTheResult() throws ApiException {
+    createCommonResources();
+    String fullName = CATALOG_NAME + "." + SCHEMA_NAME + ".add_one";
+    TestUtils.executeCliCommand(
+        serverConfig,
+        List.of(
+            "function",
+            "create",
+            "--full_name",
+            fullName,
+            "--input_params",
+            "a INT",
+            "--data_type",
+            "INT",
+            "--def",
+            "return a + 1"));
+
+    String output =
+        TestUtils.executeCliCommandForOutput(
+            serverConfig,
+            List.of("function", "call", "--full_name", fullName, "--input_params", "5"));
+    assertThat(output.strip()).isEqualTo("6");
   }
 
   @Test

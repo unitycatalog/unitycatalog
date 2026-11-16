@@ -349,3 +349,23 @@ def test_generate_callable_tool_list(uc_client):
     )
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."
+
+
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
+@pytest.mark.asyncio
+async def test_toolkit_e2e_tools_with_no_params(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
+
+    def get_weather() -> str:
+        """
+        Get the weather.
+        """
+        return "sunny"
+
+    with create_function_and_cleanup_oss(
+        uc_client, schema=SCHEMA, callable=get_weather
+    ) as func_obj:
+        for function_name in [func_obj.full_function_name, f"{CATALOG}.{SCHEMA}.*"]:
+            toolkit = UCFunctionToolkit(function_names=[function_name], client=uc_client)
+            tool = {tool.name: tool for tool in toolkit.tools}[func_obj.tool_name]
+            assert json.loads(tool.fn())["value"] == "sunny"
