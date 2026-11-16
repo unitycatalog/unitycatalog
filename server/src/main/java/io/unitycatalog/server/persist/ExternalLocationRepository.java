@@ -296,18 +296,6 @@ public class ExternalLocationRepository {
    *     is only set for updating an existing external location. For creating new ones it's empty.
    * @throws BaseException if an overlapping external location exists
    */
-  private static void warnIfInUse(Session session, NormalizedURL url, String action) {
-    boolean pendingCleanup = ExternalLocationUtils.hasPendingCleanupOverlap(session, url);
-    Optional<String> storageUser = ExternalLocationUtils.findStorageUser(session, url);
-    if (pendingCleanup || storageUser.isPresent()) {
-      LOGGER.warn(
-          "{} with force while it is in use. Pending storage cleanup: {}. Still used by: {}.",
-          action,
-          pendingCleanup,
-          storageUser.orElse("nothing"));
-    }
-  }
-
   private void validateUrlNotUsedByAnyExternalLocation(
       Session session, NormalizedURL url, Optional<UUID> currentExternalLocationId) {
     ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsWithURLOverlap(
@@ -339,5 +327,17 @@ public class ExternalLocationRepository {
                   "Cannot accept an external location that duplicates or overlaps with existing "
                       + "external location");
             });
+  }
+
+  /** Logs a warning when a forced change leaves the external location at {@code url} in use. */
+  private static void warnIfInUse(Session session, NormalizedURL url, String action) {
+    ExternalLocationUtils.LocationUse use = ExternalLocationUtils.findLocationUse(session, url);
+    if (use.inUse()) {
+      LOGGER.warn(
+          "{} with force while it is in use. Pending storage cleanup: {}. Still used by: {}.",
+          action,
+          use.pendingCleanup(),
+          use.storageUser().orElse("nothing"));
+    }
   }
 }

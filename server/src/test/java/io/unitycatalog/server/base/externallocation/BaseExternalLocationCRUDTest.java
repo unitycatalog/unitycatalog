@@ -391,6 +391,22 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
         .isEqualTo(root);
 
+    // A refused URL change also rolls back a rename sent with it.
+    String newName = EXTERNAL_LOCATION_NAME + "_renamed";
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().newName(newName).url(anotherTestUrl())),
+        ErrorCode.INVALID_ARGUMENT,
+        usedByVolume);
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(root);
+    assertApiException(
+        () -> externalLocationOperations.getExternalLocation(newName),
+        ErrorCode.NOT_FOUND,
+        "External location not found: " + newName);
+
     // Resending the current URL is not a change.
     assertThat(
             externalLocationOperations
@@ -447,7 +463,10 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             List.of(catalogLocationName, "catalog '" + catalog.getId() + "'"),
             List.of(schemaLocationName, "schema '" + schema.getSchemaId() + "'"))) {
       String locationName = locationAndUser.get(0);
-      String usedBy = "External location still used by " + locationAndUser.get(1);
+      String usedBy =
+          "External location still used by "
+              + locationAndUser.get(1)
+              + ". Set force to true to skip this check.";
       assertApiException(
           () -> delete(locationName, Optional.of(false)), ErrorCode.INVALID_ARGUMENT, usedBy);
       assertApiException(

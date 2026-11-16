@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -85,6 +86,18 @@ public class CliUtils {
 
     public List<CliParams> getOptionalParams() {
       return optionalParams;
+    }
+
+    /** Optional params that change how an operation is checked, not what it changes. */
+    private static final Set<CliParams> MODIFIER_PARAMS = Set.of(CliParams.FORCE);
+
+    /** The optional params that change something, leaving out the modifiers. */
+    public List<CliParams> getChangeParams() {
+      return optionalParams.stream().filter(param -> !MODIFIER_PARAMS.contains(param)).toList();
+    }
+
+    public static boolean isModifier(String serverParam) {
+      return MODIFIER_PARAMS.stream().anyMatch(param -> param.getServerParam().equals(serverParam));
     }
   }
 
@@ -873,15 +886,12 @@ public class CliUtils {
   }
 
   public static void validateUpdateParameters(JSONObject json, String command, String subCommand) {
-    // --force only changes how an update is checked, so it is not an update by itself.
-    if (json.keySet().stream().allMatch(CliParams.FORCE.getServerParam()::equals)) {
-      List<CliParams> optionalParams =
-          CliUtils.cliOptions.get(command).get(subCommand).getOptionalParams();
+    if (json.keySet().stream().allMatch(CliOptions::isModifier)) {
+      List<CliParams> changeParams =
+          CliUtils.cliOptions.get(command).get(subCommand).getChangeParams();
       String errorMessage = "No parameters to update, please provide one of:";
-      for (CliParams param : optionalParams) {
-        if (param != CliParams.FORCE) {
-          errorMessage += "\n  --" + param.val();
-        }
+      for (CliParams param : changeParams) {
+        errorMessage += "\n  --" + param.val();
       }
       throw new CliException(errorMessage);
     }

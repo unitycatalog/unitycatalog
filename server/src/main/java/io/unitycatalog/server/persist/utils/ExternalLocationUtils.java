@@ -106,7 +106,7 @@ public class ExternalLocationUtils {
   private static final List<SecurableType> MANAGED_SECURABLE_TYPE_CONTAINERS =
       List.of(SecurableType.CATALOG, SecurableType.SCHEMA);
 
-  private static final String FORCE_HINT = " Set force to true to skip this check.";
+  private static final String FORCE_HINT = "Set force to true to skip this check.";
 
   /**
    * Securables that store data under an external location and get credentials from it. Uncommitted
@@ -638,24 +638,41 @@ public class ExternalLocationUtils {
    * @throws BaseException with PERMISSION_DENIED for a pending cleanup, INVALID_ARGUMENT otherwise
    */
   public static void validateExternalLocationNotInUse(Session session, NormalizedURL url) {
-    if (hasPendingCleanupOverlap(session, url)) {
+    LocationUse use = findLocationUse(session, url);
+    if (use.pendingCleanup()) {
       throw new BaseException(
-          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup." + FORCE_HINT);
+          ErrorCode.PERMISSION_DENIED,
+          "Input path overlaps pending storage cleanup. " + FORCE_HINT);
     }
-    findStorageUser(session, url)
+    use.storageUser()
         .ifPresent(
             user -> {
               throw new BaseException(
                   ErrorCode.INVALID_ARGUMENT,
-                  "External location still used by " + user + "." + FORCE_HINT);
+                  "External location still used by " + user + ". " + FORCE_HINT);
             });
   }
 
   /**
-   * Describes the first securable found that stores data at or under the URL, such as {@code volume
-   * '<id>'}, or returns empty if there is none.
+   * What keeps an external location at a URL in use, as checked by {@link
+   * #validateExternalLocationNotInUse}.
+   *
+   * @param pendingCleanup whether a storage cleanup is pending above, at, or under the URL
+   * @param storageUser the first securable found that stores data at or under the URL, such as
+   *     {@code volume '<id>'}
    */
-  public static Optional<String> findStorageUser(Session session, NormalizedURL url) {
+  public record LocationUse(boolean pendingCleanup, Optional<String> storageUser) {
+    public boolean inUse() {
+      return pendingCleanup || storageUser.isPresent();
+    }
+  }
+
+  /** Finds what keeps an external location at the URL in use, without throwing. */
+  public static LocationUse findLocationUse(Session session, NormalizedURL url) {
+    return new LocationUse(hasPendingCleanupOverlap(session, url), findStorageUser(session, url));
+  }
+
+  private static Optional<String> findStorageUser(Session session, NormalizedURL url) {
     return getAllEntityDAOsWithURLOverlap(
             session,
             url,
