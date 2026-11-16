@@ -166,6 +166,13 @@ Messages that `--check-schema` and `--upgrade-schema` print when they refuse, an
   message then adds that it must be started once on a 0.7.0 server first. Other differences come
   from changes made outside Unity Catalog's steps: undo them.
 
+`Schema step <n> creates an index or constraint named <name>, but the <object> <name> ... already has that name`
+: An object that is not Unity Catalog's holds a name that the step needs, in a namespace that the
+  database shares between tables: on H2 the index names and the constraint names of a schema, on
+  PostgreSQL the names of a schema's tables, views, sequences and indexes, on MySQL the foreign key
+  names of a database. The step did not run. Rename that object, or give Unity Catalog a schema of
+  its own, then run the command again.
+
 `The database schema differs from the schema of version <m>:`
 : Followed by the differences, as above. The schema history records this release's last version,
   but the schema is not the one this release's steps build: something changed it outside the steps.

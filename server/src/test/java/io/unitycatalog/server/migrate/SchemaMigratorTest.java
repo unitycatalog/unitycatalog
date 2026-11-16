@@ -490,25 +490,31 @@ public class SchemaMigratorTest {
   /**
    * Another application's object holds a name that step 1 gives an index or a constraint, in a
    * namespace that the database shares between tables. {@code clashesOn} names the databases where
-   * it does; on the others the upgrade goes through.
+   * it does, and {@code name} the name; on the others the upgrade goes through.
    */
   @ParameterizedTest
   @CsvSource(
       delimiter = '|',
       value = {
-        "CREATE INDEX idx_name ON other_app (x) | H2 POSTGRESQL",
-        "CREATE TABLE idx_name (x INT) | POSTGRESQL",
-        "CREATE VIEW idx_name AS SELECT x FROM other_app | POSTGRESQL",
-        "ALTER TABLE other_app ADD CONSTRAINT idx_name UNIQUE (x) | POSTGRESQL",
-        "CREATE INDEX uc_tables_pkey ON other_app (x) | POSTGRESQL",
-        "CREATE INDEX UKknh5y40jwdrv7qixutbl6c96r ON other_app (x) | POSTGRESQL",
-        "ALTER TABLE other_app ADD CONSTRAINT uc_users_external_id_key UNIQUE (x) | H2 POSTGRESQL",
-        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t CHECK (x > 0) | H2",
+        "CREATE INDEX idx_name ON other_app (x) | H2 POSTGRESQL | idx_name",
+        "CREATE TABLE idx_name (x INT) | POSTGRESQL | idx_name",
+        "CREATE VIEW idx_name AS SELECT x FROM other_app | POSTGRESQL | idx_name",
+        "ALTER TABLE other_app ADD CONSTRAINT idx_name UNIQUE (x) | POSTGRESQL | idx_name",
+        "CREATE INDEX uc_tables_pkey ON other_app (x) | POSTGRESQL | uc_tables_pkey",
+        "CREATE INDEX UKknh5y40jwdrv7qixutbl6c96r ON other_app (x)"
+            + " | POSTGRESQL | ukknh5y40jwdrv7qixutbl6c96r",
+        "ALTER TABLE other_app ADD CONSTRAINT uc_users_external_id_key UNIQUE (x)"
+            + " | H2 POSTGRESQL | uc_users_external_id_key",
+        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t CHECK (x > 0)"
+            + " | H2 | fkegal88myrpa6m0jle9iv4p37t",
         "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t"
-            + " FOREIGN KEY (x) REFERENCES other_parent (id) | H2 MYSQL",
-        "CREATE INDEX FKegal88myrpa6m0jle9iv4p37t ON other_app (x) | ''",
+            + " FOREIGN KEY (x) REFERENCES other_parent (id)"
+            + " | H2 MYSQL | fkegal88myrpa6m0jle9iv4p37t",
+        "CREATE INDEX FKegal88myrpa6m0jle9iv4p37t ON other_app (x)"
+            + " | '' | fkegal88myrpa6m0jle9iv4p37t",
       })
-  void refusesWhenAnotherApplicationsObjectTookAStepsName(String object, String clashesOn) {
+  void refusesWhenAnotherApplicationsObjectTookAStepsName(
+      String object, String clashesOn, String name) {
     UpgradeTestUtils.execute(db, "CREATE TABLE other_parent (id INT PRIMARY KEY)");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
     UpgradeTestUtils.execute(db, object);
@@ -527,7 +533,7 @@ public class SchemaMigratorTest {
     }
     assertThat(check).isOne();
     assertThat(out.toString(StandardCharsets.UTF_8))
-        .contains("Schema step 1 creates an index or constraint named")
+        .contains("Schema step 1 creates an index or constraint named " + name)
         .contains("which is not Unity Catalog's");
     assertThatThrownBy(migrator::upgradeSchema)
         .hasMessageContaining("Schema step 1 creates an index or constraint named");
