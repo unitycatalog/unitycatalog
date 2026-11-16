@@ -9,6 +9,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
@@ -133,6 +134,22 @@ public class SchemaMigratorTest {
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
   }
 
+  @Test
+  void adoptsADatabaseAtAnEarlierStepsSchemaWithoutHistory() {
+    // What Hibernate leaves when it updates a database but makes only some steps' changes: the
+    // schema of a step before the last, and no schema history. Here, this release's schema, under
+    // a build with one more step.
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+
+    // This release's steps are recorded without running, and the step after them runs.
+    assertThat(migrator.upgradeSchema()).isEqualTo(migrator.steps().size());
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    UpgradeTestUtils.execute(db, "SELECT id FROM uc_test_only_step");
+  }
+
   /** What makes a run with a failed step in the schema history refuse. */
   enum RefusalWithAFailedStep {
     /** A step that was edited after it ran. */
@@ -193,27 +210,21 @@ public class SchemaMigratorTest {
   @Test
   void runsAgainAFailedStepOnTheConfiguredPool() {
     // The pool that the server's configuration sets does not commit by itself.
-    new SchemaMigrator(db.dataSource()).upgradeSchema();
-    UpgradeTestUtils.execute(
-        db,
-        switch (DatabaseKind.of(db.dataSource())) {
-          case H2 -> "ALTER TABLE uc_function_params ALTER COLUMN type_json VARCHAR(255)";
-          case MYSQL -> "ALTER TABLE uc_function_params MODIFY type_json VARCHAR(255)";
-          case POSTGRESQL ->
-              "ALTER TABLE uc_function_params ALTER COLUMN type_json TYPE VARCHAR(255)";
-        });
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
     UpgradeTestUtils.execute(
         db,
         ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
-                + " WHERE %1$sversion%1$s = '2'")
+                + " WHERE %1$sversion%1$s = '1000'")
             .formatted(identifierQuote(db.dataSource())));
 
-    try (SchemaMigrator migrator =
-        SchemaMigrator.fromHibernateProperties(db.hibernateProperties())) {
-      assertThat(migrator.upgradeSchema()).isOne();
+    try (HikariDataSource pool =
+        new HikariDataSource(HibernateConfigurator.hikariConfig(db.hibernateProperties()))) {
+      assertThat(new SchemaMigrator(pool, NEXT_RELEASE).upgradeSchema()).isOne();
     }
     assertThat(failedRecords()).isZero();
-    assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
+    assertThat(new SchemaMigrator(db.dataSource(), NEXT_RELEASE).state())
+        .isEqualTo(SchemaState.CURRENT);
   }
 
   @ParameterizedTest
@@ -328,11 +339,11 @@ public class SchemaMigratorTest {
   }
 
   /**
-   * Adopting a database at the last step's schema stopped at the history record of step 1, 2 or
-   * 1000 of a build with three steps: after Flyway created the history table, with the steps before
-   * that one recorded. The rerun records the remaining steps. {@code stoppedRecord} counts the
-   * inserts into the history table that the watched pool sees, and each is a step's record: the
-   * rerun records {@code stoppedRecord - 1} steps fewer than the build has.
+   * Adopting a database at the last step's schema stopped at the history record of the build's
+   * first, second or third step: after Flyway created the history table, with the steps before that
+   * one recorded. The rerun records the remaining steps. {@code stoppedRecord} counts the inserts
+   * into the history table that the watched pool sees, and each is a step's record: the rerun
+   * records {@code stoppedRecord - 1} steps fewer than the build has.
    */
   @ParameterizedTest
   @CsvSource({"1", "2", "3"})
@@ -478,7 +489,7 @@ public class SchemaMigratorTest {
     EDITED_STEP,
     /** Step 2 is not recorded, below the recorded step 1000. */
     STEP_MISSING_BELOW,
-    /** The database is at step 1000 and the release ends at step 2. */
+    /** The database is at step 1000, after this release's last step. */
     AHEAD,
     /** The history records step 1000, but the schema has a column no step adds. */
     SCHEMA_DIFFERS
@@ -524,25 +535,31 @@ public class SchemaMigratorTest {
   /**
    * Another application's object holds a name that step 1 gives an index or a constraint, in a
    * namespace that the database shares between tables. {@code clashesOn} names the databases where
-   * it does; on the others the upgrade goes through.
+   * it does, and {@code name} the name; on the others the upgrade goes through.
    */
   @ParameterizedTest
   @CsvSource(
       delimiter = '|',
       value = {
-        "CREATE INDEX idx_name ON other_app (x) | H2 POSTGRESQL",
-        "CREATE TABLE idx_name (x INT) | POSTGRESQL",
-        "CREATE VIEW idx_name AS SELECT x FROM other_app | POSTGRESQL",
-        "ALTER TABLE other_app ADD CONSTRAINT idx_name UNIQUE (x) | POSTGRESQL",
-        "CREATE INDEX uc_tables_pkey ON other_app (x) | POSTGRESQL",
-        "CREATE INDEX UKknh5y40jwdrv7qixutbl6c96r ON other_app (x) | POSTGRESQL",
-        "ALTER TABLE other_app ADD CONSTRAINT uc_users_external_id_key UNIQUE (x) | H2 POSTGRESQL",
-        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t CHECK (x > 0) | H2",
+        "CREATE INDEX idx_name ON other_app (x) | H2 POSTGRESQL | idx_name",
+        "CREATE TABLE idx_name (x INT) | POSTGRESQL | idx_name",
+        "CREATE VIEW idx_name AS SELECT x FROM other_app | POSTGRESQL | idx_name",
+        "ALTER TABLE other_app ADD CONSTRAINT idx_name UNIQUE (x) | POSTGRESQL | idx_name",
+        "CREATE INDEX uc_tables_pkey ON other_app (x) | POSTGRESQL | uc_tables_pkey",
+        "CREATE INDEX UKknh5y40jwdrv7qixutbl6c96r ON other_app (x)"
+            + " | POSTGRESQL | ukknh5y40jwdrv7qixutbl6c96r",
+        "ALTER TABLE other_app ADD CONSTRAINT uc_users_external_id_key UNIQUE (x)"
+            + " | H2 POSTGRESQL | uc_users_external_id_key",
+        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t CHECK (x > 0)"
+            + " | H2 | fkegal88myrpa6m0jle9iv4p37t",
         "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t"
-            + " FOREIGN KEY (x) REFERENCES other_parent (id) | H2 MYSQL",
-        "CREATE INDEX FKegal88myrpa6m0jle9iv4p37t ON other_app (x) | ''",
+            + " FOREIGN KEY (x) REFERENCES other_parent (id)"
+            + " | H2 MYSQL | fkegal88myrpa6m0jle9iv4p37t",
+        "CREATE INDEX FKegal88myrpa6m0jle9iv4p37t ON other_app (x)"
+            + " | '' | fkegal88myrpa6m0jle9iv4p37t",
       })
-  void refusesWhenAnotherApplicationsObjectTookAStepsName(String object, String clashesOn) {
+  void refusesWhenAnotherApplicationsObjectTookAStepsName(
+      String object, String clashesOn, String name) {
     UpgradeTestUtils.execute(db, "CREATE TABLE other_parent (id INT PRIMARY KEY)");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
     UpgradeTestUtils.execute(db, object);
@@ -561,7 +578,7 @@ public class SchemaMigratorTest {
     }
     assertThat(check).isOne();
     assertThat(out.toString(StandardCharsets.UTF_8))
-        .contains("Schema step 1 creates an index or constraint named")
+        .contains("Schema step 1 creates an index or constraint named " + name)
         .contains("which is not Unity Catalog's");
     assertThatThrownBy(migrator::upgradeSchema)
         .hasMessageContaining("Schema step 1 creates an index or constraint named");
