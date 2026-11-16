@@ -12,13 +12,13 @@ import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -61,7 +61,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     // The exchanged principal must be an enabled user, so create one with the bootstrap admin
     // token before exchanging as that user.
-    String adminToken = Files.readString(configurationFolder.resolve("token.txt"));
+    String adminToken = securityContext.createServiceToken();
     serverConfig.setAuthToken(adminToken);
     executeCliCommand(
         serverConfig,
@@ -156,8 +156,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
         .isInstanceOf(RuntimeException.class);
 
     // Test with Authentication on authenticated end point
-    Path path = configurationFolder.resolve("token.txt");
-    String token = Files.readString(path);
+    String token = securityContext.createServiceToken();
 
     serverConfig.setAuthToken(token);
 
@@ -170,7 +169,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             .withSubject(securityContext.getServiceName())
             .withIssuer(securityContext.getLocalIssuer())
             .withIssuedAt(new Date())
-            .withKeyId(securityConfiguration.getKeyId())
+            .withExpiresAt(Date.from(Instant.now().plus(Duration.ofHours(1))))
             .withJWTId(UUID.randomUUID().toString())
             .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
             .withClaim(JwtClaim.SUBJECT.key(), "missing@localhost")
@@ -198,7 +197,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             .withSubject(securityContext.getServiceName())
             .withIssuer(securityContext.getLocalIssuer())
             .withIssuedAt(new Date())
-            .withKeyId(securityConfiguration.getKeyId())
+            .withExpiresAt(Date.from(Instant.now().plus(Duration.ofHours(1))))
             .withJWTId(UUID.randomUUID().toString())
             .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
             .withClaim(JwtClaim.SUBJECT.key(), "test@localhost")
@@ -212,8 +211,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
   @Test
   public void testUserCrud() throws IOException {
     // Test with Authentication on authenticated end point
-    Path path = configurationFolder.resolve("token.txt");
-    String token = Files.readString(path);
+    String token = securityContext.createServiceToken();
 
     serverConfig.setAuthToken(token);
     // Test creating a user

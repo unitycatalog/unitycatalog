@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.security.IdentityProvider;
+import io.unitycatalog.server.security.SubjectClaim;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
@@ -623,6 +625,118 @@ public class ServerPropertiesTest {
     } finally {
       System.clearProperty("adls.clientSecret.0");
       System.clearProperty("hibernate.connection.password");
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAuthenticationTypeAndIdentityProviders() {
+    assertThat(new ServerProperties(new Properties()).isExternalAuthentication()).isFalse();
+    testValidProperty(Property.AUTHENTICATION_TYPE, "external");
+    testInvalidProperty(
+        Property.AUTHENTICATION_TYPE,
+        "mixed",
+        "Invalid value 'mixed'",
+        "server.authentication.type");
+
+    Properties props = new Properties();
+    props.setProperty("server.authentication.type", "external");
+    props.setProperty("server.authentication.idp.okta.issuer", "https://acme.okta.com/oauth2/aus1");
+    props.setProperty("server.authentication.idp.okta.audience", "unitycatalog");
+    props.setProperty("server.authentication.idp.okta.subject-claim", "OKTA");
+    props.setProperty(
+        "server.authentication.idp.keycloak.issuer", "https://kc.example.com/realms/uc");
+    props.setProperty("server.authentication.idp.keycloak.audience", "uc");
+    ServerProperties serverProperties = new ServerProperties(props);
+    assertThat(serverProperties.isExternalAuthentication()).isTrue();
+    assertThat(serverProperties.getIdentityProviders())
+        .containsExactlyInAnyOrder(
+            new IdentityProvider(
+                "okta", "https://acme.okta.com/oauth2/aus1", "unitycatalog", SubjectClaim.OKTA),
+            // SUB is the default.
+            new IdentityProvider(
+                "keycloak", "https://kc.example.com/realms/uc", "uc", SubjectClaim.SUB));
+
+    String okta = "server.authentication.idp.okta.";
+    Map<Map<String, String>, String> invalid =
+        Map.of(
+            Map.of(okta + "audience", "uc"),
+            "server.authentication.idp.okta.issuer is required",
+            Map.of(okta + "issuer", "https://a.example.com"),
+            "server.authentication.idp.okta.audience is required",
+            Map.of(
+                okta + "issuer", "https://a.example.com",
+                okta + "audience", "uc",
+                okta + "subject-claim", "ENTRA"),
+            "Invalid value 'ENTRA' for property 'server.authentication.idp.okta.subject-claim'."
+                + " Allowed values: [SUB, OKTA]",
+            Map.of(
+                okta + "issuer",
+                "https://a.example.com",
+                okta + "audience",
+                "uc",
+                "server.authentication.idp.other.issuer",
+                "https://a.example.com",
+                "server.authentication.idp.other.audience",
+                "uc"),
+            "Identity providers okta and other have the same issuer https://a.example.com",
+            // The server's own tokens carry this issuer: the block would lock the admin out.
+            Map.of(okta + "issuer", "internal", okta + "audience", "uc"),
+            "Identity provider okta can't use issuer internal, the issuer of this server's own"
+                + " tokens",
+            Map.of(okta + "scim-principal", "okta-scim"),
+            "Unknown property server.authentication.idp.okta.scim-principal; expected"
+                + " server.authentication.idp.<name>.issuer, .audience or .subject-claim");
+    invalid.forEach(
+        (entries, message) -> {
+          Properties block = new Properties();
+          block.putAll(entries);
+          assertThatThrownBy(() -> new ServerProperties(block))
+              .as(message)
+              .isInstanceOf(BaseException.class)
+              .hasMessage(message);
+        });
+  }
+
+  @Test
+  public void testWarnsAboutExternalModeConfiguration() {
+    Logger logger = (Logger) LogManager.getLogger(ServerProperties.class);
+    Level previousLevel = logger.getLevel();
+    CapturingAppender appender = new CapturingAppender();
+    appender.start();
+    logger.addAppender(appender);
+    Configurator.setLevel(logger.getName(), Level.INFO);
+    try {
+      Properties props = new Properties();
+      props.setProperty("server.allowed-issuers", "https://a.example.com");
+      props.setProperty("server.audiences", "uc");
+      // Internal mode uses them: no warning.
+      new ServerProperties(props);
+      assertThat(appender.messages).isEmpty();
+
+      props.setProperty("server.authentication.type", "external");
+      props.setProperty("server.authentication.idp.okta.issuer", "https://acme.okta.com");
+      props.setProperty("server.authentication.idp.okta.audience", "uc");
+      new ServerProperties(props);
+      assertThat(appender.messages)
+          .containsExactly(
+              "WARN server.allowed-issuers and server.audiences are not used in external"
+                  + " authentication mode; set server.authentication.idp.<name>.issuer and"
+                  + " .audience instead");
+
+      // External mode with no identity provider block starts, with a warning.
+      appender.messages.clear();
+      Properties noIdentityProvider = new Properties();
+      noIdentityProvider.setProperty("server.authentication.type", "external");
+      new ServerProperties(noIdentityProvider);
+      assertThat(appender.messages)
+          .containsExactly(
+              "WARN No identity provider is configured; only the bootstrap admin's service token"
+                  + " and SCIM tokens are accepted."
+                  + " Set server.authentication.idp.<name>.issuer and .audience.");
+    } finally {
       logger.removeAppender(appender);
       Configurator.setLevel(logger.getName(), previousLevel);
       appender.stop();
