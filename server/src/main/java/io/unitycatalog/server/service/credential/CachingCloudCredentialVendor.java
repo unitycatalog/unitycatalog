@@ -5,10 +5,13 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.StorageCredentialCacheMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
@@ -17,6 +20,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -31,10 +35,12 @@ import lombok.SneakyThrows;
  * binding before calling it, so only the cloud vend is skipped; the binding is re-read on every
  * request.
  *
- * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}. It is served until
- * {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where {@code vendTime} is read
- * before the cloud call; a static credential with no expiry is bounded by the max age alone.
- * Callers always receive a copy, so they cannot change a cached credential.
+ * <p>An entry is keyed by {@code (locations, privileges, credentialType, identity)}, where the
+ * identity is a credential's AWS role and external ID, Azure directory and application IDs, or GCS
+ * service account email and key ID. It is served until {@code min(vendTime + maxAge,
+ * credentialExpiry - expiryMargin)}, where {@code vendTime} is read before the cloud call; a static
+ * credential with no expiry is bounded by the max age alone. Callers always receive a copy, so they
+ * cannot change a cached credential.
  *
  * <p>Each request is recorded as a hit or a miss in {@link StorageCredentialCacheMetrics}.
  */
@@ -129,14 +135,14 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   }
 
   /**
-   * The resolved credential binding. Changing the role or external ID of a location's credential
-   * changes the key, so credentials cached under the previous binding are never reused.
+   * The resolved credential binding. Changing the identity of a location's credential changes the
+   * key, so credentials cached under the previous binding are never reused.
    */
   private record Key(
       List<NormalizedURL> locations,
       Set<CredentialContext.Privilege> privileges,
-      String roleArn,
-      String externalId) {
+      CredentialType credentialType,
+      List<String> identity) {
     Key {
       // AWS and GCP scope a credential to every location in the context, so the key has them all.
       locations = List.copyOf(locations);
@@ -144,15 +150,35 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
     }
 
     static Key of(CredentialContext context) {
-      // Per-bucket config vends have no credential DAO, so both role fields are null. AWS IAM role
-      // is the only DB-backed credential type today; a new type must add its binding to the key.
-      Optional<AwsIamRoleResponse> awsIamRole =
-          context.getCredentialDAO().map(CredentialDAO::getAwsIamRoleResponse);
+      // Per-bucket config vends have no credential DAO, so their type is null and identity empty.
+      Optional<CredentialDAO> dao = context.getCredentialDAO();
       return new Key(
           context.getLocations(),
           context.getPrivileges(),
-          awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(null),
-          awsIamRole.map(AwsIamRoleResponse::getExternalId).orElse(null));
+          dao.map(CredentialDAO::getCredentialType).orElse(null),
+          dao.map(Key::identity).orElse(List.of()));
+    }
+
+    /**
+     * What tells two credentials of one type apart. A secret is left out: a changed Azure client
+     * secret signs in as the same service principal, and a new GCS key has a new key ID.
+     */
+    private static List<String> identity(CredentialDAO dao) {
+      return switch (dao.getCredentialType()) {
+        case AWS_IAM_ROLE -> {
+          AwsIamRoleResponse role = dao.getAwsIamRoleResponse();
+          // The external ID can be null, so List.of would not do.
+          yield Arrays.asList(role.getRoleArn(), role.getExternalId());
+        }
+        case AZURE_SERVICE_PRINCIPAL -> {
+          AzureServicePrincipalRequest servicePrincipal = dao.getAzureServicePrincipal();
+          yield List.of(servicePrincipal.getDirectoryId(), servicePrincipal.getApplicationId());
+        }
+        case GCP_SERVICE_ACCOUNT_KEY -> {
+          GcpServiceAccountKeyRequest key = dao.getGcpServiceAccountKey();
+          yield List.of(key.getEmail(), key.getPrivateKeyId());
+        }
+      };
     }
   }
 

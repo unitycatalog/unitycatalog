@@ -6,11 +6,16 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
+import io.unitycatalog.server.model.AzureServicePrincipalResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
+import io.unitycatalog.server.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.utils.UriScheme;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,6 +24,7 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -32,6 +38,9 @@ import lombok.experimental.SuperBuilder;
  * Data Access Object for storing cloud provider credentials in Unity Catalog. The credential
  * payload is stored as a JSON blob in the {@code credential} column, with the {@code
  * credentialType} discriminator indicating how to deserialize it.
+ *
+ * <p>For Azure and GCS the blob includes the client secret or private key. It is stored as is, and
+ * {@link #toCredentialInfo} leaves it out of every response.
  *
  * @see CredentialService
  * @see AwsCredentialVendor
@@ -48,9 +57,22 @@ import lombok.experimental.SuperBuilder;
 public class CredentialDAO extends IdentifiableDAO {
   private static ObjectMapper objectMapper = new ObjectMapper();
 
+  /** The cloud identity a credential holds, and the URL schemes of the storage it can reach. */
   public enum CredentialType {
-    AWS_IAM_ROLE,
-    // Add other types as necessary
+    AWS_IAM_ROLE(Set.of(UriScheme.S3)),
+    AZURE_SERVICE_PRINCIPAL(Set.of(UriScheme.ABFS, UriScheme.ABFSS)),
+    GCP_SERVICE_ACCOUNT_KEY(Set.of(UriScheme.GS));
+
+    private final Set<UriScheme> schemes;
+
+    CredentialType(Set<UriScheme> schemes) {
+      this.schemes = schemes;
+    }
+
+    /** Local paths need no cloud credential, so any type is accepted for them. */
+    public boolean supports(UriScheme scheme) {
+      return scheme == UriScheme.FILE || scheme == UriScheme.NULL || schemes.contains(scheme);
+    }
   }
 
   @Column(name = "credential_type", nullable = false)
@@ -59,8 +81,9 @@ public class CredentialDAO extends IdentifiableDAO {
   @Setter(AccessLevel.NONE)
   private CredentialType credentialType;
 
+  // A GCS service account key does not fit in MySQL's default tinytext of 255 bytes.
   @Lob
-  @Column(name = "credential", nullable = false)
+  @Column(name = "credential", nullable = false, length = 16777215)
   // No direct access from outside
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
@@ -103,6 +126,10 @@ public class CredentialDAO extends IdentifiableDAO {
             .build();
     if (createRequest.getAwsIamRole() != null) {
       dao.setAwsIamRole(createRequest.getAwsIamRole());
+    } else if (createRequest.getAzureServicePrincipal() != null) {
+      dao.setAzureServicePrincipal(createRequest.getAzureServicePrincipal());
+    } else if (createRequest.getGcpServiceAccountKey() != null) {
+      dao.setGcpServiceAccountKey(createRequest.getGcpServiceAccountKey());
     } else {
       throw new IllegalArgumentException("Unknown credential type");
     }
@@ -122,14 +149,26 @@ public class CredentialDAO extends IdentifiableDAO {
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
             .updatedBy(updatedBy);
     switch (credentialType) {
-      case AWS_IAM_ROLE:
+      case AWS_IAM_ROLE -> {
         AwsIamRoleResponse awsIamRole = parseCredential(AwsIamRoleResponse.class);
         masterAwsIamRoleArn.ifPresent(awsIamRole::setUnityCatalogIamArn);
         credentialInfo.setAwsIamRole(awsIamRole);
-        break;
-      // TODO: support Azure and GCP.
-      default:
-        throw new IllegalArgumentException("Unknown credential type: " + credentialType);
+      }
+      case AZURE_SERVICE_PRINCIPAL -> {
+        AzureServicePrincipalRequest servicePrincipal =
+            parseCredential(AzureServicePrincipalRequest.class);
+        credentialInfo.setAzureServicePrincipal(
+            new AzureServicePrincipalResponse()
+                .directoryId(servicePrincipal.getDirectoryId())
+                .applicationId(servicePrincipal.getApplicationId()));
+      }
+      case GCP_SERVICE_ACCOUNT_KEY -> {
+        GcpServiceAccountKeyRequest key = parseCredential(GcpServiceAccountKeyRequest.class);
+        credentialInfo.setGcpServiceAccountKey(
+            new GcpServiceAccountKeyResponse()
+                .email(key.getEmail())
+                .privateKeyId(key.getPrivateKeyId()));
+      }
     }
     return credentialInfo;
   }
@@ -157,6 +196,14 @@ public class CredentialDAO extends IdentifiableDAO {
     setCredential(CredentialType.AWS_IAM_ROLE, fromAwsIamRoleRequest(awsIamRole));
   }
 
+  private void setAzureServicePrincipal(AzureServicePrincipalRequest servicePrincipal) {
+    setCredential(CredentialType.AZURE_SERVICE_PRINCIPAL, servicePrincipal);
+  }
+
+  private void setGcpServiceAccountKey(GcpServiceAccountKeyRequest key) {
+    setCredential(CredentialType.GCP_SERVICE_ACCOUNT_KEY, key);
+  }
+
   private <T> void setCredential(CredentialType type, T inputCredential) {
     credentialType = type;
     try {
@@ -176,5 +223,17 @@ public class CredentialDAO extends IdentifiableDAO {
 
   public AwsIamRoleResponse getAwsIamRoleResponse() {
     return parseCredential(CredentialType.AWS_IAM_ROLE, AwsIamRoleResponse.class);
+  }
+
+  /** The service principal, client secret included, that the server signs in to Azure as. */
+  public AzureServicePrincipalRequest getAzureServicePrincipal() {
+    return parseCredential(
+        CredentialType.AZURE_SERVICE_PRINCIPAL, AzureServicePrincipalRequest.class);
+  }
+
+  /** The service account key, private key included, that the server signs in to Google with. */
+  public GcpServiceAccountKeyRequest getGcpServiceAccountKey() {
+    return parseCredential(
+        CredentialType.GCP_SERVICE_ACCOUNT_KEY, GcpServiceAccountKeyRequest.class);
   }
 }

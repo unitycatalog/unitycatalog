@@ -12,11 +12,14 @@ import com.google.auth.oauth2.CredentialAccessBoundary;
 import com.google.auth.oauth2.CredentialAccessBoundary.AccessBoundaryRule;
 import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.ServiceAccountCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.Date;
 import java.util.Optional;
@@ -60,6 +63,19 @@ public class GcpCredentialVendorTest {
             + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
             + ".startsWith(\"%s/\")",
         bucket, escapedPath, bucket, escapedPath, escapedPath, escapedPath);
+  }
+
+  @Test
+  public void testStoredKeyLoadsAsServiceAccountCredentials() throws IOException {
+    ServiceAccountCredentials credentials =
+        GcpCredentialVendor.credentialsOf(
+            new GcpServiceAccountKeyRequest()
+                .email("uc@project.iam.gserviceaccount.com")
+                .privateKeyId("key-id")
+                .privateKey(TestUtils.generatePkcs8PrivateKeyPem()));
+    assertThat(credentials.getClientEmail()).isEqualTo("uc@project.iam.gserviceaccount.com");
+    assertThat(credentials.getPrivateKeyId()).isEqualTo("key-id");
+    assertThat(credentials.getPrivateKey().getAlgorithm()).isEqualTo("RSA");
   }
 
   @Test
