@@ -2886,7 +2886,7 @@ async def test_methods_work_from_other_threads_and_event_loops(uc_client, use_as
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_async", [False, True])
 async def test_close_releases_the_client_and_later_calls_raise(use_async):
-    threads_before = set(threading.enumerate())
+    threads_before = client_threads()
     api_client = ApiClient(
         configuration=Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
     )
@@ -2902,7 +2902,7 @@ async def test_close_releases_the_client_and_later_calls_raise(use_async):
             client.close()
 
     replaced_rest_client.close.assert_awaited_once()
-    assert [thread for thread in threading.enumerate() if thread not in threads_before] == []
+    assert client_threads() == threads_before
     with pytest.raises(RuntimeError, match="Session is closed"):
         client.uc.create_catalog(name=CATALOG)
     with pytest.raises(RuntimeError, match="Session is closed"):
@@ -2961,8 +2961,9 @@ def function_client(host: str) -> UnitycatalogFunctionClient:
     return UnitycatalogFunctionClient(api_client=ApiClient(configuration=Configuration(host=host)))
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_async", [False, True])
-def test_server_errors_reach_callers_on_other_threads(not_found_server, use_async):
+async def test_server_errors_reach_callers_on_other_threads(not_found_server, use_async):
     client = function_client(not_found_server)
 
     def get_missing_function():
@@ -2980,8 +2981,9 @@ def test_server_errors_reach_callers_on_other_threads(not_found_server, use_asyn
         client.close()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_async", [False, True])
-def test_close_fails_pending_requests_instead_of_hanging(silent_server, use_async):
+async def test_close_fails_pending_requests_instead_of_hanging(silent_server, use_async):
     host, accepted = silent_server
     threads_before = client_threads()
     client = function_client(host)
@@ -3001,7 +3003,8 @@ def test_close_fails_pending_requests_instead_of_hanging(silent_server, use_asyn
     assert client_threads() == threads_before
 
 
-def test_close_stops_the_thread_when_closing_the_replaced_client_fails(not_found_server):
+@pytest.mark.asyncio
+async def test_close_stops_the_thread_when_closing_the_replaced_client_fails(not_found_server):
     threads_before = client_threads()
     api_client = ApiClient(configuration=Configuration(host=not_found_server))
     replaced_rest_client = mock.AsyncMock(wraps=api_client.rest_client)
@@ -3020,7 +3023,8 @@ def test_close_stops_the_thread_when_closing_the_replaced_client_fails(not_found
         client.delete_function("catalog.schema.missing")
 
 
-def test_client_starts_its_thread_on_the_first_request_and_shares_it(not_found_server):
+@pytest.mark.asyncio
+async def test_client_starts_its_thread_on_the_first_request_and_shares_it(not_found_server):
     threads_before = client_threads()
     api_client = ApiClient(configuration=Configuration(host=not_found_server))
     first = UnitycatalogFunctionClient(api_client=api_client)
