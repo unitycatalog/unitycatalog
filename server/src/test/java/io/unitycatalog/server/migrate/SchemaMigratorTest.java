@@ -521,21 +521,52 @@ public class SchemaMigratorTest {
     UpgradeTestUtils.execute(db, "SELECT id FROM orders");
   }
 
-  @Test
-  void refusesWhenAnotherTablesIndexTookAStepsIndexName() {
-    assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL names indexes per table");
+  /**
+   * Another application's object holds a name that step 1 gives an index or a constraint, in a
+   * namespace that the database shares between tables. {@code clashesOn} names the databases where
+   * it does; on the others the upgrade goes through.
+   */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "CREATE INDEX idx_name ON other_app (x) | H2 POSTGRESQL",
+        "CREATE TABLE idx_name (x INT) | POSTGRESQL",
+        "CREATE VIEW idx_name AS SELECT x FROM other_app | POSTGRESQL",
+        "ALTER TABLE other_app ADD CONSTRAINT idx_name UNIQUE (x) | POSTGRESQL",
+        "CREATE INDEX uc_tables_pkey ON other_app (x) | POSTGRESQL",
+        "CREATE INDEX UKknh5y40jwdrv7qixutbl6c96r ON other_app (x) | POSTGRESQL",
+        "ALTER TABLE other_app ADD CONSTRAINT uc_users_external_id_key UNIQUE (x) | H2 POSTGRESQL",
+        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t CHECK (x > 0) | H2",
+        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t"
+            + " FOREIGN KEY (x) REFERENCES other_parent (id) | H2 MYSQL",
+        "CREATE INDEX FKegal88myrpa6m0jle9iv4p37t ON other_app (x) | ''",
+      })
+  void refusesWhenAnotherApplicationsObjectTookAStepsName(String object, String clashesOn) {
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_parent (id INT PRIMARY KEY)");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
-    UpgradeTestUtils.execute(db, "CREATE INDEX idx_name ON other_app (x)");
+    UpgradeTestUtils.execute(db, object);
+    String database =
+        db.jdbcUrl().startsWith("jdbc:h2:")
+            ? "H2"
+            : db.jdbcUrl().startsWith("jdbc:postgresql:") ? "POSTGRESQL" : "MYSQL";
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    int check = migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8));
 
-    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
-        .hasMessageMatching("(?is).*index idx_name is used by table other_app.*")
-        .hasMessageContaining("restore the backup")
-        .hasMessageContaining("rename that index");
-
-    // Renaming the other index does not create ours: a rerun still refuses.
-    UpgradeTestUtils.execute(db, "ALTER INDEX idx_name RENAME TO other_app_x");
-    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
-        .hasMessageContaining("missing index uc_tables.idx_name");
+    if (!List.of(clashesOn.split(" ")).contains(database)) {
+      assertThat(check).isZero();
+      assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+      return;
+    }
+    assertThat(check).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 1 creates an index or constraint named")
+        .contains("which is not Unity Catalog's");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 1 creates an index or constraint named");
+    // Refused before the step ran: nothing to restore.
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
   }
 
   @Test

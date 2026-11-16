@@ -1,9 +1,13 @@
 package io.unitycatalog.spark;
 
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.RowFactory;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -33,6 +37,22 @@ public class DeltaExternalTableReadWriteTest extends ExternalTableReadWriteTest 
         testTableReadWrite(tableName);
       }
     }
+  }
+
+  @Test
+  public void testPartitionedTableKeepsDeclaredColumnOrder() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    TableSetupOptions options =
+        new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE);
+    String fullTableName = options.fullTableName();
+    sql(
+        "CREATE TABLE %s (a INT, p INT, b STRING) USING DELTA PARTITIONED BY (p) LOCATION '%s'",
+        fullTableName, getLocation(options));
+    sql("INSERT INTO %s VALUES (1, 2, 'x')", fullTableName);
+
+    assertThat(session.table(fullTableName).columns()).containsExactly("a", "p", "b");
+    assertThat(sql("SELECT * FROM %s", fullTableName))
+        .containsExactly(RowFactory.create(1, 2, "x"));
   }
 
   @Override

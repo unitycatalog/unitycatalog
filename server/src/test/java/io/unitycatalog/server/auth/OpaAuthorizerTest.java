@@ -9,7 +9,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -73,6 +75,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class OpaAuthorizerTest {
@@ -191,13 +194,54 @@ class OpaAuthorizerTest {
         .isFalse();
     assertPrivileges("USE_SCHEMA", "OWNER");
 
+    clearInvocations(sessionFactory, session);
     assertThat(authorizer.authorizeAny(principal, TABLE, table, OWNER, SELECT)).isFalse();
     assertPrivileges("OWNER", "SELECT");
+    assertMetadataReadOnce();
+    clearInvocations(sessionFactory, session);
+    assertThat(authorizer.authorizeAny(principal, TABLE, table, SELECT, SELECT)).isFalse();
+    assertPrivileges("SELECT", "SELECT");
+    assertMetadataReadOnce();
+    clearInvocations(sessionFactory, session);
 
     assertThat(authorizer.authorizeAny(principal, TABLE, table)).isFalse();
     assertThat(authorizer.authorizeAll(principal, TABLE, table)).isTrue();
     assertThat(requests).isEmpty();
-    verifyNoInteractions(nativeAuthorizer);
+    verifyNoInteractions(sessionFactory, session, nativeAuthorizer);
+  }
+
+  @Test
+  void reloadsMetadataOnTheNextCall() {
+    allowOnly();
+    assertThat(authorizer.authorizeAny(principal, TABLE, table, OWNER, SELECT)).isFalse();
+    assertThat(authorizer.authorizeAny(principal, TABLE, table, OWNER, SELECT)).isFalse();
+    verify(sessionFactory, times(2)).openSession();
+    assertThat(requests).hasSize(4);
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "false,{},OPA response must contain a boolean result.allow",
+    "true,{},OPA response must contain a boolean result.allow",
+    "false,not json,Could not get an authorization decision from OPA",
+    "true,not json,Could not get an authorization decision from OPA"
+  })
+  void opaFailureStopsMultiPrivilegeChecks(
+      boolean requireAll, String invalidReply, String expectedMessage) {
+    reply =
+        request ->
+            request.at("/input/privilege").asText().equals("OWNER")
+                ? "{\"result\":{\"allow\":" + requireAll + "}}"
+                : invalidReply;
+    BaseException error =
+        catchThrowableOfType(
+            () -> authorizePrivileges(requireAll, OWNER, SELECT, CREATE_TABLE),
+            BaseException.class);
+    assertThat(error).isNotNull();
+    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+    assertThat(error).hasMessage(expectedMessage);
+    assertPrivileges("OWNER", "SELECT");
+    assertMetadataReadOnce();
   }
 
   @ParameterizedTest
@@ -363,6 +407,8 @@ class OpaAuthorizerTest {
     assertThat(authorizer.authorizeAny(principal, TABLE, table, OWNER, SELECT)).isFalse();
     assertThat(authorizer.authorizeAll(principal, TABLE, table, SELECT, OWNER)).isFalse();
     assertThat(requests).isEmpty();
+    verify(sessionFactory, times(3)).openSession();
+    verify(session, times(3)).get(UserDAO.class, principal);
     verifyNoInteractions(nativeAuthorizer);
   }
 
@@ -382,13 +428,14 @@ class OpaAuthorizerTest {
     try {
       Configurator.setLevel(logger.getName(), Level.WARN);
       logger.addAppender(appender);
-      assertThat(authorizer.authorize(principal, TABLE, table, SELECT)).isFalse();
+      assertThat(authorizer.authorizeAny(principal, TABLE, table, OWNER, SELECT)).isFalse();
       assertThat(requests).isEmpty();
+      assertThat(warnings.toString().lines().toList()).hasSize(1);
       assertThat(warnings.toString())
           .contains(
               "WARN Authorization check denied",
               "principal=" + principal,
-              "privilege=SELECT",
+              "privileges=[OWNER, SELECT]",
               "resource=table " + table,
               "CatalogInfoDAO " + catalog);
     } finally {
@@ -405,6 +452,23 @@ class OpaAuthorizerTest {
     authorizer.close();
     verify(nativeAuthorizer).close();
     verifyNoMoreInteractions(nativeAuthorizer);
+  }
+
+  private boolean authorizePrivileges(boolean requireAll, Privileges... privileges) {
+    return requireAll
+        ? authorizer.authorizeAll(principal, TABLE, table, privileges)
+        : authorizer.authorizeAny(principal, TABLE, table, privileges);
+  }
+
+  private void assertMetadataReadOnce() {
+    verify(sessionFactory).openSession();
+    verify(session).setDefaultReadOnly(true);
+    verify(session).beginTransaction();
+    verify(session).get(UserDAO.class, principal);
+    verify(session).get(TableInfoDAO.class, table);
+    verify(session).get(SchemaInfoDAO.class, schema);
+    verify(session).get(CatalogInfoDAO.class, catalog);
+    verify(session).close();
   }
 
   private BaseException unavailableDecision() {

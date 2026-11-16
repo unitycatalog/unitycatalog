@@ -151,6 +151,34 @@ continuation tokens as shown above in `list_all_catalogs`):
 await schemas_api.list_schemas(catalog_name="MyNewCatalog")
 ```
 
+### UC Delta API
+
+The UC Delta API (`/delta/v1/...`) lives in the `unitycatalog.client.delta` package. Use the same `ApiClient` for
+UC and Delta calls:
+
+```python
+from unitycatalog.client import ApiClient, Configuration
+from unitycatalog.client.delta.api import DeltaTablesApi
+
+
+token = "<token>"
+api_client = ApiClient(
+    Configuration(host="http://localhost:8080/api/2.1/unity-catalog"),
+    header_name="Authorization",
+    header_value=f"Bearer {token}",
+)
+delta_tables_api = DeltaTablesApi(api_client)
+
+table = await delta_tables_api.load_table(catalog="unity", var_schema="default", table="numbers")
+for field in table.metadata.columns.fields:
+    print(field.name, field.type.to_dict())
+```
+
+The `Authorization` header is only needed when the server has
+[authentication](https://docs.unitycatalog.io/server/auth/) enabled, where a local server writes its admin token to
+`etc/conf/token.txt`. Leave out `header_name` and `header_value` for the local unauthenticated server used in the
+examples above. The token goes in a header because `Configuration(access_token=...)` does not send it.
+
 ## Feedback
 
 Have requests for the Unity Catalog project? Interested in getting involved in the Open Source project?

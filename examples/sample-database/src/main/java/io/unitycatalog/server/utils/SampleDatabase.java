@@ -71,14 +71,15 @@ public class SampleDatabase {
   public static void build(Path h2File) {
     System.out.println("Building the sample database " + h2File + "...");
     // Built beside the target under a name of its own, so builds at the same time don't share a
-    // file, and moved there only when done: a failed build leaves no file for bin/start-uc-server
-    // to take for the sample database.
+    // file, and linked there only when done: a failed build leaves no file for
+    // bin/start-uc-server to take for the sample database. A link, unlike a move, fails if the
+    // file appears while the build publishes it, so it never replaces another build's file.
     Path building = null;
     try {
       Path folder = Files.createDirectories(h2File.toAbsolutePath().getParent());
       building = Files.createTempFile(folder, "building-", H2_FILE_SUFFIX);
       buildInto(building);
-      Files.move(building, h2File);
+      Files.createLink(h2File, building);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     } finally {

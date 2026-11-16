@@ -12,6 +12,7 @@ import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.cli.utils.FileOperations;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
@@ -21,6 +22,7 @@ import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
+import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
@@ -191,23 +193,16 @@ public class TableCli {
 
   private static String listTables(TablesApi tablesApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    int maxResults = 100;
-    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
-      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
-    }
-    String pageToken = null;
-    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
-      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
-    }
+    String catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
+    String schemaName = json.getString(CliParams.SCHEMA_NAME.getServerParam());
     return objectWriter.writeValueAsString(
-        tablesApi
-            .listTables(
-                json.getString(CliParams.CATALOG_NAME.getServerParam()),
-                json.getString(CliParams.SCHEMA_NAME.getServerParam()),
-                maxResults,
-                pageToken,
-                /* includeBrowse= */ false)
-            .getTables());
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) ->
+                tablesApi.listTables(
+                    catalogName, schemaName, maxResults, pageToken, /* includeBrowse= */ false),
+            ListTablesResponse::getTables,
+            ListTablesResponse::getNextPageToken));
   }
 
   private static String getTable(TablesApi tablesApi, JSONObject json)
