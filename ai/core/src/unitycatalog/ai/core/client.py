@@ -138,54 +138,90 @@ class _SingleLoopRESTClient:
 
     An aiohttp session only works on the event loop it is created on, so sharing the ApiClient's
     own session fails with "Timeout context manager should be used inside a task" anywhere else.
-    Response bodies are read on the owned loop before the response is returned.
+    Response bodies are read on the owned loop before the response is returned. The thread starts
+    with the first request, so a client that never sends one costs no thread.
     """
 
     def __init__(self, api_client: ApiClient):
         self._configuration = api_client.configuration
         self._replaced_rest_client = api_client.rest_client
         self._rest_client = None
+        self._lock = threading.Lock()
         self._closed = False
-        self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
-        self._thread.start()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: Optional[threading.Thread] = None
 
     async def request(self, *args, **kwargs):
-        if self._closed:
-            raise RuntimeError("Session is closed")
-        future = asyncio.run_coroutine_threadsafe(self._request(*args, **kwargs), self._loop)
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Session is closed")
+            future = asyncio.run_coroutine_threadsafe(
+                self._request(*args, **kwargs), self._started_loop()
+            )
         return await asyncio.wrap_future(future)
 
     async def close(self):
-        self.shutdown()
+        await asyncio.to_thread(self.shutdown)
 
     def shutdown(self):
-        """Closes the replaced and the owned sessions, then stops the owned event loop."""
-        if self._closed:
-            return
-        self._closed = True
-        asyncio.run_coroutine_threadsafe(self._close(), self._loop).result()
-        self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join()
-        self._loop.close()
+        """
+        Cancels the requests still running, closes the replaced and the owned sessions, and stops
+        the owned event loop and its thread, even if closing a session fails. A second call does
+        nothing.
+        """
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            loop = self._started_loop()
+        try:
+            asyncio.run_coroutine_threadsafe(self._close(), loop).result()
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            self._thread.join()
+            loop.close()
+
+    def _started_loop(self) -> asyncio.AbstractEventLoop:
+        if self._loop is None:
+            self._loop = asyncio.new_event_loop()
+            self._thread = threading.Thread(
+                target=self._loop.run_forever, name="unitycatalog-client", daemon=True
+            )
+            self._thread.start()
+        return self._loop
 
     async def _request(self, *args, **kwargs):
-        if self._rest_client is None:
-            self._rest_client = RESTClientObject(self._configuration)
-        response = await self._rest_client.request(*args, **kwargs)
-        await response.read()
-        return response
+        try:
+            if self._rest_client is None:
+                self._rest_client = RESTClientObject(self._configuration)
+            response = await self._rest_client.request(*args, **kwargs)
+            await response.read()
+            return response
+        except asyncio.CancelledError:
+            if self._closed:
+                raise RuntimeError("Session is closed") from None
+            raise
 
     async def _close(self):
-        await self._replaced_rest_client.close()
-        if self._rest_client is not None:
-            await self._rest_client.close()
-        await self._loop.shutdown_default_executor()
+        requests = asyncio.all_tasks() - {asyncio.current_task()}
+        for request in requests:
+            request.cancel()
+        await asyncio.gather(*requests, return_exceptions=True)
+        try:
+            await self._replaced_rest_client.close()
+        finally:
+            try:
+                if self._rest_client is not None:
+                    await self._rest_client.close()
+            finally:
+                await self._loop.shutdown_default_executor()
 
 
 class UnitycatalogClient:
     def __init__(self, api_client: ApiClient):
-        self._rest_client = api_client.rest_client = _SingleLoopRESTClient(api_client)
+        if not isinstance(api_client.rest_client, _SingleLoopRESTClient):
+            api_client.rest_client = _SingleLoopRESTClient(api_client)
+        self._rest_client = api_client.rest_client
         self.api_client = api_client
         self.functions_client = FunctionsApi(api_client=api_client)
         self.catalogs_client = CatalogsApi(api_client=api_client)
@@ -197,7 +233,13 @@ class UnitycatalogClient:
         atexit.register(self.close)
 
     async def close_async(self):
-        """Asynchronously close the underlying ApiClient."""
+        """
+        Asynchronously close the underlying ApiClient: cancel the requests still running, close
+        its connections and stop the background thread that sends requests. A second call does
+        nothing, and later calls through this client or its ApiClient raise
+        `RuntimeError("Session is closed")`. Clients built on the same ApiClient share its
+        connections, so closing one closes them for all.
+        """
         if getattr(self, "_closed", None):
             return
         self._closed = True
@@ -208,7 +250,9 @@ class UnitycatalogClient:
             _logger.error(f"Error while closing ApiClient: {e}")
 
     def close(self):
-        """Synchronously close the underlying ApiClient."""
+        """
+        Synchronously close the underlying ApiClient. See `close_async` for what this does.
+        """
         if getattr(self, "_closed", None):
             return
         self._closed = True
@@ -450,11 +494,11 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         atexit.register(self.close)
 
     async def close_async(self):
-        """Asynchronously close the underlying ApiClient."""
+        """Asynchronously close the underlying ApiClient. See `UnitycatalogClient.close_async`."""
         await self.uc.close_async()
 
     def close(self):
-        """Synchronously close the underlying ApiClient."""
+        """Synchronously close the underlying ApiClient. See `UnitycatalogClient.close_async`."""
         self.uc.close()
 
     def __enter__(self):

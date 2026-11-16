@@ -6,10 +6,12 @@ import json
 import logging
 import multiprocessing
 import re
+import socket
 import textwrap
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager, suppress
+from contextlib import closing, contextmanager, suppress
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Union
@@ -2905,3 +2907,132 @@ async def test_close_releases_the_client_and_later_calls_raise(use_async):
         client.uc.create_catalog(name=CATALOG)
     with pytest.raises(RuntimeError, match="Session is closed"):
         await client.get_function_async(f"{CATALOG}.{SCHEMA}.weather_report")
+
+
+def client_threads() -> set[threading.Thread]:
+    return {thread for thread in threading.enumerate() if thread.name == "unitycatalog-client"}
+
+
+class NotFoundHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b'{"error_code": "NOT_FOUND", "message": "Function not found"}'
+        self.send_response(404)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_DELETE = do_GET
+
+    def log_message(self, format, *args):
+        pass
+
+
+@pytest.fixture
+def not_found_server():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), NotFoundHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_address[1]}/api/2.1/unity-catalog"
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture
+def silent_server():
+    """A server that accepts connections and never answers. Sets `accepted` on each one."""
+    accepted = threading.Event()
+    connections = []
+    with closing(socket.create_server(("127.0.0.1", 0))) as listener:
+
+        def accept():
+            with suppress(OSError):
+                while True:
+                    connections.append(listener.accept()[0])
+                    accepted.set()
+
+        threading.Thread(target=accept, daemon=True).start()
+        yield f"http://127.0.0.1:{listener.getsockname()[1]}/api/2.1/unity-catalog", accepted
+    for connection in connections:
+        connection.close()
+
+
+def function_client(host: str) -> UnitycatalogFunctionClient:
+    return UnitycatalogFunctionClient(api_client=ApiClient(configuration=Configuration(host=host)))
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+def test_server_errors_reach_callers_on_other_threads(not_found_server, use_async):
+    client = function_client(not_found_server)
+
+    def get_missing_function():
+        if use_async:
+            return asyncio.run(client.delete_function_async("catalog.schema.missing"))
+        return client.delete_function("catalog.schema.missing")
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(get_missing_function) for _ in range(2)]
+            for future in futures:
+                with pytest.raises(NotFoundException):
+                    future.result(timeout=30)
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+def test_close_fails_pending_requests_instead_of_hanging(silent_server, use_async):
+    host, accepted = silent_server
+    threads_before = client_threads()
+    client = function_client(host)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        pending = executor.submit(
+            asyncio.run, client.get_function_async("catalog.schema.weather_report")
+        )
+        assert accepted.wait(timeout=30)
+        if use_async:
+            executor.submit(asyncio.run, client.close_async()).result(timeout=30)
+        else:
+            executor.submit(client.close).result(timeout=30)
+
+        with pytest.raises(RuntimeError, match="Session is closed"):
+            pending.result(timeout=30)
+    assert client_threads() == threads_before
+
+
+def test_close_stops_the_thread_when_closing_the_replaced_client_fails(not_found_server):
+    threads_before = client_threads()
+    api_client = ApiClient(configuration=Configuration(host=not_found_server))
+    replaced_rest_client = mock.AsyncMock(wraps=api_client.rest_client)
+    replaced_rest_client.close.side_effect = OSError("close failed")
+    api_client.rest_client = replaced_rest_client
+    client = UnitycatalogFunctionClient(api_client=api_client)
+    with pytest.raises(NotFoundException):
+        client.delete_function("catalog.schema.missing")
+    assert len(client_threads() - threads_before) == 1
+
+    client.close()
+
+    replaced_rest_client.close.assert_awaited_once()
+    assert client_threads() == threads_before
+    with pytest.raises(RuntimeError, match="Session is closed"):
+        client.delete_function("catalog.schema.missing")
+
+
+def test_client_starts_its_thread_on_the_first_request_and_shares_it(not_found_server):
+    threads_before = client_threads()
+    api_client = ApiClient(configuration=Configuration(host=not_found_server))
+    first = UnitycatalogFunctionClient(api_client=api_client)
+    second = UnitycatalogFunctionClient(api_client=api_client)
+    assert client_threads() == threads_before
+
+    for client in [first, second]:
+        with pytest.raises(NotFoundException):
+            client.delete_function("catalog.schema.missing")
+    assert len(client_threads() - threads_before) == 1
+
+    second.close()
+    assert client_threads() == threads_before
+    with pytest.raises(RuntimeError, match="Session is closed"):
+        first.delete_function("catalog.schema.missing")
