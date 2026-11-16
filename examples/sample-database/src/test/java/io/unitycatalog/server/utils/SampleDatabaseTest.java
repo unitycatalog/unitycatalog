@@ -66,7 +66,8 @@ public class SampleDatabaseTest {
         }
       }
 
-      assertThat(failed).isLessThanOrEqualTo(1);
+      // The build that finishes second finds the first one's file there, and leaves it alone.
+      assertThat(failed).isOne();
       assertThat(file).exists();
       try (Stream<Path> files = Files.list(dir)) {
         assertThat(files.map(f -> f.getFileName().toString())).containsExactly("h2db.mv.db");
