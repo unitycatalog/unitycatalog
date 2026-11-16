@@ -422,6 +422,9 @@ requests accepted `owner` but ignored it. These requests now transfer ownership 
 is set. Update clients that copy an object's old owner into PATCH requests. No database
 migration is required.
 
+Catalog, schema, volume, and registered model PATCH requests also accept `owner` for ownership
+transfer.
+
 The object owner and its `OWNER` grant are saved in one database transaction. After commit,
 the server reloads its local permission cache. Enable [policy refresh](#multiple-server-instances)
 on every instance to detect changes from other servers, subject to its concurrent-commit limitation.

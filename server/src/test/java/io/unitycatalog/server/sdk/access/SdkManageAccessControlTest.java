@@ -10,6 +10,7 @@ import static io.unitycatalog.server.utils.TestUtils.assertDeltaPermissionDenied
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
@@ -77,6 +78,7 @@ import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeOperation;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
@@ -84,6 +86,11 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import lombok.SneakyThrows;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
@@ -92,6 +99,12 @@ import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.types.Types;
 import org.hibernate.Session;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.event.service.spi.EventListenerRegistry;
+import org.hibernate.event.spi.EventType;
+import org.hibernate.event.spi.PostCommitInsertEventListener;
+import org.hibernate.event.spi.PostInsertEvent;
+import org.hibernate.persister.entity.EntityPersister;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -469,30 +482,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
     for (Target target : targets) {
       boolean self =
           List.of(SecurableType.FUNCTION, SecurableType.REGISTERED_MODEL).contains(target.type());
-      String owner =
-          switch (target.type()) {
-            case CATALOG ->
-                new CatalogsApi(adminApiClient).getCatalog(target.name(), false).getOwner();
-            case SCHEMA ->
-                new SchemasApi(adminApiClient).getSchema(target.name(), false).getOwner();
-            case TABLE -> getTable(new TablesApi(adminApiClient), target.name()).getOwner();
-            case FUNCTION ->
-                new FunctionsApi(adminApiClient).getFunction(target.name(), false).getOwner();
-            case VOLUME ->
-                new VolumesApi(adminApiClient).getVolume(target.name(), false).getOwner();
-            case REGISTERED_MODEL ->
-                new RegisteredModelsApi(adminApiClient)
-                    .getRegisteredModel(target.name(), false)
-                    .getOwner();
-            case EXTERNAL_LOCATION ->
-                new ExternalLocationsApi(adminApiClient)
-                    .getExternalLocation(target.name(), false)
-                    .getOwner();
-            case CREDENTIAL ->
-                new CredentialsApi(adminApiClient).getCredential(target.name()).getOwner();
-            default -> throw new IllegalArgumentException();
-          };
-      assertThat(owner).isEqualTo(self ? PRINCIPAL_1 : PRINCIPAL_2);
+      assertThat(ownerOf(target)).isEqualTo(self ? PRINCIPAL_1 : PRINCIPAL_2);
       try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
         assertThat(
                 session
@@ -511,6 +501,164 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
         .updateVolume(VOLUME, new UpdateVolumeRequestContent().comment("new owner"));
     assertThat(new VolumesApi(adminApiClient).getVolume(VOLUME, false).getComment())
         .isEqualTo("new owner");
+  }
+
+  @Test
+  void transferChangesTheOwnersAccessForEveryTarget() throws Exception {
+    ApiClient recipient = TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_2));
+    GrantsApi recipientGrants = new GrantsApi(recipient);
+    for (String principal : List.of(PRINCIPAL_1, PRINCIPAL_2)) {
+      grantPermissions(principal, SecurableType.CATALOG, CATALOG_NAME, Privileges.USE_CATALOG);
+      grantPermissions(principal, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
+    }
+    // Transfer children first so parent ownership cannot hide a stale child OWNER grant.
+    for (int index : List.of(2, 3, 4, 5, 6, 7, 1, 0)) {
+      Target target = targets.get(index);
+      List<Privilege> privilege = List.of(target.delegatedPrivilege());
+      grantPermissions(
+          REGULAR_2,
+          target.type(),
+          target.name(),
+          Privileges.fromValue(target.delegatedPrivilege().getValue()));
+      transferOwner(adminApiClient, target, PRINCIPAL_1);
+      managerGrants.update(target.type(), target.name(), change(REGULAR_1, privilege, List.of()));
+      if (List.of(SecurableType.FUNCTION, SecurableType.REGISTERED_MODEL).contains(target.type())) {
+        assertPermissionDenied(() -> transferOwner(manager, target, PRINCIPAL_2));
+        assertOwnerGrants(target.id(), managerId);
+        transferOwner(adminApiClient, target, PRINCIPAL_2);
+      } else {
+        transferOwner(manager, target, PRINCIPAL_2);
+      }
+      assertOwnerGrants(target.id(), recipientId);
+      assertThat(ownerOf(target)).isEqualTo(PRINCIPAL_2);
+      assertPermissionDenied(
+          () ->
+              managerGrants.update(
+                  target.type(), target.name(), change(REGULAR_1, List.of(), privilege)));
+      recipientGrants.update(target.type(), target.name(), change(REGULAR_1, List.of(), privilege));
+      PermissionsList grants = recipientGrants.get(target.type(), target.name(), null);
+      assertThat(privilegesFor(grants, REGULAR_1)).isEmpty();
+      assertThat(privilegesFor(grants, REGULAR_2)).containsExactly(target.delegatedPrivilege());
+    }
+  }
+
+  @Test
+  void rejectedTransfersLeaveOwnershipAndAccessUnchanged() throws Exception {
+    CatalogsApi catalogs = new CatalogsApi(adminApiClient);
+    String owner = catalogs.getCatalog(CATALOG_NAME, false).getOwner();
+    for (var invalid :
+        Map.of("", ErrorCode.INVALID_ARGUMENT, "missing-owner@localhost", ErrorCode.NOT_FOUND)
+            .entrySet()) {
+      assertApiException(
+          () -> catalogs.updateCatalog(CATALOG_NAME, new UpdateCatalog().owner(invalid.getKey())),
+          invalid.getValue(),
+          invalid.getKey().isEmpty() ? "New owner must be specified" : "User not found");
+      assertThat(catalogs.getCatalog(CATALOG_NAME, false).getOwner()).isEqualTo(owner);
+    }
+    assertApiException(
+        () ->
+            new TablesApi(adminApiClient)
+                .updateTable(SCHEMA_FULL_NAME + ".missing", new UpdateTable().owner(PRINCIPAL_2)),
+        ErrorCode.TABLE_NOT_FOUND,
+        "Table not found");
+    assertApiException(
+        () ->
+            new FunctionsApi(adminApiClient)
+                .updateFunction(
+                    SCHEMA_FULL_NAME + ".missing", new UpdateFunction().owner(PRINCIPAL_2)),
+        ErrorCode.NOT_FOUND,
+        "Function not found");
+
+    catalogs.createCatalog(new CreateCatalog().name("occupied"));
+    catalogs.updateCatalog(CATALOG_NAME, new UpdateCatalog().owner(PRINCIPAL_1));
+    assertApiException(
+        () ->
+            new CatalogsApi(manager)
+                .updateCatalog(
+                    CATALOG_NAME, new UpdateCatalog().owner(PRINCIPAL_2).newName("occupied")),
+        ErrorCode.CATALOG_ALREADY_EXISTS,
+        "Catalog already exists");
+    assertThat(catalogs.getCatalog(CATALOG_NAME, false).getOwner()).isEqualTo(PRINCIPAL_1);
+    assertOwnerGrants(targets.get(0).id(), managerId);
+    managerGrants.update(
+        SecurableType.CATALOG,
+        CATALOG_NAME,
+        change(REGULAR_1, List.of(Privilege.USE_CATALOG), List.of()));
+    ApiClient recipient = TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_2));
+    assertPermissionDenied(
+        () ->
+            new GrantsApi(recipient)
+                .update(
+                    SecurableType.CATALOG,
+                    CATALOG_NAME,
+                    change(REGULAR_1, List.of(), List.of(Privilege.USE_CATALOG))));
+  }
+
+  @Test
+  void delayedCreateDoesNotRestorePreviousOwner() throws Exception {
+    String name = "delayed_catalog";
+    CountDownLatch committed = new CountDownLatch(1);
+    CountDownLatch finishCreate = new CountDownLatch(1);
+    hibernateConfigurator
+        .getSessionFactory()
+        .unwrap(SessionFactoryImplementor.class)
+        .getServiceRegistry()
+        .getService(EventListenerRegistry.class)
+        .appendListeners(
+            EventType.POST_COMMIT_INSERT,
+            new PostCommitInsertEventListener() {
+              @Override
+              @SneakyThrows
+              public void onPostInsert(PostInsertEvent event) {
+                if (event.getEntity() instanceof CatalogInfoDAO catalog
+                    && name.equals(catalog.getName())) {
+                  committed.countDown();
+                  assertThat(finishCreate.await(30, TimeUnit.SECONDS)).isTrue();
+                }
+              }
+
+              @Override
+              public void onPostInsertCommitFailed(PostInsertEvent event) {
+                fail("Catalog creation did not commit");
+              }
+
+              @Override
+              public boolean requiresPostCommitHandling(EntityPersister persister) {
+                return persister.getMappedClass() == CatalogInfoDAO.class;
+              }
+            });
+    grantPermissions(
+        PRINCIPAL_1, SecurableType.METASTORE, METASTORE_NAME, Privileges.CREATE_CATALOG);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<CatalogInfo> create =
+          executor.submit(
+              () -> new CatalogsApi(manager).createCatalog(new CreateCatalog().name(name)));
+      assertThat(committed.await(10, TimeUnit.SECONDS)).isTrue();
+      CatalogsApi admin = new CatalogsApi(adminApiClient);
+      String id = admin.updateCatalog(name, new UpdateCatalog().owner(PRINCIPAL_2)).getId();
+      assertOwnerGrants(id, recipientId);
+      finishCreate.countDown();
+      create.get(30, TimeUnit.SECONDS);
+      assertThat(admin.getCatalog(name, false).getOwner()).isEqualTo(PRINCIPAL_2);
+      assertOwnerGrants(id, recipientId);
+      assertPermissionDenied(
+          () ->
+              managerGrants.update(
+                  SecurableType.CATALOG,
+                  name,
+                  change(REGULAR_1, List.of(Privilege.USE_CATALOG), List.of())));
+      ApiClient recipient = TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_2));
+      new GrantsApi(recipient)
+          .update(
+              SecurableType.CATALOG,
+              name,
+              change(REGULAR_1, List.of(Privilege.USE_CATALOG), List.of()));
+    } finally {
+      finishCreate.countDown();
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
   }
 
   @Test
@@ -1133,6 +1281,53 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
           assertThat(new CredentialsApi(manager).getCredential(name).getAwsIamRole().getRoleArn())
               .isEqualTo("fake_arn");
       default -> throw new IllegalArgumentException("Unsupported test target: " + type);
+    }
+  }
+
+  private String ownerOf(Target target) throws Exception {
+    return switch (target.type()) {
+      case CATALOG -> new CatalogsApi(adminApiClient).getCatalog(target.name(), false).getOwner();
+      case SCHEMA -> new SchemasApi(adminApiClient).getSchema(target.name(), false).getOwner();
+      case TABLE -> getTable(new TablesApi(adminApiClient), target.name()).getOwner();
+      case FUNCTION ->
+          new FunctionsApi(adminApiClient).getFunction(target.name(), false).getOwner();
+      case VOLUME -> new VolumesApi(adminApiClient).getVolume(target.name(), false).getOwner();
+      case REGISTERED_MODEL ->
+          new RegisteredModelsApi(adminApiClient)
+              .getRegisteredModel(target.name(), false)
+              .getOwner();
+      case EXTERNAL_LOCATION ->
+          new ExternalLocationsApi(adminApiClient)
+              .getExternalLocation(target.name(), false)
+              .getOwner();
+      case CREDENTIAL -> new CredentialsApi(adminApiClient).getCredential(target.name()).getOwner();
+      default -> throw new IllegalArgumentException();
+    };
+  }
+
+  private void transferOwner(ApiClient client, Target target, String owner) throws Exception {
+    switch (target.type()) {
+      case CATALOG ->
+          new CatalogsApi(client).updateCatalog(target.name(), new UpdateCatalog().owner(owner));
+      case SCHEMA ->
+          new SchemasApi(client).updateSchema(target.name(), new UpdateSchema().owner(owner));
+      case TABLE ->
+          new TablesApi(client).updateTable(target.name(), new UpdateTable().owner(owner));
+      case FUNCTION ->
+          new FunctionsApi(client).updateFunction(target.name(), new UpdateFunction().owner(owner));
+      case VOLUME ->
+          new VolumesApi(client)
+              .updateVolume(target.name(), new UpdateVolumeRequestContent().owner(owner));
+      case REGISTERED_MODEL ->
+          new RegisteredModelsApi(client)
+              .updateRegisteredModel(target.name(), new UpdateRegisteredModel().owner(owner));
+      case EXTERNAL_LOCATION ->
+          new ExternalLocationsApi(client)
+              .updateExternalLocation(target.name(), new UpdateExternalLocation().owner(owner));
+      case CREDENTIAL ->
+          new CredentialsApi(client)
+              .updateCredential(target.name(), new UpdateCredentialRequest().owner(owner));
+      default -> throw new IllegalArgumentException();
     }
   }
 

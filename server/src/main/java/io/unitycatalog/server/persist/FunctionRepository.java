@@ -133,6 +133,7 @@ public class FunctionRepository {
                     p.setFunction(dao);
                   });
           session.persist(dao);
+          repositories.getOwnershipRepository().initializeOwner(session, dao.getId(), callerId);
           // Write the function and its parameters first, so only property rows reach
           // flushProperties and its mapping of database errors to property errors.
           session.flush();
@@ -232,6 +233,11 @@ public class FunctionRepository {
 
   /** Transfers ownership without changing the function definition or its dependencies. */
   public FunctionInfo updateFunction(String fullName, UpdateFunction updateFunction) {
+    return updateFunction(fullName, updateFunction, () -> {});
+  }
+
+  public FunctionInfo updateFunction(
+      String fullName, UpdateFunction updateFunction, Runnable beforeCommit) {
     String[] parts =
         ValidationUtils.splitFullName(fullName, 3, "Invalid function name: " + fullName);
     return TransactionManager.executeWithTransaction(
@@ -244,7 +250,7 @@ public class FunctionRepository {
           dao.setOwner(
               repositories
                   .getOwnershipRepository()
-                  .updateOwner(session, dao, updateFunction.getOwner()));
+                  .updateOwner(session, dao, updateFunction.getOwner(), beforeCommit));
           dao.setUpdatedAt(System.currentTimeMillis());
           dao.setUpdatedBy(IdentityUtils.findPrincipalEmailAddress());
           FunctionInfo result = dao.toFunctionInfo();

@@ -117,7 +117,9 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
     ExternalLocationInfo result =
         updateWithOwnerReload(
             updateRequest.getOwner(),
-            () -> externalLocationRepository.updateExternalLocation(name, updateRequest));
+            beforeCommit ->
+                externalLocationRepository.updateExternalLocation(
+                    name, updateRequest, beforeCommit));
     return HttpResponse.ofJson(result);
   }
 

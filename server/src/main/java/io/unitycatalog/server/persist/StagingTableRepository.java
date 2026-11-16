@@ -111,6 +111,7 @@ public class StagingTableRepository {
           stagingTableDAO.setStagingLocation(stagingLocation.toString());
           stagingTableDAO.setCreatedBy(callerId);
           session.persist(stagingTableDAO);
+          repositories.getOwnershipRepository().initializeOwner(session, stagingTableId, callerId);
           return stagingTableDAO.toStagingTableInfo(
               createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
         },

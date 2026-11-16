@@ -145,12 +145,13 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateTable(
       @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName, UpdateTable updateTable) {
+    boolean canTransferViewToRecipient = canTransferOwnerTo(updateTable.getOwner());
     TableInfo result =
         updateWithOwnerReload(
             updateTable.getOwner(),
-            () ->
+            beforeCommit ->
                 tableRepository.updateTable(
-                    fullName, updateTable, () -> validateOwnerTransfer(updateTable.getOwner())));
+                    fullName, updateTable, canTransferViewToRecipient, beforeCommit));
     return HttpResponse.ofJson(result);
   }
 

@@ -102,7 +102,8 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
     CredentialInfo result =
         updateWithOwnerReload(
             updateRequest.getOwner(),
-            () -> credentialRepository.updateCredential(name, updateRequest));
+            beforeCommit ->
+                credentialRepository.updateCredential(name, updateRequest, beforeCommit));
     return HttpResponse.ofJson(result);
   }
 

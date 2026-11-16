@@ -122,6 +122,9 @@ public class ExternalLocationRepository {
                   .createdBy(callerId)
                   .build();
           session.persist(externalLocationDAO);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, externalLocationDAO.getId(), callerId);
           LOGGER.info("External location added: {}", externalLocationDAO.getName());
           return externalLocationDAO.toExternalLocationInfo(credentialDAO.getName());
         },
@@ -196,6 +199,11 @@ public class ExternalLocationRepository {
 
   public ExternalLocationInfo updateExternalLocation(
       String name, UpdateExternalLocation updateExternalLocation) {
+    return updateExternalLocation(name, updateExternalLocation, () -> {});
+  }
+
+  public ExternalLocationInfo updateExternalLocation(
+      String name, UpdateExternalLocation updateExternalLocation, Runnable beforeCommit) {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
     return TransactionManager.executeWithTransaction(
@@ -211,7 +219,11 @@ public class ExternalLocationRepository {
             existingLocation.setOwner(
                 repositories
                     .getOwnershipRepository()
-                    .updateOwner(session, existingLocation, updateExternalLocation.getOwner()));
+                    .updateOwner(
+                        session,
+                        existingLocation,
+                        updateExternalLocation.getOwner(),
+                        beforeCommit));
           }
 
           // Update fields if provided

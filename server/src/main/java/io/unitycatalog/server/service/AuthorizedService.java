@@ -17,7 +17,8 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Supplier;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import lombok.SneakyThrows;
 
@@ -46,62 +47,67 @@ public abstract class AuthorizedService {
 
   /** Views, functions, and models can be transferred to another user only by a metastore admin. */
   protected void validateOwnerTransfer(String newOwner) {
-    if (newOwner != null
-        && serverProperties.isAuthorizationEnabled()
-        && !newOwner.equals(IdentityUtils.findPrincipalEmailAddress())
-        && !authorizer.authorize(
-            userRepository.findPrincipalId(),
-            SecurableType.METASTORE,
-            metastoreRepository.getMetastoreId(),
-            Privileges.OWNER)) {
+    if (!canTransferOwnerTo(newOwner)) {
       throw new BaseException(
           ErrorCode.PERMISSION_DENIED,
           "Only a metastore admin can transfer a view, function, or model to another user.");
     }
   }
 
-  /** Reloads ownership policy even when session cleanup fails after a commit. */
-  protected <T> T updateWithOwnerReload(String newOwner, Supplier<T> update) {
+  protected boolean canTransferOwnerTo(String newOwner) {
+    return newOwner == null
+        || !serverProperties.isAuthorizationEnabled()
+        || newOwner.equals(IdentityUtils.findPrincipalEmailAddress())
+        || authorizer.authorize(
+            userRepository.findPrincipalId(),
+            SecurableType.METASTORE,
+            metastoreRepository.getMetastoreId(),
+            Privileges.OWNER);
+  }
+
+  /** Reloads after a commit attempt, including an uncertain commit or failed session cleanup. */
+  protected <T> T updateWithOwnerReload(String newOwner, Function<Runnable, T> update) {
     if (newOwner == null) {
-      return update.get();
+      return update.apply(() -> {});
     }
     if (newOwner.isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New owner must be specified.");
     }
     // Reject invalid recipients before entering the reload-on-cleanup-failure path.
     userRepository.getUserByEmail(newOwner);
+    AtomicBoolean commitAttempted = new AtomicBoolean();
     Throwable updateError = null;
     try {
-      return update.get();
+      return update.apply(() -> commitAttempted.set(true));
     } catch (RuntimeException | Error e) {
       updateError = e;
       throw e;
     } finally {
-      try {
-        authorizer.reloadAuthorizations();
-      } catch (RuntimeException | Error reloadError) {
-        if (updateError == null) {
-          throw reloadError;
+      if (commitAttempted.get()) {
+        try {
+          authorizer.reloadAuthorizations();
+        } catch (RuntimeException | Error reloadError) {
+          if (updateError == null) {
+            throw reloadError;
+          }
+          updateError.addSuppressed(reloadError);
         }
-        updateError.addSuppressed(reloadError);
       }
     }
   }
 
   /**
-   * Initializes basic authorization for a resource by granting owner privileges to the current
-   * principal.
+   * Loads the OWNER grant saved by resource creation. This must not grant the creator OWNER again:
+   * another request may have transferred ownership after the create transaction committed.
    *
-   * @param resourceId String ID of the resource to grant permission for
+   * @param resourceId String ID of the created resource
    */
   protected void initializeBasicAuthorization(String resourceId) {
-    UUID principalId = userRepository.findPrincipalId();
-    authorizer.grantAuthorization(principalId, UUID.fromString(resourceId), Privileges.OWNER);
+    authorizer.reloadAuthorizations();
   }
 
   /**
-   * Initializes hierarchical authorization for a resource by granting owner privileges to the
-   * current principal and establishing a parent-child relationship.
+   * Loads the resource's saved owner grant and establishes its parent-child relationship.
    *
    * @param resourceId String ID of the resource to grant permission for
    * @param parentId String ID of the parent resource

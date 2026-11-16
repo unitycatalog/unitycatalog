@@ -99,6 +99,9 @@ public class VolumeRepository {
                   .volumeType(createVolumeRequest.getVolumeType().getValue())
                   .build();
           session.persist(volumeInfoDAO);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, volumeInfoDAO.getId(), callerId);
           LOGGER.info("Added volume: {}", volumeInfoDAO.getName());
           return volumeInfoDAO.toVolumeInfo(
               createVolumeRequest.getCatalogName(), createVolumeRequest.getSchemaName());
@@ -208,6 +211,11 @@ public class VolumeRepository {
   }
 
   public VolumeInfo updateVolume(String name, UpdateVolumeRequestContent updateVolumeRequest) {
+    return updateVolume(name, updateVolumeRequest, () -> {});
+  }
+
+  public VolumeInfo updateVolume(
+      String name, UpdateVolumeRequestContent updateVolumeRequest, Runnable beforeCommit) {
     if (updateVolumeRequest.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateVolumeRequest.getNewName());
     }
@@ -226,7 +234,8 @@ public class VolumeRepository {
             volumeInfo.setOwner(
                 repositories
                     .getOwnershipRepository()
-                    .updateOwner(session, volumeInfo, updateVolumeRequest.getOwner()));
+                    .updateOwner(
+                        session, volumeInfo, updateVolumeRequest.getOwner(), beforeCommit));
           }
           if (updateVolumeRequest.getNewName() != null) {
             VolumeInfoDAO existingVolume =

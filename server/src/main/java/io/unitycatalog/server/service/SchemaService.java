@@ -139,7 +139,8 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
           UpdateSchema updateSchema) {
     SchemaInfo result =
         updateWithOwnerReload(
-            updateSchema.getOwner(), () -> schemaRepository.updateSchema(fullName, updateSchema));
+            updateSchema.getOwner(),
+            beforeCommit -> schemaRepository.updateSchema(fullName, updateSchema, beforeCommit));
     return HttpResponse.ofJson(result);
   }
 

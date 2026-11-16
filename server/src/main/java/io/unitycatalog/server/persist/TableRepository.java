@@ -947,6 +947,10 @@ public class TableRepository {
           nativeIcebergMetadataLocation.ifPresent(
               location -> tableInfoDAO.setIcebergMetadataLocation(location.toString()));
           session.persist(tableInfoDAO);
+          if (tableType != TableType.MANAGED) {
+            // Managed tables retain the owner grant saved when their staging table was created.
+            repositories.getOwnershipRepository().initializeOwner(session, tableUUID, callerId);
+          }
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
             // view_dependencies is optional (see validateViewLike); treat an absent list as empty.
@@ -1214,7 +1218,10 @@ public class TableRepository {
 
   /** Transfers ownership, validating view recipients against the locked table. */
   public TableInfo updateTable(
-      String fullName, UpdateTable updateTable, Runnable validateViewOwnerTransfer) {
+      String fullName,
+      UpdateTable updateTable,
+      boolean canTransferViewToRecipient,
+      Runnable beforeCommit) {
     String[] parts = ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
@@ -1228,9 +1235,11 @@ public class TableRepository {
           String owner =
               repositories
                   .getOwnershipRepository()
-                  .updateOwner(session, dao, updateTable.getOwner());
-          if (RepositoryUtils.isViewLike(dao.getType())) {
-            validateViewOwnerTransfer.run();
+                  .updateOwner(session, dao, updateTable.getOwner(), beforeCommit);
+          if (RepositoryUtils.isViewLike(dao.getType()) && !canTransferViewToRecipient) {
+            throw new BaseException(
+                ErrorCode.PERMISSION_DENIED,
+                "Only a metastore admin can transfer a view, function, or model to another user.");
           }
           dao.setOwner(owner);
           dao.setUpdatedAt(new Date());

@@ -132,7 +132,8 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
           UpdateCatalog updateCatalog) {
     CatalogInfo result =
         updateWithOwnerReload(
-            updateCatalog.getOwner(), () -> catalogRepository.updateCatalog(name, updateCatalog));
+            updateCatalog.getOwner(),
+            beforeCommit -> catalogRepository.updateCatalog(name, updateCatalog, beforeCommit));
     return HttpResponse.ofJson(result);
   }
 

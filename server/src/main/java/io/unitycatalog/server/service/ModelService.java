@@ -165,7 +165,9 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
     RegisteredModelInfo updateRegisteredModelResponse =
         updateWithOwnerReload(
             updateRegisteredModel.getOwner(),
-            () -> modelRepository.updateRegisteredModel(fullName, updateRegisteredModel));
+            beforeCommit ->
+                modelRepository.updateRegisteredModel(
+                    fullName, updateRegisteredModel, beforeCommit));
     return HttpResponse.ofJson(updateRegisteredModelResponse);
   }
 

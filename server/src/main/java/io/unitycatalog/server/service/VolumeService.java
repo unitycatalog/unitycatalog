@@ -180,7 +180,8 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
     VolumeInfo result =
         updateWithOwnerReload(
             updateVolumeRequest.getOwner(),
-            () -> volumeRepository.updateVolume(fullName, updateVolumeRequest));
+            beforeCommit ->
+                volumeRepository.updateVolume(fullName, updateVolumeRequest, beforeCommit));
     return HttpResponse.ofJson(result);
   }
 

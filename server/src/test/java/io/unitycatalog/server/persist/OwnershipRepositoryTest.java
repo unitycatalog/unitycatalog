@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.AdditionalAnswers.delegatesTo;
@@ -45,6 +46,7 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.time.Duration;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
@@ -180,17 +182,34 @@ public class OwnershipRepositoryTest {
 
     UnityCatalogAuthorizer serviceAuthorizer =
         mock(UnityCatalogAuthorizer.class, delegatesTo(authorizer));
+    doThrow(new IllegalStateException("policy reload must not run after rollback"))
+        .when(serviceAuthorizer)
+        .reloadAuthorizations();
     CatalogService service = new CatalogService(serviceAuthorizer, repositories, properties);
-    for (String invalidOwner : List.of("", "missing-owner@localhost")) {
-      assertThatThrownBy(
-              () -> service.updateCatalog(CATALOG, new UpdateCatalog().owner(invalidOwner)))
-          .isInstanceOf(BaseException.class);
-      assertThatThrownBy(
+    assertThatExceptionOfType(BaseException.class)
+        .isThrownBy(
+            () ->
+                service.updateCatalog(
+                    CATALOG, new UpdateCatalog().owner(SECOND_OWNER).newName("occupied")))
+        .extracting(BaseException::getErrorCode)
+        .isEqualTo(ErrorCode.CATALOG_ALREADY_EXISTS);
+    assertOwnership(FIRST_OWNER, firstId);
+    for (var invalid :
+        Map.of("", ErrorCode.INVALID_ARGUMENT, "missing-owner@localhost", ErrorCode.NOT_FOUND)
+            .entrySet()) {
+      assertThatExceptionOfType(BaseException.class)
+          .isThrownBy(
+              () -> service.updateCatalog(CATALOG, new UpdateCatalog().owner(invalid.getKey())))
+          .extracting(BaseException::getErrorCode)
+          .isEqualTo(invalid.getValue());
+      assertThatExceptionOfType(BaseException.class)
+          .isThrownBy(
               () ->
                   repositories
                       .getCatalogRepository()
-                      .updateCatalog(CATALOG, new UpdateCatalog().owner(invalidOwner)))
-          .isInstanceOf(BaseException.class);
+                      .updateCatalog(CATALOG, new UpdateCatalog().owner(invalid.getKey())))
+          .extracting(BaseException::getErrorCode)
+          .isEqualTo(invalid.getValue());
       authorizer.reloadAuthorizations();
       assertOwnership(FIRST_OWNER, firstId);
     }
@@ -294,9 +313,6 @@ public class OwnershipRepositoryTest {
         assertThat(authorizer.authorize(id, SecurableType.CATALOG, resourceId, Privileges.MANAGE))
             .isFalse();
       }
-      assertThatThrownBy(
-              () -> authorizer.grantAuthorization(thirdId, resourceId, Privileges.SELECT))
-          .isInstanceOfAny(RuntimeException.class, Error.class);
     } finally {
       sessionFactory.inTransaction(
           session ->
@@ -304,8 +320,39 @@ public class OwnershipRepositoryTest {
                   .createNativeMutationQuery("ALTER TABLE unavailable_policy RENAME TO casbin_rule")
                   .executeUpdate());
     }
+    // The store is available again, but the live policy is still incomplete until recovery.
+    List<Runnable> blocked =
+        List.of(
+            () -> authorizer.grantAuthorization(thirdId, resourceId, Privileges.MANAGE),
+            () -> authorizer.revokeAuthorization(secondId, resourceId, Privileges.OWNER),
+            () -> authorizer.clearAuthorizationsForPrincipal(secondId),
+            () -> authorizer.clearAuthorizationsForResource(resourceId),
+            () -> authorizer.addHierarchyChild(resourceId, UUID.randomUUID()),
+            () -> authorizer.removeHierarchyChild(resourceId, childId),
+            () -> authorizer.removeHierarchyChildren(resourceId),
+            () -> authorizer.listAuthorizations(resourceId),
+            () -> authorizer.listAuthorizations(secondId, resourceId),
+            () -> authorizer.getHierarchyParent(childId));
+    for (Runnable operation : blocked) {
+      assertThatExceptionOfType(BaseException.class)
+          .isThrownBy(operation::run)
+          .extracting(BaseException::getErrorCode)
+          .isEqualTo(ErrorCode.UNAVAILABLE);
+    }
     assertThat(authorizer.refreshAuthorizations(System.nanoTime())).isTrue();
     assertOwnership(SECOND_OWNER, secondId);
+    try (Session session = sessionFactory.openSession()) {
+      assertThat(
+              session
+                  .createNativeQuery(
+                      "select v2 from casbin_rule where ptype = 'p' and v0 = :principal and v1 ="
+                          + " :id",
+                      String.class)
+                  .setParameter("principal", thirdId.toString())
+                  .setParameter("id", resourceId.toString())
+                  .getResultList())
+          .containsExactly("MANAGE");
+    }
     assertThat(authorizer.authorize(thirdId, SecurableType.CATALOG, resourceId, Privileges.SELECT))
         .isFalse();
   }
@@ -383,17 +430,18 @@ public class OwnershipRepositoryTest {
         .getTable(fullName);
     Repositories serviceRepositories = spy(repositories);
     doReturn(tableRepository).when(serviceRepositories).getTableRepository();
-    BaseException denied = new BaseException(ErrorCode.PERMISSION_DENIED, "View transfer denied");
     TableService service =
         new TableService(authorizer, serviceRepositories, properties) {
           @Override
-          protected void validateOwnerTransfer(String newOwner) {
-            throw denied;
+          protected boolean canTransferOwnerTo(String newOwner) {
+            return false;
           }
         };
 
-    assertThatThrownBy(() -> service.updateTable(fullName, new UpdateTable().owner(SECOND_OWNER)))
-        .isSameAs(denied);
+    assertThatExceptionOfType(BaseException.class)
+        .isThrownBy(() -> service.updateTable(fullName, new UpdateTable().owner(SECOND_OWNER)))
+        .extracting(BaseException::getErrorCode)
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
     String storedOwner =
         sessionFactory.fromSession(session -> session.get(TableInfoDAO.class, tableId).getOwner());
     assertThat(storedOwner).isEqualTo(FIRST_OWNER);

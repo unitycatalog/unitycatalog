@@ -258,6 +258,9 @@ public class ModelRepository {
         registeredModelInfoDAO.setSchemaId(schemaInfoDAO.getId());
         registeredModelInfoDAO.setMaxVersionNumber(0L);
         session.persist(registeredModelInfoDAO);
+        repositories
+            .getOwnershipRepository()
+            .initializeOwner(session, registeredModelInfoDAO.getId(), callerId);
         FileOperations.createStorageLocationDir(storageLocation);
         tx.commit();
       } catch (RuntimeException e) {
@@ -375,6 +378,11 @@ public class ModelRepository {
 
   public RegisteredModelInfo updateRegisteredModel(
       String fullName, UpdateRegisteredModel updateRegisteredModel) {
+    return updateRegisteredModel(fullName, updateRegisteredModel, () -> {});
+  }
+
+  public RegisteredModelInfo updateRegisteredModel(
+      String fullName, UpdateRegisteredModel updateRegisteredModel, Runnable beforeCommit) {
     if (updateRegisteredModel.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateRegisteredModel.getNewName());
     }
@@ -423,7 +431,10 @@ public class ModelRepository {
               repositories
                   .getOwnershipRepository()
                   .updateOwner(
-                      session, origRegisteredModelInfoDAO, updateRegisteredModel.getOwner()));
+                      session,
+                      origRegisteredModelInfoDAO,
+                      updateRegisteredModel.getOwner(),
+                      beforeCommit));
         }
         if (updateRegisteredModel.getNewName() != null) {
           origRegisteredModelInfoDAO.setName(updateRegisteredModel.getNewName());

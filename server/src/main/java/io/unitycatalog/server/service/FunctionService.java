@@ -120,7 +120,7 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
     FunctionInfo result =
         updateWithOwnerReload(
             updateFunction.getOwner(),
-            () -> functionRepository.updateFunction(name, updateFunction));
+            beforeCommit -> functionRepository.updateFunction(name, updateFunction, beforeCommit));
     return HttpResponse.ofJson(result);
   }
 
