@@ -1,3 +1,4 @@
+import datetime
 import warnings
 
 import pytest
@@ -12,8 +13,14 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
+from pydantic_core import to_jsonable_python
 
-from unitycatalog.ai.core.utils.validation_utils import check_function_info, has_retriever_signature
+from unitycatalog.ai.core.utils.validation_utils import (
+    check_function_info,
+    has_retriever_signature,
+    parse_iso_datetime,
+    validate_param,
+)
 
 
 @pytest.fixture
@@ -230,3 +237,22 @@ def test_check_function_info(function_info, expected_warnings):
 )
 def test_has_retriever_signature(function_info, result):
     assert has_retriever_signature(function_info) == result
+
+
+def test_validate_param_accepts_utc_timestamp_sent_by_tool_integrations():
+    at = datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc)
+    value = to_jsonable_python(at)
+
+    assert value == "2024-01-02T03:04:05Z"
+    validate_param(value, "TIMESTAMP", "timestamp")
+    assert parse_iso_datetime(value) == at
+
+
+@pytest.mark.parametrize("value", ["2024-01-02T03:04:05+00:00", "2024-01-02T03:04:05"])
+def test_parse_iso_datetime_keeps_other_forms(value):
+    assert parse_iso_datetime(value) == datetime.datetime.fromisoformat(value)
+
+
+def test_validate_param_rejects_non_iso_timestamp():
+    with pytest.raises(ValueError, match="expecting ISO format"):
+        validate_param("2024-01-02 03:04:05 UTC", "TIMESTAMP", "timestamp")

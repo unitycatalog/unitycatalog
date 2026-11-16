@@ -51,8 +51,17 @@ class UCFunctionTool(BaseTool):
     async def run(self, args: BaseModel, cancellation_token: CancellationToken) -> str:
         """
         Actually call the UC function with the provided parameters.
+
+        Arguments keep their python values. A BINARY argument is validated from the base64 text
+        the model sends into the bytes of that text, so the bytes of an argument that was set are
+        sent back as that text. A default that was not set keeps its value.
         """
-        param_dict = args.model_dump(mode="json")
+        param_dict = {
+            name: value.decode()
+            if isinstance(value, bytes) and name in args.model_fields_set
+            else value
+            for name, value in args.model_dump().items()
+        }
 
         result = self._client.execute_function(
             function_name=self._function_full_name,

@@ -1,4 +1,6 @@
 import asyncio
+import datetime
+import decimal
 import functools
 import json
 import logging
@@ -15,6 +17,7 @@ from databricks.sdk.service.catalog import (
 
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
+from unitycatalog.ai.test_utils.function_utils_oss import param_type_name
 
 CATALOG = "integration_testing"
 
@@ -79,15 +82,15 @@ JSON_ARGUMENTS = {
     "amount": 12.5,
 }
 
+# Python values that a caller can pass in place of the JSON values in JSON_ARGUMENTS.
+NATIVE_ARGUMENTS = {
+    "day": datetime.date(2024, 1, 2),
+    "at": datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc),
+    "amount": decimal.Decimal("12.5"),
+}
+
 # Base64 text with padding, with "+" and "/", and empty.
 BINARY_ARGUMENTS = ["aGk=", "+/8=", "AAH/", ""]
-
-
-def param_type_name(type_text: str) -> str:
-    """
-    Returns the type name of a parameter type text, for example "STRUCT" for "struct<a:int>".
-    """
-    return type_text.split("<")[0].split("(")[0].upper()
 
 
 def generate_function_info_with_params(params: dict[str, tuple[str, Any]]) -> FunctionInfo:

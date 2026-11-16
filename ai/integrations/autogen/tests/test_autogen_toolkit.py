@@ -1,3 +1,5 @@
+import datetime
+import decimal
 import json
 import os
 from importlib import metadata
@@ -12,9 +14,9 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from packaging import version
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
+from unitycatalog.ai.autogen.toolkit import UCFunctionTool, UCFunctionToolkit
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
@@ -376,3 +378,42 @@ async def test_tool_sends_arguments_as_json_values(function_info, encoded):
     await tool.run_json(json.loads(json.dumps(arguments)), CancellationToken())
 
     assert client.execute_function.call_args.kwargs["parameters"] == arguments
+
+
+class NativeArgs(BaseModel):
+    span: datetime.timedelta
+    at: datetime.datetime
+    amount: decimal.Decimal
+    data: bytes
+    default_data: bytes = b"\xff\x00"
+
+
+@pytest.mark.asyncio
+async def test_tool_keeps_native_argument_values():
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionTool(
+        name="test",
+        description="A test function.",
+        function_full_name="catalog.schema.test",
+        client=client,
+        args_type=NativeArgs,
+    )
+    args = NativeArgs(
+        span=datetime.timedelta(days=1, hours=2),
+        at=datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc),
+        amount=decimal.Decimal("12.50"),
+        data=b"aGk=",
+    )
+
+    await tool.run(args, CancellationToken())
+
+    parameters = client.execute_function.call_args.kwargs["parameters"]
+    assert parameters == {
+        "span": datetime.timedelta(days=1, hours=2),
+        "at": datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc),
+        "amount": decimal.Decimal("12.50"),
+        "data": "aGk=",
+        "default_data": b"\xff\x00",
+    }
+    assert str(parameters["amount"]) == "12.50"

@@ -5,7 +5,6 @@ from typing import Any, Callable, Generator, NamedTuple
 
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
-from unitycatalog.ai.test_utils.function_utils import param_type_name
 from unitycatalog.client import (
     ColumnTypeName,
     FunctionInfo,
@@ -33,6 +32,13 @@ RETRIEVER_TABLE_RETURN_PARAMS_OSS = FunctionParameterInfos(
         ),
     ]
 )
+
+
+def param_type_name(type_text: str) -> str:
+    """
+    Returns the type name of a parameter type text, for example "STRUCT" for "struct<a:int>".
+    """
+    return type_text.split("<")[0].split("(")[0].upper()
 
 
 def generate_function_info_with_params_oss(params: dict[str, tuple[str, Any]]) -> FunctionInfo:

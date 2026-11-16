@@ -30,6 +30,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     JSON_ARGUMENT_PARAMS,
     JSON_ARGUMENTS,
+    NATIVE_ARGUMENTS,
     create_function_and_cleanup,
     create_table_function_and_cleanup,
     generate_function_info_with_params,
@@ -650,6 +651,7 @@ async def test_toolkit_with_function_without_params(
     assert json.loads(result) == {"format": "SCALAR", "value": "sunny"}
 
 
+@pytest.mark.parametrize("native", [False, True], ids=["json", "native"])
 @pytest.mark.parametrize("use_async", [False, True])
 @pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
 @pytest.mark.parametrize(
@@ -661,18 +663,23 @@ async def test_toolkit_with_function_without_params(
     ids=["databricks", "oss"],
 )
 @pytest.mark.asyncio
-async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_async):
+async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_async, native):
     client = mock.create_autospec(BaseFunctionClient, instance=True)
     client.get_function.return_value = function_info
     client.to_dict.return_value = {}
     client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
     tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
     arguments = {**JSON_ARGUMENTS, "data": encoded}
-    tool_call_arguments = json.loads(json.dumps(arguments))
+    tool_call_arguments = {
+        **json.loads(json.dumps(arguments)),
+        **(NATIVE_ARGUMENTS if native else {}),
+    }
 
     if use_async:
         await tool.acall(**tool_call_arguments)
     else:
         tool(**tool_call_arguments)
 
-    assert client.execute_function.call_args.kwargs["parameters"] == arguments
+    # A native Decimal is sent as its text, as before this change.
+    expected = {**arguments, "amount": "12.5"} if native else arguments
+    assert client.execute_function.call_args.kwargs["parameters"] == expected
