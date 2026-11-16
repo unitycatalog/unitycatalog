@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from "react";
 
-// A client-side bearer token that bypasses the cookie login: when set, it is
-// threaded into every UnityProxyService.Call as `token`, which the bridge turns
-// into an `Authorization: Bearer` header on the UC request. This mirrors the
-// reference console's "paste a token" mode.
+// A client-side bearer token that bypasses cookie login: the transport's auth
+// interceptor adds it as an Authorization header to every request. It is never
+// sent in the UnityProxyService.Call body. This mirrors the reference console's
+// "paste a token" mode.
 //
 // The token is persisted in localStorage and can be seeded once from a `?token=`
 // URL parameter (which is then scrubbed from the URL so it does not linger in

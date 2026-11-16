@@ -95,6 +95,32 @@ public final class NormalizedURL {
   }
 
   /**
+   * Returns whether {@code url} is an {@code s3://} path with a bucket name, without user info or a
+   * port. A URL that does not parse, as one an earlier release stored may not, is not, so the
+   * parser's error, which names the URL, never reaches a caller.
+   *
+   * @param url a location URL, as given or as stored
+   * @return whether {@code url} is an {@code s3://} path with a bucket
+   */
+  public static boolean isS3Path(String url) {
+    if (!url.regionMatches(/* ignoreCase= */ true, 0, "s3://", 0, 5)) {
+      return false;
+    }
+    URI uri;
+    try {
+      uri = from(url).toUri();
+    } catch (BaseException | IllegalArgumentException e) {
+      return false;
+    }
+    String bucket = uri.getRawAuthority();
+    return UriScheme.fromURI(uri) == UriScheme.S3
+        && bucket != null
+        && !bucket.isEmpty()
+        && bucket.indexOf('@') < 0
+        && bucket.indexOf(':') < 0;
+  }
+
+  /**
    * Returns whether this URL identifies an entire cloud storage bucket or container.
    *
    * <p>The decoded path is checked so equivalent root forms such as a trailing slash, normalized

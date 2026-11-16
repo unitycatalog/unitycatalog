@@ -1,24 +1,93 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Database, Notebook } from "lucide-react";
-import { useGetCatalog } from "@/hooks/catalog";
-import { useListSchemas } from "@/hooks/schemas";
-import { formatEpoch } from "@/lib/uc";
+import {
+  useDeleteCatalog,
+  useGetCatalog,
+  useUpdateCatalog,
+} from "@/hooks/catalog";
+import { useCreateSchema, useListSchemas } from "@/hooks/schemas";
+import { formatTimestamp } from "@/lib/uc";
 import EntityHeader from "@/components/EntityHeader";
 import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PropertiesCard from "@/components/PropertiesCard";
 import PermissionsPanel from "@/components/PermissionsPanel";
+import DeleteAction from "@/components/DeleteAction";
+import EntityFormDialog from "@/components/EntityFormDialog";
+import FormField from "@/components/FormField";
+import EditMetadataAction from "@/components/EditMetadataAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 
 export default function CatalogDetails({ catalog }: { catalog: string }) {
+  const navigate = useNavigate();
   const { data, isLoading, error } = useGetCatalog(catalog);
   const schemas = useListSchemas(catalog);
+  const createSchema = useCreateSchema();
+  const updateCatalog = useUpdateCatalog();
+  const deleteCatalog = useDeleteCatalog();
 
   return (
     <div>
-      <EntityHeader name={catalog} Icon={Notebook} catalog={catalog} badges={["CATALOG"]} />
+      <EntityHeader
+        name={catalog}
+        Icon={Notebook}
+        catalog={catalog}
+        badges={["CATALOG"]}
+        actions={
+          <>
+            <EditMetadataAction
+              name={catalog}
+              comment={data?.comment}
+              onSubmit={async (changes) => {
+                await updateCatalog.mutateAsync({
+                  catalog: { name: catalog },
+                  ...changes,
+                });
+                if (changes.newName) {
+                  navigate({
+                    to: "/catalog/$catalog",
+                    params: { catalog: changes.newName },
+                  });
+                }
+              }}
+            />
+            <EntityFormDialog
+              title="Create schema"
+              triggerLabel="Create schema"
+              onSubmit={(form) =>
+                createSchema.mutateAsync({
+                  schema: {
+                    catalogName: catalog,
+                    name: String(form.get("name")),
+                  },
+                  comment: String(form.get("comment")) || undefined,
+                })
+              }
+            >
+              <FormField id="schema-name" label="Name">
+                <Input id="schema-name" name="name" required />
+              </FormField>
+              <FormField id="schema-comment" label="Comment">
+                <Input id="schema-comment" name="comment" />
+              </FormField>
+            </EntityFormDialog>
+            <DeleteAction
+              entityName={catalog}
+              entityType="catalog"
+              onDelete={() =>
+                deleteCatalog.mutateAsync({
+                  catalog: { name: catalog },
+                  force: false,
+                })
+              }
+              onDeleted={() => navigate({ to: "/" })}
+            />
+          </>
+        }
+      />
       <div className="p-6">
         <QueryState isLoading={isLoading} error={error}>
           <Tabs defaultValue="overview">
@@ -32,30 +101,42 @@ export default function CatalogDetails({ catalog }: { catalog: string }) {
               <DescriptionCard comment={data?.comment} />
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Schemas ({schemas.data?.schemas?.length ?? 0})</CardTitle>
+                  <CardTitle className="text-sm">
+                    Schemas
+                    {schemas.data && ` (${schemas.data.schemas.length})`}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {(schemas.data?.schemas ?? []).length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No schemas.</p>
-                  ) : (
-                    <ul className="divide-y">
-                      {(schemas.data?.schemas ?? []).map((s) => (
-                        <li key={s.name}>
-                          <Link
-                            to="/catalog/$catalog/$schema"
-                            params={{ catalog, schema: s.name }}
-                            className="flex items-center gap-2 py-2 hover:text-chart-1"
-                          >
-                            <Database className="h-4 w-4 text-chart-4" />
-                            <span className="font-medium">{s.name}</span>
-                            {s.comment && (
-                              <span className="truncate text-sm text-muted-foreground">— {s.comment}</span>
-                            )}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <QueryState
+                    isLoading={schemas.isLoading}
+                    error={schemas.error}
+                  >
+                    {(schemas.data?.schemas ?? []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No schemas.
+                      </p>
+                    ) : (
+                      <ul className="divide-y">
+                        {(schemas.data?.schemas ?? []).map((s) => (
+                          <li key={s.name}>
+                            <Link
+                              to="/catalog/$catalog/$schema"
+                              params={{ catalog, schema: s.name }}
+                              className="flex items-center gap-2 py-2 hover:text-chart-1"
+                            >
+                              <Database className="h-4 w-4 text-chart-4" />
+                              <span className="font-medium">{s.name}</span>
+                              {s.comment && (
+                                <span className="truncate text-sm text-muted-foreground">
+                                  — {s.comment}
+                                </span>
+                              )}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </QueryState>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -66,15 +147,21 @@ export default function CatalogDetails({ catalog }: { catalog: string }) {
                   <MetaGrid
                     items={[
                       { label: "Name", value: data?.name },
-                      { label: "Owner", value: data?.owner || "—" },
-                      { label: "Created", value: formatEpoch(data?.created_at) },
-                      { label: "Updated", value: formatEpoch(data?.updated_at) },
+                      { label: "Owner", value: data?.audit?.owner || "—" },
+                      {
+                        label: "Created",
+                        value: formatTimestamp(data?.audit?.createdAt),
+                      },
+                      {
+                        label: "Updated",
+                        value: formatTimestamp(data?.audit?.updatedAt),
+                      },
                       { label: "Catalog ID", value: data?.id || "—" },
                     ]}
                   />
                 </CardContent>
               </Card>
-              <PropertiesCard properties={data?.properties} />
+              <PropertiesCard properties={data?.properties?.values} />
             </TabsContent>
 
             <TabsContent value="permissions">

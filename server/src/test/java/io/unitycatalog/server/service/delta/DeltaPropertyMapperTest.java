@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,6 +11,8 @@ import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaRowTrackingDomainMetadata;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import java.util.HashMap;
@@ -193,5 +196,30 @@ public class DeltaPropertyMapperTest {
 
   private static String featureKey(String feature) {
     return TableProperties.FEATURE_PREFIX + feature;
+  }
+
+  @Test
+  public void synthesizedProtocolLeavesMissingVersionsNull() {
+    DeltaProtocol protocol =
+        DeltaPropertyMapper.synthesizeProtocolFromProperties(
+            Map.of(
+                "delta.feature.catalogManaged", "supported", "delta.feature.v2Checkpoint", "no"));
+    assertThat(protocol.getMinReaderVersion()).isNull();
+    assertThat(protocol.getMinWriterVersion()).isNull();
+    assertThat(protocol.getWriterFeatures()).containsExactly("catalogManaged");
+    assertThat(protocol.getReaderFeatures()).containsExactly("catalogManaged");
+  }
+
+  @Test
+  public void synthesizedProtocolReportsNonNumericVersionAsCorrupt() {
+    assertThatThrownBy(
+            () ->
+                DeltaPropertyMapper.synthesizeProtocolFromProperties(
+                    Map.of("delta.minReaderVersion", "3", "delta.minWriterVersion", "seven")))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("delta.minWriterVersion")
+        .hasMessageContaining("'seven'")
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INTERNAL);
   }
 }
