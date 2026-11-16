@@ -11,8 +11,8 @@ import textwrap
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager, suppress
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Union
 from unittest import mock
