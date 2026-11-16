@@ -40,6 +40,7 @@ import io.unitycatalog.server.service.MetastoreService;
 import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.PermissionService;
 import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.Scim2GroupService;
 import io.unitycatalog.server.service.Scim2SelfService;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.StagingTableService;
@@ -397,6 +398,7 @@ public class UnityCatalogServer implements AutoCloseable {
     armeriaServerBuilder
         .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
         .annotate("scim2/Users", new Scim2UserService(authorizer, repositories, serverProperties))
+        .annotate("scim2/Groups", new Scim2GroupService(authorizer, repositories))
         .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
         .annotate("permissions", new PermissionService(authorizer, repositories, serverProperties))
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
