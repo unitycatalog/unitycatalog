@@ -27,9 +27,9 @@ exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
 ## The baseline release
 
 The first baseline release is 0.7.0: schema version 1 is its schema. A database without schema
-history is adopted as version 1 when its schema matches version 1 exactly, and as the latest version
-when it matches that exactly, such as a database that a server of this release set up when it
-started; `--check-schema` lists every difference. A database from an earlier release must be
+history is adopted at the version whose schema it matches exactly: version 1, the latest version,
+such as a database that a server of this release set up when it started, or a version between
+them; `--check-schema` lists every difference. A database from an earlier release must be
 upgraded to 0.7.0 first: start a 0.7.0 server on it once, stop it, then upgrade it to this release.
 Such a database still differs from version 1 in two checks, so repair it first (see
 [Repairing a database from before 0.7.0](#repairing-a-database-from-before-070)).
@@ -165,6 +165,13 @@ Messages that `--check-schema` and `--upgrade-schema` print when they refuse, an
   [Repairing a database from before 0.7.0](#repairing-a-database-from-before-070) repairs; the
   message then adds that it must be started once on a 0.7.0 server first. Other differences come
   from changes made outside Unity Catalog's steps: undo them.
+
+`Schema step <n> creates an index or constraint named <name>, but the <object> <name> ... already has that name`
+: An object that is not Unity Catalog's holds a name that the step needs, in a namespace that the
+  database shares between tables: on H2 the index names and the constraint names of a schema, on
+  PostgreSQL the names of a schema's tables, views, sequences and indexes, on MySQL the foreign key
+  names of a database. The step did not run. Rename that object, or give Unity Catalog a schema of
+  its own, then run the command again.
 
 `The database schema differs from the schema of version <m>:`
 : Followed by the differences, as above. The schema history records this release's last version,
