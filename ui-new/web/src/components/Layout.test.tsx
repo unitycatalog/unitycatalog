@@ -4,7 +4,14 @@ import userEvent from "@testing-library/user-event";
 
 vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"));
 
-const { logout } = vi.hoisted(() => ({ logout: vi.fn() }));
+const { logout, toastError } = vi.hoisted(() => ({
+  logout: vi.fn(async () => {}),
+  toastError: vi.fn(),
+}));
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+  return { ...actual, toast: { ...actual.toast, error: toastError } };
+});
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({
     authEnabled: true,
@@ -41,6 +48,15 @@ describe("Layout", () => {
     renderWithProviders(<Layout>x</Layout>, { handler: emptyCatalogs });
     await userEvent.click(screen.getByRole("button", { name: /^Log out$/ }));
     expect(logout).toHaveBeenCalled();
+  });
+
+  it("tells the user when Unity Catalog does not end the session", async () => {
+    logout.mockRejectedValueOnce(new Error("UC request failed (HTTP 500): {}"));
+    renderWithProviders(<Layout>x</Layout>, { handler: emptyCatalogs });
+    await userEvent.click(screen.getByRole("button", { name: /^Log out$/ }));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Sign out failed: UC request failed (HTTP 500): {}"),
+    );
   });
 
   it("collapses the navigation", async () => {

@@ -17,6 +17,7 @@ import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialPurpose;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
@@ -28,6 +29,7 @@ import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialGene
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +57,9 @@ public class CloudCredentialVendorTest {
   @Mock ServerProperties serverProperties;
   @Mock ExternalLocationUtils externalLocationUtils;
   CloudCredentialVendor credentialsOperations;
+
+  private static final EncryptedCredentialSecretStore SECRET_STORE =
+      new EncryptedCredentialSecretStore(Optional.of(TestUtils.CREDENTIAL_ENCRYPTION_KEY));
 
   @BeforeEach
   public void setUp() {
@@ -279,7 +284,8 @@ public class CloudCredentialVendorTest {
                 .name("test-credential")
                 .purpose(CredentialPurpose.STORAGE)
                 .awsIamRole(new AwsIamRoleRequest().roleArn(CREDENTIAL_ROLE_ARN)),
-            "test-user");
+            "test-user",
+            SECRET_STORE);
     String expectedExternalId = credentialDAO.getAwsIamRoleResponse().getExternalId();
 
     // Reset the mock to override the default stub from setUp()
@@ -358,7 +364,8 @@ public class CloudCredentialVendorTest {
                 .name("test-credential")
                 .purpose(CredentialPurpose.STORAGE)
                 .awsIamRole(new AwsIamRoleRequest().roleArn(CREDENTIAL_ROLE_ARN)),
-            "test-user");
+            "test-user",
+            SECRET_STORE);
 
     reset(externalLocationUtils);
     doReturn(Optional.of(credentialDAO))

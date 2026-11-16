@@ -31,6 +31,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
@@ -39,6 +40,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -131,7 +133,8 @@ public class OpaInputBuilderTest {
                 .name("credential")
                 .purpose(CredentialPurpose.STORAGE)
                 .awsIamRole(new AwsIamRoleRequest().roleArn("arn:aws:iam::123456789012:role/test")),
-            "owner@example.com");
+            "owner@example.com",
+            new EncryptedCredentialSecretStore(Optional.empty()));
     ExternalLocationDAO location =
         ExternalLocationDAO.builder()
             .id(UUID.randomUUID())
@@ -196,10 +199,7 @@ public class OpaInputBuilderTest {
         .getSessionFactory()
         .inTransaction(
             session -> session.get(UserDAO.class, user.getId()).setExternalId("subject-123"));
-    assertThat(
-            inputBuilder
-                .build(user.getId(), TABLE, otherTable.getId(), Privileges.SELECT)
-                .at("/input/principal"))
+    assertThat(inputBuilder.build(user.getId(), TABLE, otherTable.getId()).at("/input/principal"))
         .isEqualTo(
             JsonUtils.getInstance()
                 .valueToTree(
@@ -260,7 +260,7 @@ public class OpaInputBuilderTest {
   }
 
   private void assertInput(SecurableType type, UUID resourceId, Map<String, ?> expectedResource) {
-    assertThat(inputBuilder.build(user.getId(), type, resourceId, Privileges.CREATE_TABLE))
+    assertThat(inputBuilder.build(user.getId(), type, resourceId))
         .as("input for %s %s", type, resourceId)
         .isEqualTo(
             JsonUtils.getInstance()
@@ -270,8 +270,6 @@ public class OpaInputBuilderTest {
                         Map.of(
                             "principal",
                             Map.of("id", user.getId().toString(), "email", user.getEmail()),
-                            "privilege",
-                            "CREATE_TABLE",
                             "resource",
                             expectedResource))));
   }
@@ -280,7 +278,7 @@ public class OpaInputBuilderTest {
       UUID principalId, SecurableType type, UUID resourceId, UUID missingId) {
     assertThatExceptionOfType(BaseException.class)
         .as("metadata for %s %s and principal %s", type, resourceId, principalId)
-        .isThrownBy(() -> inputBuilder.build(principalId, type, resourceId, Privileges.SELECT))
+        .isThrownBy(() -> inputBuilder.build(principalId, type, resourceId))
         .withMessageStartingWith("Could not resolve authorization metadata: ")
         .withMessageEndingWith(" " + missingId)
         .satisfies(
