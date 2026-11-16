@@ -1709,7 +1709,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // physicalName must survive the rename.
     DeltaStructFieldMetadata meta =
         reloaded.getMetadata().getColumns().getFields().get(0).getMetadata();
-    assertThat(meta.getAdditionalProperty("delta.columnMapping.physicalName")).isEqualTo("col-1");
+    assertThat(meta.get("delta.columnMapping.physicalName")).isEqualTo("col-1");
   }
 
   /**
@@ -1826,8 +1826,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Handle h = createCmNameModeStructManaged("tbl_nested_field_rename");
     // Rename the nested field "x" to "y" while keeping top-level "s" and physicalNames unchanged.
     DeltaStructFieldMetadata nestedMeta = new DeltaStructFieldMetadata();
-    nestedMeta.putAdditionalProperty("delta.columnMapping.id", 2);
-    nestedMeta.putAdditionalProperty("delta.columnMapping.physicalName", "col-x");
+    nestedMeta.put("delta.columnMapping.id", 2);
+    nestedMeta.put("delta.columnMapping.physicalName", "col-x");
     DeltaStructType newInnerType =
         new DeltaStructType()
             .type("struct")
@@ -1839,8 +1839,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         .nullable(true)
                         .metadata(nestedMeta)));
     DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
-    outerMeta.putAdditionalProperty("delta.columnMapping.id", 1);
-    outerMeta.putAdditionalProperty("delta.columnMapping.physicalName", "col-s");
+    outerMeta.put("delta.columnMapping.id", 1);
+    outerMeta.put("delta.columnMapping.physicalName", "col-s");
     updateTable(
         h,
         new DeltaSetSchemaUpdate()
@@ -1860,14 +1860,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // Outer physicalName must survive the nested rename.
     DeltaStructFieldMetadata outerResult =
         reloaded.getMetadata().getColumns().getFields().get(0).getMetadata();
-    assertThat(outerResult.getAdditionalProperty("delta.columnMapping.physicalName"))
-        .isEqualTo("col-s");
+    assertThat(outerResult.get("delta.columnMapping.physicalName")).isEqualTo("col-s");
     // The renamed child keeps its name, id and physicalName.
     DeltaStructFieldMetadata childMeta = nestedField(reloaded, "s", "y").getMetadata();
     assertThat(nestedFieldNames(reloaded, "s")).containsExactly("y");
-    assertThat(childMeta.getAdditionalProperty("delta.columnMapping.id")).isEqualTo(2);
-    assertThat(childMeta.getAdditionalProperty("delta.columnMapping.physicalName"))
-        .isEqualTo("col-x");
+    assertThat(childMeta.get("delta.columnMapping.id")).isEqualTo(2);
+    assertThat(childMeta.get("delta.columnMapping.physicalName")).isEqualTo("col-x");
   }
 
   /**
@@ -1889,15 +1887,11 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     DeltaLoadTableResponse reloaded =
         deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
     assertThat(columnNames(reloaded)).containsExactly("props");
-    assertThat(
-            nestedField(reloaded, "props")
-                .getMetadata()
-                .getAdditionalProperty("delta.columnMapping.physicalName"))
+    assertThat(nestedField(reloaded, "props").getMetadata().get("delta.columnMapping.physicalName"))
         .isEqualTo("col-props");
     DeltaStructFieldMetadata childMeta = nestedField(reloaded, "props", "value").getMetadata();
-    assertThat(childMeta.getAdditionalProperty("delta.columnMapping.id")).isEqualTo(2);
-    assertThat(childMeta.getAdditionalProperty("delta.columnMapping.physicalName"))
-        .isEqualTo("col-val");
+    assertThat(childMeta.get("delta.columnMapping.id")).isEqualTo(2);
+    assertThat(childMeta.get("delta.columnMapping.physicalName")).isEqualTo("col-val");
   }
 
   /**
@@ -1921,14 +1915,11 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
     assertThat(columnNames(reloaded)).containsExactly("events");
     assertThat(
-            nestedField(reloaded, "events")
-                .getMetadata()
-                .getAdditionalProperty("delta.columnMapping.physicalName"))
+            nestedField(reloaded, "events").getMetadata().get("delta.columnMapping.physicalName"))
         .isEqualTo("col-events");
     DeltaStructFieldMetadata childMeta = nestedField(reloaded, "events", "tag").getMetadata();
-    assertThat(childMeta.getAdditionalProperty("delta.columnMapping.id")).isEqualTo(2);
-    assertThat(childMeta.getAdditionalProperty("delta.columnMapping.physicalName"))
-        .isEqualTo("col-label");
+    assertThat(childMeta.get("delta.columnMapping.id")).isEqualTo(2);
+    assertThat(childMeta.get("delta.columnMapping.physicalName")).isEqualTo("col-label");
   }
 
   @Test
@@ -1955,8 +1946,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     "col-s")));
     assertThat(nestedFieldNames(r1, "s", "in")).containsExactly("y");
     DeltaStructFieldMetadata yMeta = nestedField(r1, "s", "in", "y").getMetadata();
-    assertThat(yMeta.getAdditionalProperty("delta.columnMapping.id")).isEqualTo(3);
-    assertThat(yMeta.getAdditionalProperty("delta.columnMapping.physicalName")).isEqualTo("col-x");
+    assertThat(yMeta.get("delta.columnMapping.id")).isEqualTo(3);
+    assertThat(yMeta.get("delta.columnMapping.physicalName")).isEqualTo("col-x");
 
     // Two fields of one struct renamed in the same request.
     Handle two =
@@ -1980,15 +1971,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     1,
                     "col-s")));
     assertThat(nestedFieldNames(r2, "s")).containsExactly("x2", "z2");
-    assertThat(
-            nestedField(r2, "s", "x2")
-                .getMetadata()
-                .getAdditionalProperty("delta.columnMapping.id"))
-        .isEqualTo(2);
-    assertThat(
-            nestedField(r2, "s", "z2")
-                .getMetadata()
-                .getAdditionalProperty("delta.columnMapping.physicalName"))
+    assertThat(nestedField(r2, "s", "x2").getMetadata().get("delta.columnMapping.id")).isEqualTo(2);
+    assertThat(nestedField(r2, "s", "z2").getMetadata().get("delta.columnMapping.physicalName"))
         .isEqualTo("col-z");
   }
 
@@ -2031,10 +2015,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     DeltaLoadTableResponse reloaded =
         deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
     assertThat(columnNames(reloaded)).containsExactly("id", "amount", "a", "b");
-    assertThat(
-            nestedField(reloaded, "a")
-                .getMetadata()
-                .getAdditionalProperty("delta.columnMapping.physicalName"))
+    assertThat(nestedField(reloaded, "a").getMetadata().get("delta.columnMapping.physicalName"))
         .isEqualTo("a");
 
     // A different commit file at a taken version is a conflict, not a guard rejection.
@@ -2069,7 +2050,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // CM id must survive the rename in type_json.
     DeltaStructFieldMetadata meta =
         reloaded.getMetadata().getColumns().getFields().get(0).getMetadata();
-    assertThat(meta.getAdditionalProperty("delta.columnMapping.id")).isEqualTo(1);
+    assertThat(meta.get("delta.columnMapping.id")).isEqualTo(1);
   }
 
   /**
@@ -2098,8 +2079,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 .getMetadata()
                 .getEtag());
     DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
-    meta.putAdditionalProperty("delta.columnMapping.id", 1);
-    meta.putAdditionalProperty("delta.columnMapping.physicalName", "id");
+    meta.put("delta.columnMapping.id", 1);
+    meta.put("delta.columnMapping.physicalName", "id");
     TestUtils.assertDeltaApiException(
         () ->
             updateTable(
@@ -2244,10 +2225,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       String name, DeltaDataType type, boolean nullable, Object id, Object phys) {
     DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
     if (id != null) {
-      meta.putAdditionalProperty("delta.columnMapping.id", id);
+      meta.put("delta.columnMapping.id", id);
     }
     if (phys != null) {
-      meta.putAdditionalProperty("delta.columnMapping.physicalName", phys);
+      meta.put("delta.columnMapping.physicalName", phys);
     }
     return new DeltaStructField().name(name).type(type).nullable(nullable).metadata(meta);
   }
@@ -2923,10 +2904,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   }
 
   private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
-    field
-        .getMetadata()
-        .putAdditionalProperty(
-            "delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
+    field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
     return field;
   }
 

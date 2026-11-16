@@ -3,7 +3,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.media.Schema
-import org.openapitools.codegen.{CodegenConstants, DefaultGenerator}
+import java.lang.reflect.{InvocationHandler, InvocationTargetException, Method, Proxy}
+import org.openapitools.codegen.{CodegenConfig, CodegenConstants, DefaultCodegen, DefaultGenerator}
 import org.openapitools.codegen.config.CodegenConfigurator
 import scala.collection.JavaConverters._
 
@@ -75,10 +76,43 @@ object OpenApiHelper {
       gen.setGenerateMetadata(false)
       val input = config.toClientOptInput()
       keepDescribedRefsAsModels(input.getOpenAPI)
-      if (generatorName == "java") keepDiscriminatorsAsStrings(input.getOpenAPI)
+      if (generatorName == "java") {
+        keepDiscriminatorsAsStrings(input.getOpenAPI)
+        input.config(withMapModels(input.getConfig))
+      }
       val files = gen.opts(input).generate().asScala
       if (generatorName == "java") files.filter(_.getName.endsWith(".java")).foreach(keepMapModelsAsMaps)
     }
+  }
+
+  /**
+   * Before 7.10.0 a Java model with additionalProperties extended HashMap in every library. The
+   * native client now keeps the keys only in a field, which breaks callers that use such a model as
+   * a Map, such as Delta's Unity Catalog tests with DeltaStructFieldMetadata. processOpts() sets
+   * this per library, so the flag is turned off again right after it runs.
+   */
+  private def withMapModels(codegen: CodegenConfig): CodegenConfig = {
+    val handler = new InvocationHandler {
+      override def invoke(proxy: AnyRef, method: Method, args: Array[AnyRef]): AnyRef = {
+        val result =
+          try method.invoke(codegen, Option(args).getOrElse(Array.empty[AnyRef]): _*)
+          catch { case e: InvocationTargetException => throw e.getCause }
+        if (method.getName == "processOpts") {
+          val flag = classOf[DefaultCodegen].getDeclaredField("supportsAdditionalPropertiesWithComposedSchema")
+          flag.setAccessible(true)
+          flag.setBoolean(codegen, false)
+        }
+        // The generator names the proxy in @Generated, so put the generator's own class back.
+        val properties = codegen.additionalProperties()
+        if (properties.get("generatorClass") == proxy.getClass.getName) {
+          properties.put("generatorClass", codegen.getClass.getName)
+        }
+        result
+      }
+    }
+    Proxy
+      .newProxyInstance(classOf[CodegenConfig].getClassLoader, Array[Class[_]](classOf[CodegenConfig]), handler)
+      .asInstanceOf[CodegenConfig]
   }
 
   private val objectShape = """(?m)^@JsonFormat\(shape=JsonFormat\.Shape\.OBJECT\)\R""".r
