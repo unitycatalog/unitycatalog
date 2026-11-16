@@ -7,18 +7,18 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *DeltaConfigurationApi* | [**getConfig**](Apis/DeltaConfigurationApi.md#getconfig) | **GET** /delta/v1/config | Get catalog configuration |
-| *DeltaTablesApi* | [**createStagingTable**](Apis/DeltaTablesApi.md#createstagingtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
-*DeltaTablesApi* | [**createTable**](Apis/DeltaTablesApi.md#createtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | Create a table |
-*DeltaTablesApi* | [**deleteTable**](Apis/DeltaTablesApi.md#deletetable) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
-*DeltaTablesApi* | [**loadTable**](Apis/DeltaTablesApi.md#loadtable) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Load table metadata |
-*DeltaTablesApi* | [**renameTable**](Apis/DeltaTablesApi.md#renametable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename | Rename a table |
-*DeltaTablesApi* | [**reportMetrics**](Apis/DeltaTablesApi.md#reportmetrics) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics | Report commit metrics |
-*DeltaTablesApi* | [**tableExists**](Apis/DeltaTablesApi.md#tableexists) | **HEAD** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Check if table exists |
-*DeltaTablesApi* | [**updateTable**](Apis/DeltaTablesApi.md#updatetable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Update table |
-| *DeltaTemporaryCredentialsApi* | [**getStagingTableCredentials**](Apis/DeltaTemporaryCredentialsApi.md#getstagingtablecredentials) | **GET** /delta/v1/staging-tables/{table_id}/credentials | Get staging table credentials by UUID |
-*DeltaTemporaryCredentialsApi* | [**getTableCredentials**](Apis/DeltaTemporaryCredentialsApi.md#gettablecredentials) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials | Get table credentials |
-*DeltaTemporaryCredentialsApi* | [**getTemporaryPathCredentials**](Apis/DeltaTemporaryCredentialsApi.md#gettemporarypathcredentials) | **GET** /delta/v1/temporary-path-credentials | Get temporary path credentials |
+| *DeltaConfigurationApi* | [**getConfig**](Apis/DeltaConfigurationApi.md#getConfig) | **GET** /delta/v1/config | Get catalog configuration |
+| *DeltaTablesApi* | [**createStagingTable**](Apis/DeltaTablesApi.md#createStagingTable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
+*DeltaTablesApi* | [**createTable**](Apis/DeltaTablesApi.md#createTable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | Create a table |
+*DeltaTablesApi* | [**deleteTable**](Apis/DeltaTablesApi.md#deleteTable) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
+*DeltaTablesApi* | [**loadTable**](Apis/DeltaTablesApi.md#loadTable) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Load table metadata |
+*DeltaTablesApi* | [**renameTable**](Apis/DeltaTablesApi.md#renameTable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename | Rename a table |
+*DeltaTablesApi* | [**reportMetrics**](Apis/DeltaTablesApi.md#reportMetrics) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics | Report commit metrics |
+*DeltaTablesApi* | [**tableExists**](Apis/DeltaTablesApi.md#tableExists) | **HEAD** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Check if table exists |
+*DeltaTablesApi* | [**updateTable**](Apis/DeltaTablesApi.md#updateTable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Update table |
+| *DeltaTemporaryCredentialsApi* | [**getStagingTableCredentials**](Apis/DeltaTemporaryCredentialsApi.md#getStagingTableCredentials) | **GET** /delta/v1/staging-tables/{table_id}/credentials | Get staging table credentials by UUID |
+*DeltaTemporaryCredentialsApi* | [**getTableCredentials**](Apis/DeltaTemporaryCredentialsApi.md#getTableCredentials) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials | Get table credentials |
+*DeltaTemporaryCredentialsApi* | [**getTemporaryPathCredentials**](Apis/DeltaTemporaryCredentialsApi.md#getTemporaryPathCredentials) | **GET** /delta/v1/temporary-path-credentials | Get temporary path credentials |
 
 
 <a name="documentation-for-models"></a>
@@ -62,7 +62,6 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [DeltaSetSchemaUpdate](./Models/DeltaSetSchemaUpdate.md)
  - [DeltaSetTableCommentUpdate](./Models/DeltaSetTableCommentUpdate.md)
  - [DeltaStagingTableResponse](./Models/DeltaStagingTableResponse.md)
- - [DeltaStagingTableResponse_required_protocol](./Models/DeltaStagingTableResponse_required_protocol.md)
  - [DeltaStagingTableResponse_suggested_protocol](./Models/DeltaStagingTableResponse_suggested_protocol.md)
  - [DeltaStorageCredential](./Models/DeltaStorageCredential.md)
  - [DeltaStorageCredential_config](./Models/DeltaStorageCredential_config.md)

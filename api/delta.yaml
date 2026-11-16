@@ -1369,9 +1369,9 @@ components:
           description: |
             Schema-only marker; never sent on the wire. Declared so the OpenAPI generator emits a
             wrapper class for this schema instead of inlining `metadata` on the parent DeltaStructField
-            `new HashMap<>()` -- that would erase the "metadata absent" signal. Use the Map
-            accessors (e.g., `metadata.put("comment", ...)` and `metadata.get("comment")`) for 
-            actual metadata keys.
+            `new HashMap<>()` -- that would erase the "metadata absent" signal. Actual metadata keys
+            are additional properties (in the Java client, e.g., `metadata.putAdditionalProperty("comment", ...)`
+            and `metadata.getAdditionalProperty("comment")`).
 
     DeltaDataType:
       description: |

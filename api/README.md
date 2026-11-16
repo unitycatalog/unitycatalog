@@ -7,60 +7,60 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *CatalogsApi* | [**createCatalog**](Apis/CatalogsApi.md#createcatalog) | **POST** /catalogs | Create a catalog |
-*CatalogsApi* | [**deleteCatalog**](Apis/CatalogsApi.md#deletecatalog) | **DELETE** /catalogs/{name} | Delete a catalog |
-*CatalogsApi* | [**getCatalog**](Apis/CatalogsApi.md#getcatalog) | **GET** /catalogs/{name} | Get a catalog |
-*CatalogsApi* | [**listCatalogs**](Apis/CatalogsApi.md#listcatalogs) | **GET** /catalogs | List catalogs |
-*CatalogsApi* | [**updateCatalog**](Apis/CatalogsApi.md#updatecatalog) | **PATCH** /catalogs/{name} | Update a catalog |
-| *CredentialsApi* | [**createCredential**](Apis/CredentialsApi.md#createcredential) | **POST** /credentials | Create a credential |
-*CredentialsApi* | [**deleteCredential**](Apis/CredentialsApi.md#deletecredential) | **DELETE** /credentials/{name} | Delete a credential |
-*CredentialsApi* | [**getCredential**](Apis/CredentialsApi.md#getcredential) | **GET** /credentials/{name} | Get a credential |
-*CredentialsApi* | [**listCredentials**](Apis/CredentialsApi.md#listcredentials) | **GET** /credentials | List credentials |
-*CredentialsApi* | [**updateCredential**](Apis/CredentialsApi.md#updatecredential) | **PATCH** /credentials/{name} | Update a credential |
+| *CatalogsApi* | [**createCatalog**](Apis/CatalogsApi.md#createCatalog) | **POST** /catalogs | Create a catalog |
+*CatalogsApi* | [**deleteCatalog**](Apis/CatalogsApi.md#deleteCatalog) | **DELETE** /catalogs/{name} | Delete a catalog |
+*CatalogsApi* | [**getCatalog**](Apis/CatalogsApi.md#getCatalog) | **GET** /catalogs/{name} | Get a catalog |
+*CatalogsApi* | [**listCatalogs**](Apis/CatalogsApi.md#listCatalogs) | **GET** /catalogs | List catalogs |
+*CatalogsApi* | [**updateCatalog**](Apis/CatalogsApi.md#updateCatalog) | **PATCH** /catalogs/{name} | Update a catalog |
+| *CredentialsApi* | [**createCredential**](Apis/CredentialsApi.md#createCredential) | **POST** /credentials | Create a credential |
+*CredentialsApi* | [**deleteCredential**](Apis/CredentialsApi.md#deleteCredential) | **DELETE** /credentials/{name} | Delete a credential |
+*CredentialsApi* | [**getCredential**](Apis/CredentialsApi.md#getCredential) | **GET** /credentials/{name} | Get a credential |
+*CredentialsApi* | [**listCredentials**](Apis/CredentialsApi.md#listCredentials) | **GET** /credentials | List credentials |
+*CredentialsApi* | [**updateCredential**](Apis/CredentialsApi.md#updateCredential) | **PATCH** /credentials/{name} | Update a credential |
 | *DeltaCommitsApi* | [**commit**](Apis/DeltaCommitsApi.md#commit) | **POST** /delta/preview/commits | Commit changes to a specified Delta table. The server has a limit defined in config on how many unbackfilled commits it can hold. Clients are expected to do active backfill of the commit after committing to UC. So in most cases the number of unbackfilled commits should be close to zero or one. But if clients misbehave and unbackfilled commits accumulate beyond the limit, server will reject further commits until more backfill is done. Replaying an already-accepted commit (same version and file-name) is an idempotent no-op that returns 200, so a client that lost the response can safely resend. WARNING: This API is experimental and may change in future versions.  |
-*DeltaCommitsApi* | [**getCommits**](Apis/DeltaCommitsApi.md#getcommits) | **GET** /delta/preview/commits | List unbackfilled Delta table commits. WARNING: This API is experimental and may change in future versions.  |
-| *ExternalLocationsApi* | [**createExternalLocation**](Apis/ExternalLocationsApi.md#createexternallocation) | **POST** /external-locations | Create an external location |
-*ExternalLocationsApi* | [**deleteExternalLocation**](Apis/ExternalLocationsApi.md#deleteexternallocation) | **DELETE** /external-locations/{name} | Delete an external location |
-*ExternalLocationsApi* | [**getExternalLocation**](Apis/ExternalLocationsApi.md#getexternallocation) | **GET** /external-locations/{name} | Get an external location |
-*ExternalLocationsApi* | [**listExternalLocations**](Apis/ExternalLocationsApi.md#listexternallocations) | **GET** /external-locations | List external locations |
-*ExternalLocationsApi* | [**updateExternalLocation**](Apis/ExternalLocationsApi.md#updateexternallocation) | **PATCH** /external-locations/{name} | Update an external location |
-| *FunctionsApi* | [**createFunction**](Apis/FunctionsApi.md#createfunction) | **POST** /functions | Create a function. WARNING: This API is experimental and will change in future versions.  |
-*FunctionsApi* | [**deleteFunction**](Apis/FunctionsApi.md#deletefunction) | **DELETE** /functions/{name} | Delete a function |
-*FunctionsApi* | [**getFunction**](Apis/FunctionsApi.md#getfunction) | **GET** /functions/{name} | Get a function |
-*FunctionsApi* | [**listFunctions**](Apis/FunctionsApi.md#listfunctions) | **GET** /functions | List functions |
+*DeltaCommitsApi* | [**getCommits**](Apis/DeltaCommitsApi.md#getCommits) | **GET** /delta/preview/commits | List unbackfilled Delta table commits. WARNING: This API is experimental and may change in future versions.  |
+| *ExternalLocationsApi* | [**createExternalLocation**](Apis/ExternalLocationsApi.md#createExternalLocation) | **POST** /external-locations | Create an external location |
+*ExternalLocationsApi* | [**deleteExternalLocation**](Apis/ExternalLocationsApi.md#deleteExternalLocation) | **DELETE** /external-locations/{name} | Delete an external location |
+*ExternalLocationsApi* | [**getExternalLocation**](Apis/ExternalLocationsApi.md#getExternalLocation) | **GET** /external-locations/{name} | Get an external location |
+*ExternalLocationsApi* | [**listExternalLocations**](Apis/ExternalLocationsApi.md#listExternalLocations) | **GET** /external-locations | List external locations |
+*ExternalLocationsApi* | [**updateExternalLocation**](Apis/ExternalLocationsApi.md#updateExternalLocation) | **PATCH** /external-locations/{name} | Update an external location |
+| *FunctionsApi* | [**createFunction**](Apis/FunctionsApi.md#createFunction) | **POST** /functions | Create a function. WARNING: This API is experimental and will change in future versions.  |
+*FunctionsApi* | [**deleteFunction**](Apis/FunctionsApi.md#deleteFunction) | **DELETE** /functions/{name} | Delete a function |
+*FunctionsApi* | [**getFunction**](Apis/FunctionsApi.md#getFunction) | **GET** /functions/{name} | Get a function |
+*FunctionsApi* | [**listFunctions**](Apis/FunctionsApi.md#listFunctions) | **GET** /functions | List functions |
 | *GrantsApi* | [**get**](Apis/GrantsApi.md#get) | **GET** /permissions/{securable_type}/{full_name} | Get permissions |
 *GrantsApi* | [**update**](Apis/GrantsApi.md#update) | **PATCH** /permissions/{securable_type}/{full_name} | Update a permission |
 | *MetastoresApi* | [**summary**](Apis/MetastoresApi.md#summary) | **GET** /metastore_summary | Get metastore summary |
-| *ModelVersionsApi* | [**createModelVersion**](Apis/ModelVersionsApi.md#createmodelversion) | **POST** /models/versions | Create a model version.  |
-*ModelVersionsApi* | [**deleteModelVersion**](Apis/ModelVersionsApi.md#deletemodelversion) | **DELETE** /models/{full_name}/versions/{version} | Delete a model version |
-*ModelVersionsApi* | [**finalizeModelVersion**](Apis/ModelVersionsApi.md#finalizemodelversion) | **PATCH** /models/{full_name}/versions/{version}/finalize | Finalize a model version |
-*ModelVersionsApi* | [**getModelVersion**](Apis/ModelVersionsApi.md#getmodelversion) | **GET** /models/{full_name}/versions/{version} | Get a model version |
-*ModelVersionsApi* | [**listModelVersions**](Apis/ModelVersionsApi.md#listmodelversions) | **GET** /models/{full_name}/versions | List model versions of the specified registered model. |
-*ModelVersionsApi* | [**updateModelVersion**](Apis/ModelVersionsApi.md#updatemodelversion) | **PATCH** /models/{full_name}/versions/{version} | Update a model version |
-| *RegisteredModelsApi* | [**createRegisteredModel**](Apis/RegisteredModelsApi.md#createregisteredmodel) | **POST** /models | Create a model. WARNING: This API is experimental and will change in future versions.  |
-*RegisteredModelsApi* | [**deleteRegisteredModel**](Apis/RegisteredModelsApi.md#deleteregisteredmodel) | **DELETE** /models/{full_name} | Delete a specified registered model. |
-*RegisteredModelsApi* | [**getRegisteredModel**](Apis/RegisteredModelsApi.md#getregisteredmodel) | **GET** /models/{full_name} | Get a specified registered model |
-*RegisteredModelsApi* | [**listRegisteredModels**](Apis/RegisteredModelsApi.md#listregisteredmodels) | **GET** /models | List models |
-*RegisteredModelsApi* | [**updateRegisteredModel**](Apis/RegisteredModelsApi.md#updateregisteredmodel) | **PATCH** /models/{full_name} | Update a registered model |
-| *SchemasApi* | [**createSchema**](Apis/SchemasApi.md#createschema) | **POST** /schemas | Create a schema |
-*SchemasApi* | [**deleteSchema**](Apis/SchemasApi.md#deleteschema) | **DELETE** /schemas/{full_name} | Delete a schema |
-*SchemasApi* | [**getSchema**](Apis/SchemasApi.md#getschema) | **GET** /schemas/{full_name} | Get a schema |
-*SchemasApi* | [**listSchemas**](Apis/SchemasApi.md#listschemas) | **GET** /schemas | List schemas |
-*SchemasApi* | [**updateSchema**](Apis/SchemasApi.md#updateschema) | **PATCH** /schemas/{full_name} | Update a schema |
-| *TablesApi* | [**createStagingTable**](Apis/TablesApi.md#createstagingtable) | **POST** /staging-tables | Create a staging table |
-*TablesApi* | [**createTable**](Apis/TablesApi.md#createtable) | **POST** /tables | Create a table. Only external table creation is supported. WARNING: This API is experimental and will change in future versions.  |
-*TablesApi* | [**deleteTable**](Apis/TablesApi.md#deletetable) | **DELETE** /tables/{full_name} | Delete a table |
-*TablesApi* | [**getTable**](Apis/TablesApi.md#gettable) | **GET** /tables/{full_name} | Get a table |
-*TablesApi* | [**listTables**](Apis/TablesApi.md#listtables) | **GET** /tables | List tables |
-| *TemporaryCredentialsApi* | [**generateTemporaryModelVersionCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarymodelversioncredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location. |
-*TemporaryCredentialsApi* | [**generateTemporaryPathCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarypathcredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials. |
-*TemporaryCredentialsApi* | [**generateTemporaryTableCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarytablecredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials. |
-*TemporaryCredentialsApi* | [**generateTemporaryVolumeCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporaryvolumecredentials) | **POST** /temporary-volume-credentials | Generate temporary volume credentials. |
-| *VolumesApi* | [**createVolume**](Apis/VolumesApi.md#createvolume) | **POST** /volumes | Create a Volume |
-*VolumesApi* | [**deleteVolume**](Apis/VolumesApi.md#deletevolume) | **DELETE** /volumes/{name} | Delete a Volume |
-*VolumesApi* | [**getVolume**](Apis/VolumesApi.md#getvolume) | **GET** /volumes/{name} | Get a Volume |
-*VolumesApi* | [**listVolumes**](Apis/VolumesApi.md#listvolumes) | **GET** /volumes | List Volumes |
-*VolumesApi* | [**updateVolume**](Apis/VolumesApi.md#updatevolume) | **PATCH** /volumes/{name} | Update a Volume |
+| *ModelVersionsApi* | [**createModelVersion**](Apis/ModelVersionsApi.md#createModelVersion) | **POST** /models/versions | Create a model version.  |
+*ModelVersionsApi* | [**deleteModelVersion**](Apis/ModelVersionsApi.md#deleteModelVersion) | **DELETE** /models/{full_name}/versions/{version} | Delete a model version |
+*ModelVersionsApi* | [**finalizeModelVersion**](Apis/ModelVersionsApi.md#finalizeModelVersion) | **PATCH** /models/{full_name}/versions/{version}/finalize | Finalize a model version |
+*ModelVersionsApi* | [**getModelVersion**](Apis/ModelVersionsApi.md#getModelVersion) | **GET** /models/{full_name}/versions/{version} | Get a model version |
+*ModelVersionsApi* | [**listModelVersions**](Apis/ModelVersionsApi.md#listModelVersions) | **GET** /models/{full_name}/versions | List model versions of the specified registered model. |
+*ModelVersionsApi* | [**updateModelVersion**](Apis/ModelVersionsApi.md#updateModelVersion) | **PATCH** /models/{full_name}/versions/{version} | Update a model version |
+| *RegisteredModelsApi* | [**createRegisteredModel**](Apis/RegisteredModelsApi.md#createRegisteredModel) | **POST** /models | Create a model. WARNING: This API is experimental and will change in future versions.  |
+*RegisteredModelsApi* | [**deleteRegisteredModel**](Apis/RegisteredModelsApi.md#deleteRegisteredModel) | **DELETE** /models/{full_name} | Delete a specified registered model. |
+*RegisteredModelsApi* | [**getRegisteredModel**](Apis/RegisteredModelsApi.md#getRegisteredModel) | **GET** /models/{full_name} | Get a specified registered model |
+*RegisteredModelsApi* | [**listRegisteredModels**](Apis/RegisteredModelsApi.md#listRegisteredModels) | **GET** /models | List models |
+*RegisteredModelsApi* | [**updateRegisteredModel**](Apis/RegisteredModelsApi.md#updateRegisteredModel) | **PATCH** /models/{full_name} | Update a registered model |
+| *SchemasApi* | [**createSchema**](Apis/SchemasApi.md#createSchema) | **POST** /schemas | Create a schema |
+*SchemasApi* | [**deleteSchema**](Apis/SchemasApi.md#deleteSchema) | **DELETE** /schemas/{full_name} | Delete a schema |
+*SchemasApi* | [**getSchema**](Apis/SchemasApi.md#getSchema) | **GET** /schemas/{full_name} | Get a schema |
+*SchemasApi* | [**listSchemas**](Apis/SchemasApi.md#listSchemas) | **GET** /schemas | List schemas |
+*SchemasApi* | [**updateSchema**](Apis/SchemasApi.md#updateSchema) | **PATCH** /schemas/{full_name} | Update a schema |
+| *TablesApi* | [**createStagingTable**](Apis/TablesApi.md#createStagingTable) | **POST** /staging-tables | Create a staging table |
+*TablesApi* | [**createTable**](Apis/TablesApi.md#createTable) | **POST** /tables | Create a table. Only external table creation is supported. WARNING: This API is experimental and will change in future versions.  |
+*TablesApi* | [**deleteTable**](Apis/TablesApi.md#deleteTable) | **DELETE** /tables/{full_name} | Delete a table |
+*TablesApi* | [**getTable**](Apis/TablesApi.md#getTable) | **GET** /tables/{full_name} | Get a table |
+*TablesApi* | [**listTables**](Apis/TablesApi.md#listTables) | **GET** /tables | List tables |
+| *TemporaryCredentialsApi* | [**generateTemporaryModelVersionCredentials**](Apis/TemporaryCredentialsApi.md#generateTemporaryModelVersionCredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location. |
+*TemporaryCredentialsApi* | [**generateTemporaryPathCredentials**](Apis/TemporaryCredentialsApi.md#generateTemporaryPathCredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials. |
+*TemporaryCredentialsApi* | [**generateTemporaryTableCredentials**](Apis/TemporaryCredentialsApi.md#generateTemporaryTableCredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials. |
+*TemporaryCredentialsApi* | [**generateTemporaryVolumeCredentials**](Apis/TemporaryCredentialsApi.md#generateTemporaryVolumeCredentials) | **POST** /temporary-volume-credentials | Generate temporary volume credentials. |
+| *VolumesApi* | [**createVolume**](Apis/VolumesApi.md#createVolume) | **POST** /volumes | Create a Volume |
+*VolumesApi* | [**deleteVolume**](Apis/VolumesApi.md#deleteVolume) | **DELETE** /volumes/{name} | Delete a Volume |
+*VolumesApi* | [**getVolume**](Apis/VolumesApi.md#getVolume) | **GET** /volumes/{name} | Get a Volume |
+*VolumesApi* | [**listVolumes**](Apis/VolumesApi.md#listVolumes) | **GET** /volumes | List Volumes |
+*VolumesApi* | [**updateVolume**](Apis/VolumesApi.md#updateVolume) | **PATCH** /volumes/{name} | Update a Volume |
 
 
 <a name="documentation-for-models"></a>

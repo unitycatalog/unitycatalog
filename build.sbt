@@ -178,6 +178,10 @@ def javafmtCheckSettings() = Seq(
   (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtAll)).value
 )
 
+// Overrides Java/libraries/native/api.mustache so the native Java clients decode responses as UTF-8 (see its
+// header for when to remove it).
+lazy val javaClientTemplateDir = (file("clients") / "java" / "templates").getAbsolutePath
+
 lazy val controlApi = (project in file("target/control/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
@@ -206,6 +210,7 @@ lazy val controlApi = (project in file("target/control/java"))
       "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true",
       "openApiNullable" -> "false"),
+    openApiTemplateDir := javaClientTemplateDir,
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
@@ -274,14 +279,16 @@ lazy val client = (project in file("clients/java"))
             invokerPackage = s"$orgName.client",
             apiPackage = s"$orgName.client.api",
             modelPackage = s"$orgName.client.model",
-            additionalProperties = commonProps
+            additionalProperties = commonProps,
+            templateDir = javaClientTemplateDir
           ),
           OpenApiSpec(
             inputSpec = (file(".") / "api" / "delta.yaml").toString,
             invokerPackage = s"$orgName.client",
             apiPackage = s"$orgName.client.delta.api",
             modelPackage = s"$orgName.client.delta.model",
-            additionalProperties = commonProps
+            additionalProperties = commonProps,
+            templateDir = javaClientTemplateDir
           )
         )
       )
@@ -343,8 +350,7 @@ lazy val pythonClient = (project in file("clients/python"))
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
               additionalProperties = commonProps,
-              // Overrides python/asyncio/rest.mustache with the v7.11.0 version (see its header for when to
-              // remove it) and python/api_client.mustache so the shared ApiClient also resolves Delta models.
+              // Overrides python/api_client.mustache so the shared ApiClient also resolves Delta models.
               templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath
             )
           )

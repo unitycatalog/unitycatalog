@@ -611,17 +611,16 @@ public class DeltaModelSerializationTest {
   /**
    * Build a {@link DeltaStructFieldMetadata} with the optional {@code comment} plus a bag of
    * additional properties for the spec's dotted Delta keys (e.g. {@code delta.columnMapping.id}).
-   * Both the server-side and client-side {@code DeltaStructFieldMetadata} extend {@code
-   * HashMap<String, Object>}; Jackson treats them as Maps for serialization (and skips the
-   * generated {@code @JsonAnyGetter} when extending a Map), so we write everything via {@code put}
-   * into the inherited Map view rather than the typed setter or {@code putAdditionalProperty}.
+   * The client-side {@code DeltaStructFieldMetadata} keeps every metadata key in its additional
+   * properties, which Jackson writes and reads through {@code @JsonAnyGetter} and
+   * {@code @JsonAnySetter}.
    */
   private static DeltaStructFieldMetadata meta(String comment, Map<String, Object> additional) {
     DeltaStructFieldMetadata m = new DeltaStructFieldMetadata();
     if (comment != null) {
-      m.put("comment", comment);
+      m.putAdditionalProperty("comment", comment);
     }
-    m.putAll(additional);
+    additional.forEach(m::putAdditionalProperty);
     return m;
   }
 }

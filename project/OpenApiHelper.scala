@@ -1,5 +1,11 @@
+import java.io.File
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import io.swagger.v3.oas.models.OpenAPI
+import io.swagger.v3.oas.models.media.Schema
 import org.openapitools.codegen.{CodegenConstants, DefaultGenerator}
 import org.openapitools.codegen.config.CodegenConfigurator
+import scala.collection.JavaConverters._
 
 case class OpenApiSpec(
   inputSpec: String,
@@ -16,7 +22,7 @@ case class OpenApiSpec(
  * Runs the OpenAPI generator programmatically, supporting multiple spec files
  * per sbt project. This calls the same CodegenConfigurator + DefaultGenerator
  * API that the official sbt-openapi-generator plugin uses internally:
- * https://github.com/OpenAPITools/sbt-openapi-generator/blob/v7.9.0/src/main/scala/org/openapitools/generator/sbt/plugin/tasks/OpenApiGenerateTask.scala
+ * https://github.com/OpenAPITools/sbt-openapi-generator/blob/v7.27.0/src/main/scala/org/openapitools/generator/sbt/plugin/tasks/OpenApiGenerateTask.scala
  *
  * The plugin's openApiInputSpec is a single SettingKey[String], so it only
  * accepts one spec file per sbt project. To generate from both all.yaml and
@@ -34,8 +40,11 @@ case class OpenApiSpec(
  *   skipOverwrite, auth, gitHost, importMappings,
  *   typeMappings, etc.). These all have sensible defaults in
  *   CodegenConfigurator.
- * - No behavioral change in generated code: the output is identical to
- *   what the plugin would produce with the same inputs.
+ * - The Java runs drop `const` from discriminator properties of subtypes
+ *   (see keepDiscriminatorsAsStrings) and `@JsonFormat(shape=OBJECT)` from
+ *   models that extend HashMap (see keepMapModelsAsMaps). Apart from that,
+ *   the output is identical to what the plugin would produce with the same
+ *   inputs.
  *
  * Projects that only generate from a single spec (controlApi,
  * controlModels) still use the plugin directly.
@@ -63,7 +72,47 @@ object OpenApiHelper {
       gen.setGeneratorPropertyDefault(CodegenConstants.API_TESTS, "false")
       gen.setGeneratorPropertyDefault(CodegenConstants.MODEL_TESTS, "false")
       gen.setGenerateMetadata(false)
-      gen.opts(config.toClientOptInput()).generate()
+      val input = config.toClientOptInput()
+      if (generatorName == "java") keepDiscriminatorsAsStrings(input.getOpenAPI)
+      val files = gen.opts(input).generate().asScala
+      if (generatorName == "java") files.filter(_.getName.endsWith(".java")).foreach(keepMapModelsAsMaps)
     }
+  }
+
+  private val objectShape = """(?m)^@JsonFormat\(shape=JsonFormat\.Shape\.OBJECT\)\R""".r
+
+  /**
+   * The generator marks every model with additionalProperties `@JsonFormat(shape=OBJECT)`. On a model
+   * that extends HashMap (DeltaStructFieldMetadata in the server models), that makes Jackson write it
+   * as a bean, which adds an "empty" key from isEmpty() to every column's metadata. Without the
+   * annotation it is written as the Map of its metadata keys, as before the upgrade.
+   */
+  private def keepMapModelsAsMaps(file: File): Unit = {
+    val path = file.toPath
+    val source = new String(Files.readAllBytes(path), StandardCharsets.UTF_8)
+    if (source.contains(" extends HashMap<") && objectShape.findFirstIn(source).isDefined) {
+      Files.write(path, objectShape.replaceAllIn(source, "").getBytes(StandardCharsets.UTF_8))
+    }
+  }
+
+  /**
+   * The Delta subtypes (DeltaAddCommitUpdate, DeltaAssertEtag, ...) pin their parent's discriminator
+   * with `const`, which the generator's NORMALIZE_31SPEC rule turns into a one-value enum. A Java
+   * subclass cannot narrow the parent's String getter to that enum, so the Java models do not compile.
+   * Jackson already picks the subtype from the discriminator mapping, so dropping `const` from the
+   * Java models keeps the generated code as it was before the upgrade. The Python client and the docs
+   * still see the `const`.
+   */
+  private def keepDiscriminatorsAsStrings(openAPI: OpenAPI): Unit = {
+    val schemas: collection.Map[String, Schema[_]] =
+      Option(openAPI.getComponents).flatMap(c => Option(c.getSchemas)).map(_.asScala).getOrElse(Map.empty)
+    for {
+      schema <- schemas.values
+      parentRef <- Option(schema.getAllOf).map(_.asScala).getOrElse(Nil).flatMap(s => Option(s.get$ref))
+      parent <- schemas.get(parentRef.stripPrefix("#/components/schemas/"))
+      discriminator <- Option(parent.getDiscriminator)
+      properties <- Option(schema.getProperties)
+      property <- Option[Schema[_]](properties.get(discriminator.getPropertyName))
+    } property.setConst(null)
   }
 }
