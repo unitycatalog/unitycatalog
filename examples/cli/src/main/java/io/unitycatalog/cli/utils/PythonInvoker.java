@@ -79,7 +79,7 @@ public class PythonInvoker {
       try {
         return runScript(argsList, errorOutput);
       } finally {
-        Files.deleteIfExists(errorOutput);
+        deleteQuietly(errorOutput);
       }
     } catch (ApiException e) {
       throw e;
@@ -121,8 +121,9 @@ public class PythonInvoker {
   /** Reads the last MAX_ERROR_OUTPUT_BYTES of the file, with "..." in front if it is longer. */
   private static String readEnd(Path file) throws IOException {
     try (RandomAccessFile in = new RandomAccessFile(file.toFile(), "r")) {
-      long start = Math.max(0, in.length() - MAX_ERROR_OUTPUT_BYTES);
-      byte[] bytes = new byte[(int) (in.length() - start)];
+      long length = in.length();
+      long start = Math.max(0, length - MAX_ERROR_OUTPUT_BYTES);
+      byte[] bytes = new byte[(int) (length - start)];
       in.seek(start);
       in.readFully(bytes);
       int from = 0;
@@ -132,6 +133,15 @@ public class PythonInvoker {
       }
       String end = new String(bytes, from, bytes.length - from, StandardCharsets.UTF_8);
       return start > 0 ? "..." + end : end;
+    }
+  }
+
+  /** Deletes the file, or schedules it for deletion at exit, so cleanup never hides the result. */
+  private static void deleteQuietly(Path file) {
+    try {
+      Files.deleteIfExists(file);
+    } catch (IOException e) {
+      file.toFile().deleteOnExit();
     }
   }
 }
