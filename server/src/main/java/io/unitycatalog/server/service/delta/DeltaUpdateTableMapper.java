@@ -433,6 +433,8 @@ public final class DeltaUpdateTableMapper {
     c.removeDomainMetadata.ifPresent(u -> applyRemoveDomainMetadata(properties, u.getDomains()));
     c.setTableComment.ifPresent(u -> applySetTableComment(dao, u));
     c.updateSnapshotVersion.ifPresent(u -> applyUpdateSnapshotVersion(dao, properties, u));
+    // Unconditional, so a table an older server left with stale UniForm metadata is repaired on
+    // its next update.
     DeltaUniformUtils.clearUnlessIcebergEnabled(dao, properties.asMap());
     // Re-validate the MANAGED contract against the final post-apply state. set-protocol, or a
     // set-/remove-properties that changes a contract input, runs full validation;

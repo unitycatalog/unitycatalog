@@ -58,6 +58,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -82,8 +83,6 @@ import org.junit.jupiter.params.provider.ValueSource;
  * (staging-finalize for MANAGED, direct create for EXTERNAL) -- the UC REST surface is never used.
  */
 public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
-
-  private static final String ENABLED_FORMATS = "delta.universalFormat.enabledFormats";
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
@@ -1651,13 +1650,16 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   static Stream<Arguments> uniformTurnedOffCases() {
     DeltaAddCommitUpdate commit2 = new DeltaAddCommitUpdate().commit(commit(2L, "00000002.json"));
     DeltaRemovePropertiesUpdate removeFormats =
-        new DeltaRemovePropertiesUpdate().removals(List.of(ENABLED_FORMATS));
+        new DeltaRemovePropertiesUpdate()
+            .removals(List.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS));
     return Stream.of(
         Arguments.of("remove-properties with add-commit", List.of(removeFormats, commit2)),
         Arguments.of(
             "set-properties to hudi with add-commit",
             List.of(
-                new DeltaSetPropertiesUpdate().updates(Map.of(ENABLED_FORMATS, "hudi")), commit2)),
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "hudi")),
+                commit2)),
         Arguments.of("remove-properties without a commit", List.of(removeFormats)));
   }
 
@@ -1685,7 +1687,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         h.name(),
         requestWith(
             h.tableId(),
-            new DeltaSetPropertiesUpdate().updates(Map.of(ENABLED_FORMATS, "iceberg,hudi"))));
+            new DeltaSetPropertiesUpdate()
+                .updates(
+                    Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "iceberg,hudi"))));
     assertUniformIcebergMetadata(h, Optional.of(1L));
   }
 
@@ -1695,7 +1699,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     DeltaUpdateTableRequest turnOff =
         requestWith(
             h.tableId(),
-            new DeltaRemovePropertiesUpdate().removals(List.of(ENABLED_FORMATS)),
+            new DeltaRemovePropertiesUpdate()
+                .removals(List.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS)),
             new DeltaAddCommitUpdate().commit(commit(2L, "00000002.json")));
     updateTable(h.name(), turnOff);
     assertUniformIcebergMetadata(h, Optional.empty());
@@ -1724,13 +1729,75 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 h.name(),
                 requestWith(
                     h.tableId(),
-                    new DeltaRemovePropertiesUpdate().removals(List.of(ENABLED_FORMATS)))),
+                    new DeltaRemovePropertiesUpdate()
+                        .removals(List.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS)))),
         DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
         "Table is not a Delta table");
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       assertThat(session.get(TableInfoDAO.class, h.tableId()).getIcebergMetadataLocation())
           .isEqualTo(metadataLocation);
     }
+  }
+
+  @Test
+  public void testRemovingUniformFromAnExternalTableClearsItsIcebergMetadata() throws Exception {
+    String name = "tbl_uniform_external";
+    String location =
+        Files.createTempDirectory(testDirectoryRoot, "external_")
+            .toUri()
+            .toString()
+            .replaceAll("/$", "");
+    DeltaLoadTableResponse created =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(name)
+                .location(location)
+                .tableType(DeltaTableType.EXTERNAL)
+                .columns(simpleSchema())
+                .protocol(new DeltaProtocol().minReaderVersion(1).minWriterVersion(2))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "iceberg"))
+                .uniform(new DeltaUniformMetadata().iceberg(uniformIceberg(location, 1L))));
+    Handle h =
+        new Handle(name, created.getMetadata().getTableUuid(), created.getMetadata().getEtag());
+    assertUniformIcebergMetadata(h, Optional.of(1L));
+
+    updateTable(
+        name,
+        requestWith(
+            h.tableId(),
+            new DeltaRemovePropertiesUpdate()
+                .removals(List.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS))));
+    assertUniformIcebergMetadata(h, Optional.empty());
+  }
+
+  @Test
+  public void testClearingStaleUniformMetadataAdvancesTheEtag() throws Exception {
+    Handle h = createDeltaManaged("tbl_uniform_stale", Map.of());
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      TableInfoDAO dao = session.get(TableInfoDAO.class, h.tableId());
+      dao.setIcebergMetadataLocation("s3://test-bucket0/stale/_uniform/v1.json");
+      dao.setUniformIcebergConvertedDeltaVersion(1L);
+      dao.setUniformIcebergConvertedDeltaTimestamp(new Date(1700000000001L));
+      tx.commit();
+    }
+    String etagBefore =
+        deltaTablesApi
+            .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name())
+            .getMetadata()
+            .getEtag();
+
+    DeltaLoadTableResponse updated =
+        updateTable(
+            h.name(),
+            requestWith(
+                h.tableId(), new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json"))));
+
+    assertUniformIcebergMetadata(h, Optional.empty());
+    assertThat(updated.getMetadata().getEtag()).isNotEqualTo(etagBefore);
   }
 
   /** Creates a MANAGED table and turns UniForm on with its first commit. */
@@ -1748,7 +1815,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .getMetadata()
             .getLocation();
     return new DeltaTableUpdate[] {
-      new DeltaSetPropertiesUpdate().updates(Map.of(ENABLED_FORMATS, "iceberg")),
+      new DeltaSetPropertiesUpdate()
+          .updates(Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "iceberg")),
       new DeltaAddCommitUpdate()
           .commit(commit(version, String.format("%08d.json", version)))
           .uniform(new DeltaUniformMetadata().iceberg(uniformIceberg(tableLocation, version)))
