@@ -446,6 +446,9 @@ public final class SchemaMigrator implements AutoCloseable {
       for (String step : pendingSteps()) {
         SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
         boolean record = adopted || !runs(step, schema);
+        if (!record) {
+          refuseTakenNames(step);
+        }
         // Only once the schema check passed, so that a run that refuses leaves the history as is.
         deleteFailedRecord(step);
         MigrateResult result =
@@ -511,6 +514,7 @@ public final class SchemaMigrator implements AutoCloseable {
                 + descriptions.get(step)
                 + (runs ? ": runs" : ": recorded without running (its change is already there)"));
         if (runs) {
+          refuseTakenNames(step);
           schema = expected(step);
         }
       }
@@ -624,28 +628,121 @@ public final class SchemaMigrator implements AutoCloseable {
    * INDEX} statement of their own.
    */
   private Set<String> indexesCreatedSeparately(String step) {
+    Matcher m = CREATE_INDEX.matcher(stepScript(step));
+    Set<String> indexes = new HashSet<>();
+    while (m.find()) {
+      indexes.add(m.group(2).toLowerCase(Locale.ROOT) + "." + m.group(1).toLowerCase(Locale.ROOT));
+    }
+    return indexes;
+  }
+
+  /** The text of {@code step}'s script, from the first of the step locations that has it. */
+  private String stepScript(String step) {
     String script =
         resolvedSteps(flyway().load().info()).stream()
             .filter(m -> m.getVersion().getVersion().equals(step))
             .map(MigrationInfo::getScript)
             .findFirst()
             .orElseThrow();
-    String path = "db/migration/" + kind.folder() + "/" + script;
-    try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
-      if (in == null) {
-        throw new IllegalStateException(
-            "This build has no script " + path + " for its step " + step);
+    for (String location : locations) {
+      String path = location.replaceFirst("^classpath:", "") + "/" + script;
+      try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+        if (in != null) {
+          return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
       }
-      Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-      Set<String> indexes = new HashSet<>();
-      while (m.find()) {
-        indexes.add(
-            m.group(2).toLowerCase(Locale.ROOT) + "." + m.group(1).toLowerCase(Locale.ROOT));
-      }
-      return indexes;
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
     }
+    throw new IllegalStateException("This build has no script " + script + " for its step " + step);
+  }
+
+  private static final Pattern CONSTRAINT = Pattern.compile("(?i)\\bconstraint\\s+(\\w+)");
+
+  /**
+   * Refuses when a name that pending {@code step} gives an index or a constraint is taken by an
+   * object that is not Unity Catalog's (not on a {@code uc_*} table): the step would then skip
+   * creating its index, as it creates indexes only if they don't exist, or fail part way. The names
+   * that clash are those the database shares between tables: H2's index names and constraint names
+   * in a schema, PostgreSQL's names of the schema's tables, views, sequences and indexes, and
+   * MySQL's foreign key names in a database.
+   */
+  private void refuseTakenNames(String step) {
+    Set<String> added = new HashSet<>(expected(step).entries());
+    added.removeAll(expected(previousStep(step)).entries());
+    Set<String> indexes = namesOf(added, "index ");
+    Set<String> foreignKeys = namesOf(added, "fk ");
+    Set<String> constraints = new HashSet<>();
+    Matcher m = CONSTRAINT.matcher(stepScript(step));
+    while (m.find()) {
+      constraints.add(m.group(1).toLowerCase(Locale.ROOT));
+    }
+    String sql =
+        switch (kind) {
+          case H2 ->
+              "SELECT 'index', INDEX_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.INDEXES"
+                  + " WHERE INDEX_SCHEMA = SCHEMA() UNION ALL SELECT 'constraint',"
+                  + " CONSTRAINT_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = SCHEMA()";
+          case POSTGRESQL ->
+              "SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'p' THEN 'table' WHEN 'v' THEN"
+                  + " 'view' WHEN 'm' THEN 'view' WHEN 'S' THEN 'sequence' WHEN 'i' THEN 'index'"
+                  + " WHEN 'I' THEN 'index' ELSE 'relation' END, c.relname, t.relname"
+                  + " FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                  + " LEFT JOIN pg_index x ON x.indexrelid = c.oid"
+                  + " LEFT JOIN pg_class t ON t.oid = x.indrelid"
+                  + " WHERE n.nspname = current_schema()";
+          case MYSQL ->
+              "SELECT 'foreign key', CONSTRAINT_NAME, TABLE_NAME"
+                  + " FROM information_schema.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'";
+        };
+    try (Connection connection = dataSource.getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
+      while (rs.next()) {
+        String holder = rs.getString(1);
+        String name = rs.getString(2).toLowerCase(Locale.ROOT);
+        String table = rs.getString(3);
+        String owner = (table == null ? name : table).toLowerCase(Locale.ROOT);
+        if (owner.startsWith("uc_")) {
+          continue; // Unity Catalog's own: the schema check covers it
+        }
+        boolean taken =
+            switch (kind) {
+              case H2 -> (holder.equals("index") ? indexes : constraints).contains(name);
+              case POSTGRESQL -> indexes.contains(name);
+              case MYSQL -> foreignKeys.contains(name);
+            };
+        if (taken) {
+          throw new IllegalStateException(
+              "Schema step "
+                  + step
+                  + " creates an index or constraint named "
+                  + name
+                  + ", but the "
+                  + holder
+                  + " "
+                  + name
+                  + (table == null ? "" : " on table " + table.toLowerCase(Locale.ROOT))
+                  + " already has that name"
+                  + (kind == DatabaseKind.MYSQL ? " in the database" : " in the schema")
+                  + ", which is not Unity Catalog's. Rename it, or give Unity Catalog a schema of"
+                  + " its own, then run the command again.");
+        }
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not read the schema's names: " + e.getMessage(), e);
+    }
+  }
+
+  /** The names of {@code entries} of a kind ({@code "index "}, {@code "fk "}), not generated. */
+  private static Set<String> namesOf(Set<String> entries, String kindPrefix) {
+    return entries.stream()
+        .filter(e -> e.startsWith(kindPrefix))
+        .map(e -> e.split(" ")[1].substring(e.split(" ")[1].indexOf('.') + 1))
+        .filter(name -> !name.endsWith("_*"))
+        .collect(Collectors.toSet());
   }
 
   /**

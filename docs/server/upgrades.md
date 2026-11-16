@@ -14,7 +14,9 @@ exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
 [Messages](#messages)).
 
 - `--check-schema` tells you whether the schema allows `--upgrade-schema`, and lists the steps it
-  would apply. It does not test the database user's privileges or the lock. It changes nothing and takes no lock, so on PostgreSQL and MySQL you can run it with
+  would apply. It does not test the database user's privileges or the lock. It changes nothing and takes no lock (it connects as the server does, so SQL that your
+  configuration runs on each new connection, such as H2's `INIT` or
+  `hibernate.hikari.connectionInitSql`, runs too), so on PostgreSQL and MySQL you can run it with
   the new release while the old servers still run. H2 lets only one process open the database
   file, so on H2 stop the server first.
 - `--upgrade-schema` brings the database to the schema version of its release. It sets up an empty
