@@ -330,7 +330,8 @@ lazy val pythonClient = (project in file("clients/python"))
           specs = Seq(
             // The delta.yaml run goes first because its "__init__.py" filter matches by file name: besides the
             // delta api/ and models/ inits (patchDeltaDataTypeModule needs the models one), it also writes
-            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite (checked after the build).
+            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite (checked in
+            // processGeneratedFiles by PythonClientPostBuild.clientPackageInitProblem).
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
@@ -359,7 +360,11 @@ lazy val pythonClient = (project in file("clients/python"))
         )
         log.info("OpenAPI Python client generation completed.")
       }
-    ).value
+    ).value,
+    Test / test := {
+      val log = streams.value.log
+      IO.withTemporaryDirectory(dir => PythonClientPostBuildTest.run(log, dir.toPath))
+    },
   )
 
 lazy val apiDocs = (project in file("api"))

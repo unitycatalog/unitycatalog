@@ -108,9 +108,11 @@ def _patched_dt_from_dict(cls, obj):
 def _patched_struct_from_dict(cls, obj):
     if obj is None:
         return None
+    # Rejects malformed input before parsing it.
     if not isinstance(obj, dict) or not isinstance(obj.get("fields"), list):
         raise ValueError("Expected a struct type with 'fields', got: {}".format(obj))
     parsed = _parse_type(obj)
+    # Rejects input that parses to another type, such as an array that also has "fields".
     if not isinstance(parsed, DeltaStructType):
         raise ValueError("Expected a struct type with 'fields', got: {}".format(obj))
     return parsed

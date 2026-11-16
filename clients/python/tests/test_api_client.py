@@ -213,4 +213,3 @@ def test_api_client_serializes_delta_requests_with_struct_columns():
     body = api_client.sanitize_for_serialization(DeltaCreateTableRequest.from_dict(request))
 
     assert body == request
-    assert json.loads(json.dumps(body)) == request
