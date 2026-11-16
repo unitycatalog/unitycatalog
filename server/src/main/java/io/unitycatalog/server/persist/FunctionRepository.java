@@ -1,5 +1,13 @@
 package io.unitycatalog.server.persist;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadConstraints;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.core.exc.StreamConstraintsException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.cfg.JsonNodeFeature;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateFunction;
@@ -7,19 +15,25 @@ import io.unitycatalog.server.model.CreateFunctionRequest;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
-import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.JsonUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.DataException;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +44,13 @@ public class FunctionRepository {
   private final SessionFactory sessionFactory;
   private static final PagedListingHelper<FunctionInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(FunctionInfoDAO.class);
+  private static final ObjectReader STRICT_JSON_READER =
+      JsonUtils.getInstance()
+          .reader()
+          .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+          .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+          .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+          .without(JsonNodeFeature.STRIP_TRAILING_BIGDECIMAL_ZEROES);
 
   public FunctionRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.repositories = repositories;
@@ -39,6 +60,7 @@ public class FunctionRepository {
   public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest) {
     ValidationUtils.validateSqlObjectName(createFunctionRequest.getFunctionInfo().getName());
     CreateFunction createFunction = createFunctionRequest.getFunctionInfo();
+    Map<String, String> properties = parseProperties(createFunction.getProperties());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     Long createTime = System.currentTimeMillis();
     FunctionInfo functionInfo =
@@ -48,7 +70,7 @@ public class FunctionRepository {
             .catalogName(createFunction.getCatalogName())
             .schemaName(createFunction.getSchemaName())
             .comment(createFunction.getComment())
-            .properties(createFunction.getProperties())
+            .properties(toPropertiesJson(properties))
             .owner(callerId)
             .createdAt(createTime)
             .createdBy(callerId)
@@ -109,6 +131,11 @@ public class FunctionRepository {
                     p.setFunction(dao);
                   });
           session.persist(dao);
+          // Write the function and its parameters first, so only property rows reach
+          // flushProperties and its mapping of database errors to property errors.
+          session.flush();
+          PropertyDAO.from(properties, dao.getId(), Constants.FUNCTION).forEach(session::persist);
+          flushProperties(session);
           return functionInfo;
         },
         "Failed to create function",
@@ -158,11 +185,16 @@ public class FunctionRepository {
     List<FunctionInfoDAO> functionInfoDAOList =
         LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
     String nextPageToken = LISTING_HELPER.getNextPageToken(functionInfoDAOList, maxResults);
+    Map<UUID, List<PropertyDAO>> propertiesByFunctionId =
+        PropertyRepository.findPropertiesByEntityIds(
+            session,
+            functionInfoDAOList.stream().map(FunctionInfoDAO::getId).toList(),
+            Constants.FUNCTION);
     List<FunctionInfo> result = new ArrayList<>();
     for (FunctionInfoDAO functionInfoDAO : functionInfoDAOList) {
       FunctionInfo functionInfo = functionInfoDAO.toFunctionInfo();
-      RepositoryUtils.attachProperties(
-          functionInfo, functionInfo.getFunctionId(), Constants.FUNCTION, session);
+      setProperties(
+          functionInfo, propertiesByFunctionId.getOrDefault(functionInfoDAO.getId(), List.of()));
       addNamespaceData(functionInfo, catalogName, schemaName);
       result.add(functionInfo);
     }
@@ -182,8 +214,10 @@ public class FunctionRepository {
           }
           FunctionInfo functionInfo = functionInfoDAO.toFunctionInfo();
           addNamespaceInfo(functionInfo, catalogName, schemaName);
-          RepositoryUtils.attachProperties(
-              functionInfo, functionInfo.getFunctionId(), Constants.FUNCTION, session);
+          setProperties(
+              functionInfo,
+              PropertyRepository.findProperties(
+                  session, functionInfoDAO.getId(), Constants.FUNCTION));
           return functionInfo;
         },
         "Failed to get function",
@@ -235,6 +269,126 @@ public class FunctionRepository {
     if (functionInfoDAO == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + functionName);
     }
+    PropertyRepository.findProperties(session, functionInfoDAO.getId(), Constants.FUNCTION)
+        .forEach(session::remove);
     session.remove(functionInfoDAO);
+  }
+
+  /**
+   * Parses the {@code properties} of a function create request: a single JSON object with unique
+   * keys and nothing after it. A value that is not a string is stored as its JSON text, with each
+   * number at its exact decimal value. An absent field, a blank string or a JSON {@code null} means
+   * no properties.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for any other value, for a key
+   *     longer than {@link PropertyDAO#MAX_KEY_LENGTH} characters, for a NUL character in a key or
+   *     value, which PostgreSQL text cannot store, for a number whose exponent is out of range, or
+   *     for JSON over the parser's {@link StreamReadConstraints}
+   */
+  private static Map<String, String> parseProperties(String properties) {
+    if (properties == null || properties.isBlank()) {
+      return Map.of();
+    }
+    JsonNode node;
+    try {
+      node = STRICT_JSON_READER.readTree(properties);
+    } catch (StreamConstraintsException e) {
+      StreamReadConstraints limits = STRICT_JSON_READER.getFactory().streamReadConstraints();
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "Function properties are too large: numbers can have at most %d digits, strings at"
+                  + " most %d characters, and nesting at most %d levels.",
+              limits.getMaxNumberLength(),
+              limits.getMaxStringLength(),
+              limits.getMaxNestingDepth()));
+    } catch (JsonProcessingException e) {
+      throw invalidProperties();
+    } catch (NumberFormatException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Function properties contain a number whose exponent is out of range.");
+    }
+    if (node.isNull()) {
+      return Map.of();
+    }
+    if (!node.isObject()) {
+      throw invalidProperties();
+    }
+    Map<String, String> parsed = new HashMap<>();
+    for (Map.Entry<String, JsonNode> field : node.properties()) {
+      String key = field.getKey();
+      if (key.codePointCount(0, key.length()) > PropertyDAO.MAX_KEY_LENGTH) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Function property keys cannot be longer than "
+                + PropertyDAO.MAX_KEY_LENGTH
+                + " characters.");
+      }
+      JsonNode value = field.getValue();
+      String text = value.isTextual() ? value.textValue() : value.toString();
+      if (key.indexOf('\0') >= 0 || text.indexOf('\0') >= 0) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Function property keys and values cannot contain the NUL character (\\u0000).");
+      }
+      parsed.put(key, text);
+    }
+    return parsed;
+  }
+
+  /**
+   * Writes the pending property rows, and turns a row the database rejects into {@link
+   * ErrorCode#INVALID_ARGUMENT}: keys its collation treats as equal (such as MySQL's default
+   * case-insensitive one), or a key over the column size where the database counts UTF-16 units
+   * (H2).
+   *
+   * <p>This mapping stays here rather than in {@code DatabaseErrors}, which maps a SQLSTATE for
+   * every repository and keeps the database's own message. A unique or data violation is only known
+   * to be the caller's fault here, where the flush writes nothing but property rows.
+   */
+  private static void flushProperties(Session session) {
+    try {
+      session.flush();
+    } catch (RuntimeException e) {
+      for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+        if (cause instanceof ConstraintViolationException) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Function property keys must be unique, and the database treats two of these keys"
+                  + " as the same key.",
+              e);
+        }
+        if (cause instanceof DataException) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "The database cannot store a key or value of these function properties.",
+              e);
+        }
+      }
+      throw e;
+    }
+  }
+
+  private static BaseException invalidProperties() {
+    return new BaseException(
+        ErrorCode.INVALID_ARGUMENT,
+        "Function properties must be a single JSON object with unique keys.");
+  }
+
+  private static void setProperties(FunctionInfo functionInfo, List<PropertyDAO> properties) {
+    functionInfo.setProperties(toPropertiesJson(PropertyDAO.toMap(properties)));
+  }
+
+  /** Serializes properties as a JSON object with keys in sorted order, or null when empty. */
+  private static String toPropertiesJson(Map<String, String> properties) {
+    if (properties.isEmpty()) {
+      return null;
+    }
+    try {
+      return JsonUtils.getInstance().writeValueAsString(new TreeMap<>(properties));
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException(e);
+    }
   }
 }

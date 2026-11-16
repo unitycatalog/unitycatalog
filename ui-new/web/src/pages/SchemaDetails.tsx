@@ -1,45 +1,72 @@
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
-import { Box, Database, FunctionSquare, HardDrive, Table as TableIcon } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  Box,
+  ChartNoAxesCombined,
+  Database,
+  FunctionSquare,
+  HardDrive,
+  Table as TableIcon,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useGetSchema } from "@/hooks/schemas";
+import {
+  useDeleteSchema,
+  useGetSchema,
+  useUpdateSchema,
+} from "@/hooks/schemas";
 import { useListTables } from "@/hooks/tables";
 import { useListVolumes } from "@/hooks/volumes";
 import { useListFunctions } from "@/hooks/functions";
 import { useListModels } from "@/hooks/models";
-import { formatEpoch } from "@/lib/uc";
+import { useListViews } from "@/hooks/views";
+import { formatTimestamp } from "@/lib/uc";
 import EntityHeader from "@/components/EntityHeader";
 import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PropertiesCard from "@/components/PropertiesCard";
 import PermissionsPanel from "@/components/PermissionsPanel";
+import DeleteAction from "@/components/DeleteAction";
+import CreateSchemaObjectAction from "@/components/CreateSchemaObjectAction";
+import EditMetadataAction from "@/components/EditMetadataAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// ObjectSection lists one kind of schema object. It shows the list query's
+// loading and error states, so a failed request is not mistaken for "None".
 function ObjectSection({
   title,
   Icon,
   color,
+  query,
   count,
   children,
 }: {
   title: string;
   Icon: LucideIcon;
   color: string;
+  query: { isLoading: boolean; error: Error | null };
   count: number;
   children: ReactNode;
 }) {
+  const loaded = !query.isLoading && !query.error;
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <Icon className={`h-4 w-4 ${color}`} />
-          {title} ({count})
+          {title}
+          {loaded && ` (${count})`}
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {count === 0 ? <p className="text-sm text-muted-foreground">None.</p> : <ul className="divide-y">{children}</ul>}
+        <QueryState isLoading={query.isLoading} error={query.error}>
+          {count === 0 ? (
+            <p className="text-sm text-muted-foreground">None.</p>
+          ) : (
+            <ul className="divide-y">{children}</ul>
+          )}
+        </QueryState>
       </CardContent>
     </Card>
   );
@@ -47,17 +74,67 @@ function ObjectSection({
 
 const rowCls = "flex items-center gap-2 py-2 hover:text-chart-1";
 
-export default function SchemaDetails({ catalog, schema }: { catalog: string; schema: string }) {
+export default function SchemaDetails({
+  catalog,
+  schema,
+}: {
+  catalog: string;
+  schema: string;
+}) {
+  const navigate = useNavigate();
   const fullName = `${catalog}.${schema}`;
   const { data, isLoading, error } = useGetSchema(fullName);
+  const updateSchema = useUpdateSchema();
+  const deleteSchema = useDeleteSchema();
   const tables = useListTables(catalog, schema);
+  const views = useListViews(catalog, schema);
   const volumes = useListVolumes(catalog, schema);
   const functions = useListFunctions(catalog, schema);
   const models = useListModels(catalog, schema);
 
   return (
     <div>
-      <EntityHeader name={schema} Icon={Database} catalog={catalog} schema={schema} badges={["SCHEMA"]} />
+      <EntityHeader
+        name={schema}
+        Icon={Database}
+        catalog={catalog}
+        schema={schema}
+        badges={["SCHEMA"]}
+        actions={
+          <>
+            <EditMetadataAction
+              name={schema}
+              comment={data?.comment}
+              onSubmit={async (changes) => {
+                await updateSchema.mutateAsync({
+                  schema: { catalogName: catalog, name: schema },
+                  ...changes,
+                });
+                if (changes.newName) {
+                  navigate({
+                    to: "/catalog/$catalog/$schema",
+                    params: { catalog, schema: changes.newName },
+                  });
+                }
+              }}
+            />
+            <CreateSchemaObjectAction catalog={catalog} schema={schema} />
+            <DeleteAction
+              entityName={schema}
+              entityType="schema"
+              onDelete={() =>
+                deleteSchema.mutateAsync({
+                  schema: { catalogName: catalog, name: schema },
+                  force: false,
+                })
+              }
+              onDeleted={() =>
+                navigate({ to: "/catalog/$catalog", params: { catalog } })
+              }
+            />
+          </>
+        }
+      />
       <div className="p-6">
         <QueryState isLoading={isLoading} error={error}>
           <Tabs defaultValue="overview">
@@ -74,6 +151,7 @@ export default function SchemaDetails({ catalog, schema }: { catalog: string; sc
                   title="Tables"
                   Icon={TableIcon}
                   color="text-chart-2"
+                  query={tables}
                   count={tables.data?.tables?.length ?? 0}
                 >
                   {(tables.data?.tables ?? []).map((t) => (
@@ -90,9 +168,30 @@ export default function SchemaDetails({ catalog, schema }: { catalog: string; sc
                   ))}
                 </ObjectSection>
                 <ObjectSection
+                  title="Metric views"
+                  Icon={ChartNoAxesCombined}
+                  color="text-chart-5"
+                  query={views}
+                  count={views.data?.views.length ?? 0}
+                >
+                  {(views.data?.views ?? []).map((view) => (
+                    <li key={view.name}>
+                      <Link
+                        to="/catalog/$catalog/$schema/view/$view"
+                        params={{ catalog, schema, view: view.name }}
+                        className={rowCls}
+                      >
+                        <ChartNoAxesCombined className="h-4 w-4 text-chart-5" />
+                        <span className="font-medium">{view.name}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ObjectSection>
+                <ObjectSection
                   title="Volumes"
                   Icon={HardDrive}
                   color="text-chart-4"
+                  query={volumes}
                   count={volumes.data?.volumes?.length ?? 0}
                 >
                   {(volumes.data?.volumes ?? []).map((v) => (
@@ -112,6 +211,7 @@ export default function SchemaDetails({ catalog, schema }: { catalog: string; sc
                   title="Functions"
                   Icon={FunctionSquare}
                   color="text-chart-3"
+                  query={functions}
                   count={functions.data?.functions?.length ?? 0}
                 >
                   {(functions.data?.functions ?? []).map((f) => (
@@ -131,9 +231,10 @@ export default function SchemaDetails({ catalog, schema }: { catalog: string; sc
                   title="Models"
                   Icon={Box}
                   color="text-chart-1"
-                  count={models.data?.registered_models?.length ?? 0}
+                  query={models}
+                  count={models.data?.models.length ?? 0}
                 >
-                  {(models.data?.registered_models ?? []).map((m) => (
+                  {(models.data?.models ?? []).map((m) => (
                     <li key={m.name}>
                       <Link
                         to="/catalog/$catalog/$schema/model/$model"
@@ -155,16 +256,22 @@ export default function SchemaDetails({ catalog, schema }: { catalog: string; sc
                   <MetaGrid
                     items={[
                       { label: "Name", value: data?.name },
-                      { label: "Catalog", value: data?.catalog_name },
-                      { label: "Owner", value: data?.owner || "—" },
-                      { label: "Created", value: formatEpoch(data?.created_at) },
-                      { label: "Updated", value: formatEpoch(data?.updated_at) },
-                      { label: "Schema ID", value: data?.schema_id || "—" },
+                      { label: "Catalog", value: data?.catalogName },
+                      { label: "Owner", value: data?.audit?.owner || "—" },
+                      {
+                        label: "Created",
+                        value: formatTimestamp(data?.audit?.createdAt),
+                      },
+                      {
+                        label: "Updated",
+                        value: formatTimestamp(data?.audit?.updatedAt),
+                      },
+                      { label: "Schema ID", value: data?.id || "—" },
                     ]}
                   />
                 </CardContent>
               </Card>
-              <PropertiesCard properties={data?.properties} />
+              <PropertiesCard properties={data?.properties?.values} />
             </TabsContent>
 
             <TabsContent value="permissions">

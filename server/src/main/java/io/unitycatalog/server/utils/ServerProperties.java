@@ -51,7 +51,7 @@ public class ServerProperties {
   // Secrets, which log a deprecation warning when they are read from server.properties.
   private static final Pattern SECRET_KEY =
       Pattern.compile(
-          "server\\.client-secret|aws\\.secretKey"
+          "server\\.client-secret|server\\.credential-encryption-key|aws\\.secretKey"
               + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+");
 
   private final Properties properties = new Properties(generateDefaults());
@@ -352,6 +352,11 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
+    // Experimental: s3_compatible storage credentials for S3-compatible storage.
+    S3_COMPATIBLE_STORAGE_ENABLED(
+        "server.s3-compatible-storage.enabled", "false", BOOLEAN_VALIDATOR),
+    // Base64-encoded 256-bit key that storage credential values are encrypted with in the database.
+    CREDENTIAL_ENCRYPTION_KEY("server.credential-encryption-key"),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -852,6 +857,25 @@ public class ServerProperties {
           "Iceberg table writes are currently disabled. To enable them, set "
               + "'server.iceberg-table.enabled=true' in server.properties");
     }
+  }
+
+  /**
+   * Check if experimental S3-compatible storage is enabled. This method throws BaseException with
+   * ErrorCode.INVALID_ARGUMENT if it's disabled.
+   */
+  public void checkS3CompatibleStorageEnabled() {
+    if (!isS3CompatibleStorageEnabled()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "S3-compatible storage (s3_compatible credentials) is experimental and currently"
+              + " disabled. To enable it, set '"
+              + Property.S3_COMPATIBLE_STORAGE_ENABLED.getKey()
+              + "=true' in server.properties");
+    }
+  }
+
+  public boolean isS3CompatibleStorageEnabled() {
+    return isTrueOrEnable(get(Property.S3_COMPATIBLE_STORAGE_ENABLED));
   }
 
   public boolean isIcebergTableEnabled() {

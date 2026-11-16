@@ -17,34 +17,67 @@ describe("PermissionsPanel", () => {
       ? {
           httpStatus: 200,
           ok: true,
-          body: JSON.stringify({ privilege_assignments: [{ principal: "ada@x.io", privileges: ["SELECT", "MODIFY"] }] }),
+          body: JSON.stringify({
+            privilege_assignments: [
+              { principal: "ada@x.io", privileges: ["SELECT", "MODIFY"] },
+            ],
+          }),
         }
       : { httpStatus: 404, ok: false, body: "{}" };
 
   it("renders principals and their privileges", async () => {
-    renderWithProviders(<PermissionsPanel securableType="table" fullName="main.default.events" />, { handler });
-    await waitFor(() => expect(screen.getByText("ada@x.io")).toBeInTheDocument());
+    renderWithProviders(
+      <PermissionsPanel securableType="table" fullName="main.default.events" />,
+      { handler },
+    );
+    await waitFor(() =>
+      expect(screen.getByText("ada@x.io")).toBeInTheDocument(),
+    );
     expect(screen.getByText("SELECT")).toBeInTheDocument();
     expect(screen.getByText("MODIFY")).toBeInTheDocument();
   });
 
   it("shows a placeholder when there are no grants", async () => {
-    renderWithProviders(<PermissionsPanel securableType="catalog" fullName="main" />, {
-      handler: () => ({ httpStatus: 200, ok: true, body: JSON.stringify({ privilege_assignments: [] }) }),
-    });
-    await waitFor(() => expect(screen.getByText("No privileges granted.")).toBeInTheDocument());
+    renderWithProviders(
+      <PermissionsPanel securableType="catalog" fullName="main" />,
+      {
+        handler: () => ({
+          httpStatus: 200,
+          ok: true,
+          body: JSON.stringify({ privilege_assignments: [] }),
+        }),
+      },
+    );
+    await waitFor(() =>
+      expect(screen.getByText("No privileges granted.")).toBeInTheDocument(),
+    );
   });
 });
 
 describe("CatalogTree", () => {
   const handler: UcHandler = ({ path }) => {
-    const body = (o: unknown) => ({ httpStatus: 200, ok: true, body: JSON.stringify(o) });
-    if (path === "/api/2.1/unity-catalog/catalogs") return body({ catalogs: [{ name: "main" }] });
-    if (path === "/api/2.1/unity-catalog/schemas") return body({ schemas: [{ name: "default" }] });
-    if (path === "/api/2.1/unity-catalog/tables") return body({ tables: [{ name: "t1" }] });
-    if (path === "/api/2.1/unity-catalog/volumes") return body({ volumes: [{ name: "v1" }] });
-    if (path === "/api/2.1/unity-catalog/functions") return body({ functions: [{ name: "f1" }] });
-    if (path === "/api/2.1/unity-catalog/models") return body({ registered_models: [{ name: "m1" }] });
+    const body = (o: unknown) => ({
+      httpStatus: 200,
+      ok: true,
+      body: JSON.stringify(o),
+    });
+    if (path === "/api/2.1/unity-catalog/catalogs")
+      return body({ catalogs: [{ name: "main" }] });
+    if (path === "/api/2.1/unity-catalog/schemas")
+      return body({ schemas: [{ name: "default" }] });
+    if (path === "/api/2.1/unity-catalog/tables")
+      return body({
+        tables: [
+          { name: "t1", table_type: "MANAGED" },
+          { name: "mv1", table_type: "METRIC_VIEW" },
+        ],
+      });
+    if (path === "/api/2.1/unity-catalog/volumes")
+      return body({ volumes: [{ name: "v1" }] });
+    if (path === "/api/2.1/unity-catalog/functions")
+      return body({ functions: [{ name: "f1" }] });
+    if (path === "/api/2.1/unity-catalog/models")
+      return body({ registered_models: [{ name: "m1" }] });
     return { httpStatus: 404, ok: false, body: "{}" };
   };
 
@@ -75,8 +108,25 @@ describe("CatalogTree", () => {
 
   it("shows an empty state when there are no catalogs", async () => {
     renderWithProviders(<CatalogTree />, {
-      handler: () => ({ httpStatus: 200, ok: true, body: JSON.stringify({ catalogs: [] }) }),
+      handler: () => ({
+        httpStatus: 200,
+        ok: true,
+        body: JSON.stringify({ catalogs: [] }),
+      }),
     });
     expect(await screen.findByText("No catalogs.")).toBeInTheDocument();
+  });
+
+  it("opens and highlights the active metric-view route", async () => {
+    setParams({
+      catalog: "main",
+      schema: "default",
+      view: "mv1",
+    });
+    renderWithProviders(<CatalogTree />, { handler });
+
+    const link = await screen.findByRole("link", { name: /mv1/ });
+    expect(link).toHaveAttribute("href", "/catalog/main/default/view/mv1");
+    expect(link).toHaveClass("bg-accent");
   });
 });

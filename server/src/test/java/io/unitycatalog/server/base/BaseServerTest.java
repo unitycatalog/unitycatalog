@@ -12,14 +12,18 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionException;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
@@ -85,6 +89,16 @@ public abstract class BaseServerTest {
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
     serverProperties.setProperty(
         Property.EXTERNAL_LOCAL_ROOTS.getKey(), testDirectoryRoot.toString());
+  }
+
+  /**
+   * Enables experimental S3-compatible storage, with a key to encrypt its secrets. Off by default,
+   * as on a server; call it from {@link #setUpProperties()} in tests that need it.
+   */
+  protected void enableS3CompatibleStorage() {
+    serverProperties.setProperty(Property.S3_COMPATIBLE_STORAGE_ENABLED.getKey(), "true");
+    serverProperties.setProperty(
+        Property.CREDENTIAL_ENCRYPTION_KEY.getKey(), TestUtils.CREDENTIAL_ENCRYPTION_KEY);
   }
 
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
@@ -205,5 +219,11 @@ public abstract class BaseServerTest {
       // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
       unityCatalogServer = null;
     }
+  }
+
+  /** Races {@code operation} against an uncommitted write; see {@link TestDatabase}. */
+  protected <T> T runBlockedByHeldWrite(Consumer<Session> heldWrite, Callable<T> operation)
+      throws Exception {
+    return testDatabase.runBlockedByHeldWrite(heldWrite, operation);
   }
 }

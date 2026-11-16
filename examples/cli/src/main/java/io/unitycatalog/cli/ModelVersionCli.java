@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.ModelVersionsApi;
 import io.unitycatalog.client.model.CreateModelVersion;
 import io.unitycatalog.client.model.FinalizeModelVersion;
+import io.unitycatalog.client.model.ListModelVersionsResponse;
 import io.unitycatalog.client.model.UpdateModelVersion;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -65,16 +67,13 @@ public class ModelVersionCli {
   private static String listModelVersions(ModelVersionsApi modelVersionsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String fullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    int maxResults = 100;
-    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
-      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
-    }
-    String pageToken = null;
-    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
-      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
-    }
     return objectWriter.writeValueAsString(
-        modelVersionsApi.listModelVersions(fullName, maxResults, pageToken).getModelVersions());
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) ->
+                modelVersionsApi.listModelVersions(fullName, maxResults, pageToken),
+            ListModelVersionsResponse::getModelVersions,
+            ListModelVersionsResponse::getNextPageToken));
   }
 
   private static String getModelVersion(ModelVersionsApi modelVersionsApi, JSONObject json)

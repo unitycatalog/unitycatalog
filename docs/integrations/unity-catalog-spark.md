@@ -603,6 +603,14 @@ Let’s extend this example by executing various CRUD operations on our UC table
     # LOCATION '/tmp/tables/mytable'
     ```
 
+In a partitioned table of a file-source format (Parquet, ORC, JSON, CSV, Avro or text), Spark puts the partition columns
+after the other columns, in `PARTITIONED BY` order, as Spark's built-in catalog does. So `DESCRIBE TABLE` and `SELECT *`
+list them last, and `INSERT INTO ... VALUES` without a column list takes the values in that order. Tables of other
+formats, such as Delta and Iceberg, keep the declared order.
+Unity Catalog itself keeps the declared column order, which is what the REST API and other engines see. For example, a
+Parquet table created with columns `(a, p, b)` and `PARTITIONED BY (p)` lists `a, p, b` through the REST API and
+`a, b, p` in Spark.
+
 ### Insert New Rows into Table
 
 === "Spark SQL"
@@ -864,6 +872,10 @@ letters.write.format("parquet").saveAsTable("stores.whatever.letters", path="/tm
 ```
 
 When you manually specify the path, as in the example above, Spark creates an unmanaged table.
+
+For a non-Delta external table, `OPTIONS (...)` such as a CSV `header` or `delimiter` are used when reading and
+writing the table, while `TBLPROPERTIES (...)` and `COMMENT` are only metadata. Tables created outside Spark follow the
+same rule through `option.`-prefixed properties; see [table create](../usage/cli.md#create-a-table) in the CLI docs.
 
 Let’s look at a visualization of our current tables:
 
