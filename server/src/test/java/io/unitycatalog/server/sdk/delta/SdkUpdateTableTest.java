@@ -5,8 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
 import io.unitycatalog.client.delta.model.DeltaArrayType;
-import io.unitycatalog.client.delta.model.DeltaAssertEtag;
-import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCommit;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
@@ -31,7 +29,6 @@ import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
-import io.unitycatalog.client.delta.model.DeltaTableRequirement;
 import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaTableUpdate;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
@@ -72,6 +69,7 @@ import org.hibernate.Transaction;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Integration tests for the Delta {@code POST /v1/.../tables/{table}} update endpoint. Consolidated
@@ -1506,6 +1504,191 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Files.createDirectories(Path.of(URI.create(storageLocation + "/" + relativePath)));
   }
 
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(
+      strings = {
+        "delta.feature.catalogManaged",
+        "io.unitycatalog.tableId",
+        "delta.enableInCommitTimestamps"
+      })
+  public void testRemovingProtectedPropertyOfManagedTableIsRejected(String key) throws Exception {
+    Handle h = createDeltaManaged("tbl_protected_" + key.replace('.', '_'), Map.of());
+    Map<String, String> before = loadProperties(h.name());
+    TestUtils.assertDeltaApiException(
+        () -> updateTable(h, new DeltaRemovePropertiesUpdate().removals(List.of(key))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        key);
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
+
+  @Test
+  public void testChangingTableIdOfManagedTableIsRejected() throws Exception {
+    Handle h = createDeltaManaged("tbl_change_table_id", Map.of());
+    Map<String, String> before = loadProperties(h.name());
+    String otherId = UUID.randomUUID().toString();
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                new DeltaSetPropertiesUpdate().updates(Map.of("io.unitycatalog.tableId", otherId))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "does not match");
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
+
+  @Test
+  public void testOrdinaryPropertiesOfManagedTableCanBeChanged() throws Exception {
+    Handle h = createDeltaManaged("tbl_ordinary_props", Map.of("drop_me", "v"));
+    Map<String, String> after =
+        updateTable(
+                h,
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of("k", "v", "io.unitycatalog.tableId", h.tableId().toString())),
+                new DeltaRemovePropertiesUpdate().removals(List.of("drop_me")))
+            .getMetadata()
+            .getProperties();
+    assertThat(after).containsEntry("k", "v").doesNotContainKey("drop_me");
+  }
+
+  @Test
+  public void testProtectedPropertiesOfExternalTableCanBeChanged() throws Exception {
+    Handle external = createDeltaExternal("tbl_protected_props_external");
+    Map<String, String> protectedValues =
+        Map.of(
+            "delta.feature.catalogManaged",
+            "supported",
+            "io.unitycatalog.tableId",
+            UUID.randomUUID().toString(),
+            "delta.enableInCommitTimestamps",
+            "true");
+    Handle set =
+        external.withEtag(
+            updateTable(external, new DeltaSetPropertiesUpdate().updates(protectedValues))
+                .getMetadata()
+                .getEtag());
+    assertThat(
+            updateTable(
+                    set,
+                    new DeltaRemovePropertiesUpdate()
+                        .removals(List.copyOf(protectedValues.keySet())))
+                .getMetadata()
+                .getProperties())
+        .doesNotContainKeys(protectedValues.keySet().toArray(String[]::new));
+  }
+
+  @Test
+  public void testTakenCommitVersionIsReportedBeforeOtherValidation() throws Exception {
+    Handle h = createDeltaManaged("tbl_taken_version_first", Map.of());
+    updateTable(h, new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")));
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                new DeltaAddCommitUpdate().commit(commit(1L, "00000001b.json")),
+                new DeltaSetPropertiesUpdate().updates(Map.of("delta.minReaderVersion", "3"))),
+        DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
+        "already accepted");
+  }
+
+  @Test
+  public void testReplayOfPropertyChangingCommitAfterLaterChangeReturnsNewestState()
+      throws Exception {
+    Handle h = createDeltaManaged("tbl_replay_property_commit", Map.of());
+    List<String> base = new ArrayList<>(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
+    base.add(TableFeature.ROW_TRACKING.specName());
+    List<String> withClustering = new ArrayList<>(base);
+    withClustering.add(TableFeature.CLUSTERING.specName());
+    DeltaLoadTableResponse r0 =
+        updateTable(
+            h,
+            new DeltaSetProtocolUpdate()
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                        .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                        .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                        .writerFeatures(withClustering)));
+    DeltaTableUpdate[] v1 = {
+      new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")),
+      new DeltaSetDomainMetadataUpdate()
+          .updates(
+              new DeltaDomainMetadataUpdates()
+                  .deltaClustering(
+                      new DeltaClusteringDomainMetadata()
+                          .clusteringColumns(List.of(List.of("id"))))),
+      new DeltaSetPropertiesUpdate().updates(Map.of("k", "v1"))
+    };
+    DeltaLoadTableResponse r1 = updateTable(h.withEtag(r0.getMetadata().getEtag()), v1);
+    DeltaLoadTableResponse r2 =
+        updateTable(
+            h.withEtag(r1.getMetadata().getEtag()),
+            new DeltaAddCommitUpdate().commit(commit(2L, "00000002.json")),
+            new DeltaSetProtocolUpdate()
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                        .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                        .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                        .writerFeatures(base)),
+            new DeltaRemoveDomainMetadataUpdate().domains(List.of("delta.clustering")),
+            new DeltaSetPropertiesUpdate().updates(Map.of("k", "v2")));
+
+    DeltaLoadTableResponse replay = updateTable(h.withEtag(r0.getMetadata().getEtag()), v1);
+
+    assertThat(replay.getLatestTableVersion()).isEqualTo(2L);
+    assertThat(replay.getMetadata().getProperties())
+        .isEqualTo(r2.getMetadata().getProperties())
+        .containsEntry("k", "v2")
+        .doesNotContainKey("clusteringColumns");
+  }
+
+  @Test
+  public void testSetProtocolCannotCarryChangesToProtocolProperties() throws Exception {
+    Handle h = createDeltaManaged("tbl_set_protocol_props", Map.of());
+    Map<String, String> before = loadProperties(h.name());
+    DeltaSetProtocolUpdate setProtocol =
+        new DeltaSetProtocolUpdate()
+            .protocol(
+                new DeltaProtocol()
+                    .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                    .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                    .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                    .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES));
+    String catalogManaged =
+        TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName();
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                setProtocol,
+                new DeltaRemovePropertiesUpdate().removals(List.of(catalogManaged))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        catalogManaged);
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                setProtocol,
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of(TableProperties.MIN_READER_VERSION, "1"))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        TableProperties.MIN_READER_VERSION);
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h, new DeltaSetPropertiesUpdate().updates(Map.of(catalogManaged, "disabled"))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        catalogManaged);
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
+
+  private Map<String, String> loadProperties(String tableName) throws ApiException {
+    return deltaTablesApi
+        .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName)
+        .getMetadata()
+        .getProperties();
+  }
+
   // ---------------------------------------------------------------- column-mapping identity tests
 
   /**
@@ -1850,15 +2033,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         "set-columns dropped column mapping metadata for column(s): a, amount, id");
   }
 
-  private static DeltaCommit commit(long version, String fileName) {
-    return new DeltaCommit()
-        .version(version)
-        .timestamp(1700000000L + version)
-        .fileName(fileName)
-        .fileSize(1024L)
-        .fileModificationTimestamp(1700000000L + version);
-  }
-
   /**
    * Top-level rename on an id-mode table (CM identity keyed on {@code delta.columnMapping.id}).
    * After "a" → "b" the new logical name is present, old is gone, and the CM id remains 1 in the
@@ -1957,37 +2131,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   }
 
   // ---------------------------------------------------------------- helpers
-
-  /** Pins the update to the table's UUID and the Handle's etag. */
-  private DeltaLoadTableResponse updateTable(Handle h, DeltaTableUpdate... updates)
-      throws ApiException {
-    return updateTable(h.name(), requestWith(h.tableId(), Optional.of(h.etag()), updates));
-  }
-
-  /** Escape hatch for tests that hand-build the request (custom requirements / empty updates). */
-  private DeltaLoadTableResponse updateTable(String tableName, DeltaUpdateTableRequest request)
-      throws ApiException {
-    return deltaTablesApi.updateTable(
-        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName, request);
-  }
-
-  /**
-   * Build an {@link DeltaUpdateTableRequest} with the canonical {@code assert-table-uuid}
-   * requirement and an optional {@code assert-etag} requirement. Empty {@code updates} is allowed
-   * for the empty-list rejection case.
-   */
-  private static DeltaUpdateTableRequest requestWith(
-      UUID assertUuid, Optional<String> assertEtag, DeltaTableUpdate... updates) {
-    List<DeltaTableRequirement> requirements = new ArrayList<>();
-    requirements.add(new DeltaAssertTableUUID().uuid(assertUuid));
-    assertEtag.ifPresent(etag -> requirements.add(new DeltaAssertEtag().etag(etag)));
-    return new DeltaUpdateTableRequest().requirements(requirements).updates(List.of(updates));
-  }
-
-  /** Convenience: assert-table-uuid only, no assert-etag. */
-  private static DeltaUpdateTableRequest requestWith(UUID assertUuid, DeltaTableUpdate... updates) {
-    return requestWith(assertUuid, Optional.empty(), updates);
-  }
 
   // -------------------------------------------------------- CM table creation helpers
 

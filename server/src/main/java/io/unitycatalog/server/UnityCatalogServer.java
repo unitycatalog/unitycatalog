@@ -267,6 +267,9 @@ public class UnityCatalogServer implements AutoCloseable {
             audit);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
+    if (unityCatalogServerBuilder.serverProperties.isS3CompatibleStorageEnabled()) {
+      warnAboutUnreadableSecrets(repositories);
+    }
     // Init authorizer
     authorizer =
         initializeAuthorizer(
@@ -336,6 +339,21 @@ public class UnityCatalogServer implements AutoCloseable {
             Clock.systemUTC(),
             serverProperties,
             domainMetrics);
+  }
+
+  /** Warns about each credential whose stored secret the server cannot read, with the reason. */
+  private static void warnAboutUnreadableSecrets(Repositories repositories) {
+    repositories
+        .getCredentialRepository()
+        .findUnreadableSecrets()
+        .forEach(
+            (name, failure) ->
+                // Not only a missing or changed key: the stored value can also be malformed.
+                LOGGER.warn(
+                    "Cannot read the stored secret of storage credential '{}': {}",
+                    name,
+                    failure.getMessage(),
+                    failure));
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(

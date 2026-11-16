@@ -48,7 +48,7 @@ Get table credentials
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **operation** | [**DeltaCredentialOperation**](../Models/.md)| The operation the credential is scoped to. | [default to null] [enum: READ, READ_WRITE] |
+| **operation** | [**DeltaCredentialOperation**](../Models/.md)| The operation the request is authorized for. Session credentials are narrowed to it; EXPERIMENTAL: a key pair without &#x60;s3.session-token&#x60; is not (see &#x60;s3.endpoint&#x60;).  | [default to null] [enum: READ, READ_WRITE] |
 | **catalog** | **String**| Catalog name | [default to null] |
 | **schema** | **String**| Schema name | [default to null] |
 | **table** | **String**| Table name | [default to null] |

@@ -35,6 +35,8 @@ import org.hibernate.annotations.UuidGenerator;
 @ToString
 @Builder
 public class PropertyDAO {
+  public static final int MAX_KEY_LENGTH = 255;
+
   @Id
   @UuidGenerator
   @Column(name = "id", updatable = false, nullable = false)
@@ -46,7 +48,7 @@ public class PropertyDAO {
   @Column(name = "entity_type", nullable = false)
   private String entityType;
 
-  @Column(name = "property_key", nullable = false)
+  @Column(name = "property_key", nullable = false, length = MAX_KEY_LENGTH)
   private String key;
 
   @Column(name = "property_value", nullable = false, length = 16777215)

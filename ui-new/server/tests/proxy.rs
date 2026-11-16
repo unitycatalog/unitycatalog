@@ -5,7 +5,7 @@ use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt; // for `oneshot`
 use uc_ui_bridge::{app, AppState, Config};
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{header_exists, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn test_config(uc_server: String) -> Config {
@@ -97,12 +97,17 @@ async fn call_maps_non_2xx_to_ok_false() {
 }
 
 #[tokio::test]
-async fn call_forwards_cookie_and_propagates_set_cookie() {
+async fn call_forwards_cookie_auth_and_propagates_set_cookie() {
     let uc = MockServer::start().await;
-    // Assert the bridge forwarded our session cookie, and hand back a Set-Cookie.
+    // Assert the bridge forwarded our session cookie and UC's required CSRF
+    // header, and hand back a Set-Cookie.
     Mock::given(method("POST"))
         .and(path("/api/1.0/unity-control/auth/tokens"))
         .and(wiremock::matchers::header("cookie", "UC_SESSION=abc"))
+        .and(wiremock::matchers::header(
+            "x-requested-with",
+            "XMLHttpRequest",
+        ))
         .and(wiremock::matchers::header(
             "content-type",
             "application/x-www-form-urlencoded",
@@ -122,6 +127,7 @@ async fn call_forwards_cookie_and_propagates_set_cookie() {
         .uri("/uc.v1.UnityProxyService/Call")
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::COOKIE, "UC_SESSION=abc")
+        .header("x-requested-with", "XMLHttpRequest")
         .body(Body::from(
             serde_json::json!({
                 "method": "POST",
@@ -166,6 +172,76 @@ async fn call_rejects_client_selected_upstream() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let json = body_json(resp).await;
     assert_eq!(json["code"], "invalid_argument");
+}
+
+#[tokio::test]
+async fn call_does_not_add_the_csrf_header() {
+    // UC's CSRF check relies on the header coming only from the browser.
+    let uc = MockServer::start().await;
+    Mock::given(header_exists("x-requested-with"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&uc)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/1.0/unity-control/auth/logout"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let resp = build_app(uc.uri())
+        .oneshot(call_request(serde_json::json!({
+            "method": "POST",
+            "path": "/api/1.0/unity-control/auth/logout"
+        })))
+        .await
+        .unwrap();
+
+    assert_eq!(body_json(resp).await["httpStatus"], 200);
+}
+
+#[tokio::test]
+async fn call_rejects_a_body_token() {
+    let app = build_app("http://127.0.0.1:1".to_string());
+    let resp = app
+        .oneshot(call_request(serde_json::json!({
+            "token": "jwt",
+            "method": "GET",
+            "path": "/api/1.0/unity-control/scim2/Me"
+        })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(body_json(resp).await["code"], "invalid_argument");
+}
+
+#[tokio::test]
+async fn call_sends_one_authorization_header() {
+    let uc = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/1.0/unity-control/scim2/Me"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let mut req = call_request(serde_json::json!({
+        "method": "GET",
+        "path": "/api/1.0/unity-control/scim2/Me"
+    }));
+    req.headers_mut()
+        .insert(header::AUTHORIZATION, "Bearer jwt".parse().unwrap());
+    let resp = build_app(uc.uri()).oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let received = uc.received_requests().await.unwrap();
+    let values: Vec<_> = received[0]
+        .headers
+        .get_all("authorization")
+        .iter()
+        .collect();
+    assert_eq!(values, ["Bearer jwt"]);
 }
 
 #[tokio::test]
@@ -294,4 +370,51 @@ async fn healthz_ok() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+fn cors_app() -> axum::Router {
+    app(AppState {
+        http: reqwest::Client::new(),
+        config: Arc::new(Config {
+            allowed_origins: vec!["http://localhost:5173".to_string()],
+            ..test_config("http://127.0.0.1:1".to_string())
+        }),
+    })
+}
+
+async fn preflight(origin: &str) -> axum::response::Response<Body> {
+    cors_app()
+        .oneshot(
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/uc.v1.CatalogService/DeleteCatalog")
+                .header(header::ORIGIN, origin)
+                .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "x-requested-with")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn cors_preflight_allows_the_csrf_header() {
+    let resp = preflight("http://localhost:5173").await;
+    let allowed = resp
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(allowed.contains("x-requested-with"), "{allowed}");
+}
+
+#[tokio::test]
+async fn cors_preflight_rejects_an_unlisted_origin() {
+    let resp = preflight("https://attacker.example").await;
+    assert!(resp
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        .is_none());
 }

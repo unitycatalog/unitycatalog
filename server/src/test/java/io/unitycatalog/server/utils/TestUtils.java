@@ -42,6 +42,9 @@ import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
+  // A fixed 256-bit key, base64-encoded, for server.credential-encryption-key.
+  public static final String CREDENTIAL_ENCRYPTION_KEY =
+      "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
   public static final String SCHEMA_NAME = "uc_testschema";
   public static final String CATALOG_NAME2 = "uc_testcatalog2";
   public static final String SCHEMA_NAME2 = "uc_testschema2";
