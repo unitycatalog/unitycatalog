@@ -146,6 +146,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           .containsEntry("update_me", "v_new")
           .containsEntry("added", "v4")
           .doesNotContainKeys("drop_me", "missing");
+      assertThat(r1.getMetadata().getComment()).isEqualTo("umbrella comment");
       // set-protocol fully replaces delta.feature.* with entries derived from the new protocol.
       assertThat(featurePropertiesIn(props1)).isEqualTo(featurePropertiesOf(newProtocol));
       // set-DM is additive: clustering JSON-encoded; rowTracking from create time still present.

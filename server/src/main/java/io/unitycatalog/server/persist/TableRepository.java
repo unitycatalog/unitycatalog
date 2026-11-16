@@ -512,6 +512,7 @@ public class TableRepository {
     populatePartitionColumns(metadata, cols, catalog, schema, table);
 
     metadata.setProperties(properties);
+    metadata.setComment(dao.getComment());
 
     // last-commit-version and last-commit-timestamp track only metadata-changing commits
     // (delta.lastUpdateVersion / delta.lastCommitTimestamp) and are written by the commit path.

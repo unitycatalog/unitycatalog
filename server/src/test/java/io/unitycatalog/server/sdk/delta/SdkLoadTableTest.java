@@ -138,6 +138,7 @@ public class SdkLoadTableTest extends BaseServerTest {
       assertThat(metadata.getUpdatedTime()).isNotNull();
       assertThat(metadata.getEtag()).isNotNull();
       assertThat(metadata.getProperties()).isNotNull();
+      assertThat(metadata.getComment()).isNull();
 
       List<DeltaStructField> fields = metadata.getColumns().getFields();
       assertThat(fields).hasSize(2);
@@ -434,6 +435,32 @@ public class SdkLoadTableTest extends BaseServerTest {
       DeltaLoadTableResponse response = loadTable(tableName);
       assertThat(response.getMetadata()).isNotNull();
       assertThat(response.getMetadata().getColumns().getFields()).isEmpty();
+    }
+
+    // -------- Table comment: returned when set --------
+    {
+      String tableName = "tbl_comment";
+      tableOps.createTable(
+          new CreateTable()
+              .name(tableName)
+              .catalogName(TestUtils.CATALOG_NAME)
+              .schemaName(TestUtils.SCHEMA_NAME)
+              .tableType(TableType.MANAGED)
+              .dataSourceFormat(DataSourceFormat.DELTA)
+              .comment("table comment")
+              .columns(
+                  List.of(
+                      new ColumnInfo()
+                          .name("id")
+                          .typeName(ColumnTypeName.LONG)
+                          .typeText("bigint")
+                          .typeJson(
+                              "{\"name\":\"id\",\"type\":\"long\","
+                                  + "\"nullable\":false,\"metadata\":{}}")
+                          .position(0)
+                          .nullable(false))));
+
+      assertThat(loadTable(tableName).getMetadata().getComment()).isEqualTo("table comment");
     }
   }
 

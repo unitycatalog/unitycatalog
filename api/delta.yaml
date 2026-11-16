@@ -894,6 +894,9 @@ components:
             delta.feature.* and delta.lastCommitTimestamp.
           additionalProperties:
             type: string
+        comment:
+          type: string
+          description: Table comment. Absent when the table has no comment.
         last-commit-version:
           type: integer
           format: int64

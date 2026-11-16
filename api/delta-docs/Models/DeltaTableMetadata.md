@@ -12,6 +12,7 @@
 | **columns** | [**DeltaStructType**](DeltaStructType.md) |  | [default to null] |
 | **partition-columns** | **List** | Partition column names (logical schema column names) | [optional] [default to null] |
 | **properties** | **Map** | Table properties. Besides the table&#39;s metaData.configuration entries, the map can carry server-derived keys that clients must not write back to the Delta log or send in set-properties / remove-properties. Examples, not a complete list: delta.minReaderVersion, delta.feature.* and delta.lastCommitTimestamp.  | [default to null] |
+| **comment** | **String** | Table comment. Absent when the table has no comment. | [optional] [default to null] |
 | **last-commit-version** | **Long** | The version of the last commit that changed table metadata (delta.lastUpdateVersion). Data-only commits do not update this value. | [optional] [default to null] |
 | **last-commit-timestamp-ms** | **Long** | Timestamp of the last commit that changed table metadata, in epoch milliseconds (delta.lastCommitTimestamp). | [optional] [default to null] |
 
