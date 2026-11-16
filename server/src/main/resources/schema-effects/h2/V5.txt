@@ -1,0 +1,14 @@
++ column uc_group_members.admin_added type=boolean size=1 nullable=NO default=null
++ column uc_groups.owner type=character varying size=255 nullable=NO default=null
++ column uc_users.owner type=character varying size=255 nullable=NO default=null
+- index uc_group_members.primary_key_* unique=true column=group_id#1
+- index uc_group_members.primary_key_* unique=true column=user_id#2
++ index uc_group_members.primary_key_* unique=true column=admin_added#1
++ index uc_group_members.primary_key_* unique=true column=group_id#2
++ index uc_group_members.primary_key_* unique=true column=user_id#3
++ index uc_group_members.uc_group_members_group_idx unique=false column=group_id#1
++ pk uc_group_members.admin_added#1
+- pk uc_group_members.group_id#1
++ pk uc_group_members.group_id#2
+- pk uc_group_members.user_id#2
++ pk uc_group_members.user_id#3

@@ -120,6 +120,29 @@ class TokenExchangeSubjectTokenHandlerTest {
   }
 
   @Test
+  void emailClaimResolvingToIdpPrincipalIsRejected() {
+    // An IdP principal acts only through its SCIM token; signing in as it is refused.
+    DecodedJWT jwt = decode(identityToken("okta-scim", CLIENT_ID));
+    when(userRepository.getUserByEmail("okta-scim"))
+        .thenReturn(enabledUser("okta-scim").idpName("okta"));
+
+    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining("User not allowed");
+  }
+
+  @Test
+  void oauthClientResolvingToIdpPrincipalIsRejected() {
+    DecodedJWT jwt = decode(tokenWithAzpAndAud(CLIENT_ID, "https://dev.dev.example.com"));
+    when(userRepository.getUserByExternalId(CLIENT_ID))
+        .thenReturn(enabledUser("okta-scim").idpName("okta"));
+
+    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ACCESS_TOKEN, jwt))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining("User not allowed");
+  }
+
+  @Test
   void missingUserIsAuthDenialNotServerError() {
     DecodedJWT jwt = decode(identityToken(USER_EMAIL, CLIENT_ID));
     when(userRepository.getUserByEmail(USER_EMAIL))

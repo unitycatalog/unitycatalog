@@ -9,6 +9,8 @@ public enum JwtClaim {
   ISSUED_AT("iat"),
   JWT_ID("jti"),
   KEY_ID("kid"),
+  // The identity provider a SCIM token is for.
+  IDP("idp"),
 
   TOKEN_TYPE("type");
 
