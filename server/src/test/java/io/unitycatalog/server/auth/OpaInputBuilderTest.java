@@ -47,7 +47,12 @@ import org.junit.jupiter.api.Test;
 
 public class OpaInputBuilderTest {
   private final UserDAO user =
-      UserDAO.builder().id(UUID.randomUUID()).name("Test user").email("user@example.com").build();
+      UserDAO.builder()
+          .id(UUID.randomUUID())
+          .name("Test user")
+          .email("user@example.com")
+          .owner("admin")
+          .build();
   private final CatalogInfoDAO catalog =
       CatalogInfoDAO.builder()
           .id(UUID.randomUUID())
