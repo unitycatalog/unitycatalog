@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.id;
 
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_ICEBERG_PLAN_VALUE;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE;
@@ -12,6 +13,8 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_SCH
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY;
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_ICEBERG_CREDENTIALS_ENDPOINT_KEY;
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_ICEBERG_PLAN_ID_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_PATH_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_PATH_OPERATION_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_ID_KEY;
@@ -35,7 +38,7 @@ import org.apache.hadoop.conf.Configuration;
  * TokenProvider.configs()} a credential is vended from, hashed into a single id (see {@link
  * UCHadoopConfConstants#UC_CRED_CONTEXT_ID_KEY}).
  *
- * <p>There are five implementations:
+ * <p>There are six implementations:
  *
  * <ul>
  *   <li>{@link TableCredId} — keyed by credential context, table ID, and operation; used for
@@ -47,6 +50,8 @@ import org.apache.hadoop.conf.Configuration;
  *   <li>{@link DeltaStagingTableCredId} — keyed by credential context, staging table ID, and
  *       location; used for staging-table-level temporary credentials via the UC Delta credentials
  *       API.
+ *   <li>{@link IcebergPlanCredId} — keyed by credential context, credentials endpoint, and scan
+ *       plan ID; used for credentials scoped to an Iceberg REST server-side scan plan.
  *   <li>{@link DefaultCredId} — keyed by URI scheme and authority; used as a fallback when no Unity
  *       Catalog credential type is present in the configuration.
  * </ul>
@@ -77,8 +82,18 @@ public interface CredId {
     // stagingTableId is always from UC Delta API.
     boolean hasUcDeltaStagingTableId = stagingTableId != null && !stagingTableId.isEmpty();
 
-    if (UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type) && !isDeltaApi && !hasUcDeltaStagingTableId) {
-      // Case 1: UC table (legacy API) — keyed by cred context + table ID + operation.
+    if (UC_CREDENTIALS_TYPE_ICEBERG_PLAN_VALUE.equals(type)) {
+      // Case 1: Iceberg scan plan — keyed by context + endpoint + authorized scan plan ID.
+      String credContextId = readCredContextId(conf);
+      return new IcebergPlanCredId(
+          credContextId,
+          conf.get(UC_ICEBERG_CREDENTIALS_ENDPOINT_KEY),
+          conf.get(UC_ICEBERG_PLAN_ID_KEY));
+
+    } else if (UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)
+        && !isDeltaApi
+        && !hasUcDeltaStagingTableId) {
+      // Case 2: UC table (legacy API) — keyed by cred context + table ID + operation.
       String credContextId = readCredContextId(conf);
       String tableOp = conf.get(UC_TABLE_OPERATION_KEY);
       String tableId = conf.get(UC_TABLE_ID_KEY);
@@ -87,7 +102,7 @@ public interface CredId {
     } else if (UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)
         && !isDeltaApi
         && !hasUcDeltaStagingTableId) {
-      // Case 2: Path-based credentials (legacy UC API) — keyed by cred context + path + operation.
+      // Case 3: Path-based credentials (legacy UC API) — keyed by cred context + path + operation.
       String credContextId = readCredContextId(conf);
       String path = conf.get(UC_PATH_KEY);
       String pathOp = conf.get(UC_PATH_OPERATION_KEY);
@@ -96,7 +111,7 @@ public interface CredId {
     } else if (UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)
         && isDeltaApi
         && !hasUcDeltaStagingTableId) {
-      // Case 3: Delta table — keyed by cred context + catalog.schema.table + operation + location.
+      // Case 4: Delta table — keyed by cred context + catalog.schema.table + operation + location.
       String credContextId = readCredContextId(conf);
       String tableOp = conf.get(UC_TABLE_OPERATION_KEY);
       UCDeltaTableIdentifier identifier =
@@ -108,13 +123,13 @@ public interface CredId {
       return new DeltaTableCredId(credContextId, identifier, tableOp, location);
 
     } else if (hasUcDeltaStagingTableId) {
-      // Case 4: Delta staging table — keyed by cred context + staging table UUID + location.
+      // Case 5: Delta staging table — keyed by cred context + staging table UUID + location.
       String credContextId = readCredContextId(conf);
       String location = conf.get(UC_DELTA_STAGING_TABLE_LOCATION_KEY);
       return new DeltaStagingTableCredId(credContextId, stagingTableId, location);
 
     } else {
-      // Case 5: No recognized credential type — delegate to the caller-provided fallback.
+      // Case 6: No recognized credential type — delegate to the caller-provided fallback.
       return defaultCredId.get();
     }
   }

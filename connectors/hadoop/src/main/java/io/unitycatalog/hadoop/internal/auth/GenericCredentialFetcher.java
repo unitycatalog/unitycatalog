@@ -11,6 +11,7 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
+import io.unitycatalog.hadoop.internal.id.IcebergPlanCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.net.URI;
@@ -49,6 +50,11 @@ public interface GenericCredentialFetcher {
     return new UCDeltaStagingTableCredentialFetcher(credId, api);
   }
 
+  /** Creates a fetcher backed by an Iceberg REST scan-plan credentials endpoint. */
+  static GenericCredentialFetcher forIcebergPlan(IcebergPlanCredId credId, ApiClient apiClient) {
+    return new IcebergPlanCredentialFetcher(credId, apiClient);
+  }
+
   /**
    * Creates a {@link GenericCredentialFetcher} from an already-built {@link ApiClient} and the
    * {@link CredId} identifying the credential scope. The fetcher subtype is selected from the
@@ -65,6 +71,8 @@ public interface GenericCredentialFetcher {
     } else if (credId instanceof DeltaStagingTableCredId) {
       return forUcDeltaStagingTable(
           (DeltaStagingTableCredId) credId, new DeltaTemporaryCredentialsApi(apiClient));
+    } else if (credId instanceof IcebergPlanCredId) {
+      return forIcebergPlan((IcebergPlanCredId) credId, apiClient);
     } else {
       throw new IllegalArgumentException("Unsupported CredId type: " + credId);
     }
