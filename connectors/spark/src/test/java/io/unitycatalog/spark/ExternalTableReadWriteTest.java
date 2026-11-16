@@ -8,14 +8,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
-import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
@@ -23,14 +21,12 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIf;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
 
 public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
   @TempDir protected File dataDir;
@@ -201,7 +197,7 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
   }
 
-  protected static Stream<Arguments> deltaRestApiAndCtasParameters() {
+  protected static Stream<Arguments> deltaRestApiAndTableExistsParameters() {
     return Stream.of(
         Arguments.of(true, false),
         Arguments.of(true, true),
@@ -210,48 +206,13 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
   }
 
   /**
-   * CREATE OR REPLACE TABLE ... LOCATION on a table that does not exist yet creates an external
-   * table at that location, whichever path (UC Delta API or not) handles managed Delta tables.
+   * CREATE OR REPLACE with a LOCATION fails whether or not the table exists, and so does REPLACE,
+   * since external tables cannot be replaced. A missing table is not created and an existing one is
+   * left as it was.
    */
-  @ParameterizedTest(name = "deltaRestApi={0}, ctas={1}")
-  @MethodSource("deltaRestApiAndCtasParameters")
-  public void testCreateOrReplaceMissingTableWithLocation(boolean deltaRestApiEnabled, boolean ctas)
-      throws ApiException {
-    // CTAS is only supported for Delta format.
-    Assumptions.assumeTrue(testingDelta() || !ctas);
-    session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    setDeltaRestApiEnabled(CATALOG_NAME, deltaRestApiEnabled);
-    TableSetupOptions options =
-        new TableSetupOptions()
-            .setCatalogName(CATALOG_NAME)
-            .setTableName(TEST_TABLE)
-            .setCloudScheme("s3")
-            .setDdlMode(TableDdlMode.CREATE_OR_REPLACE_MISSING);
-    if (ctas) {
-      options.setAsSelect(1, "a");
-    }
-    String location = getLocation(options);
-    sql(options.createExternalTableSql(location));
-
-    String fullTableName = options.fullTableName();
-    TableInfo tableInfo = tableOperations.getTable(fullTableName);
-    assertThat(tableInfo.getTableType()).isEqualTo(TableType.EXTERNAL);
-    assertThat(tableInfo.getStorageLocation()).isEqualTo(location);
-    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.valueOf(tableFormat()));
-    assertThat(Optional.ofNullable(tableInfo.getProperties()).orElse(Map.of()))
-        .doesNotContainKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY);
-
-    if (!ctas) {
-      sql("INSERT INTO %s VALUES (1, 'a')", fullTableName);
-    }
-    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "a"));
-    assertThat(new File(localPath(options)).list()).isNotEmpty();
-  }
-
-  /** REPLACE and CREATE OR REPLACE with a LOCATION reject an existing external table. */
-  @ParameterizedTest(name = "deltaRestApi={0}")
-  @ValueSource(booleans = {true, false})
-  public void testReplaceExistingTableWithLocationIsRejected(boolean deltaRestApiEnabled)
+  @ParameterizedTest(name = "deltaRestApi={0}, tableExists={1}")
+  @MethodSource("deltaRestApiAndTableExistsParameters")
+  public void testReplaceWithLocationIsRejected(boolean deltaRestApiEnabled, boolean tableExists)
       throws ApiException {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     setDeltaRestApiEnabled(CATALOG_NAME, deltaRestApiEnabled);
@@ -261,21 +222,33 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
             .setTableName(TEST_TABLE)
             .setCloudScheme("s3");
     String location = getLocation(options);
-    sql(options.createExternalTableSql(location));
+    if (tableExists) {
+      sql(options.createExternalTableSql(location));
+    }
 
-    for (TableDdlMode ddlMode :
-        List.of(TableDdlMode.REPLACE_EXISTING, TableDdlMode.CREATE_OR_REPLACE_EXISTING)) {
+    // Spark itself fails REPLACE on a missing table before it reaches the catalog.
+    List<TableDdlMode> ddlModes =
+        tableExists
+            ? List.of(TableDdlMode.REPLACE_EXISTING, TableDdlMode.CREATE_OR_REPLACE_EXISTING)
+            : List.of(TableDdlMode.CREATE_OR_REPLACE_MISSING);
+    for (TableDdlMode ddlMode : ddlModes) {
       assertThatThrownBy(() -> sql(options.setDdlMode(ddlMode).createExternalTableSql(location)))
           .isInstanceOf(ApiException.class)
           .hasMessage(
-              "%s TABLE cannot specify LOCATION when %s.%s.%s already exists: only "
-                  + "catalog-managed Delta tables can be replaced, and Unity Catalog chooses "
-                  + "their location.",
+              "%s TABLE with LOCATION is not supported for %s.%s.%s: external tables cannot be "
+                  + "replaced. Use CREATE TABLE ... LOCATION for a new table, or drop the existing "
+                  + "one first.",
               ddlMode.sql(), CATALOG_NAME, SCHEMA_NAME, TEST_TABLE);
     }
-    TableInfo tableInfo = tableOperations.getTable(options.fullTableName());
-    assertThat(tableInfo.getTableType()).isEqualTo(TableType.EXTERNAL);
-    assertThat(tableInfo.getStorageLocation()).isEqualTo(location);
+
+    if (tableExists) {
+      TableInfo tableInfo = tableOperations.getTable(options.fullTableName());
+      assertThat(tableInfo.getTableType()).isEqualTo(TableType.EXTERNAL);
+      assertThat(tableInfo.getStorageLocation()).isEqualTo(location);
+    } else {
+      assertThatThrownBy(() -> tableOperations.getTable(options.fullTableName()))
+          .isInstanceOf(ApiException.class);
+    }
   }
 
   protected void setDeltaRestApiEnabled(String catalogName, boolean enabled) {
@@ -296,17 +269,14 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
     return String.format("%s://test-bucket%d", scheme, bucketIndex);
   }
 
+  @SneakyThrows
   protected String getLocation(TableSetupOptions options) {
     String cloudPrefix =
         options.getCloudScheme().equals("file") ? "" : testBucket(options.getCloudScheme());
-    return cloudPrefix + localPath(options);
-  }
-
-  @SneakyThrows
-  private String localPath(TableSetupOptions options) {
     String rawCatalogName = options.getCatalogName().replace("`", "");
     String rawTableName = options.getTableName().replace("`", "");
-    return new File(new File(dataDir, rawCatalogName), rawTableName).getCanonicalPath();
+    String path = new File(new File(dataDir, rawCatalogName), rawTableName).getCanonicalPath();
+    return cloudPrefix + path;
   }
 
   @Override

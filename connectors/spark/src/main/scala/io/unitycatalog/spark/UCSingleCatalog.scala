@@ -610,13 +610,10 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("REPLACE TABLE")
-    if (UCSingleCatalog.isPathTable(ident)) {
+    if (isDeltaOrIcebergPathTable(ident)) {
       return stagingCatalog.stageReplace(ident, schema, partitions, properties)
     }
-    if (!UCSingleCatalog.isManagedTable(properties, ident)) {
-      resolveExistingTableForReplace(ident, allowMissingTable = false)
-      throw locationOnExistingTableError("REPLACE TABLE", ident)
-    }
+    rejectExternalReplace("REPLACE TABLE", ident, properties)
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer load + augment to the Delta-side `buildReplaceProps`. UCSingleCatalog no longer
       // loads the existing table and prepare the properties for replace as this will be done by
@@ -653,15 +650,10 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("CREATE OR REPLACE TABLE")
-    if (UCSingleCatalog.isPathTable(ident)) {
+    if (isDeltaOrIcebergPathTable(ident)) {
       return stagingCatalog.stageCreateOrReplace(ident, schema, partitions, properties)
     }
-    if (!UCSingleCatalog.isManagedTable(properties, ident)) {
-      if (resolveExistingTableForReplace(ident, allowMissingTable = true).isDefined) {
-        throw locationOnExistingTableError("CREATE OR REPLACE TABLE", ident)
-      }
-      return stageCreate(ident, schema, partitions, properties)
-    }
+    rejectExternalReplace("CREATE OR REPLACE TABLE", ident, properties)
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer existence-probe + branch (create-staging vs replace) to the Delta catalog.
       // UCSingleCatalog no longer loads the existing table and prepare the properties for replace,
@@ -706,11 +698,27 @@ class UCSingleCatalog
     }
   }
 
-  private def locationOnExistingTableError(operation: String, ident: Identifier): ApiException =
-    new ApiException(
-      s"$operation cannot specify LOCATION when " +
-        s"${UCSingleCatalog.fullTableNameForApi(name(), ident)} already exists: only " +
-        "catalog-managed Delta tables can be replaced, and Unity Catalog chooses their location.")
+  /** True for a path-based identifier that Delta resolves itself, such as delta.`/tmp/table`. */
+  private def isDeltaOrIcebergPathTable(ident: Identifier): Boolean =
+    isDeltaOrIcebergPath(ident) && new Path(ident.name()).isAbsolute
+
+  /**
+   * Only catalog-managed Delta tables can be replaced, so a replace that asks for an external table
+   * fails whether or not the table exists. Creating it when it is missing would make the statement
+   * work once and fail on every rerun.
+   */
+  private def rejectExternalReplace(
+      operation: String,
+      ident: Identifier,
+      properties: util.Map[String, String]): Unit = {
+    if (properties.containsKey(TableCatalog.PROP_LOCATION) ||
+      properties.containsKey(TableCatalog.PROP_EXTERNAL)) {
+      throw new ApiException(
+        s"$operation with LOCATION is not supported for " +
+          s"${UCSingleCatalog.fullTableNameForApi(name(), ident)}: external tables cannot be " +
+          "replaced. Use CREATE TABLE ... LOCATION for a new table, or drop the existing one first.")
+    }
+  }
 
   private def requireStagingCatalog(operation: String): StagingTableCatalog = delegate match {
     case catalog: StagingTableCatalog => catalog
@@ -889,12 +897,9 @@ object UCSingleCatalog {
   private def isManagedTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
-    !hasExternalClause && !hasLocationClause && !isPathTable(ident)
+    val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
+    !hasExternalClause && !hasLocationClause && !isPathTable
   }
-
-  /** True for a path-based identifier such as delta.`/tmp/table`. */
-  private def isPathTable(ident: Identifier): Boolean =
-    ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {
