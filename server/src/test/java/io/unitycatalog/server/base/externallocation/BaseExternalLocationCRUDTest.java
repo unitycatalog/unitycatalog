@@ -412,7 +412,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             createCleanupTask(externalLocationRoot + "/second"));
 
     for (UUID taskId : taskIds) {
-      assertPendingCleanupDenied(
+      assertPendingCleanupRefused(
           () ->
               externalLocationOperations.deleteExternalLocation(
                   externalLocationName, Optional.of(false)));
@@ -436,9 +436,9 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     delete(externalLocationName, Optional.of(true));
   }
 
-  private void assertPendingCleanupDenied(Executable action) {
+  private void assertPendingCleanupRefused(Executable action) {
     assertApiException(
-        action, ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup");
+        action, ErrorCode.FAILED_PRECONDITION, "Input path overlaps pending storage cleanup");
   }
 
   private UUID createCleanupTask(String storageLocation) {

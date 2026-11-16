@@ -221,6 +221,8 @@ public class ExternalLocationRepository {
    * @throws BaseException with NOT_FOUND if the external location doesn't exist
    * @throws BaseException with INVALID_ARGUMENT if the external location is in use and force is
    *     false
+   * @throws BaseException with FAILED_PRECONDITION if a storage cleanup is pending under the
+   *     external location and force is false
    */
   public ExternalLocationDAO deleteExternalLocation(String name, boolean force) {
     return TransactionManager.executeWithTransaction(
@@ -235,7 +237,7 @@ public class ExternalLocationRepository {
             if (ExternalLocationUtils.hasPendingCleanupOverlap(
                 session, NormalizedURL.from(existingLocation.getUrl()))) {
               throw new BaseException(
-                  ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+                  ErrorCode.FAILED_PRECONDITION, "Input path overlaps pending storage cleanup.");
             }
             ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
                     session,
