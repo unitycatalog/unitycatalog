@@ -85,9 +85,7 @@ and `list` show only the `email` and `private_key_id`.
 
 An external location that uses a Google Cloud Storage credential must be a `gs://` path.
 
-For now this only stores the key and binds external locations to it. Getting temporary access tokens
-from the stored credential is not supported yet: a request for access under such a location fails
-with `UNIMPLEMENTED`.
+When a client asks for access to a path under such a location, the server signs in with the stored key and returns a short-lived access token limited to that path. The service account needs `roles/storage.objectViewer` on the bucket to read, and `roles/storage.objectAdmin` to read and write.
 
 ### List Credentials
 
