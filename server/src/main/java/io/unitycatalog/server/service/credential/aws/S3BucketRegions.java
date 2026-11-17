@@ -221,7 +221,11 @@ public class S3BucketRegions {
     }
     Long retryAfter = retryAfterMs.getIfPresent(storageBucket);
     if (retryAfter != null && now < retryAfter) {
-      return Optional.of(lastReportedOrDefault(storageBucket));
+      // The two caches evict apart: an AWS bucket has no default, so without the reported region
+      // it is asked again rather than given the default of S3-compatible storage.
+      if (reported != null || !storageBucket.isAws()) {
+        return Optional.of(lastReportedOrDefault(storageBucket));
+      }
     }
     return Optional.empty();
   }
@@ -234,19 +238,10 @@ public class S3BucketRegions {
   private String lookUp(StorageBucket storageBucket) {
     String s3Endpoint = storageBucket.s3Endpoint();
     String bucket = storageBucket.bucket();
-    // A region the SDK needs to build the client; the anonymous request is not signed with it.
-    S3ClientBuilder builder =
-        s3ClientBuilderSupplier
-            .get()
-            .credentialsProvider(AnonymousCredentialsProvider.create())
-            .region(Region.US_EAST_1)
-            .overrideConfiguration(c -> c.apiCallTimeout(DISCOVERY_TIMEOUT));
-    if (!storageBucket.isAws()) {
-      builder.endpointOverride(URI.create(s3Endpoint)).forcePathStyle(true);
-    }
     // Discovery runs outside any map lock, so a slow storage does not serialize requests for other
-    // buckets.
-    try (S3Client s3Client = builder.build()) {
+    // buckets. The client is built in the try, so a failure to build it is handled as a failed
+    // request.
+    try (S3Client s3Client = discoveryClient(storageBucket)) {
       Optional<String> region = headBucketRegion(s3Client, bucket);
       if (region.isEmpty() || region.get().isBlank()) {
         return withoutRegion(storageBucket, "no region header");
@@ -290,6 +285,21 @@ public class S3BucketRegions {
       LOGGER.warn("Could not reach {} to read the region of bucket {}", s3Endpoint, bucket, e);
       return failed(storageBucket);
     }
+  }
+
+  /** The anonymous client to read a bucket's region with, on its storage. */
+  private S3Client discoveryClient(StorageBucket storageBucket) {
+    // A region the SDK needs to build the client; the anonymous request is not signed with it.
+    S3ClientBuilder builder =
+        s3ClientBuilderSupplier
+            .get()
+            .credentialsProvider(AnonymousCredentialsProvider.create())
+            .region(Region.US_EAST_1)
+            .overrideConfiguration(c -> c.apiCallTimeout(DISCOVERY_TIMEOUT));
+    if (!storageBucket.isAws()) {
+      builder.endpointOverride(URI.create(storageBucket.s3Endpoint())).forcePathStyle(true);
+    }
+    return builder.build();
   }
 
   /**
