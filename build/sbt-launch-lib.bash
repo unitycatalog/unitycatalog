@@ -57,7 +57,7 @@ sha256_of () {
     shasum -a 256 "$1" | awk '{print $1}'
   else
     echoerr "Neither sha256sum nor shasum is available to verify the sbt launcher checksum."
-    exit 1
+    return 1
   fi
 }
 
@@ -90,6 +90,10 @@ acquire_sbt_jar () {
     echoerr "Add one in build/sbt-launch-lib.bash (verified against the .sha1 Maven Central publishes) when bumping sbt.version."
     exit 1
   fi
+  if ! command -v sha256sum > /dev/null 2>&1 && ! command -v shasum > /dev/null 2>&1; then
+    echoerr "Neither sha256sum nor shasum is available to verify the sbt launcher checksum."
+    exit 1
+  fi
 
   # Download sbt from mirror URL if the environment variable is provided
   if [[ "${SBT_VERSION}" == "0.13.18" ]] && [[ -n "${SBT_MIRROR_JAR_URL}" ]]; then
@@ -103,6 +107,13 @@ acquire_sbt_jar () {
 
   JAR=build/sbt-launch-${SBT_VERSION}.jar
   sbt_jar=$JAR
+
+  if [[ -f "$sbt_jar" ]] && [[ "$(sha256_of "$sbt_jar")" != "${SBT_LAUNCH_SHA256}" ]]; then
+    # A cached jar is just a file on disk; verify it on every run; the same way a fresh download
+    # is verified, so one swapped or corrupted after it was fetched is never run unverified.
+    echoerr "Cached sbt launcher ${sbt_jar} does not match the expected checksum; re-downloading."
+    rm -f "$sbt_jar"
+  fi
 
   if [[ ! -f "$sbt_jar" ]]; then
     # Download sbt launch jar if it hasn't been downloaded yet
