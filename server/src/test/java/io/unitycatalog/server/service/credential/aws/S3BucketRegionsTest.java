@@ -1,12 +1,16 @@
 package io.unitycatalog.server.service.credential.aws;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -225,6 +229,49 @@ public class S3BucketRegionsTest {
     assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket"))
         .isEqualTo(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
     verify(s3, times(7)).headBucket(any(HeadBucketRequest.class));
+  }
+
+  @Test
+  public void testAwsBucketKeepsItsReportedRegionAndHasNoDefault() {
+    // An AWS bucket shares the lookup: its region is cached, and a failed recheck keeps it.
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-central-1").build())
+        .thenThrow(s3Exception(503, null));
+    AtomicLong now = new AtomicLong();
+    S3BucketRegions aws = new S3BucketRegions(() -> builder, now::get);
+    assertThat(aws.getAwsRegion("bucket")).isEqualTo("eu-central-1");
+    assertThat(aws.getAwsRegion("bucket")).isEqualTo("eu-central-1");
+    now.addAndGet(S3BucketRegions.REPORTED_REGION_TTL.toMillis());
+    assertThat(aws.getAwsRegion("bucket")).isEqualTo("eu-central-1");
+    verify(s3, times(2)).headBucket(any(HeadBucketRequest.class));
+    // The storage is not overridden: the request goes to AWS S3.
+    verify(builder, never()).endpointOverride(any());
+
+    // Without a known region it has no default: transient failures and answers without a region
+    // fail every time, and the bucket is asked again on the next request.
+    for (RuntimeException failure :
+        List.<RuntimeException>of(
+            s3Exception(503, null), SdkClientException.create("Connection refused"))) {
+      S3Client client = mock(S3Client.class);
+      when(builder.build()).thenReturn(client);
+      when(client.headBucket(any(HeadBucketRequest.class))).thenThrow(failure);
+      S3BucketRegions fresh = new S3BucketRegions(() -> builder, now::get);
+      for (int i = 0; i < 2; i++) {
+        assertThatThrownBy(() -> fresh.getAwsRegion("other"))
+            .isInstanceOfSatisfying(
+                BaseException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
+      }
+      verify(client, times(2)).headBucket(any(HeadBucketRequest.class));
+    }
+    S3Client noRegion = mock(S3Client.class);
+    when(builder.build()).thenReturn(noRegion);
+    when(noRegion.headBucket(any(HeadBucketRequest.class)))
+        .thenReturn(HeadBucketResponse.builder().build());
+    assertThatThrownBy(() -> new S3BucketRegions(() -> builder, now::get).getAwsRegion("other"))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION));
   }
 
   @Test

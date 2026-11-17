@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -686,6 +687,7 @@ public class FileOperationsTest {
     S3ClientBuilder builder = mock(S3ClientBuilder.class);
     when(builder.credentialsProvider(any())).thenReturn(builder);
     when(builder.region(any())).thenReturn(builder);
+    when(builder.overrideConfiguration(any(Consumer.class))).thenReturn(builder);
     when(builder.build()).thenReturn(mockS3);
     return new FileOperationsImpl(
         awsCredentialVendor(), new ServerProperties(new Properties()), () -> builder);

@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import org.apache.iceberg.aws.AwsClientProperties;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
@@ -33,12 +32,8 @@ import org.apache.iceberg.io.ResolvingFileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
-import software.amazon.awssdk.core.exception.SdkException;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /** Default {@link FileOperations}: builds credential-vended Iceberg {@link FileIO}s. */
 public class FileOperationsImpl implements FileOperations {
@@ -46,10 +41,9 @@ public class FileOperationsImpl implements FileOperations {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileOperationsImpl.class);
 
   private final StorageCredentialVendor storageCredentialVendor;
-  // Per-bucket S3 region: seeded from the configured s3.region.N, then filled by HeadBucket
-  // discovery for buckets that have none configured. A discovered region is cached for reuse.
-  private final Map<NormalizedURL, String> s3BucketRegionMap;
-  private final Supplier<S3ClientBuilder> s3ClientBuilderSupplier;
+  // The configured s3.region.N per bucket; other AWS buckets are looked up by s3BucketRegions.
+  private final Map<NormalizedURL, String> configuredS3Regions = new HashMap<>();
+  private final S3BucketRegions s3BucketRegions;
 
   public FileOperationsImpl(
       StorageCredentialVendor storageCredentialVendor, ServerProperties serverProperties) {
@@ -67,14 +61,13 @@ public class FileOperationsImpl implements FileOperations {
       ServerProperties serverProperties,
       Supplier<S3ClientBuilder> s3ClientBuilderSupplier) {
     this.storageCredentialVendor = storageCredentialVendor;
-    this.s3ClientBuilderSupplier = s3ClientBuilderSupplier;
-    this.s3BucketRegionMap = new ConcurrentHashMap<>();
+    this.s3BucketRegions = new S3BucketRegions(s3ClientBuilderSupplier);
     serverProperties
         .getS3Configurations()
         .forEach(
             (bucket, config) -> {
               if (config.getRegion() != null) {
-                s3BucketRegionMap.put(bucket, config.getRegion());
+                configuredS3Regions.put(bucket, config.getRegion());
               }
             });
   }
@@ -243,79 +236,18 @@ public class FileOperationsImpl implements FileOperations {
     return Map.copyOf(config);
   }
 
-  /** The configured region of an AWS bucket, otherwise its discovered region cached per bucket. */
-  private String getRegion(NormalizedURL storageBase) {
-    // Discovery runs outside any map lock (get + putIfAbsent rather than computeIfAbsent): a bucket
-    // whose discovery fails is never cached and so is re-probed on every request, and holding the
-    // bin lock across HeadBucket would serialize those probes and pile request threads up on it.
-    String s3Region = s3BucketRegionMap.get(storageBase);
-    if (s3Region == null) {
-      s3Region = discoverRegion(storageBase);
-      s3BucketRegionMap.putIfAbsent(storageBase, s3Region);
-    }
-    return s3Region;
-  }
-
   /**
-   * Resolves the AWS region for a bucket via an anonymous HeadBucket. S3 returns the region in the
-   * {@code x-amz-bucket-region} header even on cross-region (301) and access-denied (403)
-   * responses, so no credentials or bucket permissions are required. A bootstrap region is set only
-   * because the SDK needs one to build a client; the anonymous request is not signed against it.
+   * The configured region of an AWS bucket, otherwise the region it reports.
    *
-   * @throws BaseException {@code FAILED_PRECONDITION} if the region cannot be determined
-   *     (permanent, e.g. no such bucket), or {@code INTERNAL} if discovery failed transiently
-   *     (retriable)
+   * @throws BaseException {@code FAILED_PRECONDITION} if the region cannot be determined, or {@code
+   *     INTERNAL} if the lookup failed transiently (retriable); see {@link
+   *     S3BucketRegions#getAwsRegion}
    */
-  private String discoverRegion(NormalizedURL storageBase) {
-    String bucket = storageBase.toUri().getHost();
-    try (S3Client s3Client =
-        s3ClientBuilderSupplier
-            .get()
-            .credentialsProvider(AnonymousCredentialsProvider.create())
-            .region(Region.US_EAST_1)
-            .build()) {
-      return S3BucketRegions.headBucketRegion(s3Client, bucket)
-          .orElseThrow(() -> permanentRegionError(storageBase, null));
-    } catch (S3Exception e) {
-      // A 5xx, throttling, or 408 request-timeout response is transient; any other definitive 4xx
-      // without the region header (e.g. no such bucket) means the region cannot be determined.
-      if (S3BucketRegions.isTransient(e)) {
-        throw transientRegionError(storageBase, e);
-      }
-      throw permanentRegionError(storageBase, e);
-    } catch (SdkException e) {
-      // Network, timeout, or other SDK failures leave the region undetermined; retriable.
-      throw transientRegionError(storageBase, e);
-    }
-  }
-
-  private static BaseException permanentRegionError(NormalizedURL storageBase, Throwable cause) {
-    // The cause is not surfaced to the caller, so log the underlying S3 error for diagnosis.
-    LOGGER.warn(
-        "Could not resolve the AWS region for S3 bucket {}: {}",
-        storageBase,
-        cause == null ? "HeadBucket returned no region" : cause.getMessage());
-    // FAILED_PRECONDITION, not INVALID_ARGUMENT: the request is well-formed and the caller cannot
-    // fix this — the region is unresolvable until an operator configures
-    // s3.bucketPath.N/s3.region.N
-    // (both map to HTTP 400, so this is a clearer label at no wire cost). It is non-retriable.
-    return new BaseException(
-        ErrorCode.FAILED_PRECONDITION,
-        "Could not resolve the AWS region for S3 bucket "
-            + storageBase
-            + "; configure the matching s3.bucketPath.N and s3.region.N.",
-        cause);
-  }
-
-  private static BaseException transientRegionError(NormalizedURL storageBase, Throwable cause) {
-    // Transient failures are retried silently by the client, so log the underlying S3 error.
-    LOGGER.warn(
-        "Transient failure resolving the AWS region for S3 bucket {}: {}",
-        storageBase,
-        cause == null ? "unknown" : cause.getMessage());
-    return new BaseException(
-        ErrorCode.INTERNAL,
-        "Could not resolve the AWS region for S3 bucket " + storageBase + "; retry the request.",
-        cause);
+  private String getRegion(NormalizedURL storageBase) {
+    String configured = configuredS3Regions.get(storageBase);
+    // getAuthority(), not getHost(): a valid bucket name is not always a valid host name.
+    return configured != null
+        ? configured
+        : s3BucketRegions.getAwsRegion(storageBase.toUri().getAuthority());
   }
 }
