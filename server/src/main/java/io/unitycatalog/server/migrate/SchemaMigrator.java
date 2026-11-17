@@ -448,6 +448,9 @@ public final class SchemaMigrator implements AutoCloseable {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
       refuseIfUnsupported(state());
       requireValidHistory(true);
+      // runs() records a step on the schema of a later step too. The flag still matters for a last
+      // step that changes nothing on this database: its schemas before and after are the same, so
+      // runs() would run it, and an adoption records it.
       boolean adopted = hasLastStepsSchemaWithoutHistory();
       int changed = 0;
       for (String step : pendingSteps()) {
@@ -872,17 +875,23 @@ public final class SchemaMigrator implements AutoCloseable {
       return;
     }
     try (Connection connection = dataSource.getConnection()) {
-      // The caller's pool may not commit by itself, and a rollback would keep the record.
+      // The caller's pool may not commit by itself, and a rollback would keep the record. The
+      // previous setting is restored, for a pool that does not reset it.
+      boolean autoCommit = connection.getAutoCommit();
       connection.setAutoCommit(true);
-      String q = connection.getMetaData().getIdentifierQuoteString();
-      try (PreparedStatement delete =
-          connection.prepareStatement(
-              "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
-                  .formatted(q, HISTORY_TABLE))) {
-        delete.setString(1, step);
-        if (delete.executeUpdate() > 0) {
-          LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
+      try {
+        String q = connection.getMetaData().getIdentifierQuoteString();
+        try (PreparedStatement delete =
+            connection.prepareStatement(
+                "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
+                    .formatted(q, HISTORY_TABLE))) {
+          delete.setString(1, step);
+          if (delete.executeUpdate() > 0) {
+            LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
+          }
         }
+      } finally {
+        connection.setAutoCommit(autoCommit);
       }
     } catch (SQLException e) {
       throw new IllegalStateException(
@@ -1400,11 +1409,14 @@ public final class SchemaMigrator implements AutoCloseable {
     private final Connection connection; // null on H2
     private final String unlockSql;
     private final ReentrantLock h2Lock; // null except on H2
+    private final boolean autoCommit;
 
-    private RunLock(Connection connection, String unlockSql, ReentrantLock h2Lock) {
+    private RunLock(
+        Connection connection, String unlockSql, ReentrantLock h2Lock, boolean autoCommit) {
       this.connection = connection;
       this.unlockSql = unlockSql;
       this.h2Lock = h2Lock;
+      this.autoCommit = autoCommit;
     }
 
     /**
@@ -1422,12 +1434,14 @@ public final class SchemaMigrator implements AutoCloseable {
         }
         ReentrantLock lock = H2_LOCKS.computeIfAbsent(url, u -> new ReentrantLock());
         lock.lock();
-        return new RunLock(null, null, lock);
+        return new RunLock(null, null, lock, true);
       }
       LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
+      boolean autoCommit = true;
       try {
         connection = dataSource.getConnection();
+        autoCommit = connection.getAutoCommit();
         // Outside a transaction, so the run doesn't keep one open while it holds the lock.
         connection.setAutoCommit(true);
         if (!isTrue(connection, calls.tryLock())) {
@@ -1436,8 +1450,11 @@ public final class SchemaMigrator implements AutoCloseable {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, calls.unlock(), null);
+        return new RunLock(connection, calls.unlock(), null, autoCommit);
       } catch (SQLException e) {
+        if (connection != null) {
+          restoreAutoCommit(connection, autoCommit);
+        }
         close(connection);
         throw new IllegalStateException(
             "Could not take the schema migration lock: " + e.getMessage(), e);
@@ -1470,7 +1487,17 @@ public final class SchemaMigrator implements AutoCloseable {
                 + ". The database releases it when the connection closes; run the command again.",
             e);
       } finally {
+        restoreAutoCommit(connection, autoCommit);
         close(connection);
+      }
+    }
+
+    /** Puts back the connection's auto-commit setting, for a pool that does not reset it. */
+    private static void restoreAutoCommit(Connection connection, boolean autoCommit) {
+      try {
+        connection.setAutoCommit(autoCommit);
+      } catch (SQLException e) {
+        // Already closed underneath, so the pool discards it.
       }
     }
 
