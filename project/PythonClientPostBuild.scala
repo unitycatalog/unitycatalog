@@ -126,6 +126,8 @@ object PythonClientPostBuild {
       return Some(s"$clientInit was not generated.")
     }
     val content = new String(Files.readAllBytes(clientInit), StandardCharsets.UTF_8)
+    // The trailing dot keeps this from matching the api_client import. These are the generator's exact import
+    // lines, so a change to its import style also fails here, with the run-order message.
     val fromAllYaml = content.contains("from unitycatalog.client.api.") &&
       content.contains("from unitycatalog.client.api_client import ApiClient") &&
       bareDeltaImport.findFirstIn(content).isEmpty

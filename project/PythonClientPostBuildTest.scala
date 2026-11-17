@@ -21,8 +21,16 @@ object PythonClientPostBuildTest {
       |""".stripMargin
 
   def run(log: Logger, dir: Path): Unit = {
-    val init = dir.resolve("__init__.py")
+    try check(dir.resolve("__init__.py"))
+    catch {
+      case e: RuntimeException =>
+        log.error(e.getMessage)
+        throw e
+    }
+    log.info("PythonClientPostBuildTest passed.")
+  }
 
+  private def check(init: Path): Unit = {
     Files.deleteIfExists(init)
     expect("a missing file", PythonClientPostBuild.clientPackageInitProblem(init), Some(s"$init was not generated."))
 
@@ -37,13 +45,22 @@ object PythonClientPostBuildTest {
         s"$init is not the one from the all.yaml run. The all.yaml run in pythonClient/generate must run last, " +
           "after the delta.yaml run."))
 
-    Files.write(init, (allYamlInit + "from delta.api.delta_tables_api import DeltaTablesApi\n").getBytes(StandardCharsets.UTF_8))
-    expect(
+    expectRunOrderProblem(init, "an empty init", "")
+    expectRunOrderProblem(
+      init, "an init with only the ApiClient import", "from unitycatalog.client.api_client import ApiClient\n")
+    expectRunOrderProblem(
+      init,
       "the all.yaml init with a bare delta import",
+      allYamlInit + "from delta.api.delta_tables_api import DeltaTablesApi\n")
+    expectRunOrderProblem(init, "the all.yaml init with an import delta. line", allYamlInit + "import delta.api\n")
+  }
+
+  private def expectRunOrderProblem(init: Path, name: String, content: String): Unit = {
+    Files.write(init, content.getBytes(StandardCharsets.UTF_8))
+    expect(
+      name,
       PythonClientPostBuild.clientPackageInitProblem(init).map(_.startsWith(s"$init is not the one")),
       Some(true))
-
-    log.info("PythonClientPostBuildTest passed.")
   }
 
   private def expect[T](name: String, actual: T, expected: T): Unit = {
