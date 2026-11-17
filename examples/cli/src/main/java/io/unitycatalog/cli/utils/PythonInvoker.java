@@ -11,17 +11,28 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.json.JSONArray;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PythonInvoker {
+  private static final Logger LOGGER = LoggerFactory.getLogger(PythonInvoker.class);
 
   /** How much of the end of stderr a failure message keeps. The Python error is printed last. */
   private static final int MAX_ERROR_OUTPUT_BYTES = 4096;
 
   public static String invokePython(FunctionInfo function, String scriptPath, String... args)
+      throws ApiException {
+    return invokePython(
+        function, scriptPath, Paths.get(System.getProperty("java.io.tmpdir")), args);
+  }
+
+  /** Same as above, with the stderr file of the call created in {@code tempDir}. */
+  static String invokePython(FunctionInfo function, String scriptPath, Path tempDir, String... args)
       throws ApiException {
     try {
       // Prepare the arguments for the Python script
@@ -75,11 +86,11 @@ public class PythonInvoker {
 
       // Send stderr to a file, so that a full stderr pipe cannot block the script while stdout is
       // read.
-      Path errorOutput = Files.createTempFile("uc-function-", ".stderr");
+      Path errorOutput = Files.createTempFile(tempDir, "uc-function-", ".stderr");
       try {
         return runScript(argsList, errorOutput);
       } finally {
-        Files.deleteIfExists(errorOutput);
+        deleteQuietly(errorOutput);
       }
     } catch (ApiException e) {
       throw e;
@@ -121,8 +132,9 @@ public class PythonInvoker {
   /** Reads the last MAX_ERROR_OUTPUT_BYTES of the file, with "..." in front if it is longer. */
   private static String readEnd(Path file) throws IOException {
     try (RandomAccessFile in = new RandomAccessFile(file.toFile(), "r")) {
-      long start = Math.max(0, in.length() - MAX_ERROR_OUTPUT_BYTES);
-      byte[] bytes = new byte[(int) (in.length() - start)];
+      long length = in.length();
+      long start = Math.max(0, length - MAX_ERROR_OUTPUT_BYTES);
+      byte[] bytes = new byte[(int) (length - start)];
       in.seek(start);
       in.readFully(bytes);
       int from = 0;
@@ -132,6 +144,16 @@ public class PythonInvoker {
       }
       String end = new String(bytes, from, bytes.length - from, StandardCharsets.UTF_8);
       return start > 0 ? "..." + end : end;
+    }
+  }
+
+  /** Deletes the file, or schedules it for deletion at exit, so cleanup never hides the result. */
+  static void deleteQuietly(Path file) {
+    try {
+      Files.deleteIfExists(file);
+    } catch (IOException e) {
+      LOGGER.debug("Could not delete {}, deleting it at exit instead", file);
+      file.toFile().deleteOnExit();
     }
   }
 }

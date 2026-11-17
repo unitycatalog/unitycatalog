@@ -12,6 +12,7 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -88,6 +89,16 @@ public abstract class BaseServerTest {
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
     serverProperties.setProperty(
         Property.EXTERNAL_LOCAL_ROOTS.getKey(), testDirectoryRoot.toString());
+  }
+
+  /**
+   * Enables experimental S3-compatible storage, with a key to encrypt its secrets. Off by default,
+   * as on a server; call it from {@link #setUpProperties()} in tests that need it.
+   */
+  protected void enableS3CompatibleStorage() {
+    serverProperties.setProperty(Property.S3_COMPATIBLE_STORAGE_ENABLED.getKey(), "true");
+    serverProperties.setProperty(
+        Property.CREDENTIAL_ENCRYPTION_KEY.getKey(), TestUtils.CREDENTIAL_ENCRYPTION_KEY);
   }
 
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}

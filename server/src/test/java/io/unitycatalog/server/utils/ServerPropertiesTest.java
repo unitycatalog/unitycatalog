@@ -7,6 +7,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.ServerProperties.S3CompatibleStaticKeyVending;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -290,6 +291,24 @@ public class ServerPropertiesTest {
     testInvalidProperty(Property.SERVER_ENV, "staging", "Invalid value 'staging'", "server.env");
     testInvalidProperty(
         Property.AUTHORIZATION_ENABLED, "yes", "Invalid value 'yes'", "server.authorization");
+
+    // S3_COMPATIBLE_STATIC_KEY_VENDING decides whether stored keys leave the server, so only the
+    // exact values are taken, and unset means keys stay.
+    assertThat(new ServerProperties(new Properties()).getS3CompatibleStaticKeyVending())
+        .isEqualTo(S3CompatibleStaticKeyVending.ENDPOINT_ONLY);
+    for (S3CompatibleStaticKeyVending mode : S3CompatibleStaticKeyVending.values()) {
+      testValidProperty(Property.S3_COMPATIBLE_STATIC_KEY_VENDING, mode.value());
+      Properties props = new Properties();
+      props.setProperty(Property.S3_COMPATIBLE_STATIC_KEY_VENDING.getKey(), mode.value());
+      assertThat(new ServerProperties(props).getS3CompatibleStaticKeyVending()).isEqualTo(mode);
+    }
+    for (String value : List.of("STATIC-KEY", "static_key", "true")) {
+      testInvalidProperty(
+          Property.S3_COMPATIBLE_STATIC_KEY_VENDING,
+          value,
+          "Invalid value '" + value + "'",
+          "server.s3-compatible-storage.static-key-vending");
+    }
   }
 
   @Test
