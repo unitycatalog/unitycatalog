@@ -5,6 +5,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Paths;
+import java.util.regex.Pattern;
 import lombok.EqualsAndHashCode;
 
 /**
@@ -39,6 +40,10 @@ import lombok.EqualsAndHashCode;
  */
 @EqualsAndHashCode
 public final class NormalizedURL {
+  // The characters of an S3 bucket name: letters, digits, '.', '_' and '-', starting with a letter
+  // or
+  // digit. Wider than the AWS rules, so names other S3-compatible storage allows keep working.
+  private static final Pattern S3_BUCKET = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
   private final String url;
 
@@ -118,6 +123,24 @@ public final class NormalizedURL {
         && !bucket.isEmpty()
         && bucket.indexOf('@') < 0
         && bucket.indexOf(':') < 0;
+  }
+
+  /**
+   * Returns the bucket name of this {@code s3://} URL, as written: a valid bucket name, such as
+   * {@code data.2024} or one with an underscore, is not always a valid host name, so it is not read
+   * with {@link URI#getHost()}. Only bucket-name characters are taken, so a {@code *}, an escape,
+   * user info or a port never reaches a session policy or a region lookup.
+   *
+   * @return the bucket name
+   * @throws BaseException {@code INVALID_ARGUMENT} if the authority is not a valid bucket name
+   */
+  public String getS3Bucket() {
+    String bucket = toUri().getRawAuthority();
+    if (bucket == null || !S3_BUCKET.matcher(bucket).matches()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Not a valid S3 bucket name: " + bucket + " in " + url);
+    }
+    return bucket;
   }
 
   /**

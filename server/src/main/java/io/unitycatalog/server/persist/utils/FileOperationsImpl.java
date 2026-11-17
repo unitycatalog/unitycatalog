@@ -267,10 +267,7 @@ public class FileOperationsImpl implements FileOperations {
    *     (retriable)
    */
   private String discoverRegion(NormalizedURL storageBase) {
-    // Not getHost(): a valid bucket name, such as data.2024 or one with an underscore, is not
-    // always
-    // a valid host name, and getHost() returns null for it.
-    String bucket = storageBase.toUri().getAuthority();
+    String bucket = storageBase.getS3Bucket();
     try (S3Client s3Client =
         s3ClientBuilderSupplier
             .get()

@@ -9,10 +9,13 @@ import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.O
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.POLICY_STATEMENT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
 import java.util.List;
@@ -154,6 +157,25 @@ public class AwsPolicyGeneratorTest {
           .as(bucket)
           .map(JsonNode::asText)
           .containsExactly("path1/table1", "path1/table1/", "path1/table1/*");
+    }
+    // An authority that is no bucket name, such as a wildcard that would name every bucket, an
+    // escape, user info or a port, is refused rather than written into the policy's ARNs.
+    for (String location :
+        List.of(
+            "s3://*/p",
+            "s3://prod-*/p",
+            "s3://%2A/p",
+            "s3://%62ucket/p",
+            "s3://user@bucket/p",
+            "s3://bucket:80/p")) {
+      assertThatThrownBy(
+              () ->
+                  AwsPolicyGenerator.generatePolicy(
+                      Set.of(SELECT), List.of(NormalizedURL.from(location))))
+          .as(location)
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT));
     }
   }
 
