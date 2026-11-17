@@ -24,9 +24,12 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class GcpCredentialVendorTest {
@@ -199,5 +202,82 @@ public class GcpCredentialVendorTest {
 
     IOException failure = catchThrowableOfType(IOException.class, credentials::refreshAccessToken);
     assertThat(GcpCredentialVendor.credentialError(failure).getErrorCode()).isEqualTo(expected);
+  }
+
+  /**
+   * The failures Google's token endpoint gives for a stored key, produced by the real library
+   * against a stand-in for the endpoint, so the mapping matches what the library throws.
+   */
+  static Stream<Arguments> storedKeyFailures() {
+    String signature = "{\"error\": \"invalid_grant\", \"error_description\": \"Invalid JWT\"}";
+    String client = "{\"error\": \"invalid_client\", \"error_description\": \"deleted\"}";
+    return Stream.of(
+        Arguments.of(400, signature, ErrorCode.FAILED_PRECONDITION),
+        Arguments.of(400, client, ErrorCode.FAILED_PRECONDITION),
+        Arguments.of(503, "{\"error\": \"backend_error\"}", ErrorCode.UNAVAILABLE),
+        Arguments.of(500, "upstream failure", ErrorCode.UNAVAILABLE));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storedKeyFailures")
+  public void testStoredKeyFailures(int status, String body, ErrorCode expected) throws Exception {
+    MockHttpTransport tokenService =
+        new MockHttpTransport.Builder()
+            .setLowLevelHttpResponse(
+                new MockLowLevelHttpResponse()
+                    .setStatusCode(status)
+                    .setContentType("application/json")
+                    .setContent(body))
+            .build();
+    IOException failure = refreshStoredKeyAgainst(tokenService);
+
+    BaseException error = GcpCredentialVendor.storedKeyError(failure);
+    assertThat(error.getErrorCode()).isEqualTo(expected);
+    // Whoever asks for access may not read the credential, so the message names none of it.
+    assertThat(error.getMessage()).doesNotContain(STORED_KEY_EMAIL).doesNotContain("key-id-1");
+    if (expected == ErrorCode.FAILED_PRECONDITION) {
+      assertThat(error.getMessage()).contains("Replace the storage credential");
+    }
+  }
+
+  @Test
+  public void testStoredKeyWhenGoogleCannotBeReached() throws Exception {
+    MockHttpTransport unreachable =
+        new MockHttpTransport() {
+          @Override
+          public com.google.api.client.http.LowLevelHttpRequest buildRequest(
+              String method, String url) throws IOException {
+            throw new java.net.UnknownHostException("oauth2.googleapis.com");
+          }
+        };
+    assertThat(
+            GcpCredentialVendor.storedKeyError(refreshStoredKeyAgainst(unreachable)).getErrorCode())
+        .isEqualTo(ErrorCode.UNAVAILABLE);
+  }
+
+  private static final String STORED_KEY_EMAIL = "uc-test@my-project.iam.gserviceaccount.com";
+
+  /** Refreshes a service account key against {@code tokenService}, returning how that fails. */
+  private IOException refreshStoredKeyAgainst(MockHttpTransport tokenService) throws Exception {
+    java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("RSA");
+    generator.initialize(2048);
+    com.google.auth.oauth2.ServiceAccountCredentials credentials =
+        com.google.auth.oauth2.ServiceAccountCredentials.newBuilder()
+            .setClientEmail(STORED_KEY_EMAIL)
+            .setPrivateKey(generator.generateKeyPair().getPrivate())
+            .setPrivateKeyId("key-id-1")
+            .setScopes(GcpCredentialVendor.INITIAL_SCOPES)
+            .setHttpTransportFactory(() -> tokenService)
+            .build();
+    // Through the downscoping step, as the vendor does: it wraps what the key's refresh throws.
+    DownscopedCredentials downscoped =
+        DownscopedCredentials.newBuilder()
+            .setSourceCredential(credentials)
+            .setCredentialAccessBoundary(
+                CredentialAccessBoundary.newBuilder()
+                    .addRule(ruleFor("gs://test-bucket/t"))
+                    .build())
+            .build();
+    return catchThrowableOfType(IOException.class, downscoped::refreshAccessToken);
   }
 }

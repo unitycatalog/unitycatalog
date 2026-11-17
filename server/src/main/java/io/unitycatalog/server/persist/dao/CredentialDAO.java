@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.auth.oauth2.ServiceAccountCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
@@ -21,6 +20,7 @@ import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore.SecretContext;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.ValidationUtils;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -298,12 +298,7 @@ public class CredentialDAO extends IdentifiableDAO {
         key.getPrivateKey() != null && !key.getPrivateKey().isBlank(),
         "gcp_service_account_key.private_key is required.");
     try {
-      ServiceAccountCredentials.fromPkcs8(
-          /* clientId= */ null,
-          key.getEmail(),
-          key.getPrivateKey(),
-          key.getPrivateKeyId(),
-          /* scopes= */ null);
+      GcpCredentialVendor.credentialsOf(key);
     } catch (IOException | RuntimeException e) {
       // The key is not part of the message.
       throw new BaseException(
