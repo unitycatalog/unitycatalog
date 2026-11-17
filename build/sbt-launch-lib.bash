@@ -36,8 +36,60 @@ dlog () {
   [[ $debug ]] && echoerr "$@"
 }
 
+# The known-good SHA-256 of each sbt-launch jar this script is allowed to run, keyed by
+# sbt.version. Recorded by downloading the jar from Maven Central and checking it against the
+# .sha1 Maven Central publishes alongside it, then hashing the same (verified) bytes with SHA-256.
+# An sbt upgrade (project/build.properties) must add a matching entry here in the same change, or
+# every build/sbt invocation fails closed instead of running an unverified launcher.
+sbt_launch_sha256 () {
+  case "$1" in
+    1.9.9) echo "99fd0509060b9655ece7c5a34ecd7ecb471986d4191922966100057f6b6f373c" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Prints the SHA-256 of $1 as a lowercase hex string, using whichever of sha256sum (Linux) or
+# shasum -a 256 (macOS) is on PATH.
+sha256_of () {
+  if command -v sha256sum > /dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum > /dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    echoerr "Neither sha256sum nor shasum is available to verify the sbt launcher checksum."
+    exit 1
+  fi
+}
+
+# Verifies $1 (a freshly downloaded "*.part" file) against the expected SHA-256 $3, and moves it
+# to $2 only on a match. On a mismatch, deletes $1 and prints the expected and actual hashes so
+# the caller can retry from another URL or fail.
+verify_and_install_sbt_jar () {
+  local jar_dl="$1"
+  local jar_dest="$2"
+  local expected_sha256="$3"
+  local actual_sha256
+  actual_sha256="$(sha256_of "$jar_dl")"
+  if [[ "$actual_sha256" == "$expected_sha256" ]]; then
+    mv "$jar_dl" "$jar_dest"
+    return 0
+  fi
+  echoerr "sbt launcher checksum mismatch for $jar_dl"
+  echoerr "  expected sha256: $expected_sha256"
+  echoerr "  actual sha256:   $actual_sha256"
+  rm -f "$jar_dl"
+  return 1
+}
+
 acquire_sbt_jar () {
   SBT_VERSION=`awk -F "=" '/sbt\.version/ {print $2}' ./project/build.properties`
+
+  SBT_LAUNCH_SHA256="$(sbt_launch_sha256 "${SBT_VERSION}")"
+  if [[ -z "${SBT_LAUNCH_SHA256}" ]]; then
+    echoerr "No known-good SHA-256 is recorded for sbt-launch ${SBT_VERSION} in sbt_launch_sha256()."
+    echoerr "Add one in build/sbt-launch-lib.bash (verified against the .sha1 Maven Central publishes) when bumping sbt.version."
+    exit 1
+  fi
 
   # Download sbt from mirror URL if the environment variable is provided
   if [[ "${SBT_VERSION}" == "0.13.18" ]] && [[ -n "${SBT_MIRROR_JAR_URL}" ]]; then
@@ -60,29 +112,29 @@ acquire_sbt_jar () {
     JAR_DL="${JAR}.part"
     if [ $(command -v curl) ]; then
       curl --fail --location --silent ${URL1} > "${JAR_DL}" &&\
-        mv "${JAR_DL}" "${JAR}"
+        verify_and_install_sbt_jar "${JAR_DL}" "${JAR}" "${SBT_LAUNCH_SHA256}"
     elif [ $(command -v wget) ]; then
       wget --quiet ${URL1} -O "${JAR_DL}" &&\
-        mv "${JAR_DL}" "${JAR}"
+        verify_and_install_sbt_jar "${JAR_DL}" "${JAR}" "${SBT_LAUNCH_SHA256}"
     else
       printf "You do not have curl or wget installed, please install sbt manually from https://www.scala-sbt.org/\n"
       exit -1
     fi
     fi
     if [ ! -f "${JAR}" ]; then
-    # Primary download failed, retry from Maven Central directly
+    # Primary download failed (or failed checksum verification), retry from Maven Central directly
     printf 'Download from %s failed. Retrying from %s\n' "${URL1}" "${BACKUP_URL}"
     JAR_DL="${JAR}.part"
     if [ $(command -v curl) ]; then
       curl --fail --location --silent ${BACKUP_URL} > "${JAR_DL}" &&\
-        mv "${JAR_DL}" "${JAR}"
+        verify_and_install_sbt_jar "${JAR_DL}" "${JAR}" "${SBT_LAUNCH_SHA256}"
     elif [ $(command -v wget) ]; then
       wget --quiet ${BACKUP_URL} -O "${JAR_DL}" &&\
-        mv "${JAR_DL}" "${JAR}"
+        verify_and_install_sbt_jar "${JAR_DL}" "${JAR}" "${SBT_LAUNCH_SHA256}"
     fi
     fi
     if [ ! -f "${JAR}" ]; then
-    # Both downloads failed
+    # Both downloads failed, or neither one passed checksum verification
     printf "Our attempt to download sbt locally to ${JAR} failed. Please install sbt manually from https://www.scala-sbt.org/\n"
     exit -1
     fi
