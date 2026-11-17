@@ -78,6 +78,7 @@ public final class MetricsRegistries {
   public static PrometheusMetrics createPrometheus() {
     PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
     Predicate<Meter.Id> httpRequestCounter = id -> id.getName().equals(HTTP_SERVER_REQUESTS);
+    Predicate<Meter.Id> httpTotalDuration = id -> id.getName().equals(HTTP_SERVER_TOTAL_DURATION);
     registry
         .config()
         .meterFilter(
@@ -86,9 +87,7 @@ public final class MetricsRegistries {
                     id.getName().startsWith("http.server.")
                         && !EXPOSED_HTTP_SERVER_METERS.contains(id.getName())))
         .meterFilter(MeterFilter.forMeters(httpRequestCounter, MeterFilter.ignoreTags("result")))
-        .meterFilter(
-            MeterFilter.forMeters(
-                id -> id.getName().equals(HTTP_SERVER_TOTAL_DURATION), NO_PERCENTILES));
+        .meterFilter(MeterFilter.forMeters(httpTotalDuration, NO_PERCENTILES));
     new JvmMemoryMetrics().bindTo(registry);
     JvmGcMetrics jvmGcMetrics = new JvmGcMetrics();
     jvmGcMetrics.bindTo(registry);
