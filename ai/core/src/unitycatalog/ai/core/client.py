@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import base64
+import concurrent.futures
 import datetime
 import decimal
 import logging
@@ -108,6 +109,8 @@ SQL_TYPE_TO_PYTHON_TYPE_MAPPING_UC_OSS = {
 
 _logger = logging.getLogger(__name__)
 
+_SESSION_CLOSED = "Session is closed"
+
 
 def syncify_method(sync_method):
     @wraps(sync_method)
@@ -139,12 +142,20 @@ class _SingleLoopRESTClient:
     An aiohttp session only works on the event loop it is created on, so sharing the ApiClient's
     own session fails with "Timeout context manager should be used inside a task" anywhere else.
     Response bodies are read on the owned loop before the response is returned. The thread starts
-    with the first request, so a client that never sends one costs no thread.
+    with the first request, so a client that never sends one has no thread until it is closed.
+    Closing still runs the loop briefly, since the ApiClient's own session has to be closed on one.
     """
 
     def __init__(self, api_client: ApiClient):
         self._configuration = api_client.configuration
         self._replaced_rest_client = api_client.rest_client
+        if type(self._replaced_rest_client) is not RESTClientObject:
+            _logger.warning(
+                "The ApiClient's rest_client is a %s, but requests are sent with a new "
+                "RESTClientObject built from its configuration, so its own request handling is "
+                "not used.",
+                type(self._replaced_rest_client).__name__,
+            )
         self._rest_client = None
         self._lock = threading.Lock()
         self._closed = False
@@ -154,14 +165,28 @@ class _SingleLoopRESTClient:
     async def request(self, *args, **kwargs):
         with self._lock:
             if self._closed:
-                raise RuntimeError("Session is closed")
+                raise RuntimeError(_SESSION_CLOSED)
             future = asyncio.run_coroutine_threadsafe(
                 self._request(*args, **kwargs), self._started_loop()
             )
         return await asyncio.wrap_future(future)
 
     async def close(self):
-        await asyncio.to_thread(self.shutdown)
+        """
+        Runs `shutdown` on a thread of its own, not on the caller's default executor, whose workers
+        may all be blocked in requests that only `shutdown` can cancel.
+        """
+        closed = concurrent.futures.Future()
+
+        def shutdown():
+            try:
+                self.shutdown()
+                closed.set_result(None)
+            except BaseException as e:
+                closed.set_exception(e)
+
+        threading.Thread(target=shutdown, name="unitycatalog-client-close", daemon=True).start()
+        await asyncio.wrap_future(closed)
 
     def shutdown(self):
         """
@@ -199,7 +224,7 @@ class _SingleLoopRESTClient:
             return response
         except asyncio.CancelledError:
             if self._closed:
-                raise RuntimeError("Session is closed") from None
+                raise RuntimeError(_SESSION_CLOSED) from None
             raise
 
     async def _close(self):

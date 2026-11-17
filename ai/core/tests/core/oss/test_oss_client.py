@@ -9,6 +9,7 @@ import re
 import socket
 import textwrap
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager, suppress
 from dataclasses import dataclass
@@ -53,6 +54,7 @@ from unitycatalog.client import (
     SchemasApi,
 )
 from unitycatalog.client.exceptions import NotFoundException
+from unitycatalog.client.rest import RESTClientObject
 
 SCHEMA = "uc_test"
 _logger = logging.getLogger(__name__)
@@ -2905,12 +2907,18 @@ async def test_close_releases_the_client_and_later_calls_raise(use_async):
     assert client_threads() == threads_before
     with pytest.raises(RuntimeError, match="Session is closed"):
         client.uc.create_catalog(name=CATALOG)
-    with pytest.raises(RuntimeError, match="Session is closed"):
-        await client.get_function_async(f"{CATALOG}.{SCHEMA}.weather_report")
+    await assert_session_closed(client)
 
 
 def client_threads() -> set[threading.Thread]:
     return {thread for thread in threading.enumerate() if thread.name == "unitycatalog-client"}
+
+
+async def assert_session_closed(client: UnitycatalogFunctionClient):
+    with pytest.raises(RuntimeError, match="Session is closed"):
+        client.delete_function("catalog.schema.missing")
+    with pytest.raises(RuntimeError, match="Session is closed"):
+        await client.delete_function_async("catalog.schema.missing")
 
 
 class NotFoundHandler(BaseHTTPRequestHandler):
@@ -2966,14 +2974,14 @@ def function_client(host: str) -> UnitycatalogFunctionClient:
 async def test_server_errors_reach_callers_on_other_threads(not_found_server, use_async):
     client = function_client(not_found_server)
 
-    def get_missing_function():
+    def delete_missing_function():
         if use_async:
             return asyncio.run(client.delete_function_async("catalog.schema.missing"))
         return client.delete_function("catalog.schema.missing")
 
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [executor.submit(get_missing_function) for _ in range(2)]
+            futures = [executor.submit(delete_missing_function) for _ in range(2)]
             for future in futures:
                 with pytest.raises(NotFoundException):
                     future.result(timeout=30)
@@ -3019,8 +3027,7 @@ async def test_close_stops_the_thread_when_closing_the_replaced_client_fails(not
 
     replaced_rest_client.close.assert_awaited_once()
     assert client_threads() == threads_before
-    with pytest.raises(RuntimeError, match="Session is closed"):
-        client.delete_function("catalog.schema.missing")
+    await assert_session_closed(client)
 
 
 @pytest.mark.asyncio
@@ -3038,5 +3045,87 @@ async def test_client_starts_its_thread_on_the_first_request_and_shares_it(not_f
 
     second.close()
     assert client_threads() == threads_before
+    await assert_session_closed(first)
+
+
+@pytest.mark.asyncio
+async def test_close_async_does_not_wait_for_a_busy_default_executor(silent_server):
+    host, accepted = silent_server
+    client = function_client(host)
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=1))
+
+    pending = loop.run_in_executor(None, client.get_function, "catalog.schema.weather_report")
+    assert accepted.wait(timeout=30)
+    await asyncio.wait_for(client.close_async(), timeout=30)
+
     with pytest.raises(RuntimeError, match="Session is closed"):
-        first.delete_function("catalog.schema.missing")
+        await asyncio.wait_for(pending, timeout=30)
+
+
+class ServerErrorHandler(BaseHTTPRequestHandler):
+    requests = 0
+
+    def do_GET(self):
+        type(self).requests += 1
+        self.send_response(500)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, format, *args):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_close_cancels_a_request_waiting_to_retry():
+    ServerErrorHandler.requests = 0
+    server = ThreadingHTTPServer(("127.0.0.1", 0), ServerErrorHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    host = f"http://127.0.0.1:{server.server_address[1]}/api/2.1/unity-catalog"
+    # The generated client backs off 0.1s, 0.2s, 0.4s and so on, so after the sixth attempt the
+    # next one is 3.2s away.
+    client = UnitycatalogFunctionClient(
+        api_client=ApiClient(configuration=Configuration(host=host, retries=10))
+    )
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(client.get_function, "catalog.schema.weather_report")
+            deadline = time.monotonic() + 30
+            while ServerErrorHandler.requests < 6 and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+            assert ServerErrorHandler.requests == 6
+
+            client.close()
+            with pytest.raises(RuntimeError, match="Session is closed"):
+                pending.result(timeout=1)
+        assert ServerErrorHandler.requests == 6
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+class InstrumentedRESTClient(RESTClientObject):
+    pass
+
+
+@pytest.mark.asyncio
+async def test_a_custom_rest_client_is_reported_as_unused(caplog):
+    configuration = Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
+    plain = ApiClient(configuration=configuration)
+    custom = ApiClient(configuration=configuration)
+    await custom.rest_client.close()
+    custom.rest_client = InstrumentedRESTClient(configuration)
+
+    with caplog.at_level(logging.WARNING, logger="unitycatalog.ai.core.client"):
+        clients = [
+            UnitycatalogFunctionClient(api_client=api_client) for api_client in (plain, custom)
+        ]
+
+    assert [
+        record.getMessage() for record in caplog.records if "rest_client" in record.getMessage()
+    ] == [
+        "The ApiClient's rest_client is a InstrumentedRESTClient, but requests are sent with a new "
+        "RESTClientObject built from its configuration, so its own request handling is not used."
+    ]
+    for client in clients:
+        await client.close_async()
