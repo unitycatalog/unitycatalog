@@ -222,20 +222,25 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
     assertThat(httpServerLines)
         .isNotEmpty()
         .allSatisfy(
-            line ->
-                assertThat(line)
-                    .matches(
-                        "http_server_(requests_total|total_duration_seconds_(count|sum|max)"
-                            + "|active_requests)\\{.*")
-                    .contains("service=", "method=")
-                    .doesNotContain("result="));
+            line -> {
+              assertThat(line)
+                  .matches(
+                      "http_server_(requests_total|total_duration_seconds_(count|sum|max)"
+                          + "|active_requests)\\{.*")
+                  .contains("service=", "method=")
+                  .doesNotContain("result=");
+              // The in-flight gauge is the only family without a response status.
+              if (!line.startsWith("http_server_active_requests{")) {
+                assertThat(line).contains("http_status=");
+              }
+            });
     // The base test setup creates a catalog before each test.
     assertThat(httpServerLines)
         .anySatisfy(
             line ->
                 assertThat(line)
                     .startsWith("http_server_total_duration_seconds_count{")
-                    .contains("method=\"createCatalog\"", "http_status="))
+                    .contains("method=\"createCatalog\""))
         .anySatisfy(line -> assertThat(line).startsWith("http_server_active_requests{"));
 
     return response

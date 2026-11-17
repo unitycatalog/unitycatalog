@@ -24,16 +24,21 @@ public final class MetricsRegistries {
       Set.of(HTTP_SERVER_REQUESTS, HTTP_SERVER_TOTAL_DURATION, HTTP_SERVER_ACTIVE_REQUESTS);
 
   /**
-   * Turns off the client-side percentiles Armeria adds to its timers by default, so a timer exposes
-   * only {@code _count}, {@code _sum}, and {@code _max}. Such percentiles cannot be aggregated
-   * across servers and add one series per percentile.
+   * Turns off the client-side percentiles Armeria adds to its timers by default, and the percentile
+   * histogram, so a timer exposes only {@code _count}, {@code _sum}, and {@code _max}. Such
+   * percentiles cannot be aggregated across servers and add one series per percentile. {@code _max}
+   * keeps Armeria's expiry (3 minutes) and buffer length (3), so it covers the last 6 to 9 minutes.
    */
   private static final MeterFilter NO_PERCENTILES =
       new MeterFilter() {
         @Override
         public DistributionStatisticConfig configure(
             Meter.Id id, DistributionStatisticConfig config) {
-          return DistributionStatisticConfig.builder().percentiles().build().merge(config);
+          return DistributionStatisticConfig.builder()
+              .percentilesHistogram(false)
+              .percentiles()
+              .build()
+              .merge(config);
         }
       };
 

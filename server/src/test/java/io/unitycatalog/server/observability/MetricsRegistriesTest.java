@@ -25,13 +25,20 @@ public class MetricsRegistriesTest {
       PrometheusMeterRegistry registry = metrics.registry();
       Gauge.builder("http.server.active.requests", () -> 0).register(registry);
       registry.counter("http.server.requests", "result", "success").increment();
-      // Armeria registers its timers with client-side percentiles; the registry must drop them.
+      // Armeria registers its timers with client-side percentiles; the registry must drop them,
+      // and must not expose a histogram either.
       Timer.builder("http.server.total.duration")
           .publishPercentiles(0.5, 0.99)
+          .publishPercentileHistogram()
           .register(registry)
           .record(Duration.ofMillis(5));
       registry.timer("http.server.request.duration").record(Duration.ofMillis(5));
       registry.summary("http.server.response.length").record(10);
+      // A timer outside the http.server family keeps its percentiles.
+      Timer.builder("other.timer")
+          .publishPercentiles(0.5)
+          .register(registry)
+          .record(Duration.ofMillis(5));
 
       assertThat(registry.scrape())
           .contains(
@@ -39,10 +46,12 @@ public class MetricsRegistriesTest {
               "http_server_total_duration_seconds_count 1",
               "http_server_total_duration_seconds_sum",
               "http_server_total_duration_seconds_max",
-              "http_server_active_requests 0.0")
+              "http_server_active_requests 0.0",
+              "other_timer_seconds{quantile=\"0.5\"}")
           .doesNotContain(
               "result=",
-              "quantile=",
+              "http_server_total_duration_seconds{quantile=",
+              "http_server_total_duration_seconds_bucket",
               "http_server_request_duration",
               "http_server_response_length");
     }
