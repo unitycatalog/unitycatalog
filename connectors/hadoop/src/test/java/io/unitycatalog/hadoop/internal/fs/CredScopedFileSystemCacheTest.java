@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.file.Files;
+import java.security.PrivilegedExceptionAction;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RawLocalFileSystem;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -98,6 +100,38 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fs2 = init(uri, conf);
 
     assertThat(fs1.getRawFileSystem()).isSameAs(fs2.getRawFileSystem());
+  }
+
+  private static FileSystem delegateAs(UserGroupInformation user, URI uri, Configuration conf)
+      throws Exception {
+    return user.doAs((PrivilegedExceptionAction<CredScopedFileSystem>) () -> init(uri, conf))
+        .getRawFileSystem();
+  }
+
+  @Test
+  void keylessVendIsSharedPerHadoopUser() throws Exception {
+    // Unity Catalog vended only the bucket's endpoint, so the engine signs with its own S3 keys,
+    // which may differ per Hadoop user: each user shares a delegate only with itself, and two
+    // users of one name, which may hold different credentials, do not share.
+    URI uri = new URI("s3a://bucket/table");
+    Configuration conf = tableConf("tid-per-user", "READ");
+    conf.set("fs.s3a.impl.original", CloseTrackingFileSystem.class.getName());
+    conf.set("fs.s3a.bucket.bucket.endpoint", "http://storage:9000");
+    conf.set(UCHadoopConfConstants.UC_VENDED_S3_ENDPOINT_PREFIX + "bucket", "http://storage:9000");
+    conf.set(UCHadoopConfConstants.UC_VENDED_S3_KEYS_PREFIX + "bucket", "false");
+
+    UserGroupInformation alice = UserGroupInformation.createRemoteUser("alice");
+    FileSystem aliceDelegate = delegateAs(alice, uri, conf);
+    assertThat(delegateAs(alice, uri, conf)).isSameAs(aliceDelegate);
+    assertThat(delegateAs(UserGroupInformation.createRemoteUser("alice"), uri, conf))
+        .isNotSameAs(aliceDelegate);
+    assertThat(delegateAs(UserGroupInformation.createRemoteUser("bob"), uri, conf))
+        .isNotSameAs(aliceDelegate);
+
+    // Vended keys sign every user's requests alike, so the delegate is shared.
+    conf.set(UCHadoopConfConstants.UC_VENDED_S3_KEYS_PREFIX + "bucket", "true");
+    assertThat(delegateAs(alice, uri, conf))
+        .isSameAs(delegateAs(UserGroupInformation.createRemoteUser("bob"), uri, conf));
   }
 
   @Test
