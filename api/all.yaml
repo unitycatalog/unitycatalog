@@ -1247,8 +1247,8 @@ paths:
       summary: Create a credential
       description: |-
         Creates a new credential. The type of credential to be created is determined by the **purpose** field.
-        Set exactly one of `aws_iam_role` and `s3_compatible`; otherwise the request fails with
-        `INVALID_ARGUMENT`.
+        Set exactly one of `aws_iam_role`, `s3_compatible` and `gcp_service_account_key`; otherwise the
+        request fails with `INVALID_ARGUMENT`.
 
         EXPERIMENTAL: `s3_compatible` is available only when the server property
         `server.s3-compatible-storage.enabled` is `true`. Otherwise a create or update request that
@@ -3015,6 +3015,8 @@ components:
           $ref: '#/components/schemas/AwsIamRoleResponse'
         s3_compatible:
           $ref: '#/components/schemas/S3CompatibleResponse'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyResponse'
         comment:
           description: Comment associated with the credential.
           type: string
@@ -3058,6 +3060,8 @@ components:
           $ref: '#/components/schemas/AwsIamRoleRequest'
         s3_compatible:
           $ref: '#/components/schemas/S3CompatibleRequest'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyRequest'
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     UpdateCredentialRequest:
@@ -3192,6 +3196,42 @@ components:
             '_' and '-'. If not set, the region of the S3-compatible storage holding the requested
             path is used.
           type: string
+    GcpServiceAccountEmail:
+      description: The email of the Google Cloud service account.
+      type: string
+    GcpPrivateKeyId:
+      description: The ID of the service account key.
+      type: string
+    GcpServiceAccountKeyRequest:
+      description: |
+        A key of a Google Cloud service account with access to Google Cloud Storage, with the fields
+        of the service account's JSON key file. Its locations must be `gs://` paths. The server
+        stores `private_key` encrypted with `server.credential-encryption-key`, so it cannot create
+        one without that key.
+      type: object
+      required:
+        - email
+        - private_key_id
+        - private_key
+      properties:
+        email:
+          $ref: "#/components/schemas/GcpServiceAccountEmail"
+        private_key_id:
+          $ref: "#/components/schemas/GcpPrivateKeyId"
+        private_key:
+          description: The PEM-encoded PKCS#8 private key of the service account key. Write-only; never returned.
+          type: string
+    GcpServiceAccountKeyResponse:
+      description: The service account key of a `gcp_service_account_key` credential, without its write-only `private_key`.
+      type: object
+      required:
+        - email
+        - private_key_id
+      properties:
+        email:
+          $ref: "#/components/schemas/GcpServiceAccountEmail"
+        private_key_id:
+          $ref: "#/components/schemas/GcpPrivateKeyId"
     ListCredentialsResponse:
       type: object
       properties:
