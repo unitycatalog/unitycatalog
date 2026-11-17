@@ -449,6 +449,8 @@ class OpaAuthorizerTest {
   void reloadsNativeGrantsWithoutRefreshingOpaDecisions() {
     assertThat(authorizer.refreshAuthorizations(System.nanoTime())).isFalse();
     verifyNoInteractions(nativeAuthorizer);
+    authorizer.loadOwner(table);
+    verify(nativeAuthorizer).loadOwner(table);
     authorizer.reloadAuthorizations();
     verify(nativeAuthorizer).reloadAuthorizations();
     authorizer.close();

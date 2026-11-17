@@ -27,6 +27,7 @@ import org.casbin.jcasbin.main.Enforcer;
 import org.casbin.jcasbin.main.SyncedEnforcer;
 import org.casbin.jcasbin.model.Model;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +58,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   private final AtomicReference<SyncedEnforcer> currentEnforcer = new AtomicReference<>();
   final ReadWriteLock reloadLock = new ReentrantReadWriteLock();
   private final JDBCAdapter adapter;
+  private final SessionFactory sessionFactory;
   private final String modelText;
   private final CasbinPolicyRefresher refresher;
 
@@ -75,6 +77,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
       HibernateConfigurator hibernateConfigurator, ServerProperties serverProperties)
       throws Exception {
     this.adapter = new JDBCAdapter(autocommitOnCheckout(hibernateConfigurator.getDataSource()));
+    this.sessionFactory = hibernateConfigurator.getSessionFactory();
 
     InputStream modelStream = this.getClass().getResourceAsStream("/jcasbin_auth_model.conf");
     this.modelText = IOUtils.toString(modelStream, StandardCharsets.UTF_8);
@@ -178,6 +181,39 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     try {
       currentEnforcer.set(newEnforcer());
       reloadRequired = false;
+    } finally {
+      reloadLock.writeLock().unlock();
+    }
+  }
+
+  @Override
+  public void loadOwner(UUID resource) {
+    reloadLock.writeLock().lock();
+    try {
+      if (reloadRequired) {
+        reloadAuthorizations();
+        return;
+      }
+      // Read under the reload lock so a delayed create cannot restore a transferred owner.
+      List<String> owners =
+          sessionFactory.fromSession(
+              session ->
+                  session
+                      .createNativeQuery(
+                          "SELECT v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND"
+                              + " v2 = :owner",
+                          String.class)
+                      .setParameter("resource", resource.toString())
+                      .setParameter("owner", Privileges.OWNER.getValue())
+                      .getResultList());
+      SyncedEnforcer enforcer = currentEnforcer.get();
+      enforcer.enableAutoSave(false);
+      try {
+        owners.forEach(
+            owner -> enforcer.addPolicy(owner, resource.toString(), Privileges.OWNER.getValue()));
+      } finally {
+        enforcer.enableAutoSave(true);
+      }
     } finally {
       reloadLock.writeLock().unlock();
     }

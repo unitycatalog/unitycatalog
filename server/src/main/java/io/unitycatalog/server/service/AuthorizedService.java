@@ -103,7 +103,7 @@ public abstract class AuthorizedService {
    * @param resourceId String ID of the created resource
    */
   protected void initializeBasicAuthorization(String resourceId) {
-    authorizer.reloadAuthorizations();
+    authorizer.loadOwner(UUID.fromString(resourceId));
   }
 
   /**

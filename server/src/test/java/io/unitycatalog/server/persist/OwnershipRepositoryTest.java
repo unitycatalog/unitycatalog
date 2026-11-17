@@ -294,8 +294,9 @@ public class OwnershipRepositoryTest {
     }
   }
 
-  @Test
-  void failedCacheReloadDeniesOldPolicyUntilRecovery() {
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void failedCacheReloadDeniesOldPolicyUntilRecovery(boolean loadOwner) {
     repositories
         .getCatalogRepository()
         .updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER));
@@ -339,7 +340,11 @@ public class OwnershipRepositoryTest {
           .extracting(BaseException::getErrorCode)
           .isEqualTo(ErrorCode.UNAVAILABLE);
     }
-    assertThat(authorizer.refreshAuthorizations(System.nanoTime())).isTrue();
+    if (loadOwner) {
+      authorizer.loadOwner(resourceId);
+    } else {
+      assertThat(authorizer.refreshAuthorizations(System.nanoTime())).isTrue();
+    }
     assertOwnership(SECOND_OWNER, secondId);
     try (Session session = sessionFactory.openSession()) {
       assertThat(

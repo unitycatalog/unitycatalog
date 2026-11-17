@@ -221,6 +221,11 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   }
 
   @Override
+  public void loadOwner(UUID resource) {
+    nativeAuthorizer.loadOwner(resource);
+  }
+
+  @Override
   public void reloadAuthorizations() {
     nativeAuthorizer.reloadAuthorizations();
   }
