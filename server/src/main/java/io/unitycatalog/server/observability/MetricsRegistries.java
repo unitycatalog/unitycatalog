@@ -15,9 +15,13 @@ import java.util.function.Predicate;
 /** Builds a Prometheus meter registry with standard JVM/system instrumentation. */
 public final class MetricsRegistries {
 
+  private static final String HTTP_SERVER_REQUESTS = "http.server.requests";
+  private static final String HTTP_SERVER_TOTAL_DURATION = "http.server.total.duration";
+  private static final String HTTP_SERVER_ACTIVE_REQUESTS = "http.server.active.requests";
+
   /** The only Armeria {@code http.server.*} meters exposed; every other one is denied. */
   private static final Set<String> EXPOSED_HTTP_SERVER_METERS =
-      Set.of("http.server.requests", "http.server.total.duration", "http.server.active.requests");
+      Set.of(HTTP_SERVER_REQUESTS, HTTP_SERVER_TOTAL_DURATION, HTTP_SERVER_ACTIVE_REQUESTS);
 
   /**
    * Turns off the client-side percentiles Armeria adds to its timers by default, so a timer exposes
@@ -73,7 +77,7 @@ public final class MetricsRegistries {
 
   public static PrometheusMetrics createPrometheus() {
     PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
-    Predicate<Meter.Id> httpRequestCounter = id -> id.getName().equals("http.server.requests");
+    Predicate<Meter.Id> httpRequestCounter = id -> id.getName().equals(HTTP_SERVER_REQUESTS);
     registry
         .config()
         .meterFilter(
@@ -84,7 +88,7 @@ public final class MetricsRegistries {
         .meterFilter(MeterFilter.forMeters(httpRequestCounter, MeterFilter.ignoreTags("result")))
         .meterFilter(
             MeterFilter.forMeters(
-                id -> id.getName().equals("http.server.total.duration"), NO_PERCENTILES));
+                id -> id.getName().equals(HTTP_SERVER_TOTAL_DURATION), NO_PERCENTILES));
     new JvmMemoryMetrics().bindTo(registry);
     JvmGcMetrics jvmGcMetrics = new JvmGcMetrics();
     jvmGcMetrics.bindTo(registry);
