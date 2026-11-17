@@ -88,7 +88,7 @@ public class AwsPolicyGenerator {
   // role the policy is applied to for a scoped-session needs to have access across those buckets
   /**
    * Test helper: commercial {@link #AWS_PARTITION} (no role ARN or region). Production always calls
-   * {@link #generatePolicy(Set, List, String, Region)}.
+   * {@link #generatePolicy(Set, List, String, Region, boolean)}.
    */
   @SneakyThrows
   static String generatePolicy(
@@ -97,20 +97,45 @@ public class AwsPolicyGenerator {
   }
 
   /**
+   * Test helper: the AWS STS policy of {@link #generatePolicy(Set, List, String, Region, boolean)}.
+   */
+  static String generatePolicy(
+      Set<CredentialContext.Privilege> privileges,
+      List<NormalizedURL> locations,
+      String roleArn,
+      Region awsRegion) {
+    return generatePolicy(privileges, locations, roleArn, awsRegion, /* isS3Compatible= */ false);
+  }
+
+  /**
    * Builds the AssumeRole session policy for the given locations.
    *
-   * <p>IAM partition is taken from {@code roleArn} when that ARN is well-formed ({@code
-   * arn:aws-us-gov:...} → {@code aws-us-gov}), then from the STS region catalog, then commercial
-   * {@code aws}. The same partition is used for S3 resources and {@code kms:ViaService} ({@code
-   * s3.*.amazonaws.com} vs {@code s3.*.amazonaws.com.cn}).
+   * <p>For AWS STS, the IAM partition is taken from {@code roleArn} when that ARN is well-formed
+   * ({@code arn:aws-us-gov:...} → {@code aws-us-gov}), then from the STS region catalog, then
+   * commercial {@code aws}. The same partition is used for S3 resources and {@code kms:ViaService}
+   * ({@code s3.*.amazonaws.com} vs {@code s3.*.amazonaws.com.cn}).
+   *
+   * <p>For S3-compatible STS, S3 resources always use the commercial {@code aws} partition, which
+   * these stores expect whatever their role ARN format (for example {@code arn:minio:iam:::...}),
+   * and the KMS statement is left out because its {@code kms:ViaService} condition key is specific
+   * to AWS and such stores reject it.
+   *
+   * @param privileges the privileges to grant on {@code locations}
+   * @param locations the locations to grant access to
+   * @param roleArn the role being assumed
+   * @param awsRegion the STS region
+   * @param isS3Compatible whether the role is assumed on S3-compatible STS rather than AWS STS
+   * @return the session policy JSON
    */
   @SneakyThrows
   public static String generatePolicy(
       Set<CredentialContext.Privilege> privileges,
       List<NormalizedURL> locations,
       String roleArn,
-      Region awsRegion) {
-    PartitionMetadata partition = iamPartition(roleArn, awsRegion);
+      Region awsRegion,
+      boolean isS3Compatible) {
+    PartitionMetadata partition =
+        isS3Compatible ? commercialPartition() : iamPartition(roleArn, awsRegion);
     JsonNode policyRoot = loadYaml(POLICY_STATEMENT);
     ArrayNode policyStatement = (ArrayNode) policyRoot.findPath("Statement");
     JsonNode operationsStatement = loadYaml(OPERATION_STATEMENT);
@@ -173,7 +198,9 @@ public class AwsPolicyGenerator {
 
     // Appended after the per-bucket statements so that the position of the S3 statements
     // within the policy doesn't change
-    policyStatement.add(kmsStatement);
+    if (!isS3Compatible) {
+      policyStatement.add(kmsStatement);
+    }
 
     return JSON_MAPPER.writeValueAsString(policyRoot);
   }
