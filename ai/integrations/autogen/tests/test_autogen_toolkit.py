@@ -1,3 +1,4 @@
+import base64
 import datetime
 import decimal
 import json
@@ -377,7 +378,40 @@ async def test_tool_sends_arguments_as_json_values(function_info, encoded):
 
     await tool.run_json(json.loads(json.dumps(arguments)), CancellationToken())
 
-    assert client.execute_function.call_args.kwargs["parameters"] == arguments
+    assert client.execute_function.call_args.kwargs["parameters"] == {
+        **JSON_ARGUMENTS,
+        "data": base64.b64decode(encoded),
+    }
+
+
+def _json_argument_tool():
+    function_info = generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS)
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+    return tool, client
+
+
+@pytest.mark.parametrize("data", [b"aGk=", b"\xff\x00"])
+@pytest.mark.asyncio
+async def test_tool_keeps_native_binary_arguments(data):
+    tool, client = _json_argument_tool()
+    args = tool.args_type()(**JSON_ARGUMENTS, data=data)
+
+    await tool.run(args, CancellationToken())
+
+    assert client.execute_function.call_args.kwargs["parameters"]["data"] == data
+
+
+@pytest.mark.asyncio
+async def test_tool_rejects_binary_text_that_is_not_base64():
+    tool, client = _json_argument_tool()
+
+    with pytest.raises(ValidationError, match="data"):
+        await tool.run_json({**JSON_ARGUMENTS, "data": "not base64!"}, CancellationToken())
+    client.execute_function.assert_not_called()
 
 
 class NativeArgs(BaseModel):
@@ -413,7 +447,7 @@ async def test_tool_keeps_native_argument_values():
         "span": datetime.timedelta(days=1, hours=2),
         "at": datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc),
         "amount": decimal.Decimal("12.50"),
-        "data": "aGk=",
+        "data": b"aGk=",
         "default_data": b"\xff\x00",
     }
     assert str(parameters["amount"]) == "12.50"
