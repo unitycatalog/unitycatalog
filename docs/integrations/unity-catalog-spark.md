@@ -611,8 +611,10 @@ Unity Catalog itself keeps the declared column order, which is what the REST API
 Parquet table created with columns `(a, p, b)` and `PARTITIONED BY (p)` lists `a, p, b` through the REST API and
 `a, b, p` in Spark.
 
-`CREATE OR REPLACE TABLE` and `REPLACE TABLE` with a `LOCATION` are not supported, because Unity Catalog can only replace
-catalog-managed Delta tables and external tables cannot be replaced. They fail whether or not the table exists. Use
+`CREATE OR REPLACE TABLE` and `REPLACE TABLE` with a `LOCATION` are not supported, because Unity Catalog can only
+replace catalog-managed Delta tables and external tables cannot be replaced. `CREATE OR REPLACE TABLE` fails even when
+the table does not exist yet, and Spark rejects `REPLACE TABLE` on a missing table before it reaches Unity Catalog. The
+same applies to `createOrReplace()` and `replace()` on `df.writeTo(...)` with a `location` table property. Use
 `CREATE TABLE ... LOCATION` to create a new external table, or drop the existing table first and then create it again.
 
 ### Insert New Rows into Table

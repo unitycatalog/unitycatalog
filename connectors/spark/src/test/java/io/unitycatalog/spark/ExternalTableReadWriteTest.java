@@ -18,6 +18,8 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.DataFrameWriterV2;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
@@ -207,8 +209,8 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
 
   /**
    * CREATE OR REPLACE with a LOCATION fails whether or not the table exists, and so does REPLACE,
-   * since external tables cannot be replaced. A missing table is not created and an existing one is
-   * left as it was.
+   * since external tables cannot be replaced, both in SQL and through DataFrameWriterV2. A missing
+   * table is not created and an existing one is left as it was.
    */
   @ParameterizedTest(name = "deltaRestApi={0}, tableExists={1}")
   @MethodSource("deltaRestApiAndTableExistsParameters")
@@ -239,6 +241,21 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
                   + "replaced. Use CREATE TABLE ... LOCATION for a new table, or drop the existing "
                   + "one first.",
               ddlMode.sql(), CATALOG_NAME, SCHEMA_NAME, TEST_TABLE);
+    }
+    DataFrameWriterV2<Row> writer =
+        session
+            .range(1)
+            .toDF()
+            .writeTo(options.fullTableName())
+            .using("delta")
+            .tableProperty(TableCatalog.PROP_LOCATION, location);
+    assertThatThrownBy(writer::createOrReplace)
+        .isInstanceOf(ApiException.class)
+        .hasMessageStartingWith("CREATE OR REPLACE TABLE with LOCATION is not supported");
+    if (tableExists) {
+      assertThatThrownBy(writer::replace)
+          .isInstanceOf(ApiException.class)
+          .hasMessageStartingWith("REPLACE TABLE with LOCATION is not supported");
     }
 
     if (tableExists) {

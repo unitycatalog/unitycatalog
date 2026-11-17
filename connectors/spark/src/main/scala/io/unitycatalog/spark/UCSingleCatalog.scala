@@ -698,9 +698,19 @@ class UCSingleCatalog
     }
   }
 
-  /** True for a path-based identifier that Delta resolves itself, such as delta.`/tmp/table`. */
+  /**
+   * True for a path-based identifier that Delta resolves itself, such as delta.`/tmp/table`.
+   * Unlike [[isDeltaOrIcebergPath]], which only looks at the namespace, the name must also be an
+   * absolute path, so a table in a real UC schema named delta or iceberg is not taken for one. A
+   * name that is not a valid path, such as `ab:cd`, is not a path table, as in Delta's
+   * isPathIdentifier.
+   */
   private def isDeltaOrIcebergPathTable(ident: Identifier): Boolean =
-    isDeltaOrIcebergPath(ident) && new Path(ident.name()).isAbsolute
+    isDeltaOrIcebergPath(ident) && isAbsolutePath(ident.name())
+
+  private def isAbsolutePath(name: String): Boolean =
+    try new Path(name).isAbsolute
+    catch { case _: IllegalArgumentException => false }
 
   /**
    * Only catalog-managed Delta tables can be replaced, so a replace that asks for an external table
@@ -711,10 +721,13 @@ class UCSingleCatalog
       operation: String,
       ident: Identifier,
       properties: util.Map[String, String]): Unit = {
-    if (properties.containsKey(TableCatalog.PROP_LOCATION) ||
-      properties.containsKey(TableCatalog.PROP_EXTERNAL)) {
+    val clause =
+      if (properties.containsKey(TableCatalog.PROP_LOCATION)) Some("LOCATION")
+      else if (properties.containsKey(TableCatalog.PROP_EXTERNAL)) Some("EXTERNAL")
+      else None
+    clause.foreach { clause =>
       throw new ApiException(
-        s"$operation with LOCATION is not supported for " +
+        s"$operation with $clause is not supported for " +
           s"${UCSingleCatalog.fullTableNameForApi(name(), ident)}: external tables cannot be " +
           "replaced. Use CREATE TABLE ... LOCATION for a new table, or drop the existing one first.")
     }

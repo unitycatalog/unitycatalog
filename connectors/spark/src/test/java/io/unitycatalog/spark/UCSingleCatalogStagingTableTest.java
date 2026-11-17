@@ -409,35 +409,54 @@ public class UCSingleCatalogStagingTableTest {
             clause,
             clause.equals(TableCatalog.PROP_LOCATION) ? NEW_LOCATION : "true");
 
+    String clauseName = clause.equals(TableCatalog.PROP_LOCATION) ? "LOCATION" : "EXTERNAL";
+
     assertThatThrownBy(() -> catalog.stageCreateOrReplace(IDENT, SCHEMA, PARTITIONS, props))
         .isInstanceOf(ApiException.class)
-        .hasMessage(externalReplaceError("CREATE OR REPLACE TABLE", "main.schema.table"));
+        .hasMessage(
+            externalReplaceError("CREATE OR REPLACE TABLE", clauseName, "main.schema.table"));
     assertThatThrownBy(() -> catalog.stageReplace(IDENT, SCHEMA, PARTITIONS, props))
         .isInstanceOf(ApiException.class)
-        .hasMessage(externalReplaceError("REPLACE TABLE", "main.schema.table"));
+        .hasMessage(externalReplaceError("REPLACE TABLE", clauseName, "main.schema.table"));
 
     verifyNoInteractions(tablesApi);
     verifyNothingStaged(IDENT);
   }
 
-  /** Only the delta and iceberg namespaces name path tables, so parquet.`/path` is not one. */
-  @Test
-  public void testReplaceOfParquetPathIdentifierWithLocationIsRejected() throws Exception {
-    Identifier path = Identifier.of(new String[] {"parquet"}, "/tmp/parquet-table");
+  /**
+   * Only an absolute path in the delta or iceberg namespace names a path table. parquet.`/path`, a
+   * table in a UC schema named delta, and a name that is not a valid path are UC tables.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("notPathTableParameters")
+  public void testReplaceOfANonPathTableWithLocationIsRejected(Identifier ident) throws Exception {
     when(mockDelegate.name()).thenReturn("main");
     Map<String, String> props =
-        Map.of(TableCatalog.PROP_PROVIDER, "parquet", TableCatalog.PROP_LOCATION, NEW_LOCATION);
+        Map.of(TableCatalog.PROP_PROVIDER, "delta", TableCatalog.PROP_LOCATION, NEW_LOCATION);
+    String table = "main." + ident.namespace()[0] + "." + ident.name();
 
-    assertThatThrownBy(() -> catalog.stageCreateOrReplace(path, SCHEMA, PARTITIONS, props))
+    assertThatThrownBy(() -> catalog.stageCreateOrReplace(ident, SCHEMA, PARTITIONS, props))
         .isInstanceOf(ApiException.class)
-        .hasMessage(
-            externalReplaceError("CREATE OR REPLACE TABLE", "main.parquet./tmp/parquet-table"));
-    verifyNothingStaged(path);
+        .hasMessage(externalReplaceError("CREATE OR REPLACE TABLE", "LOCATION", table));
+    assertThatThrownBy(() -> catalog.stageReplace(ident, SCHEMA, PARTITIONS, props))
+        .isInstanceOf(ApiException.class)
+        .hasMessage(externalReplaceError("REPLACE TABLE", "LOCATION", table));
+    verifyNothingStaged(ident);
   }
 
-  private static String externalReplaceError(String operation, String table) {
+  static Stream<Identifier> notPathTableParameters() {
+    return Stream.of(
+        Identifier.of(new String[] {"parquet"}, "/tmp/parquet-table"),
+        Identifier.of(new String[] {"delta"}, "table"),
+        Identifier.of(new String[] {"iceberg"}, "table"),
+        Identifier.of(new String[] {"delta"}, "ab:cd"));
+  }
+
+  private static String externalReplaceError(String operation, String clause, String table) {
     return operation
-        + " with LOCATION is not supported for "
+        + " with "
+        + clause
+        + " is not supported for "
         + table
         + ": external tables cannot be replaced. Use CREATE TABLE ... LOCATION for a new table,"
         + " or drop the existing one first.";
