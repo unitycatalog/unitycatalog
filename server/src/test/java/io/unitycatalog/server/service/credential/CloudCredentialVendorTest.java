@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
@@ -24,6 +25,7 @@ import io.unitycatalog.server.model.CredentialPurpose;
 import io.unitycatalog.server.model.S3AssumeRole;
 import io.unitycatalog.server.model.S3CompatibleRequest;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
@@ -933,17 +935,39 @@ public class CloudCredentialVendorTest {
       // Only a vend that returns the key pair loads the secret from its store.
       verify(credentialDAO, times(c.expected().getSecretAccessKey() == null ? 0 : 1))
           .getS3SecretAccessKey(any());
-      if (c.use().equals(CredentialUse.CLIENT)) {
-        // What clients get, the key pair or only the endpoint, carries the lifetime of an STS
-        // session, so clients vend again and pick up an updated key pair or endpoint.
-        long lifetime = Duration.ofHours(1).toMillis();
-        assertThat(credentials.getExpirationTime())
-            .as(c.toString())
-            .isBetween(before + lifetime, System.currentTimeMillis() + lifetime);
-      } else {
-        assertThat(credentials.getExpirationTime()).as(c.toString()).isNull();
-      }
+      // What every caller gets, the key pair or only the endpoint, carries the lifetime of an STS
+      // session, so it vends again and picks up an updated key pair or endpoint; the server and
+      // clients share one cached vend.
+      long lifetime = Duration.ofHours(1).toMillis();
+      assertThat(credentials.getExpirationTime())
+          .as(c.toString())
+          .isBetween(before + lifetime, System.currentTimeMillis() + lifetime);
     }
+
+    // The server and a static-key client share one cached vend: the secret is loaded once.
+    when(serverProperties.getS3CompatibleStaticKeyVending())
+        .thenReturn(S3CompatibleStaticKeyVending.STATIC_KEY);
+    when(serverProperties.getStorageCredentialCacheMaxAge()).thenReturn(Duration.ofMinutes(30));
+    when(serverProperties.getStorageCredentialCacheMaxSize()).thenReturn(100);
+    CredentialDAO shared =
+        useS3Compatible(
+            new S3CompatibleRequest().accessKeyId("key-id-1").secretAccessKey("key-value-1"));
+    StorageCredentialVendor cached =
+        new StorageCredentialVendorImpl(
+            new CachingCloudCredentialVendor(
+                serverProperties, new UnityCatalogMetrics(new SimpleMeterRegistry())),
+            externalLocationUtils,
+            serverProperties,
+            s3BucketRegions);
+    for (CredentialUse use : List.of(CredentialUse.SERVER, CredentialUse.CLIENT)) {
+      assertThat(
+              cached
+                  .vendCredential(NormalizedURL.from(COMPAT_PATH), CredentialContext.READ_ONLY, use)
+                  .getAwsTempCredentials())
+          .as(use.toString())
+          .isEqualTo(keyPair);
+    }
+    verify(shared, times(1)).getS3SecretAccessKey(any());
   }
 
   @Test

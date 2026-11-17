@@ -45,9 +45,6 @@ public class CredentialContext {
   @Builder.Default private final Optional<String> s3Endpoint = Optional.empty();
   // The region to sign requests to that S3 endpoint with, set together with s3Endpoint.
   @Builder.Default private final Optional<String> s3Region = Optional.empty();
-  // Whether the credentials are for the server's own storage access rather than for a client. The
-  // server always needs usable keys, even when its credential does not vend keys to clients.
-  private final boolean isServerAccess;
 
   /**
    * Creates a CredentialContext for a single storage location that is not on S3-compatible storage.
@@ -59,13 +56,7 @@ public class CredentialContext {
    */
   public static CredentialContext create(
       NormalizedURL location, Set<Privilege> privileges, Optional<CredentialDAO> credentialDAO) {
-    return create(
-        location,
-        privileges,
-        credentialDAO,
-        Optional.empty(),
-        Optional.empty(),
-        /* isServerAccess= */ false);
+    return create(location, privileges, credentialDAO, Optional.empty(), Optional.empty());
   }
 
   /**
@@ -78,7 +69,6 @@ public class CredentialContext {
    *     configuration.
    * @param s3Endpoint the external location's S3 endpoint for S3-compatible storage, empty for AWS
    * @param s3Region the region of the storage at {@code s3Endpoint}, empty for AWS
-   * @param isServerAccess whether the credentials are for the server's own storage access
    * @return a new CredentialContext instance
    */
   public static CredentialContext create(
@@ -86,8 +76,7 @@ public class CredentialContext {
       Set<Privilege> privileges,
       Optional<CredentialDAO> credentialDAO,
       Optional<String> s3Endpoint,
-      Optional<String> s3Region,
-      boolean isServerAccess) {
+      Optional<String> s3Region) {
     URI locationURI = location.toUri();
     return CredentialContext.builder()
         .privileges(privileges)
@@ -97,7 +86,6 @@ public class CredentialContext {
         .credentialDAO(credentialDAO)
         .s3Endpoint(s3Endpoint)
         .s3Region(s3Region)
-        .isServerAccess(isServerAccess)
         .build();
   }
 }

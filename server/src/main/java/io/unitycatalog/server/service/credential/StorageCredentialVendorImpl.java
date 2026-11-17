@@ -3,15 +3,19 @@ package io.unitycatalog.server.service.credential;
 import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
 import io.unitycatalog.server.service.credential.aws.S3BucketRegions;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.S3CompatibleStaticKeyVending;
 import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 
@@ -32,6 +36,8 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
   private final ExternalLocationUtils externalLocationUtils;
   private final ServerProperties serverProperties;
   private final S3BucketRegions s3BucketRegions;
+  // Read once at startup, so one server never mixes the two modes.
+  private final S3CompatibleStaticKeyVending staticKeyVending;
 
   public StorageCredentialVendorImpl(
       CloudCredentialVendor cloudCredentialVendor,
@@ -41,7 +47,8 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
   }
 
   /**
-   * @param serverProperties says whether S3-compatible storage is enabled
+   * @param serverProperties says whether S3-compatible storage is enabled, and what clients receive
+   *     of a key pair
    * @param s3BucketRegions discovers the region of buckets on S3-compatible storage
    */
   public StorageCredentialVendorImpl(
@@ -53,6 +60,7 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
     this.externalLocationUtils = externalLocationUtils;
     this.serverProperties = serverProperties;
     this.s3BucketRegions = s3BucketRegions;
+    this.staticKeyVending = serverProperties.getS3CompatibleStaticKeyVending();
   }
 
   /**
@@ -93,26 +101,45 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
       // Before the region lookup, so a disabled feature never contacts the stored endpoint.
       serverProperties.checkS3CompatibleStorageEnabled();
     }
+    // Requests to S3-compatible storage are signed with the region it reports, which is part of
+    // the vend cache key, so a region reported later selects its own entry.
+    Optional<String> s3Region =
+        s3Endpoint.map(
+            endpoint ->
+                s3BucketRegions.getS3CompatibleRegion(endpoint, path.toUri().getAuthority()));
+    if (isEndpointOnlyForClient(credentialDAO, use)) {
+      // The key pair is not vended to clients, so its secret is not loaded: only the S3 endpoint
+      // and region, and the client uses its own keys. The lifetime, as for a vended key pair, tells
+      // clients when they may fetch again to pick up a changed endpoint.
+      return new TemporaryCredentials()
+          .awsTempCredentials(
+              new AwsCredentials()
+                  .s3Endpoint(s3Endpoint.orElseThrow())
+                  .s3Region(s3Region.orElse(null)))
+          .expirationTime(
+              Instant.now().plus(AwsCredentialGenerator.SESSION_DURATION).toEpochMilli())
+          .url(path.toString());
+    }
     CredentialContext credentialContext =
-        CredentialContext.create(
-            path,
-            privileges,
-            credentialDAO,
-            s3Endpoint,
-            // Requests to S3-compatible storage are signed with the region it reports, which is
-            // part of the vend cache key, so a region reported later selects its own entry.
-            s3Endpoint.map(
-                endpoint ->
-                    s3BucketRegions.getS3CompatibleRegion(endpoint, path.toUri().getAuthority())),
-            /* isServerAccess= */ isServerAccess(use.getPurpose()));
+        CredentialContext.create(path, privileges, credentialDAO, s3Endpoint, s3Region);
     return cloudCredentialVendor.vendCredential(credentialContext).url(path.toString());
   }
 
-  /** Whether the server itself uses the credentials, rather than returning them to the caller. */
-  private static boolean isServerAccess(Purpose purpose) {
-    return switch (purpose) {
-      case SERVER, CLEANUP -> true;
-      case CLIENT -> false;
-    };
+  /**
+   * The client policy for {@code s3_compatible} credentials, applied here rather than in vending or
+   * its cache, which serve every caller alike: without {@code assume_role}, a client gets the key
+   * pair only when {@code server.s3-compatible-storage.static-key-vending} is {@code static-key}.
+   * The server and its storage cleanup always get usable keys.
+   *
+   * @return whether {@code use} gets only the S3 endpoint and region of the path's credential
+   */
+  private boolean isEndpointOnlyForClient(
+      Optional<CredentialDAO> credentialDAO, CredentialUse use) {
+    return use.getPurpose() == Purpose.CLIENT
+        && staticKeyVending == S3CompatibleStaticKeyVending.ENDPOINT_ONLY
+        && credentialDAO
+            .filter(dao -> dao.getCredentialType() == CredentialType.S3_COMPATIBLE)
+            .filter(dao -> dao.getS3CompatibleResponse().getAssumeRole() == null)
+            .isPresent();
   }
 }
