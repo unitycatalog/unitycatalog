@@ -31,17 +31,20 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
  * MinIO return the region in the {@code x-amz-bucket-region} header, even on access-denied (403)
  * responses, so no keys or bucket permissions are needed.
  *
- * <p>Both share the lookup: a reported region is cached per storage and bucket and asked again
- * after {@link #REPORTED_REGION_TTL}, a failed recheck keeps it, and one lookup runs per bucket at
- * a time. They differ when no region is known: S3-compatible storage commonly expects {@link
- * #DEFAULT_S3_COMPATIBLE_REGION}, while an AWS bucket has no default, so its lookup fails.
+ * <p>AWS S3 and S3-compatible storage share the lookup: a reported region is cached per storage and
+ * bucket and asked again after {@link #REPORTED_REGION_TTL}, a failed recheck keeps it, and one
+ * lookup runs per bucket at a time. They differ when no region is known: S3-compatible storage
+ * commonly expects {@link #DEFAULT_S3_COMPATIBLE_REGION}, while an AWS bucket has no default, so
+ * its lookup fails.
  */
 public class S3BucketRegions {
   private static final Logger LOGGER = LoggerFactory.getLogger(S3BucketRegions.class);
   private static final String BUCKET_REGION_HEADER = "x-amz-bucket-region";
   private static final Duration DISCOVERY_TIMEOUT = Duration.ofSeconds(10);
-  // How long a failed lookup answers with the default region before the storage is asked again,
-  // so that storage that is down does not hold up every request for the discovery timeout.
+  // How long a failed lookup answers with the region reported before, or on S3-compatible storage
+  // with the default, before the storage is asked again, so that storage that is down does not
+  // hold up every request for the discovery timeout. An AWS bucket with no reported region does
+  // not back off: its lookup fails, and runs again on the next request.
   static final Duration FAILURE_RETRY_DELAY = Duration.ofSeconds(30);
   // How long an answer without a region keeps the default before the storage is asked again, so
   // that a region configured later is picked up without a restart.
@@ -61,7 +64,8 @@ public class S3BucketRegions {
   static final Duration REPORTED_REGION_TTL = Duration.ofHours(1);
   private static final int MAX_BUCKETS = 10_000;
   private final Cache<StorageBucket, Reported> reportedRegions;
-  // Until when, in epoch milliseconds, a bucket without a reported region gets the default.
+  // Until when, in epoch milliseconds, a bucket is not asked again: it gets the region reported
+  // before, or on S3-compatible storage the default.
   private final Cache<StorageBucket, Long> retryAfterMs;
   private final Map<StorageBucket, CompletableFuture<String>> lookups = new ConcurrentHashMap<>();
   private final LongSupplier currentTimeMillis;
@@ -223,8 +227,12 @@ public class S3BucketRegions {
     if (retryAfter != null && now < retryAfter) {
       // The two caches evict apart: an AWS bucket has no default, so without the reported region
       // it is asked again rather than given the default of S3-compatible storage.
-      if (reported != null || !storageBucket.isAws()) {
-        return Optional.of(lastReportedOrDefault(storageBucket));
+      // The region already read: a second read could miss an entry evicted in between.
+      if (reported != null) {
+        return Optional.of(reported.region());
+      }
+      if (!storageBucket.isAws()) {
+        return Optional.of(DEFAULT_S3_COMPATIBLE_REGION);
       }
     }
     return Optional.empty();
@@ -307,9 +315,17 @@ public class S3BucketRegions {
    * S3-compatible storage, and otherwise the lookup fails, and runs again on the next request.
    */
   private String awsFailed(StorageBucket storageBucket, Throwable cause, boolean isTransient) {
-    if (reportedRegions.getIfPresent(storageBucket) != null) {
+    return awsFailed(storageBucket, cause, isTransient, /* reason= */ null);
+  }
+
+  private String awsFailed(
+      StorageBucket storageBucket, Throwable cause, boolean isTransient, String reason) {
+    // Read once: the entry could be evicted before a second read.
+    Reported reported = reportedRegions.getIfPresent(storageBucket);
+    if (reported != null) {
       LOGGER.warn("Could not read the region of AWS S3 bucket {}", storageBucket.bucket(), cause);
-      return failed(storageBucket);
+      backOff(storageBucket);
+      return reported.region();
     }
     String location = "s3://" + storageBucket.bucket();
     if (isTransient) {
@@ -327,7 +343,9 @@ public class S3BucketRegions {
     LOGGER.warn(
         "Could not resolve the AWS region for S3 bucket {}: {}",
         location,
-        cause == null ? "HeadBucket returned no region" : cause.getMessage());
+        cause != null
+            ? cause.getMessage()
+            : reason != null ? reason : "HeadBucket returned no region");
     // FAILED_PRECONDITION, not INVALID_ARGUMENT: the request is well-formed and the caller cannot
     // fix this; the region is unresolvable until an operator configures s3.bucketPath.N and
     // s3.region.N (both map to HTTP 400, so this is a clearer label at no wire cost).
@@ -340,13 +358,17 @@ public class S3BucketRegions {
   }
 
   private String failed(StorageBucket storageBucket) {
-    retryAfterMs.put(storageBucket, currentTimeMillis.getAsLong() + FAILURE_RETRY_DELAY.toMillis());
+    backOff(storageBucket);
     return lastReportedOrDefault(storageBucket);
+  }
+
+  private void backOff(StorageBucket storageBucket) {
+    retryAfterMs.put(storageBucket, currentTimeMillis.getAsLong() + FAILURE_RETRY_DELAY.toMillis());
   }
 
   private String withoutRegion(StorageBucket storageBucket, String reason) {
     if (storageBucket.isAws()) {
-      return awsFailed(storageBucket, /* cause= */ null, /* isTransient= */ false);
+      return awsFailed(storageBucket, /* cause= */ null, /* isTransient= */ false, reason);
     }
     LOGGER.info(
         "{} reports no region for bucket {}; using {} and asking again in {}: {}",
