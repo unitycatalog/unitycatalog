@@ -72,6 +72,9 @@ public class CliUtils {
   public static final int TABLE_WIDTH = 120;
 
   public static class CliOptions {
+    /** Optional params that change how an operation is checked, not what it changes. */
+    private static final Set<CliParams> MODIFIER_PARAMS = Set.of(CliParams.FORCE);
+
     List<CliParams> necessaryParams;
     List<CliParams> optionalParams;
 
@@ -87,9 +90,6 @@ public class CliUtils {
     public List<CliParams> getOptionalParams() {
       return optionalParams;
     }
-
-    /** Optional params that change how an operation is checked, not what it changes. */
-    private static final Set<CliParams> MODIFIER_PARAMS = Set.of(CliParams.FORCE);
 
     /** The optional params that change something, leaving out the modifiers. */
     public List<CliParams> getChangeParams() {

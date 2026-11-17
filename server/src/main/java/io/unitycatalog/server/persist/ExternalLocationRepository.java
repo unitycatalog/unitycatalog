@@ -239,14 +239,18 @@ public class ExternalLocationRepository {
             ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(url);
             validateUrlNotUsedByAnyExternalLocation(
                 session, url, Optional.of(existingLocation.getId()));
-            NormalizedURL currentUrl = NormalizedURL.from(existingLocation.getUrl());
-            if (!ExternalLocationUtils.isSameOrUnder(currentUrl, url)) {
-              if (Boolean.TRUE.equals(updateExternalLocation.getForce())) {
-                warnIfInUse(
-                    session,
-                    currentUrl,
-                    "Changing the URL of external location '" + name + "' to " + url);
-              } else {
+            if (Boolean.TRUE.equals(updateExternalLocation.getForce())) {
+              warnIfInUse(
+                  session,
+                  existingLocation.getUrl(),
+                  Optional.of(url),
+                  "Changing the URL of external location '" + name + "' to " + url);
+            } else {
+              NormalizedURL currentUrl = NormalizedURL.from(existingLocation.getUrl());
+              // Only a new URL that is the same as, or a parent of, the current URL skips the
+              // check, since it still covers everything under the current one. Narrowing is
+              // checked.
+              if (!ExternalLocationUtils.isSameOrUnder(currentUrl, url)) {
                 ExternalLocationUtils.validateExternalLocationNotInUse(session, currentUrl);
               }
             }
@@ -313,11 +317,15 @@ public class ExternalLocationRepository {
           if (existingLocation == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
-          NormalizedURL url = NormalizedURL.from(existingLocation.getUrl());
           if (force) {
-            warnIfInUse(session, url, "Deleting external location '" + name + "'");
+            warnIfInUse(
+                session,
+                existingLocation.getUrl(),
+                Optional.empty(),
+                "Deleting external location '" + name + "'");
           } else {
-            ExternalLocationUtils.validateExternalLocationNotInUse(session, url);
+            ExternalLocationUtils.validateExternalLocationNotInUse(
+                session, NormalizedURL.from(existingLocation.getUrl()));
           }
           session.remove(existingLocation);
           LOGGER.info("Deleted external location: {}", name);
@@ -381,9 +389,25 @@ public class ExternalLocationRepository {
             });
   }
 
-  /** Logs a warning when a forced change leaves the external location at {@code url} in use. */
-  private static void warnIfInUse(Session session, NormalizedURL url, String action) {
-    ExternalLocationUtils.LocationUse use = ExternalLocationUtils.findLocationUse(session, url);
+  /**
+   * Logs a warning when a forced delete, or a forced change to {@code newUrl}, leaves the external
+   * location stored at {@code storedUrl} in use. A new URL that is the same as, or a parent of, the
+   * stored one still covers it. This only logs, so a URL stored by an earlier release that no
+   * longer parses doesn't block the forced change.
+   */
+  private static void warnIfInUse(
+      Session session, String storedUrl, Optional<NormalizedURL> newUrl, String action) {
+    ExternalLocationUtils.LocationUse use;
+    try {
+      NormalizedURL currentUrl = NormalizedURL.from(storedUrl);
+      if (newUrl.isPresent() && ExternalLocationUtils.isSameOrUnder(currentUrl, newUrl.get())) {
+        return;
+      }
+      use = ExternalLocationUtils.findLocationUse(session, currentUrl);
+    } catch (BaseException | IllegalArgumentException e) {
+      LOGGER.warn("{} with force. Its stored URL does not parse, so it was not checked.", action);
+      return;
+    }
     if (use.inUse()) {
       LOGGER.warn(
           "{} with force while it is in use. Pending storage cleanup: {}. Still used by: {}.",

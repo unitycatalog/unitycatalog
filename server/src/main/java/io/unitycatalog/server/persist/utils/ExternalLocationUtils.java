@@ -659,7 +659,7 @@ public class ExternalLocationUtils {
    *
    * @param pendingCleanup whether a storage cleanup is pending above, at, or under the URL
    * @param storageUser the first securable found that stores data at or under the URL, such as
-   *     {@code volume '<id>'}
+   *     {@code volume '<id>'} or {@code a catalog}
    */
   public record LocationUse(boolean pendingCleanup, Optional<String> storageUser) {
     public boolean inUse() {
@@ -683,7 +683,17 @@ public class ExternalLocationUtils {
             /* includeSubdir= */ true)
         .stream()
         .findAny()
-        .map(pair -> String.format("%s '%s'", pair.getLeft(), pair.getRight().getId()));
+        .map(pair -> describeStorageUser(pair.getLeft(), pair.getRight().getId()));
+  }
+
+  /**
+   * Catalogs and schemas are named by type only, so a caller who can manage the location but not
+   * see the catalog or schema doesn't learn its ID.
+   */
+  private static String describeStorageUser(SecurableType type, UUID id) {
+    return MANAGED_SECURABLE_TYPE_CONTAINERS.contains(type)
+        ? "a " + type
+        : String.format("%s '%s'", type, id);
   }
 
   /** Returns whether {@code url} is {@code ancestor} itself or a path under it. */

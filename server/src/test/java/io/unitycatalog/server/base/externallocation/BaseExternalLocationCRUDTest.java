@@ -9,14 +9,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
-import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialInfo;
@@ -24,7 +25,7 @@ import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.S3CompatibleRequest;
-import io.unitycatalog.client.model.SchemaInfo;
+import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.client.model.UpdateExternalLocation;
@@ -40,6 +41,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -393,6 +395,23 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     credentialOperations.deleteCredential(COMPAT_CREDENTIAL_NAME, Optional.empty());
   }
 
+  /** A forced URL change or delete only logs whether the location is in use, so it still works. */
+  @Test
+  public void testForcedChangesWorkWhenTheStoredUrlDoesNotParse() throws ApiException {
+    create(EXTERNAL_LOCATION_NAME, testUrl());
+    setStoredUrl(EXTERNAL_LOCATION_NAME, "s3:///");
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME,
+                    new UpdateExternalLocation().url(anotherTestUrl()).force(true))
+                .getUrl())
+        .isEqualTo(anotherTestUrl());
+
+    setStoredUrl(EXTERNAL_LOCATION_NAME, "s3:///");
+    delete(EXTERNAL_LOCATION_NAME, Optional.of(true));
+  }
+
   /** Stores {@code url} for a location as an earlier release might have, without validating it. */
   private void setStoredUrl(String locationName, String url) {
     TransactionManager.executeWithTransaction(
@@ -635,24 +654,21 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     String catalogLocationName = EXTERNAL_LOCATION_NAME + "_catalog";
     String catalogRoot = testUrl() + "/catalog-root";
     create(catalogLocationName, catalogRoot);
-    CatalogInfo catalog =
-        catalogOperations.createCatalog(
-            new CreateCatalog().name(ROOTED_CATALOG_NAME).storageRoot(catalogRoot));
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(ROOTED_CATALOG_NAME).storageRoot(catalogRoot));
 
     String schemaLocationName = EXTERNAL_LOCATION_NAME + "_schema";
     String schemaRoot = testUrl() + "/schema-root";
     create(schemaLocationName, schemaRoot);
-    SchemaInfo schema =
-        schemaOperations.createSchema(
-            new CreateSchema()
-                .catalogName(CATALOG_NAME)
-                .name(ROOTED_SCHEMA_NAME)
-                .storageRoot(schemaRoot));
+    schemaOperations.createSchema(
+        new CreateSchema()
+            .catalogName(CATALOG_NAME)
+            .name(ROOTED_SCHEMA_NAME)
+            .storageRoot(schemaRoot));
 
     for (List<String> locationAndUser :
         List.of(
-            List.of(catalogLocationName, "catalog '" + catalog.getId() + "'"),
-            List.of(schemaLocationName, "schema '" + schema.getSchemaId() + "'"))) {
+            List.of(catalogLocationName, "a catalog"), List.of(schemaLocationName, "a schema"))) {
       String locationName = locationAndUser.get(0);
       String usedBy =
           "External location still used by "
@@ -679,6 +695,33 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
           .isEqualTo(newUrl);
       delete(locationName, Optional.of(false));
     }
+  }
+
+  /**
+   * An uncommitted staging table left behind by a dropped schema doesn't keep the location in use,
+   * since orphaned staging rows are never removed.
+   */
+  @Test
+  public void testOrphanedStagingTableDoesNotKeepLocationInUse() throws ApiException {
+    String locationName = EXTERNAL_LOCATION_NAME + "_staging";
+    String schemaRoot = testUrl() + "/staging-root";
+    create(locationName, schemaRoot);
+    schemaOperations.createSchema(
+        new CreateSchema()
+            .catalogName(CATALOG_NAME)
+            .name(ROOTED_SCHEMA_NAME)
+            .storageRoot(schemaRoot));
+    StagingTableInfo staging =
+        new TablesApi(TestUtils.createApiClient(serverConfig))
+            .createStagingTable(
+                new CreateStagingTable()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(ROOTED_SCHEMA_NAME)
+                    .name("orphaned"));
+    assertThat(staging.getStagingLocation()).startsWith(schemaRoot + "/");
+    schemaOperations.deleteSchema(CATALOG_NAME + "." + ROOTED_SCHEMA_NAME, Optional.of(true));
+
+    delete(locationName, Optional.of(false));
   }
 
   @Test
