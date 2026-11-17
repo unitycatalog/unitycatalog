@@ -9,6 +9,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.S3AssumeRole;
 import io.unitycatalog.server.model.S3CompatibleRequest;
 import io.unitycatalog.server.model.S3CompatibleResponse;
@@ -67,6 +68,64 @@ public class CredentialDAOTest {
         .isNotEqualTo(CredentialDAO.builder().credential(two).build().getCredentialFingerprint());
     assertThat(s3CompatibleDao(request).getCredentialFingerprint())
         .isNotEqualTo(dao.getCredentialFingerprint());
+  }
+
+  @Test
+  public void testGcpPrivateKeyIsStoredEncryptedAndNotInResponse() throws Exception {
+    String privateKey = TestUtils.generatePkcs8PrivateKeyPem();
+    CredentialDAO dao =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("gcs")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServiceAccountKey(
+                    new GcpServiceAccountKeyRequest()
+                        .email("uc-test@my-project.iam.gserviceaccount.com")
+                        .privateKeyId("key-id-1")
+                        .privateKey(privateKey)),
+            "caller",
+            SECRET_STORE);
+
+    assertThat(dao.getGcpPrivateKey(SECRET_STORE)).isEqualTo(privateKey);
+    // What the database holds is not the key, and another key does not read it.
+    assertThat(dao.getCredentialType())
+        .isEqualTo(CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY);
+    assertThat(storedJson(dao)).doesNotContain("BEGIN").contains("\"private_key\":\"v1:");
+    EncryptedCredentialSecretStore otherKey =
+        new EncryptedCredentialSecretStore(
+            Optional.of(Base64.getEncoder().encodeToString(new byte[32])));
+    assertThatThrownBy(() -> dao.getGcpPrivateKey(otherKey)).isInstanceOf(BaseException.class);
+    // The response has the email and key id only.
+    String json = new ObjectMapper().writeValueAsString(dao.toCredentialInfo(Optional.empty()));
+    assertThat(json).doesNotContain("private_key\":").doesNotContain("BEGIN");
+    assertThat(dao.toCredentialInfo(Optional.empty()).getGcpServiceAccountKey().getPrivateKeyId())
+        .isEqualTo("key-id-1");
+  }
+
+  @Test
+  public void testGcpKeyNeedsTheServerKey() {
+    assertThatThrownBy(
+            () ->
+                CredentialDAO.from(
+                    new CreateCredentialRequest()
+                        .name("gcs")
+                        .purpose(CredentialPurpose.STORAGE)
+                        .gcpServiceAccountKey(
+                            new GcpServiceAccountKeyRequest()
+                                .email("uc-test@my-project.iam.gserviceaccount.com")
+                                .privateKeyId("key-id-1")
+                                .privateKey(TestUtils.generatePkcs8PrivateKeyPem())),
+                    "caller",
+                    new EncryptedCredentialSecretStore(Optional.empty())))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+  }
+
+  private static String storedJson(CredentialDAO dao) throws Exception {
+    java.lang.reflect.Field field = CredentialDAO.class.getDeclaredField("credential");
+    field.setAccessible(true);
+    return (String) field.get(dao);
   }
 
   @Test

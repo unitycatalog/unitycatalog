@@ -103,7 +103,23 @@ public final class NormalizedURL {
    * @return whether {@code url} is an {@code s3://} path with a bucket
    */
   public static boolean isS3Path(String url) {
-    if (!url.regionMatches(/* ignoreCase= */ true, 0, "s3://", 0, 5)) {
+    return isBucketPath(url, UriScheme.S3);
+  }
+
+  /**
+   * Returns whether {@code url} is a {@code gs://} path with a bucket name, without user info or a
+   * port; see {@link #isS3Path}.
+   *
+   * @param url a location URL, as given or as stored
+   * @return whether {@code url} is a {@code gs://} path with a bucket
+   */
+  public static boolean isGsPath(String url) {
+    return isBucketPath(url, UriScheme.GS);
+  }
+
+  private static boolean isBucketPath(String url, UriScheme scheme) {
+    String prefix = scheme + "://";
+    if (!url.regionMatches(/* ignoreCase= */ true, 0, prefix, 0, prefix.length())) {
       return false;
     }
     URI uri;
@@ -113,7 +129,7 @@ public final class NormalizedURL {
       return false;
     }
     String bucket = uri.getRawAuthority();
-    return UriScheme.fromURI(uri) == UriScheme.S3
+    return UriScheme.fromURI(uri) == scheme
         && bucket != null
         && !bucket.isEmpty()
         && bucket.indexOf('@') < 0

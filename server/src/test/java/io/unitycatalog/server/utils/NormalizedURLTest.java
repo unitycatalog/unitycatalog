@@ -10,12 +10,31 @@ import java.net.URI;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class NormalizedURLTest {
 
   void assertNormalizedURL(String url, String expected) {
     assertThat(NormalizedURL.from(url).toString()).isEqualTo(expected);
+  }
+
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      textBlock =
+          """
+          gs://bucket          | true
+          gs://bucket/a/b      | true
+          gs://                | false
+          gs://user@bucket     | false
+          gs://bucket:80       | false
+          s3://bucket          | false
+          abfss://c@a.dfs.core.windows.net | false
+          /tmp/data            | false
+          """)
+  public void testIsGsPath(String url, boolean expected) {
+    assertThat(NormalizedURL.isGsPath(url)).isEqualTo(expected);
   }
 
   @Test

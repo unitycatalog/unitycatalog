@@ -3,7 +3,10 @@ package io.unitycatalog.cli;
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.cli.utils.Pagination;
@@ -14,10 +17,13 @@ import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.client.model.ListCredentialsResponse;
 import io.unitycatalog.client.model.S3AssumeRole;
 import io.unitycatalog.client.model.S3CompatibleRequest;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
+import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import org.apache.commons.cli.CommandLine;
@@ -96,6 +102,30 @@ public class CredentialCli {
                         .stsRegion(stsRegion)));
   }
 
+  /**
+   * Builds a {@code gcp_service_account_key} credential from the service account's JSON key file,
+   * if one is given.
+   */
+  private static Optional<GcpServiceAccountKeyRequest> extractGcpServiceAccountKey(
+      JSONObject json) {
+    String path = json.optString(CliParams.GCP_SERVICE_ACCOUNT_KEY_FILE.getServerParam(), null);
+    if (path == null) {
+      return Optional.empty();
+    }
+    JsonNode key;
+    try {
+      key = new ObjectMapper().readTree(new File(path));
+    } catch (IOException e) {
+      throw new CliException("Cannot read the key file " + path + ": " + e.getMessage());
+    }
+    // A field the file lacks is left for the server to report.
+    return Optional.of(
+        new GcpServiceAccountKeyRequest()
+            .email(key.path("client_email").asText(null))
+            .privateKeyId(key.path("private_key_id").asText(null))
+            .privateKey(key.path("private_key").asText(null)));
+  }
+
   private static String createCredential(CredentialsApi credentialsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     CreateCredentialRequest createCredentialRequest =
@@ -104,7 +134,8 @@ public class CredentialCli {
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
             .purpose(CredentialPurpose.STORAGE)
             .awsIamRole(extractAwsIamRole(json).orElse(null))
-            .s3Compatible(extractS3Compatible(json).orElse(null));
+            .s3Compatible(extractS3Compatible(json).orElse(null))
+            .gcpServiceAccountKey(extractGcpServiceAccountKey(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.createCredential(createCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }

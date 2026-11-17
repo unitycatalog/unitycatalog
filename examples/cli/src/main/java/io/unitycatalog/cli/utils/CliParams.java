@@ -96,6 +96,11 @@ public enum CliParams {
       "The STS endpoint to assume s3_role_arn at; defaults to s3_endpoint",
       "s3_sts_endpoint"),
   S3_ROLE_ARN("s3_role_arn", "The role to assume at s3_sts_endpoint", "s3_role_arn"),
+  GCP_SERVICE_ACCOUNT_KEY_FILE(
+      "gcp_service_account_key_file",
+      "The JSON key file of the Google Cloud service account of a gcp_service_account_key"
+          + " credential",
+      "gcp_service_account_key_file"),
   S3_STS_REGION(
       "s3_sts_region",
       "The region to sign requests to s3_sts_endpoint with; the storage's region if not set",

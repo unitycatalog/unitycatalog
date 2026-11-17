@@ -109,6 +109,8 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [FunctionParameterMode](./Models/FunctionParameterMode.md)
  - [FunctionParameterType](./Models/FunctionParameterType.md)
  - [GcpOauthToken](./Models/GcpOauthToken.md)
+ - [GcpServiceAccountKeyRequest](./Models/GcpServiceAccountKeyRequest.md)
+ - [GcpServiceAccountKeyResponse](./Models/GcpServiceAccountKeyResponse.md)
  - [GenerateTemporaryModelVersionCredential](./Models/GenerateTemporaryModelVersionCredential.md)
  - [GenerateTemporaryPathCredential](./Models/GenerateTemporaryPathCredential.md)
  - [GenerateTemporaryTableCredential](./Models/GenerateTemporaryTableCredential.md)
