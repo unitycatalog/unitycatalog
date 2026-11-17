@@ -372,6 +372,7 @@ public class CliUtils {
                           List.of(
                               CliParams.COMMENT,
                               CliParams.AWS_IAM_ROLE_ARN,
+                              CliParams.GCP_SERVICE_ACCOUNT_KEY_FILE,
                               CliParams.S3_ACCESS_KEY_ID,
                               CliParams.S3_ENDPOINT,
                               CliParams.S3_SECRET_ACCESS_KEY,
