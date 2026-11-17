@@ -23,6 +23,7 @@ nav:
           - Functions: usage/api/functions.md
           - Models: usage/api/models.md
           - UC Delta API: usage/api/delta.md
+          - UC Iceberg REST API: usage/api/iceberg.md
       - Tables:
           - Delta Lake: usage/tables/deltalake.md
           - Formats: usage/tables/formats.md
