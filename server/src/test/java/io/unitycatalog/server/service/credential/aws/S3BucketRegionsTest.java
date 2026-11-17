@@ -286,6 +286,19 @@ public class S3BucketRegionsTest {
           .isEqualTo(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
     }
     verify(s3, times(1)).headBucket(any(HeadBucketRequest.class));
+
+    // So does a failure to build the client: S3-compatible storage backs off with the default, and
+    // an AWS bucket, which has no default, gets a retriable error.
+    when(builder.build()).thenThrow(new IllegalStateException("cannot build the client"));
+    S3BucketRegions unbuildable = new S3BucketRegions(() -> builder, now::get);
+    for (int i = 0; i < 2; i++) {
+      assertThat(unbuildable.getS3CompatibleRegion(S3_ENDPOINT, "bucket"))
+          .isEqualTo(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
+    }
+    verify(builder, times(2)).build();
+    assertThatThrownBy(() -> unbuildable.getAwsRegion("bucket"))
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
   }
 
   @Test
