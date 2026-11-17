@@ -297,7 +297,9 @@ public class AwsPolicyGenerator {
         .map(NormalizedURL::toUri)
         .collect(
             Collectors.toMap(
-                URI::getHost,
+                // Not getHost(): a valid bucket name, such as data.2024 or one with an underscore,
+                // is not always a valid host name, and getHost() returns null for it.
+                URI::getAuthority,
                 uri -> new LinkedList<>(List.of(uri.getPath())),
                 (map, newPaths) -> {
                   map.addAll(newPaths);

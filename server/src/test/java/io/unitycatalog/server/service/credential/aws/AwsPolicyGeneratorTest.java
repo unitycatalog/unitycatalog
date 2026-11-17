@@ -133,18 +133,28 @@ public class AwsPolicyGeneratorTest {
 
   @Test
   public void testPolicyLeavesOrdinaryPathUnchanged() throws Exception {
-    String policy =
-        AwsPolicyGenerator.generatePolicy(
-            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+    // Valid bucket names that are not valid host names, such as data.2024 or my_bucket, too.
+    for (String bucket : List.of("my-bucket", "data.2024", "my_bucket")) {
+      String policy =
+          AwsPolicyGenerator.generatePolicy(
+              Set.of(SELECT), List.of(NormalizedURL.from("s3://" + bucket + "/path1/table1")));
 
-    JsonNode node = JSON_MAPPER.readTree(policy);
-    assertThat(node.get("Statement").get(0).get("Resource"))
-        .map(JsonNode::asText)
-        .containsExactly(
-            "arn:aws:s3:::my-bucket/path1/table1/*", "arn:aws:s3:::my-bucket/path1/table1");
-    assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
-        .map(JsonNode::asText)
-        .containsExactly("path1/table1", "path1/table1/", "path1/table1/*");
+      JsonNode node = JSON_MAPPER.readTree(policy);
+      assertThat(node.get("Statement").get(0).get("Resource"))
+          .as(bucket)
+          .map(JsonNode::asText)
+          .containsExactly(
+              "arn:aws:s3:::" + bucket + "/path1/table1/*",
+              "arn:aws:s3:::" + bucket + "/path1/table1");
+      assertThat(node.get("Statement").get(1).get("Resource"))
+          .as(bucket)
+          .map(JsonNode::asText)
+          .containsExactly("arn:aws:s3:::" + bucket);
+      assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
+          .as(bucket)
+          .map(JsonNode::asText)
+          .containsExactly("path1/table1", "path1/table1/", "path1/table1/*");
+    }
   }
 
   @Test
