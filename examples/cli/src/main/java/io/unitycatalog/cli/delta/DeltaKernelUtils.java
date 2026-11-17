@@ -165,17 +165,72 @@ public class DeltaKernelUtils {
       if (awsTempCredentials == null) {
         throw new IllegalArgumentException("AWS temporary credentials are missing");
       }
-      conf.set("fs.s3a.access.key", awsTempCredentials.getAccessKeyId());
-      conf.set("fs.s3a.secret.key", awsTempCredentials.getSecretAccessKey());
-      conf.set("fs.s3a.session.token", awsTempCredentials.getSessionToken());
+      // S3-compatible storage may vend only its endpoint, leaving the keys to the environment.
+      boolean isEndpointOnly =
+          awsTempCredentials.getS3Endpoint() != null
+              && awsTempCredentials.getAccessKeyId() == null
+              && awsTempCredentials.getSecretAccessKey() == null
+              && awsTempCredentials.getSessionToken() == null;
+      if (!isEndpointOnly) {
+        requireValue(awsTempCredentials.getAccessKeyId(), "AWS access key is missing");
+        requireValue(awsTempCredentials.getSecretAccessKey(), "AWS secret key is missing");
+        // Only S3-compatible storage vends a key pair without a session token; one that is set
+        // must not be empty.
+        if (awsTempCredentials.getS3Endpoint() == null
+            || awsTempCredentials.getSessionToken() != null) {
+          requireValue(awsTempCredentials.getSessionToken(), "AWS session token is missing");
+        }
+        // Keys for S3-compatible storage go only to its bucket, below, so that a file of the table
+        // in another bucket, on AWS S3 by default, does not get them.
+        if (awsTempCredentials.getS3Endpoint() == null) {
+          conf.set("fs.s3a.access.key", awsTempCredentials.getAccessKeyId());
+          conf.set("fs.s3a.secret.key", awsTempCredentials.getSecretAccessKey());
+          conf.set("fs.s3a.session.token", awsTempCredentials.getSessionToken());
+        }
+      }
       conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+      // Hadoop caches a file system by scheme, bucket and user, not by endpoint or keys, so a
+      // cached
+      // one could keep the endpoint and keys of an earlier table in the same bucket name.
+      conf.set("fs.s3a.impl.disable.cache", "true");
       conf.set("fs.s3a.path.style.access", "true");
+      if (awsTempCredentials.getS3Endpoint() != null) {
+        // At the table's bucket scope, since a bucket option in core-site.xml overrides the global
+        // one.
+        String bucketPrefix = "fs.s3a.bucket." + tablePathUri.getAuthority();
+        conf.set(bucketPrefix + ".endpoint", awsTempCredentials.getS3Endpoint());
+        if (awsTempCredentials.getS3Region() != null) {
+          conf.set(bucketPrefix + ".endpoint.region", awsTempCredentials.getS3Region());
+        }
+        conf.set(bucketPrefix + ".path.style.access", "true");
+        if (!isEndpointOnly) {
+          conf.set(bucketPrefix + ".access.key", awsTempCredentials.getAccessKeyId());
+          conf.set(bucketPrefix + ".secret.key", awsTempCredentials.getSecretAccessKey());
+          conf.set(
+              bucketPrefix + ".session.token",
+              awsTempCredentials.getSessionToken() != null
+                  ? awsTempCredentials.getSessionToken()
+                  : "");
+          // A provider that reads these keys, rather than one configured for other credentials.
+          conf.set(
+              bucketPrefix + ".aws.credentials.provider",
+              awsTempCredentials.getSessionToken() != null
+                  ? "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider"
+                  : "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider");
+        }
+      }
     } else if (scheme.equals(Constants.URI_SCHEME_FILE)) {
       conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
     } else {
       throw new IllegalArgumentException("Unsupported URI scheme: " + scheme);
     }
     return conf;
+  }
+
+  private static void requireValue(String value, String message) {
+    if (value == null || value.isEmpty()) {
+      throw new IllegalArgumentException(message);
+    }
   }
 
   public static String readDeltaTable(

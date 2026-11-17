@@ -48,7 +48,9 @@ public final class CredentialUtil {
           aws.getSecretAccessKey(),
           aws.getSessionToken(),
           expiry,
-          tempCred.getUrl());
+          tempCred.getUrl(),
+          aws.getS3Endpoint(),
+          aws.getS3Region());
     } else if (tempCred.getAzureUserDelegationSas() != null) {
       return new AzureCredential(
           tempCred.getAzureUserDelegationSas().getSasToken(), expiry, tempCred.getUrl());
@@ -70,7 +72,9 @@ public final class CredentialUtil {
           config.getS3SecretAccessKey(),
           config.getS3SessionToken(),
           expiry,
-          cred.getPrefix());
+          cred.getPrefix(),
+          config.getS3Endpoint(),
+          config.getClientRegion());
     } else if (isAzureConfig(config)) {
       return new AzureCredential(config.getAzureSasToken(), expiry, cred.getPrefix());
     } else {
@@ -155,9 +159,11 @@ public final class CredentialUtil {
   }
 
   private static boolean isS3Config(DeltaStorageCredentialConfig c) {
+    // An S3 endpoint alone is an S3 config: UC vends only the endpoint when it does not vend keys.
     return c.getS3AccessKeyId() != null
         || c.getS3SecretAccessKey() != null
-        || c.getS3SessionToken() != null;
+        || c.getS3SessionToken() != null
+        || c.getS3Endpoint() != null;
   }
 
   private static boolean isAzureConfig(DeltaStorageCredentialConfig c) {

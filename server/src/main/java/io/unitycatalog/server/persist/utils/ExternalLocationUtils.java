@@ -106,6 +106,17 @@ public class ExternalLocationUtils {
   private static final List<SecurableType> MANAGED_SECURABLE_TYPE_CONTAINERS =
       List.of(SecurableType.CATALOG, SecurableType.SCHEMA);
 
+  private static final String FORCE_HINT = "Set force to true to skip this check.";
+
+  /**
+   * Securables that store data under an external location and get credentials from it. Uncommitted
+   * staging tables are left out, unlike in the create-time overlap check, because orphaned staging
+   * rows are never removed and would keep the location in use forever.
+   */
+  private static final List<SecurableType> STORAGE_USER_TYPES =
+      Stream.concat(DATA_SECURABLE_TYPES.stream(), MANAGED_SECURABLE_TYPE_CONTAINERS.stream())
+          .toList();
+
   /**
    * For a input URL, find out the actual owner securables of the URL.
    *
@@ -610,6 +621,84 @@ public class ExternalLocationUtils {
   public static void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
     validateNotSameOrUnderManagedStoragePrefix(url);
     validateNotAboveManagedStorage(session, url);
+  }
+
+  /**
+   * Validates that an external location at the given URL is not in use, so that removing the URL
+   * from it does not leave anything without credentials. It is in use when:
+   *
+   * <ul>
+   *   <li>a storage cleanup is pending above, at, or under the URL
+   *   <li>a table, volume, or registered model is stored at or under the URL
+   *   <li>a catalog or schema keeps its managed storage under the URL
+   * </ul>
+   *
+   * @param session the caller's Hibernate session
+   * @param url the URL of the external location
+   * @throws BaseException with PERMISSION_DENIED for a pending cleanup, INVALID_ARGUMENT otherwise
+   */
+  public static void validateExternalLocationNotInUse(Session session, NormalizedURL url) {
+    LocationUse use = findLocationUse(session, url);
+    if (use.pendingCleanup()) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "Input path overlaps pending storage cleanup. " + FORCE_HINT);
+    }
+    use.storageUser()
+        .ifPresent(
+            user -> {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "External location still used by " + user + ". " + FORCE_HINT);
+            });
+  }
+
+  /**
+   * What keeps an external location at a URL in use, as checked by {@link
+   * #validateExternalLocationNotInUse}.
+   *
+   * @param pendingCleanup whether a storage cleanup is pending above, at, or under the URL
+   * @param storageUser the first securable found that stores data at or under the URL, such as
+   *     {@code volume '<id>'} or {@code a catalog}
+   */
+  public record LocationUse(boolean pendingCleanup, Optional<String> storageUser) {
+    public boolean inUse() {
+      return pendingCleanup || storageUser.isPresent();
+    }
+  }
+
+  /** Finds what keeps an external location at the URL in use, without throwing. */
+  public static LocationUse findLocationUse(Session session, NormalizedURL url) {
+    return new LocationUse(hasPendingCleanupOverlap(session, url), findStorageUser(session, url));
+  }
+
+  private static Optional<String> findStorageUser(Session session, NormalizedURL url) {
+    return getAllEntityDAOsWithURLOverlap(
+            session,
+            url,
+            STORAGE_USER_TYPES,
+            /* limit= */ 1,
+            /* includeParent= */ false,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ true)
+        .stream()
+        .findAny()
+        .map(pair -> describeStorageUser(pair.getLeft(), pair.getRight().getId()));
+  }
+
+  /**
+   * Catalogs and schemas are named by type only, so a caller who can manage the location but not
+   * see the catalog or schema doesn't learn its ID.
+   */
+  private static String describeStorageUser(SecurableType type, UUID id) {
+    return MANAGED_SECURABLE_TYPE_CONTAINERS.contains(type)
+        ? "a " + type
+        : String.format("%s '%s'", type, id);
+  }
+
+  /** Returns whether {@code url} is {@code ancestor} itself or a path under it. */
+  public static boolean isSameOrUnder(NormalizedURL url, NormalizedURL ancestor) {
+    return url.equals(ancestor) || getParentPathsList(url).contains(ancestor);
   }
 
   /**

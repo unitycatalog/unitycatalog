@@ -31,6 +31,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
@@ -39,6 +40,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -131,7 +133,8 @@ public class OpaInputBuilderTest {
                 .name("credential")
                 .purpose(CredentialPurpose.STORAGE)
                 .awsIamRole(new AwsIamRoleRequest().roleArn("arn:aws:iam::123456789012:role/test")),
-            "owner@example.com");
+            "owner@example.com",
+            new EncryptedCredentialSecretStore(Optional.empty()));
     ExternalLocationDAO location =
         ExternalLocationDAO.builder()
             .id(UUID.randomUUID())
