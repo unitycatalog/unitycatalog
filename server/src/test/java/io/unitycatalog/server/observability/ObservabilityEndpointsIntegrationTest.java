@@ -217,14 +217,26 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
             "uc_storage_cleanup_attempts_total{resource_type=\"staging_table\",result=\"failure\"}"
                 + " 0.0",
             "http_server_requests_total");
-    assertThat(response.body().lines().filter(line -> line.startsWith("http_server_")).toList())
+    List<String> httpServerLines =
+        response.body().lines().filter(line -> line.startsWith("http_server_")).toList();
+    assertThat(httpServerLines)
         .isNotEmpty()
         .allSatisfy(
             line ->
                 assertThat(line)
-                    .startsWith("http_server_requests_total{")
-                    .contains("service=", "method=", "http_status=")
+                    .matches(
+                        "http_server_(requests_total|total_duration_seconds_(count|sum|max)"
+                            + "|active_requests)\\{.*")
+                    .contains("service=", "method=")
                     .doesNotContain("result="));
+    // The base test setup creates a catalog before each test.
+    assertThat(httpServerLines)
+        .anySatisfy(
+            line ->
+                assertThat(line)
+                    .startsWith("http_server_total_duration_seconds_count{")
+                    .contains("method=\"createCatalog\"", "http_status="))
+        .anySatisfy(line -> assertThat(line).startsWith("http_server_active_requests{"));
 
     return response
         .body()

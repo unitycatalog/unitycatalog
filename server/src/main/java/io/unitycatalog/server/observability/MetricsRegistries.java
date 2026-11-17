@@ -6,12 +6,32 @@ import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
 import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
 import io.micrometer.core.instrument.config.MeterFilter;
+import io.micrometer.core.instrument.distribution.DistributionStatisticConfig;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /** Builds a Prometheus meter registry with standard JVM/system instrumentation. */
 public final class MetricsRegistries {
+
+  /** The only Armeria {@code http.server.*} meters exposed; every other one is denied. */
+  private static final Set<String> EXPOSED_HTTP_SERVER_METERS =
+      Set.of("http.server.requests", "http.server.total.duration", "http.server.active.requests");
+
+  /**
+   * Turns off the client-side percentiles Armeria adds to its timers by default, so a timer exposes
+   * only {@code _count}, {@code _sum}, and {@code _max}. Such percentiles cannot be aggregated
+   * across servers and add one series per percentile.
+   */
+  private static final MeterFilter NO_PERCENTILES =
+      new MeterFilter() {
+        @Override
+        public DistributionStatisticConfig configure(
+            Meter.Id id, DistributionStatisticConfig config) {
+          return DistributionStatisticConfig.builder().percentiles().build().merge(config);
+        }
+      };
 
   private MetricsRegistries() {}
 
@@ -58,8 +78,13 @@ public final class MetricsRegistries {
         .config()
         .meterFilter(
             MeterFilter.deny(
-                id -> id.getName().startsWith("http.server.") && !httpRequestCounter.test(id)))
-        .meterFilter(MeterFilter.forMeters(httpRequestCounter, MeterFilter.ignoreTags("result")));
+                id ->
+                    id.getName().startsWith("http.server.")
+                        && !EXPOSED_HTTP_SERVER_METERS.contains(id.getName())))
+        .meterFilter(MeterFilter.forMeters(httpRequestCounter, MeterFilter.ignoreTags("result")))
+        .meterFilter(
+            MeterFilter.forMeters(
+                id -> id.getName().equals("http.server.total.duration"), NO_PERCENTILES));
     new JvmMemoryMetrics().bindTo(registry);
     JvmGcMetrics jvmGcMetrics = new JvmGcMetrics();
     jvmGcMetrics.bindTo(registry);

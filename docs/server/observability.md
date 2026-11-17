@@ -100,13 +100,17 @@ Collector, etc.).
 | `process_cpu_usage`, `system_cpu_usage` | Process and host CPU utilisation |
 | `armeria_server_*`, `armeria_executor_*` | Armeria server and executor internals |
 | `http_server_requests_total` | Completed HTTP requests on the API listener, tagged by `hostname_pattern`, `service`, `method`, and `http_status`; includes authentication and authorization rejections |
+| `http_server_total_duration_seconds_count`, `_sum`, `_max` | Time from receiving a request to sending the full response on the API listener, tagged by `hostname_pattern`, `service`, `method`, and `http_status`. Divide `_sum` by `_count` for the average latency of an endpoint; `_max` is the slowest request in the recent window. Example: `http_server_total_duration_seconds_count{hostname_pattern="*:8080",http_status="200",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1` |
+| `http_server_active_requests` | Requests on the API listener that have started but not finished, tagged by `hostname_pattern`, `service`, and `method`. Sum the series for the total in-flight requests. Example: `http_server_active_requests{hostname_pattern="*:8080",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 0.0` |
 | `uc_securable_table_creations_total` | Table securables created after their database transactions commit through UC, Delta, or Iceberg REST, including tables, views, and metric views |
 | `uc_storage_credential_cache_requests_total` | Credential requests to the [storage credential cache](configuration.md#storage-credential-cache), tagged by `result`: `hit` for a credential served from the cache, `miss` for a request the cache could not serve, which vends a new credential; a vend that fails also counts as a miss. Both series are exposed from startup and stay at zero while the cache is disabled |
 | `uc_storage_cleanup_attempts_total` | Attempts by the storage cleanup worker to delete a dropped managed resource's files, tagged by `result` and `resource_type`. `success` means the attempt deleted the files; `failure` means the attempt failed, either deleting the files or saving the result to the database, and the task will be retried. It counts attempts, not dropped resources: when a lease expires and another attempt runs, one resource can record more than one success. `resource_type` is `table`, `volume`, `registered_model`, `model_version`, or `staging_table`. Every series is exposed from startup |
 
-Within the `http_server_*` family, only `http_server_requests_total` is exposed, without a `result`
-tag. HTTP latency, request/response size, timeout, and in-flight metrics are not exposed. JVM,
-CPU, Armeria-internal, and UC metrics remain enabled.
+Within the `http_server_*` family, only `http_server_requests_total` (without a `result` tag),
+`http_server_total_duration_seconds_*`, and `http_server_active_requests` are exposed. The latency
+timer exposes no percentiles, so each endpoint and status adds three series. Request/response
+size, request/response duration, and timeout metrics are not exposed. JVM, CPU, Armeria-internal,
+and UC metrics remain enabled.
 
 #### HTTP request counter labels
 
