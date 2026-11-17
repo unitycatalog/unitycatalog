@@ -635,13 +635,14 @@ public class ExternalLocationUtils {
    *
    * @param session the caller's Hibernate session
    * @param url the URL of the external location
-   * @throws BaseException with PERMISSION_DENIED for a pending cleanup, INVALID_ARGUMENT otherwise
+   * @throws BaseException with FAILED_PRECONDITION for a pending cleanup, INVALID_ARGUMENT
+   *     otherwise
    */
   public static void validateExternalLocationNotInUse(Session session, NormalizedURL url) {
     LocationUse use = findLocationUse(session, url);
     if (use.pendingCleanup()) {
       throw new BaseException(
-          ErrorCode.PERMISSION_DENIED,
+          ErrorCode.FAILED_PRECONDITION,
           "Input path overlaps pending storage cleanup. " + FORCE_HINT);
     }
     use.storageUser()

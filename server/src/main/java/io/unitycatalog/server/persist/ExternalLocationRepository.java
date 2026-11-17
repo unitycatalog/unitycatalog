@@ -208,8 +208,8 @@ public class ExternalLocationRepository {
    * @throws BaseException with NOT_FOUND if the external location doesn't exist
    * @throws BaseException with INVALID_ARGUMENT if the URL change is refused because the location
    *     is in use, or the new URL is invalid or overlaps another external location
-   * @throws BaseException with PERMISSION_DENIED if the URL change is refused because a storage
-   *     cleanup is pending under the current URL
+   * @throws BaseException with FAILED_PRECONDITION if the URL change is refused because a storage
+   *     cleanup is pending at, above, or under the current URL
    */
   public ExternalLocationInfo updateExternalLocation(
       String name, UpdateExternalLocation updateExternalLocation) {
@@ -306,8 +306,8 @@ public class ExternalLocationRepository {
    * @throws BaseException with NOT_FOUND if the external location doesn't exist
    * @throws BaseException with INVALID_ARGUMENT if the external location is in use and force is
    *     false
-   * @throws BaseException with PERMISSION_DENIED if a storage cleanup is pending under the external
-   *     location and force is false
+   * @throws BaseException with FAILED_PRECONDITION if a storage cleanup is pending at, above, or
+   *     under the external location's URL and force is false
    */
   public ExternalLocationDAO deleteExternalLocation(String name, boolean force) {
     return TransactionManager.executeWithTransaction(
