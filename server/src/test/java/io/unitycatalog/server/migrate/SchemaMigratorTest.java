@@ -142,12 +142,16 @@ public class SchemaMigratorTest {
     new SchemaMigrator(db.dataSource()).upgradeSchema();
     UpgradeTestUtils.execute(
         db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    List<String> sent = new CopyOnWriteArrayList<>();
+    SchemaMigrator migrator = new SchemaMigrator(sending(sent), NEXT_RELEASE);
 
     // This release's steps are recorded without running, and the step after them runs.
     assertThat(migrator.upgradeSchema()).isEqualTo(migrator.steps().size());
+    assertThat(sent)
+        .filteredOn(sql -> sql.matches("(?is)\\s*(create|alter|drop)\\b.*"))
+        .allMatch(sql -> sql.contains("uc_test_only_step") || sql.contains("uc_schema_history"))
+        .anyMatch(sql -> sql.contains("uc_test_only_step"));
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
-    UpgradeTestUtils.execute(db, "SELECT id FROM uc_test_only_step");
   }
 
   /** What makes a run with a failed step in the schema history refuse. */
