@@ -14,15 +14,20 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
   private static final String GCS_ACCESS_TOKEN_EXPIRATION_KEY =
       "fs.gs.auth.access.token.expiration";
   private static final String GCS_CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
+  private static final String GCS_HNS_FOLDERS_KEY = "fs.gs.hierarchical.namespace.folders.enable";
 
   GcsCredPropsBuilder(Configuration conf) {
     super(conf);
     set("fs.gs.impl.disable.cache", "true");
-    // The upstream GCS connector defaults this to true which causes the connector to
-    // stat every ancestor directory on file creation. With UC-vended downscoped tokens
-    // (scoped to a table's path prefix) these ancestor stats return 403. Default to
-    // false; users with broader credentials can opt back in via Hadoop/Spark config.
-    set(GCS_CONFLICT_CHECK_KEY, conf.get(GCS_CONFLICT_CHECK_KEY, "false"));
+    // Both settings are on by default in the GCS connector, and each makes it call Google about
+    // more than the table's own path, which a UC-vended downscoped token (scoped to a table's path
+    // prefix) is not allowed to do, so the call returns 403:
+    //   - the conflict check stats every ancestor directory on file creation;
+    //   - the hierarchical namespace lookup reads the bucket's layout when writing files.
+    // Default both to false; users with broader credentials can opt back in via Hadoop/Spark
+    // config.
+    setOffUnlessEngineSets(GCS_CONFLICT_CHECK_KEY);
+    setOffUnlessEngineSets(GCS_HNS_FOLDERS_KEY);
   }
 
   @Override

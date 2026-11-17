@@ -9,6 +9,7 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFs;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -173,6 +174,29 @@ public abstract class CredPropsBuilder {
     props.put(key + ".original", hadoopConf.get(key, defaultOriginal));
     props.put(key, newValue);
     return this;
+  }
+
+  /**
+   * Whether the engine's configuration sets {@code key} itself: a value only from Hadoop's
+   * defaults, such as S3A's default provider list, which reads the keys set here, is not the
+   * engine's own.
+   */
+  protected boolean engineSets(String key) {
+    if (hadoopConf().get(key) == null) {
+      return false;
+    }
+    String[] sources = hadoopConf().getPropertySources(key);
+    return sources == null || !Arrays.stream(sources).allMatch("core-default.xml"::equals);
+  }
+
+  /**
+   * Sets {@code key} to false unless the engine's configuration sets it. A value only from Hadoop's
+   * defaults is not the engine's: Hadoop 3.5 ships {@code fs.gs.*} defaults in {@code
+   * core-default.xml}, including {@code true} for the conflict check, so reading the key with a
+   * fallback of {@code false} would find that default and keep the check on.
+   */
+  protected void setOffUnlessEngineSets(String key) {
+    set(key, engineSets(key) ? hadoopConf().get(key) : "false");
   }
 
   protected boolean isCredScopedFsEnabled() {

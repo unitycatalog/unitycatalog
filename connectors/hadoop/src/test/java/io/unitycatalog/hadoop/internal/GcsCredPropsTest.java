@@ -1,10 +1,12 @@
 package io.unitycatalog.hadoop.internal;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Test;
 class GcsCredPropsTest extends CredPropsBaseTest {
 
   private static final String CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
+  private static final String HNS_FOLDERS_KEY = "fs.gs.hierarchical.namespace.folders.enable";
   private static final String STATIC_EXPIRATION_KEY = "fs.gs.auth.access.token.expiration";
   private static final String CUSTOM_IMPL = "com.example.CustomGcsFileSystem";
   private static final String GHFS = "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem";
@@ -37,7 +40,8 @@ class GcsCredPropsTest extends CredPropsBaseTest {
 
   @Override
   Map<String, String> defaultKeys() {
-    return props(CONFLICT_CHECK_KEY, "false", "fs.gs.impl.disable.cache", "true");
+    return props(
+        CONFLICT_CHECK_KEY, "false", HNS_FOLDERS_KEY, "false", "fs.gs.impl.disable.cache", "true");
   }
 
   /**
@@ -126,6 +130,61 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             Map.of());
 
     assertThat(props).containsEntry(CONFLICT_CHECK_KEY, "true");
+  }
+
+  /**
+   * Hadoop 3.5 ships {@code fs.gs.create.items.conflict.check.enable=true} in its built-in {@code
+   * core-default.xml}. That is not the user's choice, so it must not keep the check on.
+   */
+  @Test
+  void hadoopBuiltInDefaultDoesNotKeepTheGcsChecksOn() throws Exception {
+    Configuration conf = new Configuration(false);
+    String defaults =
+        "<configuration>"
+            + "<property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property>"
+            + "<property><name>"
+            + HNS_FOLDERS_KEY
+            + "</name><value>true</value></property>"
+            + "</configuration>";
+    conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
+    assertThat(conf.get(CONFLICT_CHECK_KEY)).isEqualTo("true");
+
+    assertThat(tableProps(conf))
+        .containsEntry(CONFLICT_CHECK_KEY, "false")
+        .containsEntry(HNS_FOLDERS_KEY, "false");
+  }
+
+  @Test
+  void userValuesWinOverHadoopDefaults() throws Exception {
+    Configuration conf = new Configuration(false);
+    String defaults =
+        "<configuration><property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property></configuration>";
+    conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
+    // A user setting, even one that equals Hadoop's default, is respected.
+    conf.set(CONFLICT_CHECK_KEY, "true");
+    conf.set(HNS_FOLDERS_KEY, "true");
+
+    assertThat(tableProps(conf))
+        .containsEntry(CONFLICT_CHECK_KEY, "true")
+        .containsEntry(HNS_FOLDERS_KEY, "true");
+  }
+
+  private Map<String, String> tableProps(Configuration conf) throws Exception {
+    return CredPropsUtil.createTableCredProps(
+        false,
+        false,
+        conf,
+        scheme(),
+        null,
+        CATALOG_URI,
+        tokenProvider(),
+        TABLE_ID,
+        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+        Map.of());
   }
 
   @Test

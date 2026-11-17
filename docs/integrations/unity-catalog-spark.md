@@ -265,13 +265,14 @@ your Spark version, plus the cloud storage module that matches the Hadoop versio
 
 | Spark version | Bundled Hadoop | AWS S3 | Azure ADLSgen2 | Google Cloud Storage |
 | --- | --- | --- | --- | --- |
-| Apache Spark 4.0.x | 3.4.1 | `org.apache.hadoop:hadoop-aws:3.4.1` | `org.apache.hadoop:hadoop-azure:3.4.1` | `gcs-connector-3.0.2-shaded.jar` |
-| Apache Spark 4.1.x | 3.4.2 | `org.apache.hadoop:hadoop-aws:3.4.2` | `org.apache.hadoop:hadoop-azure:3.4.2` | `gcs-connector-3.0.2-shaded.jar` |
-| Apache Spark 4.2.x | 3.5.0 | `org.apache.hadoop:hadoop-aws:3.5.0` | `org.apache.hadoop:hadoop-azure:3.5.0` | `org.apache.hadoop:hadoop-gcp:3.5.0` |
+| Apache Spark 4.0.x | 3.4.1 | `org.apache.hadoop:hadoop-aws:3.4.1` | `org.apache.hadoop:hadoop-azure:3.4.1` | `gcs-connector-4.0.10-shaded.jar` |
+| Apache Spark 4.1.x | 3.4.2 | `org.apache.hadoop:hadoop-aws:3.4.2` | `org.apache.hadoop:hadoop-azure:3.4.2` | `gcs-connector-4.0.10-shaded.jar` |
+| Apache Spark 4.2.x | 3.5.0 | `org.apache.hadoop:hadoop-aws:3.5.0` | `org.apache.hadoop:hadoop-azure:3.5.0` | `gcs-connector-4.0.10-shaded.jar` |
 
 `hadoop-azure` requires 3.4.1 or later (see [issue #1175](https://github.com/unitycatalog/unitycatalog/issues/1175)).
-Hadoop 3.4 has no GCS module, so Spark 4.0.x and 4.1.x load the Google Cloud Storage connector with `--jars`; Spark 4.2.x
-uses Hadoop's own `hadoop-gcp` with `--packages`.
+Every Spark version loads Google's Google Cloud Storage connector with `--jars`. Hadoop 3.4 has no GCS module of its own,
+and the `hadoop-gcp` module in Hadoop 3.5 (Spark 4.2.x) cannot use the access tokens Unity Catalog vends, so Spark 4.2.x
+needs Google's connector too, with the `fs.gs.impl` settings shown below.
 
 === "AWS S3 (Spark 4.0.x)"
 
@@ -393,7 +394,7 @@ uses Hadoop's own `hadoop-gcp` with `--packages`.
 
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
-        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/4.0.10/gcs-connector-4.0.10-shaded.jar" \
         --packages "io.delta:delta-spark_4.0_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.7.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
@@ -414,7 +415,7 @@ uses Hadoop's own `hadoop-gcp` with `--packages`.
 
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
-        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/4.0.10/gcs-connector-4.0.10-shaded.jar" \
         --packages "io.delta:delta-spark_4.1_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.7.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
@@ -435,14 +436,24 @@ uses Hadoop's own `hadoop-gcp` with `--packages`.
 
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-gcp:3.5.0,io.delta:delta-spark_4.2_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.7.0" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/4.0.10/gcs-connector-4.0.10-shaded.jar" \
+        --packages "io.delta:delta-spark_4.2_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.7.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
+        --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
         --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
+
+!!! note "Unity Catalog Spark connector before 0.8.0 on Spark 4.2.x"
+    Hadoop 3.5 turns on two settings of Google's connector that make it read the folders above a table and the bucket's
+    layout, which the folder-scoped tokens Unity Catalog vends cannot do, so access fails with `403`. From 0.8.0 the
+    connector turns them off itself. With an earlier release, add
+    `--conf "spark.hadoop.fs.gs.create.items.conflict.check.enable=false"` and
+    `--conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false"`.
 
 ## Querying cloud paths with Unity Catalog credentials
 
