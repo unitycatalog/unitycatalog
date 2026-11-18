@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.fail;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.doAnswer;
@@ -31,8 +32,11 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.model.UpdateCatalog;
+import io.unitycatalog.server.model.UpdateFunction;
 import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
@@ -40,6 +44,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.CatalogService;
 import io.unitycatalog.server.service.TableService;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -57,6 +62,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -450,6 +456,138 @@ public class OwnershipRepositoryTest {
       executor.shutdownNow();
       assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
     }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void concurrentTransfersRefreshCollectionsAfterLock(boolean function) throws Exception {
+    UUID schemaId = UUID.randomUUID();
+    UUID targetId = UUID.randomUUID();
+    Class<? extends IdentifiableDAO> entityType =
+        function ? FunctionInfoDAO.class : TableInfoDAO.class;
+    String fullName = CATALOG + ".schema.target";
+    sessionFactory.inTransaction(
+        session -> {
+          session.persist(
+              SchemaInfoDAO.builder().id(schemaId).name("schema").catalogId(resourceId).build());
+          session.persist(
+              function
+                  ? FunctionInfoDAO.builder()
+                      .id(targetId)
+                      .name("target")
+                      .schemaId(schemaId)
+                      .owner(FIRST_OWNER)
+                      .build()
+                  : TableInfoDAO.builder()
+                      .id(targetId)
+                      .name("target")
+                      .schemaId(schemaId)
+                      .type(TableType.EXTERNAL.getValue())
+                      .owner(FIRST_OWNER)
+                      .build());
+        });
+    authorizer.grantAuthorization(firstId, targetId, Privileges.OWNER);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try (Session first = sessionFactory.openSession()) {
+      Transaction transaction = first.beginTransaction();
+      try {
+        IdentifiableDAO resource = first.get(entityType, targetId);
+        String owner =
+            repositories.getOwnershipRepository().updateOwner(first, resource, SECOND_OWNER);
+        TestDatabase.setColumn(first, entityType, targetId, "owner", owner);
+        Future<String> second =
+            executor.submit(
+                () -> {
+                  try (SafeCloseable ignored =
+                      ServiceRequestContext.of(HttpRequest.of(HttpMethod.PATCH, "/")).push()) {
+                    return function
+                        ? repositories
+                            .getFunctionRepository()
+                            .updateFunction(fullName, new UpdateFunction().owner(FIRST_OWNER))
+                            .getOwner()
+                        : repositories
+                            .getTableRepository()
+                            .updateTable(
+                                fullName, new UpdateTable().owner(FIRST_OWNER), true, () -> {})
+                            .getOwner();
+                  }
+                });
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (!database.hasLockWaiter()) {
+          if (second.isDone()) {
+            second.get();
+            fail("The second transfer did not wait for the row lock");
+          }
+          assertThat(System.nanoTime()).isLessThan(deadline);
+          Thread.sleep(100);
+        }
+        transaction.commit();
+        assertThat(second.get(30, TimeUnit.SECONDS)).isEqualTo(FIRST_OWNER);
+      } finally {
+        if (transaction.isActive()) {
+          transaction.rollback();
+        }
+      }
+    } finally {
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
+    String storedOwner =
+        sessionFactory.fromSession(
+            session ->
+                session
+                    .createSelectionQuery(
+                        "select owner from " + entityType.getSimpleName() + " where id = :id",
+                        String.class)
+                    .setParameter("id", targetId)
+                    .getSingleResult());
+    assertThat(storedOwner).isEqualTo(FIRST_OWNER);
+    authorizer.reloadAuthorizations();
+    assertThat(authorizer.listAuthorizations(firstId, targetId)).containsExactly(Privileges.OWNER);
+    assertThat(authorizer.listAuthorizations(secondId, targetId)).isEmpty();
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void transferLockTimeoutIsUnavailableAndRollsBack(boolean policyLock) {
+    Properties impatient = database.hibernateProperties();
+    impatient.setProperty("hibernate.hbm2ddl.auto", "none");
+    impatient.setProperty(
+        "hibernate.connection.url",
+        database.jdbcUrl()
+            + switch (SupportedDatabase.selected()) {
+              case H2 -> ";LOCK_TIMEOUT=50";
+              case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
+              case MYSQL_8 -> "?sessionVariables=innodb_lock_wait_timeout=1";
+            });
+    CatalogRepository updates =
+        new CatalogRepository(
+            repositories, database.openHibernateConfigurator(impatient).getSessionFactory());
+    try (Session held = sessionFactory.openSession()) {
+      Transaction transaction = held.beginTransaction();
+      try {
+        if (policyLock) {
+          held.createNativeQuery(
+                  "SELECT v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :id AND v2 = 'OWNER'"
+                      + " FOR UPDATE",
+                  String.class)
+              .setParameter("id", resourceId.toString())
+              .getResultList();
+        } else {
+          held.get(CatalogInfoDAO.class, resourceId, LockMode.PESSIMISTIC_WRITE);
+        }
+        assertThatExceptionOfType(BaseException.class)
+            .isThrownBy(
+                () -> updates.updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER)))
+            .extracting(BaseException::getErrorCode)
+            .isEqualTo(ErrorCode.UNAVAILABLE);
+      } finally {
+        transaction.rollback();
+      }
+    }
+    authorizer.reloadAuthorizations();
+    assertOwnership(FIRST_OWNER, firstId);
+    assertThat(CapturingAuditSink.RECORDS).isEmpty();
   }
 
   @Test

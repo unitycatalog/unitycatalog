@@ -6,11 +6,12 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import jakarta.transaction.Synchronization;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.hibernate.LockMode;
 import org.hibernate.Session;
 
 /** Writes ownership policies in the transaction that updates the resource's owner field. */
@@ -56,7 +57,10 @@ public class OwnershipRepository {
   }
 
   private void replaceOwner(Session session, UUID resource, UserDAO user) {
-    List<UUID> oldOwners = JCasbinAuthorizer.replaceOwner(session, resource, user.getId());
+    List<UUID> oldOwners =
+        RepositoryUtils.unavailableOnLockFailure(
+            "permissions for resource " + resource,
+            () -> JCasbinAuthorizer.replaceOwner(session, resource, user.getId()));
     auditor.ifPresent(a -> a.recordOwnershipTransfer(session, resource, oldOwners, user.getId()));
   }
 
@@ -79,7 +83,13 @@ public class OwnershipRepository {
   public String updateOwner(
       Session session, IdentifiableDAO resource, String owner, Runnable beforeCommit) {
     UserDAO user = findOwner(session, owner);
-    session.refresh(resource, LockMode.PESSIMISTIC_WRITE);
+    RepositoryUtils.lockByKey(
+        session,
+        resource.getClass(),
+        resource.getId(),
+        Map.of(),
+        "resource " + resource.getId(),
+        () -> new BaseException(ErrorCode.NOT_FOUND, "Resource not found: " + resource.getId()));
     if (authorizationEnabled) {
       replaceOwner(session, resource.getId(), user);
     }
