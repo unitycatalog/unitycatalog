@@ -56,6 +56,8 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
     this is an H2 database file, `h2db.mv.db`. H2 supports one server per file; to run more than one server, use
     PostgreSQL or MySQL. H2's server mode (`AUTO_SERVER=TRUE`, `jdbc:h2:tcp:` or `jdbc:h2:ssl:`) is
     refused by `bin/start-uc-server --upgrade-schema` (see [Upgrading the database schema](upgrades.md)).
+    In a source checkout the launcher builds `etc/db/h2db.mv.db` when it is missing, whatever database the
+    configuration uses, and starts the server even when that build fails.
 
 ### Configuring the database
 

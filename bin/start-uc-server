@@ -19,7 +19,9 @@ generate_jar() {
 build_sample_database() {
   local BUILD_SAMPLE_DATABASE_COMMAND="$ROOT_DIR/build/sbt -info buildSampleDatabase"
   echo "Running SBT to build the sample database $SAMPLE_DATABASE: $BUILD_SAMPLE_DATABASE_COMMAND"
-  $BUILD_SAMPLE_DATABASE_COMMAND || exit
+  if ! $BUILD_SAMPLE_DATABASE_COMMAND; then
+    echo "Could not build the sample database $SAMPLE_DATABASE; starting the server anyway." >&2
+  fi
 }
 
 # This function succeeds when the command line starts the server: it holds nothing but the port
