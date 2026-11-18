@@ -22,6 +22,39 @@ build_sample_database() {
   $BUILD_SAMPLE_DATABASE_COMMAND || exit
 }
 
+# This function succeeds when the command line starts the server: it holds nothing but the port
+# options, in any spelling the option parser takes (one or two dashes, the start of the name, the
+# value after a space or an =). A schema command, --version, --help or an unknown option does not
+# start it.
+starts_server() {
+  while [ $# -gt 0 ]; do
+    arg=$1
+    shift
+    case "$arg" in
+      -p[0-9]*|-|--) continue ;;
+      -*) ;;
+      *) continue ;;
+    esac
+    long=${arg#--}
+    name=${long#-}
+    name=${name%%=*}
+    # A single dash takes a one-letter option only as -p.
+    if [ "$long" = "$arg" ] && [ "${#name}" -lt 2 ] && [ "$name" != p ]; then
+      return 1
+    fi
+    case "port" in "$name"*) ;; *) case "obs-port" in "$name"*) ;; *) return 1 ;; esac ;; esac
+    case "$arg" in
+      *=*) ;;
+      *)
+        # The value is the next word, which an option does not start.
+        [ $# -ge 1 ] || return 1
+        case "$1" in -*) return 1 ;; esac
+        shift
+        ;;
+    esac
+  done
+}
+
 # This function starts the unity catalog server. exec makes the JVM this process, so it receives
 # SIGTERM itself (as PID 1 in a container) and drains before exiting. The server stops Log4j after
 # that drain, so Log4j's own shutdown hook, which would stop logging during it, is off.
@@ -49,16 +82,11 @@ run_in_source_code() {
 
   # The Docker image holds the server's sources but not build/sbt: it ships its sample database,
   # and a volume mounted over etc/db stays empty.
-  # The schema commands and --version do not use it.
-  case " $* " in
-    *" --check-schema "*|*" --upgrade-schema "*|*" -v "*|*" --version "*) ;;
-    *)
-      if [ ! -f "$SAMPLE_DATABASE" ] && [ -x "$ROOT_DIR/build/sbt" ]; then
-          echo "Sample database '$SAMPLE_DATABASE' not found."
-          build_sample_database
-      fi
-      ;;
-  esac
+  # Only a command line that starts the server uses the sample database.
+  if [ ! -f "$SAMPLE_DATABASE" ] && [ -x "$ROOT_DIR/build/sbt" ] && starts_server "$@"; then
+      echo "Sample database '$SAMPLE_DATABASE' not found."
+      build_sample_database
+  fi
 
   run_uc_server_java_command "$SERVER_CLASSPATH_FILE" "$@"
 }

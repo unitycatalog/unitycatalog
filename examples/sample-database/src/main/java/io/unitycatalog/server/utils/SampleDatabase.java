@@ -35,10 +35,13 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.Session;
@@ -51,7 +54,8 @@ import org.hibernate.Transaction;
  * volumes point at the files under {@code etc/data}; add any file that a new table or volume points
  * at in the same change. It is built, not checked in: {@code build/sbt buildSampleDatabase} builds
  * {@code etc/db/h2db.mv.db}, {@code bin/start-uc-server} does so in a source checkout where the
- * file is missing, and the tarball and the Docker image ship one built by their build.
+ * file is missing, and the tarball and the Docker image ship one built by their build. The folder
+ * of the file must be on a file system that supports hard links.
  */
 public class SampleDatabase {
 
@@ -79,7 +83,18 @@ public class SampleDatabase {
       Path folder = Files.createDirectories(h2File.toAbsolutePath().getParent());
       building = Files.createTempFile(folder, "building-", H2_FILE_SUFFIX);
       buildInto(building);
-      Files.createLink(h2File, building);
+      try {
+        Files.createLink(h2File, building);
+      } catch (FileAlreadyExistsException e) {
+        throw e;
+      } catch (UnsupportedOperationException | FileSystemException e) {
+        throw new IllegalStateException(
+            "The folder "
+                + folder
+                + " must be on a file system that supports hard links to build the sample"
+                + " database.",
+            e);
+      }
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     } finally {
@@ -106,7 +121,8 @@ public class SampleDatabase {
     hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "none");
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "dev");
-    ServerProperties serverProperties = new ServerProperties(properties);
+    // No environment variables: the sample database does not depend on the deployment's settings.
+    ServerProperties serverProperties = new ServerProperties(properties, Map.of());
     // The repositories read the caller from the request's context: none here, so no owner.
     try (HibernateConfigurator hibernateConfigurator =
             new HibernateConfigurator(hibernateProperties);
