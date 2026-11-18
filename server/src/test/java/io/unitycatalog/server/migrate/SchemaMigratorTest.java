@@ -13,6 +13,9 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.Driver;
@@ -34,7 +37,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
@@ -45,6 +50,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class SchemaMigratorTest {
 
@@ -252,6 +258,87 @@ public class SchemaMigratorTest {
     assertThat(failedRecords()).isZero();
     assertThat(new SchemaMigrator(db.dataSource(), NEXT_RELEASE).state())
         .isEqualTo(SchemaState.CURRENT);
+  }
+
+  /**
+   * Deleting a failed step's record succeeded, but the pool's connection can't get its auto-commit
+   * setting back, whether it stays open ("healthy") or is lost ("broken"): the run goes on, and the
+   * connection is closed rather than handed out again with auto-commit on.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"healthy", "broken"})
+  void runsAgainAFailedStepWhenTheConnectionCannotBeRestored(String connectionState)
+      throws SQLException {
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+    UpgradeTestUtils.execute(
+        db,
+        ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
+                + " WHERE %1$sversion%1$s = '1000'")
+            .formatted(identifierQuote(db.dataSource())));
+    AtomicBoolean armed = new AtomicBoolean();
+    AtomicReference<Connection> migrators = new AtomicReference<>();
+    List<Connection> failed = new CopyOnWriteArrayList<>();
+    DataSource real = db.dataSource();
+    DataSource failing =
+        (DataSource)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {DataSource.class},
+                (p, m, a) -> {
+                  Object result = invoke(m, real, a);
+                  if (!m.getName().equals("getConnection")) {
+                    return result;
+                  }
+                  Connection c = (Connection) result;
+                  return Proxy.newProxyInstance(
+                      getClass().getClassLoader(),
+                      new Class<?>[] {Connection.class},
+                      (pp, mm, aa) -> {
+                        // The connection that deletes the failed record fails its restore, the next
+                        // setAutoCommit(false).
+                        if (mm.getName().equals("prepareStatement")
+                            && aa[0].toString().contains("DELETE FROM")
+                            && armed.get()) {
+                          migrators.compareAndSet(null, c);
+                        }
+                        if (mm.getName().equals("setAutoCommit")
+                            && !(Boolean) aa[0]
+                            && migrators.compareAndSet(c, null)) {
+                          failed.add(c);
+                          if (connectionState.equals("broken")) {
+                            c.close();
+                            throw new SQLException("Test: connection lost", "08003");
+                          }
+                          throw new SQLException("Test: the restore fails");
+                        }
+                        return invoke(mm, c, aa);
+                      });
+                });
+
+    HikariConfig config = HibernateConfigurator.hikariConfig(db.hibernateProperties());
+    config.setDataSource(failing);
+    config.setJdbcUrl(null);
+    config.setDriverClassName(null);
+    config.setUsername(null);
+    config.setPassword(null);
+    try (HikariDataSource pool = new HikariDataSource(config)) {
+      // The pool has set up its first connection: the next restore is the migrator's.
+      pool.getConnection().close();
+      armed.set(true);
+      assertThat(new SchemaMigrator(pool, NEXT_RELEASE).upgradeSchema()).isOne();
+    }
+    assertThat(failedRecords()).isZero();
+    assertThat(failed).hasSize(1);
+    assertThat(failed.get(0).isClosed()).isTrue();
+  }
+
+  private static Object invoke(Method method, Object target, Object[] args) throws Throwable {
+    try {
+      return method.invoke(target, args);
+    } catch (InvocationTargetException e) {
+      throw e.getCause();
+    }
   }
 
   @ParameterizedTest

@@ -587,29 +587,35 @@ public final class SchemaMigrator implements AutoCloseable {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
       return;
     }
-    try (Connection connection = dataSource.getConnection()) {
+    Connection connection = null;
+    Boolean autoCommit = null;
+    try {
+      connection = dataSource.getConnection();
       // The caller's pool may not commit by itself, and a rollback would keep the record. The
       // previous setting is restored, for a pool that does not reset it.
-      boolean autoCommit = connection.getAutoCommit();
+      autoCommit = connection.getAutoCommit();
       connection.setAutoCommit(true);
-      try {
-        String q = connection.getMetaData().getIdentifierQuoteString();
-        try (PreparedStatement delete =
-            connection.prepareStatement(
-                "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
-                    .formatted(q, HISTORY_TABLE))) {
-          delete.setString(1, step);
-          if (delete.executeUpdate() > 0) {
-            LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
-          }
+      String q = connection.getMetaData().getIdentifierQuoteString();
+      try (PreparedStatement delete =
+          connection.prepareStatement(
+              "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
+                  .formatted(q, HISTORY_TABLE))) {
+        delete.setString(1, step);
+        if (delete.executeUpdate() > 0) {
+          LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
         }
-      } finally {
-        // Never replaces the DELETE's own failure.
-        RunLock.restoreAutoCommit(connection, autoCommit);
       }
     } catch (SQLException e) {
       throw new IllegalStateException(
           "Could not delete the record of a failed schema step: " + e.getMessage(), e);
+    } finally {
+      // Cleanup never replaces the outcome of the DELETE: both calls log and swallow failures.
+      if (connection != null) {
+        if (autoCommit != null) {
+          RunLock.restoreAutoCommit(connection, autoCommit);
+        }
+        RunLock.close(connection);
+      }
     }
   }
 
@@ -1088,7 +1094,9 @@ public final class SchemaMigrator implements AutoCloseable {
 
     private static void closeUnderlying(Connection connection) {
       try {
-        connection.unwrap(Connection.class).close();
+        // Aborts, rather than closing the unwrapped connection: a pool then drops it too, instead
+        // of keeping a closed connection that it hands out again.
+        connection.abort(Runnable::run);
       } catch (SQLException e) {
         LOGGER.warn(
             "Could not close the schema migration lock's database connection; the lock stays held"
