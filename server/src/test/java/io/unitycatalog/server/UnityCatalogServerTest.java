@@ -130,6 +130,25 @@ public class UnityCatalogServerTest extends BaseServerTest {
     }
   }
 
+  /** In hibernate mode, Hibernate sets up a new H2 file, as in 0.7.0. */
+  @Test
+  public void startInHibernateModeSetsUpAMissingH2File(@TempDir Path dir) throws Exception {
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    Path h2File = dir.resolve("new");
+    Files.writeString(
+        hibernateFile,
+        "hibernate.connection.driver_class=org.h2.Driver\n"
+            + "hibernate.connection.url=jdbc:h2:file:"
+            + h2File
+            + "\n");
+    Properties properties = new Properties();
+    properties.setProperty(Property.SCHEMA_MANAGEMENT.getKey(), "hibernate");
+
+    try (UnityCatalogServer server = ownedServer(properties, hibernateFile)) {
+      assertThat(dir.resolve("new.mv.db")).exists();
+    }
+  }
+
   /**
    * An in-memory test database lasts as long as its server: the next server in this JVM starts on
    * an empty one, whether server.env=test or a missing hibernate.properties chose it.
