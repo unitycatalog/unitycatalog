@@ -24,10 +24,19 @@ class MemoryStorage implements Storage {
   }
 }
 
-if (!("localStorage" in globalThis) || (globalThis as { localStorage?: unknown }).localStorage == null) {
+if (
+  !("localStorage" in globalThis) ||
+  (globalThis as { localStorage?: unknown }).localStorage == null
+) {
   const storage = new MemoryStorage();
-  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+  Object.defineProperty(globalThis, "localStorage", {
+    value: storage,
+    configurable: true,
+  });
   if (typeof window !== "undefined") {
-    Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
+    Object.defineProperty(window, "localStorage", {
+      value: storage,
+      configurable: true,
+    });
   }
 }
