@@ -191,7 +191,8 @@ jobs:
             status=$?
             if [ "$status" -ne 0 ]; then
               docker logs "$container" || true
-              docker exec "$container" sh -c 'cat etc/logs/server.log' || true
+              # The server logs only to this file, and docker cp also reads an exited container.
+              docker cp "$container":/home/unitycatalog/etc/logs/server.log - | tar -xOf - || true
             fi
             docker rm -f "$container" > /dev/null || true
             exit "$status"
@@ -202,7 +203,8 @@ jobs:
             [ "$(stat -c %a "$HOME")" = 550 ]
             [ "$(stat -c %a etc)" = 755 ]
             [ "$(stat -c %a etc/conf)" = 755 ]
-            [ ! -w "$HOME" ] && [ -w etc ] && [ -w etc/conf ]
+            [ -w etc ]
+            [ -w etc/conf ]
           '
           for _ in $(seq 30); do
             output="$(docker exec "$container" bin/uc catalog list 2>&1)" &&

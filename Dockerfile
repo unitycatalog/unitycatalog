@@ -96,9 +96,10 @@ USER $USER
 # its database, data, and logs under etc/.
 COPY --chown=$USER:$USER --parents bin/ etc/ $HOME/
 
-# COPY may create its destination with mode 755; change only the home directory,
-# not its contents, so this does not duplicate the artifact layer.
-RUN chmod 550 "$HOME"
+# COPY creates $HOME with mode 755 and gives etc/ and etc/conf the modes of the
+# build context. Set these three directories, not their contents, so their modes
+# don't depend on the checkout and no layer stores the artifacts again.
+RUN chmod 550 "$HOME" && chmod 755 "$HOME/etc" "$HOME/etc/conf"
 
 WORKDIR $HOME
 
