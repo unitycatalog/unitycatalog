@@ -5,7 +5,9 @@ import concurrent.futures
 import datetime
 import decimal
 import logging
+import os
 import threading
+import weakref
 from enum import Enum
 from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -111,6 +113,17 @@ _logger = logging.getLogger(__name__)
 
 _SESSION_CLOSED = "Session is closed"
 
+_clients_to_reset_after_fork: "weakref.WeakSet[_SingleLoopRESTClient]" = weakref.WeakSet()
+
+
+def _reset_clients_after_fork():
+    for client in _clients_to_reset_after_fork:
+        client._reset_after_fork()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_clients_after_fork)
+
 
 def syncify_method(sync_method):
     @wraps(sync_method)
@@ -151,7 +164,7 @@ class _SingleLoopRESTClient:
         self._replaced_rest_client = api_client.rest_client
         if type(self._replaced_rest_client) is not RESTClientObject:
             _logger.warning(
-                "The ApiClient's rest_client is a %s, but requests are sent with a new "
+                "The ApiClient's rest_client has type %s, but requests are sent with a new "
                 "RESTClientObject built from its configuration, so its own request handling is "
                 "not used.",
                 type(self._replaced_rest_client).__name__,
@@ -161,6 +174,18 @@ class _SingleLoopRESTClient:
         self._closed = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
+        _clients_to_reset_after_fork.add(self)
+
+    def _reset_after_fork(self):
+        """
+        A forked child has the parent's loop and session but not the thread that runs the loop, so
+        it starts its own on its first request. The lock is replaced too, in case another thread
+        held it during the fork.
+        """
+        self._lock = threading.Lock()
+        self._loop = None
+        self._thread = None
+        self._rest_client = None
 
     async def request(self, *args, **kwargs):
         with self._lock:
@@ -177,6 +202,9 @@ class _SingleLoopRESTClient:
         may all be blocked in requests that only `shutdown` can cancel.
         """
         closed = concurrent.futures.Future()
+        # A running future can't be cancelled, so cancelling the caller doesn't make the result
+        # below fail to set.
+        closed.set_running_or_notify_cancel()
 
         def shutdown():
             try:
