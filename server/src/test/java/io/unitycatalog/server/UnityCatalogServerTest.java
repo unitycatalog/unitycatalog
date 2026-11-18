@@ -171,7 +171,9 @@ public class UnityCatalogServerTest extends BaseServerTest {
       }
       first.close();
 
-      assertThat(tableCount(firstUrl, "FIRST_SERVERS_DATA")).isZero();
+      // The database itself is gone, not only its tables.
+      assertThatThrownBy(() -> DriverManager.getConnection(firstUrl + ";IFEXISTS=TRUE", "", ""))
+          .hasMessageContaining("not found");
       assertThat(tableCount(databaseUrl(second), "UC_CATALOGS")).isOne();
     }
   }
