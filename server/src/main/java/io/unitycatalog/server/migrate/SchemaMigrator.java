@@ -862,15 +862,21 @@ public final class SchemaMigrator implements AutoCloseable {
                   + " CONSTRAINT_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS"
                   + " WHERE CONSTRAINT_SCHEMA = SCHEMA() UNION ALL SELECT 'view', TABLE_NAME,"
                   + " NULL FROM INFORMATION_SCHEMA.TABLES"
-                  + " WHERE TABLE_SCHEMA = SCHEMA() AND TABLE_TYPE = 'VIEW'";
+                  + " WHERE TABLE_SCHEMA = SCHEMA() AND TABLE_TYPE = 'VIEW'"
+                  + " UNION ALL SELECT 'synonym', SYNONYM_NAME, NULL"
+                  + " FROM INFORMATION_SCHEMA.SYNONYMS WHERE SYNONYM_SCHEMA = SCHEMA()";
           case POSTGRESQL ->
-              "SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'p' THEN 'table' WHEN 'v' THEN"
-                  + " 'view' WHEN 'm' THEN 'view' WHEN 'S' THEN 'sequence' WHEN 'i' THEN 'index'"
-                  + " WHEN 'I' THEN 'index' ELSE 'relation' END, c.relname, t.relname"
-                  + " FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
-                  + " LEFT JOIN pg_index x ON x.indexrelid = c.oid"
-                  + " LEFT JOIN pg_class t ON t.oid = x.indrelid"
-                  + " WHERE n.nspname = current_schema()";
+              "SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'p' THEN 'partitioned table' WHEN"
+                  + " 'v' THEN 'view' WHEN 'm' THEN 'view' WHEN 'S' THEN 'sequence' WHEN 'i' THEN"
+                  + " 'index' WHEN 'I' THEN 'index' ELSE 'relation' END, c.relname, t.relname FROM"
+                  + " pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_index x"
+                  + " ON x.indexrelid = c.oid LEFT JOIN pg_class t ON t.oid = x.indrelid WHERE"
+                  + " n.nspname = current_schema()"
+                  // A type that is not a relation's row type, which shares the names of tables.
+                  + " UNION ALL SELECT 'type', y.typname, NULL FROM pg_type y"
+                  + " JOIN pg_namespace m ON m.oid = y.typnamespace"
+                  + " WHERE m.nspname = current_schema() AND y.typrelid = 0"
+                  + " AND y.typcategory <> 'A'";
           case MYSQL ->
               "SELECT 'foreign key', CONSTRAINT_NAME, TABLE_NAME"
                   + " FROM information_schema.TABLE_CONSTRAINTS"
@@ -894,9 +900,16 @@ public final class SchemaMigrator implements AutoCloseable {
         boolean taken =
             switch (kind) {
               case H2 ->
-                  (holder.equals("index") ? indexes : holder.equals("view") ? tables : constraints)
+                  (holder.equals("index")
+                          ? indexes
+                          : holder.equals("view") || holder.equals("synonym")
+                              ? tables
+                              : constraints)
                       .contains(name);
-              case POSTGRESQL -> indexes.contains(name) || tables.contains(name);
+              case POSTGRESQL ->
+                  holder.equals("type")
+                      ? tables.contains(name)
+                      : indexes.contains(name) || tables.contains(name);
               case MYSQL -> (holder.equals("view") ? tables : foreignKeys).contains(name);
             };
         if (taken) {

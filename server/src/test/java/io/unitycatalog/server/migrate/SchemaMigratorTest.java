@@ -569,12 +569,39 @@ public class SchemaMigratorTest {
         "CREATE SEQUENCE uc_catalogs_pkey | POSTGRESQL | uc_catalogs_pkey",
         "CREATE VIEW uc_users_external_id_key AS SELECT x FROM other_app"
             + " | POSTGRESQL | uc_users_external_id_key",
+        "CREATE SYNONYM uc_catalogs FOR other_app | H2 | uc_catalogs",
+        "CREATE TABLE uc_catalogs (x INT) PARTITION BY RANGE (x) | POSTGRESQL | uc_catalogs",
+        "CREATE TYPE uc_catalogs AS ENUM ('a') | POSTGRESQL | uc_catalogs",
+        "CREATE DOMAIN uc_catalogs AS INT | POSTGRESQL | uc_catalogs",
+        "CREATE DOMAIN uc_catalogs AS INT | '' | uc_catalogs",
+        "CREATE TYPE uc_catalogs_pkey AS ENUM ('a') | '' | uc_catalogs_pkey",
+        "CREATE TYPE uc_catalogs AS (a INT) | POSTGRESQL | uc_catalogs",
+        "CREATE MATERIALIZED VIEW uc_catalogs AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_catalogs",
+        "CREATE MATERIALIZED VIEW uc_catalogs_pkey AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE VIEW unrelated_view AS SELECT x FROM other_app | '' | unrelated_view",
       })
   void refusesWhenAnotherApplicationsObjectTookAStepsName(
       String object, String clashesOn, String name) {
     assumeFalse(
         object.startsWith("CREATE SEQUENCE") && db.jdbcUrl().startsWith("jdbc:mysql:"),
         "MySQL has no sequences");
+    // Each statement is only supported by the databases that can clash on it or that accept it.
+    String upper = object.toUpperCase(java.util.Locale.ROOT);
+    boolean h2 = db.jdbcUrl().startsWith("jdbc:h2:");
+    boolean postgres = db.jdbcUrl().startsWith("jdbc:postgresql:");
+    assumeFalse(upper.startsWith("CREATE SYNONYM") && !h2, "SYNONYM is H2 only");
+    assumeFalse(
+        (upper.startsWith("CREATE TYPE")
+                || upper.contains("PARTITION BY")
+                || upper.startsWith("CREATE MATERIALIZED VIEW"))
+            && !postgres,
+        "PostgreSQL only");
+    assumeFalse(
+        upper.startsWith("CREATE DOMAIN") && !clashesOn.isEmpty() && !postgres,
+        "PostgreSQL's DOMAIN row");
+    assumeFalse(upper.startsWith("CREATE DOMAIN") && clashesOn.isEmpty() && !h2, "H2's DOMAIN row");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_parent (id INT PRIMARY KEY)");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
     UpgradeTestUtils.execute(db, object);
