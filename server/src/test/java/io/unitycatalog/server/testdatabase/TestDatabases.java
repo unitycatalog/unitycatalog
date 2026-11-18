@@ -66,7 +66,17 @@ public final class TestDatabases {
     String url = "jdbc:h2:mem:" + name + ";DB_CLOSE_DELAY=-1";
     // DB_CLOSE_DELAY=-1 keeps an in-memory database until SHUTDOWN, so release it explicitly.
     TestDatabase database = new TestDatabase("org.h2.Driver", url, "sa", "", () -> shutdown(url));
-    runSteps(database);
+    try {
+      runSteps(database);
+    } catch (Throwable t) {
+      // The caller never gets the database, so nothing else releases its pool and H2 instance.
+      try {
+        database.close();
+      } catch (Throwable closeFailure) {
+        t.addSuppressed(closeFailure);
+      }
+      throw t;
+    }
     return database;
   }
 
@@ -80,6 +90,8 @@ public final class TestDatabases {
         .dataSource(database.dataSource())
         .locations("classpath:db/migration/" + database.jdbcUrl().split(":")[1])
         .table("uc_schema_history")
+        .failOnMissingLocations(true)
+        .validateMigrationNaming(true)
         .load()
         .migrate();
   }

@@ -214,12 +214,15 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Whether {@code url} is an in-memory H2 URL: {@code jdbc:h2:mem:}, or the unnamed {@code
-   * jdbc:h2:.}.
+   * Whether {@code url} is an in-memory H2 URL: {@code jdbc:h2:mem:}, the unnamed {@code
+   * jdbc:h2:.}, or one of H2's in-memory file systems ({@code memFS:}, {@code memLZF:}, {@code
+   * nioMemFS:}, {@code nioMemLZF:}).
    */
   private static boolean isH2InMemory(String url) {
     String h2 = HibernateConfigurator.h2Url(url);
-    return h2 != null && (h2.startsWith("jdbc:h2:mem:") || h2.matches("jdbc:h2:\\.(;.*)?"));
+    return h2 != null
+        && h2.matches(
+            "(?s)jdbc:h2:(?:mem:|memfs:|memlzf:|niomemfs:|niomemlzf:).*|jdbc:h2:\\.(?:;.*)?");
   }
 
   /**
@@ -626,15 +629,7 @@ public final class SchemaMigrator implements AutoCloseable {
               + ". "
               + upgrade);
     }
-    try {
-      requireValidHistory(false);
-    } catch (IllegalStateException e) {
-      throw new IllegalStateException(
-          e.getMessage()
-              + ". Run bin/start-uc-server --check-schema to see what an upgrade would do; "
-              + upgrade,
-          e);
-    }
+    requireValidHistory(false);
     requireLastStepsSchema(", then start the server");
   }
 
@@ -1116,7 +1111,10 @@ public final class SchemaMigrator implements AutoCloseable {
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
       throw new IllegalStateException(
-          "The database's schema history does not match this release's schema steps: " + errors);
+          "The database's schema history does not match this release's schema steps: "
+              + errors
+              // --upgrade-schema and --check-schema refuse the same history, so they are no advice.
+              + "\nRun the release that applied the steps, or restore the backup.");
     }
   }
 

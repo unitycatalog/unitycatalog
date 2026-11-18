@@ -211,3 +211,17 @@ not from the generated properties files, which are written only at pod start.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{- /*
+The server sets up an in-memory database itself and `--upgrade-schema` refuses one, so a deployment on one
+has no schema to upgrade first. In-memory is what the effective configuration says: server.env=test (the
+last such line wins, and the server compares the value exactly), or an H2 in-memory URL in the Hibernate
+file: mem: (also the unnamed `.`), and the memFS:, memLZF:, nioMemFS: and nioMemLZF: file systems. Evaluates to "true" or "".
+*/}}
+{{- define "unitycatalog.server.inMemoryDatabase" -}}
+{{- $env := regexFindAll "(?m)^[ \\t]*server\\.env(?:[ \\t]*[=:][ \\t]*|[ \\t]+)[^\\r\\n]*$" (include "unitycatalog.server.configTemplate" .) -1 | last | default "" -}}
+{{- $url := "(?i)^[ \\t]*(?:hibernate\\.connection\\.url|hibernate\\.hikari\\.dataSource\\.url)(?:[ \\t]*[=:][ \\t]*|[ \\t]+)jdbc:(?:[a-z0-9_.-]+:)*?h2:(?:mem:|memfs:|memlzf:|niomemfs:|niomemlzf:|\\.(?:;|[ \\t]*$))" -}}
+{{- if or (regexMatch "(?m)^[ \\t]*server\\.env(?:[ \\t]*[=:][ \\t]*|[ \\t]+)test$" $env) (regexMatch (printf "(?m)%s" $url) (include "unitycatalog.server.hibernateConfigTemplate" .)) -}}
+true
+{{- end -}}
+{{- end }}

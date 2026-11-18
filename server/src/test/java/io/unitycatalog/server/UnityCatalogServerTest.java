@@ -34,6 +34,10 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +47,9 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.core.util.ContextDataProvider;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class UnityCatalogServerTest extends BaseServerTest {
 
@@ -98,6 +105,72 @@ public class UnityCatalogServerTest extends BaseServerTest {
     assertThat(hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections())
         .isEqualTo(connections);
     assertThat(hibernateConfigurator.getSessionFactory().isOpen()).isTrue();
+  }
+
+  /**
+   * A server that builds its own database configuration refuses an H2 file that does not exist, and
+   * does not create it. {@code TestServer} injects the configurator, so this is the one test that
+   * starts the server as the launcher does.
+   */
+  @Test
+  public void startRefusesAMissingH2FileWithoutCreatingIt(@TempDir Path dir) throws Exception {
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    Files.writeString(
+        hibernateFile,
+        "hibernate.connection.driver_class=org.h2.Driver\n"
+            + "hibernate.connection.url=jdbc:h2:file:"
+            + dir.resolve("typo")
+            + "\n");
+
+    assertThatThrownBy(() -> ownedServer(new Properties(), hibernateFile))
+        .hasMessageContaining("H2 database file that hibernate.connection.url names is not found");
+
+    try (var files = Files.list(dir)) {
+      assertThat(files).containsExactly(hibernateFile);
+    }
+  }
+
+  /**
+   * An in-memory test database lasts as long as its server: the next server in this JVM starts on
+   * an empty one, whether server.env=test or a missing hibernate.properties chose it.
+   */
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void closingAServerDropsItsOwnInMemoryTestDatabase(
+      boolean serverEnvTest, @TempDir Path dir) throws Exception {
+    Properties properties = new Properties();
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    if (serverEnvTest) {
+      properties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    }
+    String testDatabase = "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1";
+
+    try (UnityCatalogServer first = ownedServer(properties, hibernateFile);
+        Connection connection = DriverManager.getConnection(testDatabase, "", "")) {
+      connection.createStatement().execute("CREATE TABLE first_servers_data (id INT)");
+    }
+
+    try (UnityCatalogServer second = ownedServer(properties, hibernateFile);
+        Connection connection = DriverManager.getConnection(testDatabase, "", "");
+        ResultSet tables =
+            connection
+                .createStatement()
+                .executeQuery(
+                    "SELECT COUNT(*) FROM information_schema.tables"
+                        + " WHERE table_name = 'FIRST_SERVERS_DATA'")) {
+      tables.next();
+      assertThat(tables.getInt(1)).isZero();
+    }
+  }
+
+  /** A server that builds its own database configuration from {@code hibernateFile}. */
+  private UnityCatalogServer ownedServer(Properties properties, Path hibernateFile) {
+    return UnityCatalogServer.builder()
+        .port(0)
+        .serverProperties(new ServerProperties(properties))
+        .configurationFolder(configurationFolder)
+        .hibernatePropertiesFile(hibernateFile)
+        .build();
   }
 
   @Test
