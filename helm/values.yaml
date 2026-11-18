@@ -182,7 +182,6 @@ server:
     # Supported values: `file`, `postgresql`, `mysql`
     #
     type: file
-
     fileConfig:
       persistence:
         # -- (bool) Enable persistence for the file database volume
@@ -436,7 +435,8 @@ server:
     # -- (int) Number of replicas
     # @raw
     #
-    # For replica count higher than 1 - use an external database
+    # For replica count higher than 1 - use an external database: the chart fails to render above 1
+    # with the file database.
     #
     replicaCount: 1
 

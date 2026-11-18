@@ -190,10 +190,17 @@ jobs:
           for url in 'jdbc:h2:mem:uc;DB_CLOSE_DELAY=-1' 'jdbc:h2:memFS:uc' 'jdbc:h2:memLZF:uc' 'jdbc:h2:nioMemFS:uc' 'jdbc:h2:nioMemLZF:uc' 'jdbc:h2:.'; do
             ! renders_upgrade_schema --set-string "server.db.overrideConfig=hibernate.connection.url=$url" || exit 1
           done
-          ! renders_upgrade_schema --set-string 'server.db.overrideConfig=hibernate.hikari.dataSource.url=jdbc:h2:mem:uc' || exit 1
           # A later server.env wins, as it does in the server, and a file URL keeps the container.
           renders_upgrade_schema --set-string "server.config.override=server.env=test"$'\n''server.env=prod'
           renders_upgrade_schema --set-string 'server.db.overrideConfig=hibernate.connection.url=jdbc:h2:file:/data/uc'
+          # Only the last assignment of a URL key counts, and only the URL the pool uses: the data source's
+          # when a data source class is set, hibernate.connection.url otherwise.
+          renders_upgrade_schema --set-string 'server.db.overrideConfig=hibernate.connection.url=jdbc:h2:mem:old'$'\n''hibernate.connection.url=jdbc:h2:file:./etc/db/h2db'
+          ! renders_upgrade_schema --set-string 'server.db.overrideConfig=hibernate.connection.url=jdbc:h2:file:./etc/db/h2db'$'\n''hibernate.connection.url=jdbc:h2:mem:old' || exit 1
+          class='hibernate.hikari.dataSourceClassName=org.h2.jdbcx.JdbcDataSource'
+          renders_upgrade_schema --set-string "server.db.overrideConfig=$class"$'\n''hibernate.hikari.dataSource.url=jdbc:h2:file:/data/uc'$'\n''hibernate.connection.url=jdbc:h2:mem:old'
+          ! renders_upgrade_schema --set-string "server.db.overrideConfig=$class"$'\n''hibernate.hikari.dataSource.url=jdbc:h2:mem:uc'$'\n''hibernate.connection.url=jdbc:h2:file:/data/uc' || exit 1
+          ! renders_upgrade_schema --set-string "server.db.overrideConfig=$class"$'\n''hibernate.hikari.dataSource.URL=jdbc:h2:mem:uc'$'\n''hibernate.connection.url=jdbc:h2:file:/data/uc' || exit 1
           # The server container stays.
           out="$(helm template uc helm --set-string server.config.override=server.env=test)"
           grep -qF 'name: server' <<<"$out"

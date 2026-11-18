@@ -25,6 +25,7 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.logging.RequestContextDataProvider;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.UnityCatalogRestService;
@@ -47,6 +48,7 @@ import java.util.ServiceLoader;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.core.util.ContextDataProvider;
+import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -175,6 +177,50 @@ public class UnityCatalogServerTest extends BaseServerTest {
                         + " WHERE table_name = 'FIRST_SERVERS_DATA'")) {
       tables.next();
       assertThat(tables.getInt(1)).isZero();
+    }
+  }
+
+  /**
+   * Whether the database is in memory is decided from the connection the pool opens. A data source
+   * class's file URL wins over a leftover in-memory {@code hibernate.connection.url}, and closing
+   * the server, after a start or a refused start, leaves that file database alone.
+   */
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void closingAServerLeavesAFileDatabaseAloneWhenAnotherUrlSettingIsInMemory(
+      boolean schemaSetUp, @TempDir Path dir) throws Exception {
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    String fileUrl = "jdbc:h2:file:" + dir.resolve("db");
+    Files.writeString(
+        hibernateFile,
+        "hibernate.hikari.dataSourceClassName=org.h2.jdbcx.JdbcDataSource\n"
+            + "hibernate.hikari.dataSource.url="
+            + fileUrl
+            + "\n"
+            + "hibernate.connection.url=jdbc:h2:mem:leftover;DB_CLOSE_DELAY=-1\n");
+    try (Connection connection = DriverManager.getConnection(fileUrl, "", "");
+        Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE kept_data (id INT)");
+      statement.execute("INSERT INTO kept_data VALUES (1)");
+    }
+    if (schemaSetUp) {
+      JdbcDataSource dataSource = new JdbcDataSource();
+      dataSource.setURL(fileUrl);
+      new SchemaMigrator(dataSource).upgradeSchema();
+    }
+
+    if (schemaSetUp) {
+      ownedServer(new Properties(), hibernateFile).close();
+    } else {
+      assertThatThrownBy(() -> ownedServer(new Properties(), hibernateFile))
+          .hasMessageContaining("no Unity Catalog schema");
+    }
+
+    try (Connection connection = DriverManager.getConnection(fileUrl, "", "");
+        ResultSet rows =
+            connection.createStatement().executeQuery("SELECT COUNT(*) FROM kept_data")) {
+      rows.next();
+      assertThat(rows.getInt(1)).isEqualTo(1);
     }
   }
 

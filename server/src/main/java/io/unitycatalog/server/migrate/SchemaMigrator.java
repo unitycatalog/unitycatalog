@@ -226,19 +226,6 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Whether the configuration names an in-memory H2 database, decided from the URL settings without
-   * connecting.
-   */
-  public static boolean isInMemory(Properties hibernateProperties) {
-    for (String key : HibernateConfigurator.urlSettings(hibernateProperties)) {
-      if (isH2InMemory(hibernateProperties.getProperty(key))) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /**
    * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
    * connects, and a check must change nothing. Sets {@code IFEXISTS=TRUE} on each H2 file URL the
    * pool may use ({@code hibernate.connection.url}, or the data source class's URL property), also

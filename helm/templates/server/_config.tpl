@@ -216,12 +216,23 @@ not from the generated properties files, which are written only at pod start.
 The server sets up an in-memory database itself and `--upgrade-schema` refuses one, so a deployment on one
 has no schema to upgrade first. In-memory is what the generated properties files say: server.env=test (the
 last such line wins, and the server compares the value exactly), or an H2 in-memory URL in the Hibernate
-file: mem: (also the unnamed `.`), and the memFS:, memLZF:, nioMemFS: and nioMemLZF: file systems. Evaluates to "true" or "".
+file: mem: (also the unnamed `.`), and the memFS:, memLZF:, nioMemFS: and nioMemLZF: file systems. The server
+refuses an unnamed in-memory URL, so a deployment on one names it, as in `jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1`.
+Like Java properties, the last assignment of a key wins, and only the URL the connection pool uses counts:
+hibernate.hikari.dataSource.url when hibernate.hikari.dataSourceClassName is set, hibernate.connection.url
+otherwise. Evaluates to "true" or "".
 */}}
 {{- define "unitycatalog.server.inMemoryDatabase" -}}
-{{- $env := regexFindAll "(?m)^[ \\t]*server\\.env(?:[ \\t]*[=:][ \\t]*|[ \\t]+)[^\\r\\n]*$" (include "unitycatalog.server.configTemplate" .) -1 | last | default "" -}}
-{{- $url := "(?i)^[ \\t]*(?:hibernate\\.connection\\.url|hibernate\\.hikari\\.dataSource\\.url)(?:[ \\t]*[=:][ \\t]*|[ \\t]+)jdbc:(?:[a-z0-9_.-]+:)*?h2:(?:mem:|memfs:|memlzf:|niomemfs:|niomemlzf:|\\.(?:;|[ \\t]*$))" -}}
-{{- if or (regexMatch "(?m)^[ \\t]*server\\.env(?:[ \\t]*[=:][ \\t]*|[ \\t]+)test$" $env) (regexMatch (printf "(?m)%s" $url) (include "unitycatalog.server.hibernateConfigTemplate" .)) -}}
+{{- $sep := `(?:[ \t]*[=:][ \t]*|[ \t]+)` -}}
+{{- $env := regexFindAll (printf `(?m)^[ \t]*server\.env%s[^\r\n]*$` $sep) (include "unitycatalog.server.configTemplate" .) -1 | last | default "" -}}
+{{- $hibernate := include "unitycatalog.server.hibernateConfigTemplate" . -}}
+{{- $urlKey := `hibernate\.connection\.url` -}}
+{{- if regexMatch (printf `(?m)^[ \t]*hibernate\.hikari\.dataSourceClassName%s[^ \t\r\n]` $sep) $hibernate -}}
+{{- $urlKey = `hibernate\.hikari\.dataSource\.(?i:url)` -}}
+{{- end -}}
+{{- $url := regexFindAll (printf `(?m)^[ \t]*%s%s[^\r\n]*$` $urlKey $sep) $hibernate -1 | last | default "" -}}
+{{- $memory := `(?i:jdbc:(?:[a-z0-9_.-]+:)*?h2:(?:mem:|memfs:|memlzf:|niomemfs:|niomemlzf:|\.(?:;|[ \t]*$)))` -}}
+{{- if or (regexMatch (printf `^[ \t]*server\.env%stest$` $sep) $env) (regexMatch (printf `^[ \t]*%s%s%s` $urlKey $sep $memory) $url) -}}
 true
 {{- end -}}
 {{- end }}
