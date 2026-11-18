@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -446,13 +447,14 @@ public final class SchemaMigrator implements AutoCloseable {
       // step that changes nothing on this database: its schemas before and after are the same, so
       // runs() would run it, and an adoption records it.
       boolean adopted = hasLastStepsSchemaWithoutHistory();
+      // Before any step runs, so that a step that would fail leaves the database as it is.
+      simulate(pendingSteps(), adopted, (step, runs) -> {});
       int changed = 0;
       for (String step : pendingSteps()) {
         SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
         boolean record = adopted || !runs(step, schema);
         if (!record) {
           refuseTakenNames(step);
-          refuseMissingDroppedNames(step);
         }
         // Only once the schema check passed, so that a run that refuses leaves the history as is.
         deleteFailedRecord(step);
@@ -508,28 +510,23 @@ public final class SchemaMigrator implements AutoCloseable {
       List<String> pending = pendingSteps();
       out.println(pending.isEmpty() ? "Pending steps: none." : "Pending steps:");
       Map<String, String> descriptions = descriptions();
-      SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
-      boolean adopted = hasLastStepsSchemaWithoutHistory();
-      boolean simulated = false;
-      for (String step : pending) {
-        boolean runs = !adopted && runs(step, schema);
-        out.println(
-            "  "
-                + step
-                + " "
-                + descriptions.get(step)
-                + (runs ? ": runs" : ": recorded without running (its change is already there)"));
-        if (runs) {
-          refuseTakenNames(step);
-          // Once a step was simulated, the names of later steps come from the steps, not the
-          // database.
-          if (!simulated) {
-            refuseMissingDroppedNames(step);
-          }
-          simulated = true;
-          schema = expected(step);
-        }
-      }
+      SchemaSnapshot schema =
+          simulate(
+              pending,
+              hasLastStepsSchemaWithoutHistory(),
+              (step, runs) -> {
+                out.println(
+                    "  "
+                        + step
+                        + " "
+                        + descriptions.get(step)
+                        + (runs
+                            ? ": runs"
+                            : ": recorded without running (its change is already there)"));
+                if (runs) {
+                  refuseTakenNames(step);
+                }
+              });
       SchemaSnapshot expected = expected(latestVersion());
       if (!schema.equals(expected)) {
         throw new IllegalStateException(
@@ -676,22 +673,72 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final Pattern CONSTRAINT = Pattern.compile("(?i)\\bconstraint\\s+(\\w+)");
 
   private static final Pattern DROP_CONSTRAINT =
-      Pattern.compile("(?i)\\bdrop\\s+constraint\\s+(?!if\\s+exists\\b)(\\w+)");
+      Pattern.compile("(?i)\\bdrop\\s+constraint\\s+(if\\s+exists\\s+)?(\\w+)");
 
   /**
-   * Refuses when pending {@code step} drops a constraint by name without {@code IF EXISTS} and the
-   * database has no constraint of that name, for instance because it was renamed: the step would
-   * fail. Meant for a database at the step's previous schema.
+   * Goes through the pending steps as {@link #upgradeSchema()} would on {@code schema} of the
+   * database, without running them, and returns the schema after them. {@code onStep} gets each
+   * step and whether it runs. Refuses when a step that runs drops a constraint by name, without
+   * {@code IF EXISTS}, that is not there, for instance because it was renamed: the step would fail.
+   * A constraint is there when the database has it, or an earlier step that runs creates it: by
+   * name, or, for a CHECK that a step adds to a table without naming it, under the name that
+   * PostgreSQL gives it, which starts with the table's name.
    */
-  private void refuseMissingDroppedNames(String step) {
-    Set<String> dropped = new TreeSet<>();
-    Matcher m = DROP_CONSTRAINT.matcher(stepScript(step));
-    while (m.find()) {
-      dropped.add(m.group(1).toLowerCase(Locale.ROOT));
+  private SchemaSnapshot simulate(
+      List<String> pending, boolean adopted, BiConsumer<String, Boolean> onStep) {
+    SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+    Set<String> available = pending.isEmpty() ? new HashSet<>() : constraintNames();
+    Set<String> checkedTables = new HashSet<>();
+    for (String step : pending) {
+      boolean runs = !adopted && runs(step, schema);
+      onStep.accept(step, runs);
+      if (!runs) {
+        continue; // its change is already in the database, and so are its names
+      }
+      String script = stepScript(step);
+      Set<String> required = new TreeSet<>();
+      Set<String> dropped = new HashSet<>();
+      Matcher m = DROP_CONSTRAINT.matcher(script);
+      while (m.find()) {
+        String name = m.group(2).toLowerCase(Locale.ROOT);
+        dropped.add(name);
+        if (m.group(1) == null) {
+          required.add(name);
+        }
+      }
+      for (String name : required) {
+        boolean unnamedCheck =
+            name.endsWith("_check")
+                && checkedTables.stream().anyMatch(t -> name.startsWith(t + "_"));
+        if (!available.contains(name) && !unnamedCheck) {
+          throw new IllegalStateException(
+              "Schema step "
+                  + step
+                  + " drops the constraint "
+                  + name
+                  + ", but the database has no constraint of that name, for instance because it was"
+                  + " renamed. Restore the name, or restore the backup, then run the command"
+                  + " again.");
+        }
+      }
+      SchemaSnapshot after = expected(step);
+      Set<String> added = new HashSet<>(after.entries());
+      added.removeAll(expected(previousStep(step)).entries());
+      added.stream()
+          .filter(e -> e.startsWith("check "))
+          .forEach(e -> checkedTables.add(e.split(" ")[1]));
+      available.removeAll(dropped);
+      Matcher created = CONSTRAINT.matcher(DROP_CONSTRAINT.matcher(script).replaceAll(""));
+      while (created.find()) {
+        available.add(created.group(1).toLowerCase(Locale.ROOT));
+      }
+      schema = after;
     }
-    if (dropped.isEmpty()) {
-      return;
-    }
+    return schema;
+  }
+
+  /** The names of the constraints in the database's schema, in lower case. */
+  private Set<String> constraintNames() {
     String sql =
         switch (kind) {
           case H2 ->
@@ -704,24 +751,17 @@ public final class SchemaMigrator implements AutoCloseable {
               "SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS"
                   + " WHERE CONSTRAINT_SCHEMA = DATABASE()";
         };
+    Set<String> names = new HashSet<>();
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement();
         ResultSet rs = statement.executeQuery(sql)) {
       while (rs.next()) {
-        dropped.remove(rs.getString(1).toLowerCase(Locale.ROOT));
+        names.add(rs.getString(1).toLowerCase(Locale.ROOT));
       }
     } catch (SQLException e) {
       throw new IllegalStateException("Could not read the schema's names: " + e.getMessage(), e);
     }
-    if (!dropped.isEmpty()) {
-      throw new IllegalStateException(
-          "Schema step "
-              + step
-              + " drops the constraint "
-              + dropped.iterator().next()
-              + ", but the database has no constraint of that name, for instance because it was"
-              + " renamed. Restore the name, or restore the backup, then run the command again.");
-    }
+    return names;
   }
 
   /**

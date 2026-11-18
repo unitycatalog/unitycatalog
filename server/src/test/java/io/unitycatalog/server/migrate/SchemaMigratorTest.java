@@ -556,16 +556,28 @@ public class SchemaMigratorTest {
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
   }
 
-  @Test
-  void refusesAStepThatDropsAConstraintTheDatabaseNoLongerHasByThatName() {
+  /**
+   * {@code fromBaseline}: a 0.7.0 database without schema history, so that steps 2 and 3 are both
+   * pending and step 2 is simulated first; otherwise only step 3 is pending.
+   */
+  @ParameterizedTest
+  @CsvSource({"false", "true"})
+  void refusesAStepThatDropsAConstraintTheDatabaseNoLongerHasByThatName(boolean fromBaseline) {
     assumeTrue(db.jdbcUrl().startsWith("jdbc:postgresql:"), "Step 3 drops a CHECK by name there");
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
-    migrator.upgradeSchema();
+    if (fromBaseline) {
+      UpgradeTestUtils.createBaselineSchema(db);
+    } else {
+      migrator.upgradeSchema();
+    }
     UpgradeTestUtils.execute(
         db,
         "ALTER TABLE uc_credentials DROP CONSTRAINT uc_credentials_credential_type_check,"
             + " ADD CONSTRAINT renamed_type_check CHECK (credential_type IN ('AWS_IAM_ROLE'))");
-    UpgradeTestUtils.execute(db, "DELETE FROM uc_schema_history WHERE version = '3'");
+    if (!fromBaseline) {
+      UpgradeTestUtils.execute(db, "DELETE FROM uc_schema_history WHERE version = '3'");
+    }
+    String recorded = migrator.recordedVersion();
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
     assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
@@ -574,7 +586,9 @@ public class SchemaMigratorTest {
     assertThatThrownBy(migrator::upgradeSchema)
         .hasMessageContaining("Schema step 3 drops the constraint")
         .hasMessageContaining("uc_credentials_credential_type_check");
-    assertThat(migrator.recordedVersion()).isEqualTo("2");
+    // Refused before any step ran.
+    assertThat(migrator.recordedVersion()).isEqualTo(recorded);
+    assertThat(recorded).isEqualTo(fromBaseline ? null : "2");
   }
 
   @Test
