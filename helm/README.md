@@ -1195,7 +1195,8 @@ with obsPort: httpGet `/readyz` on port obs, failureThreshold: 3; otherwise tcpS
 </td>
 			<td>Number of replicas
 
-For replica count higher than 1 - use an external database
+For replica count higher than 1 - use an external database: the chart fails to render above 1
+with the file database.
 </td>
 		</tr>
 		<tr>

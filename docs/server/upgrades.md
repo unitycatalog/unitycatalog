@@ -20,8 +20,9 @@ version of its release whose schema history passes Flyway's checks and whose sch
 release's steps build. Otherwise it refuses to start
 and tells you what to do, which is to run `bin/start-uc-server --upgrade-schema` when that brings the database
 there. The one exception is an in-memory
-database (`server.env=test`, or an in-memory H2 URL such as `jdbc:h2:mem:`), which only the server's own process can
-reach: the server sets up its schema at start. With authorization enabled, the authorization library runs
+database (`server.env=test`, or an in-memory H2 URL such as `jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1`), which only the
+server's own process can reach: the server sets up its schema at start. The server refuses an unnamed in-memory URL
+(`jdbc:h2:mem:` or `jdbc:h2:.`), because every connection would get its own empty database. With authorization enabled, the authorization library runs
 `CREATE TABLE IF NOT EXISTS casbin_rule` at every start, so the database user needs the `CREATE` privilege (on
 PostgreSQL, on the schema) while authorization is enabled.
 
@@ -207,6 +208,10 @@ To go back to the schema steps, set `server.schema-management=flyway`, the defau
 
 Messages that the server prints when it refuses to start, and that `--check-schema` and
 `--upgrade-schema` print when they refuse, and what to do.
+
+`The database has no Unity Catalog schema yet. Set it up with bin/start-uc-server --upgrade-schema, then start the server.`
+: The server refuses to start on a database without Unity Catalog tables, such as a new one. Run
+  `bin/start-uc-server --upgrade-schema` with this release, then start the server.
 
 `The database schema is at version <n>, and this release needs version <m>. Stop every server of the previous release, run bin/start-uc-server --upgrade-schema with this release, then start the server.`
 : The server refuses to start on a database that is not at its release's schema version: `none`

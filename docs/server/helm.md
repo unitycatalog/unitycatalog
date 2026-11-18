@@ -161,8 +161,11 @@ A proxy in `server.deployment.extraContainers` starts only after the init contai
 the database.
 
 The chart leaves out the `upgrade-schema` init container when the configuration uses an in-memory database
-(`server.env=test`, or an in-memory H2 URL in `server.db.overrideConfig`): the server sets that database up itself,
-and `--upgrade-schema` refuses it.
+(`server.env=test`, or an in-memory H2 URL in `server.db.overrideConfig`, named as in
+`jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1`: the server refuses an unnamed in-memory URL): the server sets that database
+up itself, and `--upgrade-schema` refuses it. When a key appears more than once, the last assignment counts, and the
+URL is `hibernate.hikari.dataSource.url` when `hibernate.hikari.dataSourceClassName` is set, otherwise
+`hibernate.connection.url`.
 
 `helm rollback` after an upgrade starts the old release on the upgraded schema, which the old release must not run on.
 To go back, scale the server deployment to 0 and wait for every server pod to stop (an H2 file database is held

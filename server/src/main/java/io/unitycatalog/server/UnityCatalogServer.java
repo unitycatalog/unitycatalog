@@ -92,8 +92,8 @@ public class UnityCatalogServer implements AutoCloseable {
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
 
-  /** True when the configured database is in memory, decided from its URL at construction. */
-  private final boolean inMemoryDatabase;
+  /** True when the pool's live connection is to an in-memory database, decided at construction. */
+  private boolean inMemoryDatabase;
 
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
@@ -147,27 +147,27 @@ public class UnityCatalogServer implements AutoCloseable {
     } else {
       this.hibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator;
     }
-    this.inMemoryDatabase =
-        SchemaMigrator.isInMemory(hibernateConfigurator.getHibernateProperties());
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
-      Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
+      // Whether the database is in memory is read from the connection the server's pool opens,
+      // the one the server will use; an in-memory database lasts only as long as this server.
+      this.inMemoryDatabase = SchemaMigrator.isInMemory(hibernateConfigurator.getDataSource());
       if (hibernateConfigurator.isSchemaManagedByHibernate()) {
         LOGGER.warn(
             "Hibernate manages the schema (server.schema-management=hibernate): the schema steps"
                 + " do not run; only the check for a newer release's schema does. See"
                 + " docs/server/upgrades.md.");
+      } else if (inMemoryDatabase) {
+        // The server sets an in-memory database up itself, through its own data source.
+        new SchemaMigrator(hibernateConfigurator.getDataSource()).upgradeSchema();
       } else {
         // Serves only a database already at this release's schema: bin/start-uc-server
-        // --upgrade-schema brings it there. An in-memory database lasts only as long as this
-        // server, so the server sets it up itself. The migrator has its own small pool.
+        // --upgrade-schema brings it there. The schema check has its own small pool, so the
+        // server's pool can be any size.
         try (SchemaMigrator migrator =
-            SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
-          if (migrator.isInMemory()) {
-            migrator.upgradeSchema();
-          } else {
-            migrator.requireCurrentSchema();
-          }
+            SchemaMigrator.fromHibernateProperties(
+                hibernateConfigurator.getHibernateProperties())) {
+          migrator.requireCurrentSchema();
         }
       }
       createdBlockingTaskExecutor =
