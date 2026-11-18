@@ -469,7 +469,9 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
 
     From 0.8.0 Unity Catalog turns all three off itself, so the `--conf` lines for them in the commands above can be
     dropped. If your credentials are broad enough for those calls (for example on a hierarchical-namespace bucket), set
-    one to `true` in your Spark config and the connector keeps your value.
+    one to `true` in your Spark config and the connector keeps your value. With the hierarchical namespace setting off,
+    folder delete and rename on hierarchical-namespace buckets use the connector's non-native path; setting it to `true`
+    needs credentials that cover the bucket.
 
 ## Querying cloud paths with Unity Catalog credentials
 

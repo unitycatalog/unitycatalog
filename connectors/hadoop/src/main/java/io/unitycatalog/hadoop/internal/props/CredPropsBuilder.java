@@ -178,13 +178,15 @@ public abstract class CredPropsBuilder {
 
   /**
    * Whether the engine's configuration sets {@code key} itself, rather than the value coming only
-   * from Hadoop's {@code core-default.xml}.
+   * from Hadoop's {@code core-default.xml}, such as S3A's default provider list or Hadoop 3.5's GCS
+   * conflict-check default. Only a source named exactly {@code core-default.xml} counts as a
+   * default.
    */
   protected boolean engineSets(String key) {
     if (hadoopConf().get(key) == null) {
       return false;
     }
-    // Hadoop records no source for a key it did not load from a resource: treat that as set.
+    // No recorded source means we cannot show the value came from defaults, so respect it.
     String[] sources = hadoopConf().getPropertySources(key);
     return sources == null || !Arrays.stream(sources).allMatch("core-default.xml"::equals);
   }

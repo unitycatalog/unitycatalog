@@ -159,7 +159,8 @@ class GcsCredPropsTest extends CredPropsBaseTest {
 
     assertThat(tableProps(conf))
         .containsEntry(CONFLICT_CHECK_KEY, "false")
-        .containsEntry(HNS_FOLDERS_KEY, "false");
+        .containsEntry(HNS_FOLDERS_KEY, "false")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "false");
   }
 
   /** Values from {@code core-site.xml}, which loads after the defaults, are the user's own. */
@@ -178,13 +179,17 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             + "<property><name>"
             + HNS_FOLDERS_KEY
             + "</name><value>true</value></property>"
+            + "<property><name>"
+            + IMPLICIT_DIR_REPAIR_KEY
+            + "</name><value>true</value></property>"
             + "</configuration>";
     conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
     conf.addResource(new ByteArrayInputStream(site.getBytes(UTF_8)), "core-site.xml");
 
     assertThat(tableProps(conf))
         .containsEntry(CONFLICT_CHECK_KEY, "true")
-        .containsEntry(HNS_FOLDERS_KEY, "true");
+        .containsEntry(HNS_FOLDERS_KEY, "true")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "true");
   }
 
   @Test
@@ -221,7 +226,7 @@ class GcsCredPropsTest extends CredPropsBaseTest {
   }
 
   @Test
-  void conflictCheckDefaultsFalseAcrossPathAndDeltaCredProps() throws Exception {
+  void gcsChecksDefaultFalseAcrossPathAndDeltaCredProps() throws Exception {
     Map<String, String> pathProps =
         CredPropsUtil.createPathCredProps(
             false,
@@ -236,7 +241,8 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             Map.of());
     assertThat(pathProps)
         .containsEntry(CONFLICT_CHECK_KEY, "false")
-        .containsEntry(HNS_FOLDERS_KEY, "false");
+        .containsEntry(HNS_FOLDERS_KEY, "false")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "false");
 
     Map<String, String> deltaProps =
         CredPropsUtil.createDeltaTableCredProps(
@@ -253,6 +259,7 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             Map.of());
     assertThat(deltaProps)
         .containsEntry(CONFLICT_CHECK_KEY, "false")
-        .containsEntry(HNS_FOLDERS_KEY, "false");
+        .containsEntry(HNS_FOLDERS_KEY, "false")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "false");
   }
 }
