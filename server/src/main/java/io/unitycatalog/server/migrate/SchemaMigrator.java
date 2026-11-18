@@ -1050,12 +1050,17 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     }
 
-    /** Puts back the connection's auto-commit setting, for a pool that does not reset it. */
+    /**
+     * Puts back the connection's auto-commit setting, for a pool that does not reset it. If that
+     * fails, closes the database connection underneath, so the pool does not hand it out again with
+     * the wrong setting.
+     */
     private static void restoreAutoCommit(Connection connection, boolean autoCommit) {
       try {
         connection.setAutoCommit(autoCommit);
       } catch (SQLException e) {
-        // Already closed underneath, so the pool discards it.
+        LOGGER.warn("Could not restore the connection's auto-commit setting; closing it", e);
+        closeUnderlying(connection);
       }
     }
 
