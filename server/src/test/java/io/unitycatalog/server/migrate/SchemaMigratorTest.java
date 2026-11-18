@@ -261,12 +261,13 @@ public class SchemaMigratorTest {
   }
 
   /**
-   * Deleting a failed step's record succeeded, but the pool's connection can't get its auto-commit
-   * setting back, whether it stays open ("healthy") or is lost ("broken"): the run goes on, and the
+   * Deleting a failed step's record succeeded, but the connection can't get its auto-commit setting
+   * back, whether it stays open ("healthy") or is lost ("broken") in a Hikari pool, or stays open
+   * in a pool that keeps its connections as they are ("unpooled"): the run goes on, and the
    * connection is closed rather than handed out again with auto-commit on.
    */
   @ParameterizedTest
-  @ValueSource(strings = {"healthy", "broken"})
+  @ValueSource(strings = {"healthy", "broken", "unpooled"})
   void runsAgainAFailedStepWhenTheConnectionCannotBeRestored(String connectionState)
       throws SQLException {
     new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
@@ -291,10 +292,18 @@ public class SchemaMigratorTest {
                     return result;
                   }
                   Connection c = (Connection) result;
+                  if (connectionState.equals("unpooled")) {
+                    c.setAutoCommit(false); // the setting that the restore puts back
+                  }
                   return Proxy.newProxyInstance(
                       getClass().getClassLoader(),
                       new Class<?>[] {Connection.class},
                       (pp, mm, aa) -> {
+                        if (mm.getName().equals("close")
+                            && connectionState.equals("unpooled")
+                            && (migrators.get() == c || failed.contains(c))) {
+                          return null; // a pool that keeps the connection as it is
+                        }
                         // The connection that deletes the failed record fails its restore, the next
                         // setAutoCommit(false).
                         if (mm.getName().equals("prepareStatement")
@@ -316,21 +325,32 @@ public class SchemaMigratorTest {
                       });
                 });
 
-    HikariConfig config = HibernateConfigurator.hikariConfig(db.hibernateProperties());
-    config.setDataSource(failing);
-    config.setJdbcUrl(null);
-    config.setDriverClassName(null);
-    config.setUsername(null);
-    config.setPassword(null);
-    try (HikariDataSource pool = new HikariDataSource(config)) {
-      // The pool has set up its first connection: the next restore is the migrator's.
-      pool.getConnection().close();
+    if (connectionState.equals("unpooled")) {
       armed.set(true);
-      assertThat(new SchemaMigrator(pool, NEXT_RELEASE).upgradeSchema()).isOne();
+      assertThat(new SchemaMigrator(failing, NEXT_RELEASE).upgradeSchema()).isOne();
+      assertThat(failed).hasSize(1);
+      assertThat(failed.get(0).unwrap(Connection.class).isClosed()).isTrue();
+    } else {
+      HikariConfig config = HibernateConfigurator.hikariConfig(db.hibernateProperties());
+      config.setDataSource(failing);
+      config.setJdbcUrl(null);
+      config.setDriverClassName(null);
+      config.setUsername(null);
+      config.setPassword(null);
+      try (HikariDataSource pool = new HikariDataSource(config)) {
+        // The pool has set up its first connection: the next restore is the migrator's.
+        pool.getConnection().close();
+        armed.set(true);
+        assertThat(new SchemaMigrator(pool, NEXT_RELEASE).upgradeSchema()).isOne();
+        assertThat(failed).hasSize(1);
+        assertThat(failed.get(0).unwrap(Connection.class).isClosed()).isTrue();
+        try (Connection next = pool.getConnection();
+            Statement select = next.createStatement()) {
+          assertThat(select.execute("SELECT 1")).isTrue();
+        }
+      }
     }
     assertThat(failedRecords()).isZero();
-    assertThat(failed).hasSize(1);
-    assertThat(failed.get(0).isClosed()).isTrue();
   }
 
   private static Object invoke(Method method, Object target, Object[] args) throws Throwable {

@@ -612,7 +612,7 @@ public final class SchemaMigrator implements AutoCloseable {
       // Cleanup never replaces the outcome of the DELETE: both calls log and swallow failures.
       if (connection != null) {
         if (autoCommit != null) {
-          RunLock.restoreAutoCommit(connection, autoCommit);
+          RunLock.restoreAutoCommit(dataSource, connection, autoCommit);
         }
         RunLock.close(connection);
       }
@@ -986,11 +986,14 @@ public final class SchemaMigrator implements AutoCloseable {
               "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")");
     }
 
+    private final DataSource dataSource;
     private final Connection connection; // null on H2
     private final String unlockSql;
     private final boolean autoCommit;
 
-    private RunLock(Connection connection, String unlockSql, boolean autoCommit) {
+    private RunLock(
+        DataSource dataSource, Connection connection, String unlockSql, boolean autoCommit) {
+      this.dataSource = dataSource;
       this.connection = connection;
       this.unlockSql = unlockSql;
       this.autoCommit = autoCommit;
@@ -1002,7 +1005,7 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
       if (kind == DatabaseKind.H2) {
-        return new RunLock(null, null, true);
+        return new RunLock(dataSource, null, null, true);
       }
       LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
@@ -1018,10 +1021,10 @@ public final class SchemaMigrator implements AutoCloseable {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, calls.unlock(), autoCommit);
+        return new RunLock(dataSource, connection, calls.unlock(), autoCommit);
       } catch (SQLException e) {
         if (connection != null) {
-          restoreAutoCommit(connection, autoCommit);
+          restoreAutoCommit(dataSource, connection, autoCommit);
         }
         close(connection);
         throw new IllegalStateException(
@@ -1044,14 +1047,14 @@ public final class SchemaMigrator implements AutoCloseable {
           throw new SQLException("the database did not hold it for this run");
         }
       } catch (SQLException e) {
-        closeUnderlying(connection);
+        closeUnderlying(dataSource, connection);
         throw new IllegalStateException(
             "Could not release the schema migration lock: "
                 + e.getMessage()
                 + ". The database releases it when the connection closes; run the command again.",
             e);
       } finally {
-        restoreAutoCommit(connection, autoCommit);
+        restoreAutoCommit(dataSource, connection, autoCommit);
         close(connection);
       }
     }
@@ -1061,12 +1064,13 @@ public final class SchemaMigrator implements AutoCloseable {
      * fails, closes the database connection underneath, so the pool does not hand it out again with
      * the wrong setting.
      */
-    private static void restoreAutoCommit(Connection connection, boolean autoCommit) {
+    private static void restoreAutoCommit(
+        DataSource dataSource, Connection connection, boolean autoCommit) {
       try {
         connection.setAutoCommit(autoCommit);
       } catch (SQLException e) {
         LOGGER.warn("Could not restore the connection's auto-commit setting; closing it", e);
-        closeUnderlying(connection);
+        closeUnderlying(dataSource, connection);
       }
     }
 
@@ -1092,12 +1096,33 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     }
 
-    private static void closeUnderlying(Connection connection) {
+    /**
+     * Discards the connection and ends its database session. A Hikari pool evicts it, so it is not
+     * handed out again; for any other pool, the connection is aborted, and closed directly when
+     * that left it open (a driver's abort may do nothing, as H2's does).
+     */
+    private static void closeUnderlying(DataSource dataSource, Connection connection) {
+      boolean evicted = false;
       try {
-        // Aborts, rather than closing the unwrapped connection: a pool then drops it too, instead
-        // of keeping a closed connection that it hands out again.
-        connection.abort(Runnable::run);
-      } catch (SQLException e) {
+        if (dataSource.isWrapperFor(HikariDataSource.class)) {
+          dataSource.unwrap(HikariDataSource.class).evictConnection(connection);
+          evicted = true;
+        }
+      } catch (SQLException | RuntimeException e) {
+        LOGGER.warn("Could not evict the schema migration lock's connection from its pool", e);
+      }
+      try {
+        if (!evicted) {
+          connection.abort(Runnable::run);
+        }
+      } catch (SQLException | RuntimeException e) {
+        LOGGER.warn("Could not abort the schema migration lock's database connection", e);
+      }
+      try {
+        if (!connection.unwrap(Connection.class).isClosed()) {
+          connection.unwrap(Connection.class).close();
+        }
+      } catch (SQLException | RuntimeException e) {
         LOGGER.warn(
             "Could not close the schema migration lock's database connection; the lock stays held"
                 + " until that database session ends",
@@ -1110,7 +1135,8 @@ public final class SchemaMigrator implements AutoCloseable {
         if (connection != null) {
           connection.close();
         }
-      } catch (SQLException e) {
+      } catch (SQLException | RuntimeException e) {
+        // A pool may throw on a connection it evicted.
         LOGGER.debug("Could not close the schema migration lock's connection", e);
       }
     }
