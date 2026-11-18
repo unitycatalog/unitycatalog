@@ -1,9 +1,16 @@
 package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.migrate.SchemaMigrator;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -18,26 +25,82 @@ import java.util.concurrent.Future;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /** {@link SampleDatabase} builds the sample database file. */
 public class SampleDatabaseTest {
 
   @Test
-  void buildsTheSampleDatabase(@TempDir Path dir) throws SQLException {
+  void buildsTheSampleDatabase(@TempDir Path dir) throws Exception {
     // In a folder that doesn't exist yet, as the tarball builds it.
     Path file = dir.resolve("sample-database").resolve("h2db.mv.db");
 
-    // The build's schema upgrade fails unless the schema is what this build's steps build.
     SampleDatabase.build(file);
 
     assertThat(file).exists();
+    // The schema is what this build's steps build, as bin/start-uc-server --check-schema finds.
+    Path conf = Files.createDirectories(dir.resolve("conf"));
+    Files.writeString(conf.resolve("server.properties"), "server.env=dev\n");
+    Files.writeString(
+        conf.resolve("hibernate.properties"),
+        "hibernate.connection.driver_class=org.h2.Driver\n"
+            + "hibernate.connection.url=jdbc:h2:file:"
+            + file.resolveSibling("h2db").toAbsolutePath()
+            + ";DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=0\n"
+            + "hibernate.hbm2ddl.auto=none\n");
+    assertThat(
+            SchemaMigrator.runCommand(
+                false, conf, new PrintStream(OutputStream.nullOutputStream())))
+        .isZero();
     String url = "jdbc:h2:file:" + file.resolveSibling("h2db").toAbsolutePath();
-    try (Connection connection = DriverManager.getConnection(url, "", "");
-        ResultSet catalogs =
-            connection.createStatement().executeQuery("SELECT name FROM uc_catalogs")) {
-      assertThat(catalogs.next()).isTrue();
-      assertThat(catalogs.getString(1)).isEqualTo("unity");
+    try (Connection connection = DriverManager.getConnection(url, "", "")) {
+      assertThat(names(connection, "SELECT name FROM uc_catalogs")).containsExactly("unity");
+      assertThat(names(connection, "SELECT name FROM uc_tables"))
+          .containsExactlyInAnyOrder("marksheet", "marksheet_uniform", "numbers", "user_countries");
+      assertThat(names(connection, "SELECT name FROM uc_volumes"))
+          .containsExactlyInAnyOrder("txt_files", "json_files");
+      assertThat(names(connection, "SELECT name FROM uc_functions"))
+          .containsExactlyInAnyOrder("sum", "lowercase");
+      assertThat(
+              names(
+                  connection,
+                  "SELECT c.name FROM uc_columns c JOIN uc_tables t ON c.table_id = t.id"
+                      + " WHERE t.name = 'marksheet' ORDER BY c.ordinal_position"))
+          .containsExactly("id", "name", "marks");
     }
+  }
+
+  @Test
+  void refusesAnExistingFileAndLeavesItUnchanged(@TempDir Path dir) throws IOException {
+    Path file = dir.resolve("h2db.mv.db");
+    byte[] content = {1, 2, 3};
+    Files.write(file, content);
+
+    assertThatThrownBy(() -> SampleDatabase.build(file))
+        .hasRootCauseInstanceOf(FileAlreadyExistsException.class);
+
+    assertThat(file).hasBinaryContent(content);
+  }
+
+  @Test
+  void ignoresTheDeploymentEnvironmentVariables(@TempDir Path dir) throws Exception {
+    Path file = dir.resolve("h2db.mv.db");
+    // An environment that makes any server configuration without an OPA decision URL invalid.
+    ProcessBuilder build =
+        new ProcessBuilder(
+            Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+            "-cp",
+            System.getProperty("java.class.path"),
+            SampleDatabase.class.getName(),
+            file.toString());
+    build.environment().put("UC_SERVER_AUTHORIZATION_PROVIDER", "opa");
+    build
+        .redirectErrorStream(true)
+        .redirectOutput(Path.of("/tmp/disprove-tim-GEFE/child.log").toFile());
+
+    assertThat(build.start().waitFor()).isZero();
+    assertThat(file).exists();
   }
 
   @Test
@@ -75,5 +138,136 @@ public class SampleDatabaseTest {
     } finally {
       pool.shutdownNow();
     }
+  }
+
+  private static List<String> names(Connection connection, String query) throws SQLException {
+    List<String> names = new ArrayList<>();
+    try (ResultSet rows = connection.createStatement().executeQuery(query)) {
+      while (rows.next()) {
+        names.add(rows.getString(1));
+      }
+    }
+    return names;
+  }
+
+  /**
+   * Whether the option parser takes {@code args} as a start of the server: no schema command, no
+   * --version, no --help, and no parse error.
+   */
+  private static boolean startsServer(String[] args) {
+    int[] exitCode = {-128};
+    OptionParser parser =
+        new OptionParser() {
+          @Override
+          protected void exit(int code) {
+            exitCode[0] = code;
+          }
+        };
+    PrintStream out = System.out;
+    System.setOut(new PrintStream(OutputStream.nullOutputStream()));
+    try {
+      parser.parse(args);
+    } finally {
+      System.setOut(out);
+    }
+    return exitCode[0] == -128 && !parser.isCheckSchema() && !parser.isUpgradeSchema();
+  }
+
+  // Every spelling the option parser takes for a command line, started in a source checkout with
+  // no sample database: the launcher builds the database only when the server starts.
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "",
+        "-p 9",
+        "-p9",
+        "-p=9",
+        "-port 9",
+        "-po 9",
+        "--p 9",
+        "--po 9",
+        "--port 9",
+        "--port=9",
+        "--obs 9",
+        "--o 9",
+        "--obs-port 9",
+        "--obs-port=9",
+        "-obs-port 9",
+        "-p 9 --obs 8",
+        "foo",
+        "-p 9 foo",
+        "--check",
+        "--che",
+        "--c",
+        "-c",
+        "-check",
+        "-check-schema",
+        "--check-schema",
+        "--upgrade",
+        "--u",
+        "-u",
+        "-upgrade-schema",
+        "--upgrade-schema",
+        "-v",
+        "--v",
+        "--ver",
+        "--version",
+        "-version",
+        "-h",
+        "--h",
+        "--help",
+        "-help",
+        "-he",
+        "-p 9 -h",
+        "-p 9 --check",
+        "-p 9 --upgrade",
+        "-p",
+        "-p -h",
+        "-p --check",
+        "--port --check",
+        "--obs-port -v",
+        "-pv",
+        "-pp",
+        "-o 9",
+        "-x",
+        "--unknown",
+      })
+  void buildsTheSampleDatabaseOnlyWhereTheServerStarts(String commandLine, @TempDir Path dir)
+      throws Exception {
+    Path root = Path.of("").toAbsolutePath();
+    while (!Files.isRegularFile(root.resolve("bin/start-uc-server"))) {
+      root = root.getParent();
+    }
+    // A source checkout whose build/sbt only records its arguments and whose java does nothing.
+    Path bin = Files.createDirectories(dir.resolve("bin"));
+    Files.copy(root.resolve("bin/start-uc-server"), bin.resolve("start-uc-server"));
+    Files.createDirectories(dir.resolve("server/src/main/java/io/unitycatalog/server"));
+    Files.createFile(
+        dir.resolve("server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"));
+    Files.createDirectories(dir.resolve("server/target"));
+    Files.createFile(dir.resolve("server/target/unitycatalog-server.jar"));
+    Files.writeString(dir.resolve("server/target/classpath"), "none");
+    Path calls = dir.resolve("sbt-calls");
+    writeExecutable(dir.resolve("build/sbt"), "echo \"$@\" >> '" + calls + "'\n");
+    writeExecutable(dir.resolve("fake/java"), "exit 0\n");
+
+    ProcessBuilder launcher = new ProcessBuilder();
+    launcher.command().add(bin.resolve("start-uc-server").toString());
+    if (!commandLine.isEmpty()) {
+      launcher.command().addAll(List.of(commandLine.split(" ")));
+    }
+    launcher.environment().put("PATH", dir.resolve("fake") + ":" + System.getenv("PATH"));
+    launcher.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD);
+    assertThat(launcher.start().waitFor()).isZero();
+
+    boolean built = Files.exists(calls) && Files.readString(calls).contains("buildSampleDatabase");
+    String[] args = commandLine.isEmpty() ? new String[0] : commandLine.split(" ");
+    assertThat(built).as(commandLine).isEqualTo(startsServer(args));
+  }
+
+  private static void writeExecutable(Path file, String body) throws IOException {
+    Files.createDirectories(file.getParent());
+    Files.writeString(file, "#!/bin/sh\n" + body);
+    Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
   }
 }

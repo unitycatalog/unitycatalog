@@ -711,7 +711,11 @@ lazy val sampleDatabase = (project in file("examples") / "sample-database")
     ),
     buildSampleDatabase := Def.taskDyn {
       val file = (ThisBuild / baseDirectory).value / "etc" / "db" / "h2db.mv.db"
-      (Compile / runMain).toTask(" io.unitycatalog.server.utils.SampleDatabase \"" + file + "\"")
+      if (file.exists) {
+        Def.task { streams.value.log.info(s"$file already exists; keeping it") }
+      } else {
+        (Compile / runMain).toTask(" io.unitycatalog.server.utils.SampleDatabase \"" + file + "\"")
+      }
     }.value,
   )
 
