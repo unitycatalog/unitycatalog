@@ -56,8 +56,9 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
     this is an H2 database file, `h2db.mv.db`. H2 supports one server per file; to run more than one server, use
     PostgreSQL or MySQL. H2's server mode (`AUTO_SERVER=TRUE`, `jdbc:h2:tcp:` or `jdbc:h2:ssl:`) is
     refused at start.
-    In a source checkout the launcher builds `etc/db/h2db.mv.db` when it is missing, whatever database the
-    configuration uses, and starts the server even when that build fails.
+    In a source checkout (where `build/sbt` is present and executable) the launcher builds `etc/db/h2db.mv.db`
+    when it is missing and the command line starts the server, whatever database the configuration uses, and
+    starts the server even when that build fails.
 
 ### Configuring the database
 
