@@ -260,7 +260,8 @@ public class ModelRepository {
         session.persist(registeredModelInfoDAO);
         repositories
             .getOwnershipRepository()
-            .initializeOwner(session, registeredModelInfoDAO.getId(), callerId);
+            .initializeOwner(
+                session, registeredModelInfoDAO.getId(), callerId, schemaInfoDAO.getId());
         FileOperations.createStorageLocationDir(storageLocation);
         tx.commit();
       } catch (RuntimeException e) {

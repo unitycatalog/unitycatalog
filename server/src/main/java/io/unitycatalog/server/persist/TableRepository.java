@@ -949,7 +949,9 @@ public class TableRepository {
           session.persist(tableInfoDAO);
           if (tableType != TableType.MANAGED) {
             // Managed tables retain the owner grant saved when their staging table was created.
-            repositories.getOwnershipRepository().initializeOwner(session, tableUUID, callerId);
+            repositories
+                .getOwnershipRepository()
+                .initializeOwner(session, tableUUID, callerId, schemaId);
           }
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;

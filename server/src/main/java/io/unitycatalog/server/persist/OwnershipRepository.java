@@ -28,8 +28,16 @@ public class OwnershipRepository {
 
   /** Saves the creator's OWNER grant in the transaction that creates the resource. */
   public void initializeOwner(Session session, UUID resource, String owner) {
+    initializeOwner(session, resource, owner, null);
+  }
+
+  /** Saves the creator's OWNER grant and optional parent link in the create transaction. */
+  public void initializeOwner(Session session, UUID resource, String owner, UUID parent) {
     if (authorizationEnabled) {
       replaceOwner(session, resource, findOwner(session, owner));
+      if (parent != null) {
+        JCasbinAuthorizer.addHierarchyChild(session, parent, resource);
+      }
     }
   }
 

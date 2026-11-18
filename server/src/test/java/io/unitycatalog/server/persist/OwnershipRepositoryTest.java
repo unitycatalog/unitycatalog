@@ -24,6 +24,7 @@ import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.auth.CasbinPolicyRefresher;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
@@ -296,7 +297,7 @@ public class OwnershipRepositoryTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {false, true})
-  void failedCacheReloadDeniesOldPolicyUntilRecovery(boolean loadOwner) {
+  void failedCacheReloadDeniesOldPolicyUntilRecovery(boolean loadOwner) throws Exception {
     repositories
         .getCatalogRepository()
         .updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER));
@@ -315,8 +316,17 @@ public class OwnershipRepositoryTest {
             .isFalse();
       }
       // Operations must refuse the incomplete policy while the store is unavailable.
+      assertThat(
+              new UnityAccessEvaluator(authorizer, true)
+                  .evaluate(
+                      firstId,
+                      "#authorize(#principal, #catalog, OWNER)",
+                      Map.of(SecurableType.CATALOG, resourceId),
+                      Map.of()))
+          .isFalse();
       List<Runnable> blocked =
           List.of(
+              () -> authorizer.refreshAuthorizations(System.nanoTime()),
               () -> authorizer.grantAuthorization(thirdId, resourceId, Privileges.MANAGE),
               () -> authorizer.revokeAuthorization(secondId, resourceId, Privileges.OWNER),
               () -> authorizer.clearAuthorizationsForPrincipal(secondId),

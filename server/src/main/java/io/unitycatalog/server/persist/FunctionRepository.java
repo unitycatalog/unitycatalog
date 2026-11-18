@@ -133,7 +133,9 @@ public class FunctionRepository {
                     p.setFunction(dao);
                   });
           session.persist(dao);
-          repositories.getOwnershipRepository().initializeOwner(session, dao.getId(), callerId);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, dao.getId(), callerId, schemaInfo.getId());
           // Write the function and its parameters first, so only property rows reach
           // flushProperties and its mapping of database errors to property errors.
           session.flush();

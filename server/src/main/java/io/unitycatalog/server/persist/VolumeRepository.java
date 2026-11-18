@@ -101,7 +101,7 @@ public class VolumeRepository {
           session.persist(volumeInfoDAO);
           repositories
               .getOwnershipRepository()
-              .initializeOwner(session, volumeInfoDAO.getId(), callerId);
+              .initializeOwner(session, volumeInfoDAO.getId(), callerId, schemaId);
           LOGGER.info("Added volume: {}", volumeInfoDAO.getName());
           return volumeInfoDAO.toVolumeInfo(
               createVolumeRequest.getCatalogName(), createVolumeRequest.getSchemaName());

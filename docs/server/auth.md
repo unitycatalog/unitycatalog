@@ -435,6 +435,10 @@ including metastore admins, until a reload succeeds. A denied request retries th
 when policy refresh is disabled. Native grant changes and permission listings also retry the
 reload. Read the owner after recovery before retrying a transfer.
 
+Creation also saves its `OWNER` grant and any parent permission link in the resource transaction.
+A failed cache load can return an error after creation commits. Read the object after recovery
+before retrying creation.
+
 ### Restart the UC Server
 
 Now that the Google Authentication is configured, restart the UC Server with the following command.

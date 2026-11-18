@@ -73,8 +73,9 @@ public class JCasbinAuthorizerTest {
   }
 
   @Test
-  void loadsOnlyTheCommittedOwnerWithoutWritingPolicy() {
+  void loadsOnlyCommittedCreationPoliciesWithoutWritingThem() {
     UUID resource = UUID.randomUUID();
+    UUID parent = UUID.randomUUID();
     UUID previousOwner = UUID.randomUUID();
     UUID currentOwner = UUID.randomUUID();
     UUID otherResource = UUID.randomUUID();
@@ -85,6 +86,8 @@ public class JCasbinAuthorizerTest {
           JCasbinAuthorizer.replaceOwner(session, resource, previousOwner);
           JCasbinAuthorizer.replaceOwner(session, resource, currentOwner);
           JCasbinAuthorizer.replaceOwner(session, otherResource, previousOwner);
+          JCasbinAuthorizer.addHierarchyChild(session, parent, resource);
+          JCasbinAuthorizer.addHierarchyChild(session, UUID.randomUUID(), otherResource);
         });
     List<Long> storedIds =
         sessionFactory.fromSession(
@@ -93,9 +96,13 @@ public class JCasbinAuthorizerTest {
                     .createNativeQuery("SELECT id FROM casbin_rule ORDER BY id", Long.class)
                     .getResultList());
 
+    assertThat(authenticator.getHierarchyParent(resource)).isNull();
     authenticator.loadOwner(resource);
     authenticator.loadOwner(UUID.randomUUID());
 
+    assertThat(authenticator.getHierarchyParent(resource)).isEqualTo(parent);
+    assertThat(authenticator.getHierarchyParent(otherResource)).isNull();
+    assertThat(authenticator.addHierarchyChild(parent, resource)).isFalse();
     assertThat(authenticator.listAuthorizations(currentOwner, resource))
         .containsExactly(Privileges.OWNER);
     assertThat(authenticator.listAuthorizations(previousOwner, resource))

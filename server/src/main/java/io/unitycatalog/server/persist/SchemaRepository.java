@@ -94,7 +94,7 @@ public class SchemaRepository {
           session.persist(schemaInfoDAO);
           repositories
               .getOwnershipRepository()
-              .initializeOwner(session, schemaInfoDAO.getId(), callerId);
+              .initializeOwner(session, schemaInfoDAO.getId(), callerId, catalogDAO.getId());
           addNamespaceData(schemaInfo, createSchema.getCatalogName());
           return schemaInfo;
         },

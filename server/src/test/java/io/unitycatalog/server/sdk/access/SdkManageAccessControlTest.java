@@ -10,6 +10,7 @@ import static io.unitycatalog.server.utils.TestUtils.assertDeltaPermissionDenied
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
@@ -19,6 +20,7 @@ import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.MediaType;
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
@@ -43,9 +45,11 @@ import io.unitycatalog.client.model.CreateFunctionRequest;
 import io.unitycatalog.client.model.CreateModelVersion;
 import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
 import io.unitycatalog.client.model.FinalizeModelVersion;
@@ -79,18 +83,24 @@ import io.unitycatalog.client.model.VolumeOperation;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.IdentifiableDAO;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
@@ -107,6 +117,9 @@ import org.hibernate.event.spi.PostInsertEvent;
 import org.hibernate.persister.entity.EntityPersister;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
   private static final String FUNCTION = SCHEMA_FULL_NAME + ".manage_function";
@@ -658,6 +671,159 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
       finishCreate.countDown();
       executor.shutdownNow();
       assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
+  }
+
+  static Stream<Arguments> hierarchicalCreates() {
+    return Stream.of(
+        Arguments.of(SecurableType.SCHEMA, false),
+        Arguments.of(SecurableType.TABLE, false),
+        Arguments.of(SecurableType.FUNCTION, false),
+        Arguments.of(SecurableType.VOLUME, false),
+        Arguments.of(SecurableType.REGISTERED_MODEL, false),
+        Arguments.of(SecurableType.TABLE, true));
+  }
+
+  @ParameterizedTest(name = "{0}, staging={1}")
+  @MethodSource("hierarchicalCreates")
+  void committedCreateKeepsInheritedAccessAfterCacheLoadFails(SecurableType type, boolean staging)
+      throws Exception {
+    String name = "committed_child";
+    String fullName = (type == SecurableType.SCHEMA ? CATALOG_NAME : SCHEMA_FULL_NAME) + "." + name;
+    String parentId = targets.get(type == SecurableType.SCHEMA ? 0 : 1).id();
+    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.MANAGE);
+    var sessions = hibernateConfigurator.getSessionFactory();
+    AtomicReference<UUID> createdId = new AtomicReference<>();
+    sessions
+        .unwrap(SessionFactoryImplementor.class)
+        .getServiceRegistry()
+        .getService(EventListenerRegistry.class)
+        .appendListeners(
+            EventType.POST_COMMIT_INSERT,
+            new PostCommitInsertEventListener() {
+              @Override
+              public void onPostInsert(PostInsertEvent event) {
+                if (event.getEntity() instanceof IdentifiableDAO child
+                    && name.equals(child.getName())
+                    && createdId.compareAndSet(null, child.getId())) {
+                  // Fail only the cache load, after the resource and its grants commit.
+                  sessions.inTransaction(
+                      session ->
+                          session
+                              .createNativeMutationQuery(
+                                  "ALTER TABLE casbin_rule RENAME TO unavailable_policy")
+                              .executeUpdate());
+                }
+              }
+
+              @Override
+              public void onPostInsertCommitFailed(PostInsertEvent event) {
+                fail("Resource creation did not commit");
+              }
+
+              @Override
+              public boolean requiresPostCommitHandling(EntityPersister persister) {
+                return IdentifiableDAO.class.isAssignableFrom(persister.getMappedClass());
+              }
+            });
+    try {
+      assertThatExceptionOfType(ApiException.class)
+          .isThrownBy(() -> createRecoveryResource(type, staging, name))
+          .extracting(ApiException::getCode)
+          .isEqualTo(ErrorCode.INTERNAL.getHttpStatus().code());
+    } finally {
+      if (createdId.get() != null) {
+        sessions.inTransaction(
+            session ->
+                session
+                    .createNativeMutationQuery(
+                        "ALTER TABLE unavailable_policy RENAME TO casbin_rule")
+                    .executeUpdate());
+      }
+    }
+    assertThat(createdId.get()).isNotNull();
+    List<String> storedParents =
+        sessions.fromSession(
+            session ->
+                session
+                    .createNativeQuery(
+                        "SELECT v0 FROM casbin_rule WHERE ptype = 'g2' AND v1 = :child",
+                        String.class)
+                    .setParameter("child", createdId.get().toString())
+                    .getResultList());
+    assertThat(storedParents).containsExactly(parentId);
+
+    // A real transfer reloads policy from storage; it must preserve the child's inherited access.
+    CatalogsApi catalogs = new CatalogsApi(adminApiClient);
+    if (staging) {
+      // The staging creator must still be able to use the catalog after transferring it.
+      grantPermissions(
+          catalogs.getCatalog(CATALOG_NAME, false).getOwner(),
+          SecurableType.CATALOG,
+          CATALOG_NAME,
+          Privileges.USE_CATALOG);
+    }
+    catalogs.updateCatalog(CATALOG_NAME, new UpdateCatalog().owner(PRINCIPAL_2));
+    assertOwnerGrants(targets.get(0).id(), recipientId);
+    if (staging) {
+      String location =
+          sessions.fromSession(
+              session -> session.find(StagingTableDAO.class, createdId.get()).getStagingLocation());
+      new TablesApi(adminApiClient)
+          .createTable(
+              new CreateTable()
+                  .name(name)
+                  .catalogName(CATALOG_NAME)
+                  .schemaName(SCHEMA_NAME)
+                  .columns(TEST_COLUMNS)
+                  .tableType(TableType.MANAGED)
+                  .dataSourceFormat(DataSourceFormat.DELTA)
+                  .storageLocation(location)
+                  .properties(Map.of(TableProperties.UC_TABLE_ID, createdId.get().toString())));
+    }
+    readMetadata(type, fullName);
+  }
+
+  private void createRecoveryResource(SecurableType type, boolean staging, String name)
+      throws Exception {
+    if (staging) {
+      new TablesApi(adminApiClient)
+          .createStagingTable(
+              new CreateStagingTable()
+                  .catalogName(CATALOG_NAME)
+                  .schemaName(SCHEMA_NAME)
+                  .name(name));
+      return;
+    }
+    switch (type) {
+      case SCHEMA ->
+          new SchemasApi(adminApiClient)
+              .createSchema(new CreateSchema().catalogName(CATALOG_NAME).name(name));
+      case TABLE ->
+          createExternalTable(
+              new TablesApi(adminApiClient),
+              CATALOG_NAME,
+              SCHEMA_NAME,
+              name,
+              testDirectoryRoot.resolve(name).toString());
+      case FUNCTION -> new FunctionsApi(adminApiClient).createFunction(newFunction(name));
+      case VOLUME ->
+          new VolumesApi(adminApiClient)
+              .createVolume(
+                  new CreateVolumeRequestContent()
+                      .catalogName(CATALOG_NAME)
+                      .schemaName(SCHEMA_NAME)
+                      .name(name)
+                      .volumeType(VolumeType.EXTERNAL)
+                      .storageLocation(testDirectoryRoot.resolve(name).toUri().toString()));
+      case REGISTERED_MODEL ->
+          new RegisteredModelsApi(adminApiClient)
+              .createRegisteredModel(
+                  new CreateRegisteredModel()
+                      .catalogName(CATALOG_NAME)
+                      .schemaName(SCHEMA_NAME)
+                      .name(name));
+      default -> fail("Unexpected resource type: " + type);
     }
   }
 
