@@ -644,11 +644,14 @@ public class SchemaMigratorTest {
 
   /**
    * {@code fromBaseline}: a 0.7.0 database without schema history, so that steps 2 and 3 are both
-   * pending and step 2 is simulated first; otherwise only step 3 is pending.
+   * pending and step 2 is simulated first; otherwise only step 3 is pending. {@code onOtherTable}:
+   * another application's table has a constraint of the dropped name; PostgreSQL's constraint names
+   * are per table, so that is not the constraint that the step drops.
    */
   @ParameterizedTest
-  @CsvSource({"false", "true"})
-  void refusesAStepThatDropsAConstraintTheDatabaseNoLongerHasByThatName(boolean fromBaseline) {
+  @CsvSource({"false, false", "true, false", "false, true", "true, true"})
+  void refusesAStepThatDropsAConstraintTheDatabaseNoLongerHasByThatName(
+      boolean fromBaseline, boolean onOtherTable) {
     assumeTrue(db.jdbcUrl().startsWith("jdbc:postgresql:"), "Step 3 drops a CHECK by name there");
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     if (fromBaseline) {
@@ -660,6 +663,13 @@ public class SchemaMigratorTest {
         db,
         "ALTER TABLE uc_credentials DROP CONSTRAINT uc_credentials_credential_type_check,"
             + " ADD CONSTRAINT renamed_type_check CHECK (credential_type IN ('AWS_IAM_ROLE'))");
+    if (onOtherTable) {
+      UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+      UpgradeTestUtils.execute(
+          db,
+          "ALTER TABLE other_app ADD CONSTRAINT uc_credentials_credential_type_check"
+              + " CHECK (x > 0)");
+    }
     if (!fromBaseline) {
       UpgradeTestUtils.execute(db, "DELETE FROM uc_schema_history WHERE version = '3'");
     }
@@ -675,6 +685,23 @@ public class SchemaMigratorTest {
     // Refused before any step ran.
     assertThat(migrator.recordedVersion()).isEqualTo(recorded);
     assertThat(recorded).isEqualTo(fromBaseline ? null : "2");
+  }
+
+  /** A clash on a later step is refused by the upgrade as the check reports it: before any step. */
+  @Test
+  void refusesBeforeAnyStepWhenALaterStepsNameIsTaken() {
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+    UpgradeTestUtils.execute(db, "CREATE VIEW uc_test_only_step AS SELECT x FROM other_app");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 1000 creates a table, index or constraint named uc_test_only_step");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 1000 creates a table, index or constraint named");
+    // Nothing ran, not even the steps before the one that clashes.
+    assertThat(migrator.recordedVersion()).isNull();
   }
 
   @Test

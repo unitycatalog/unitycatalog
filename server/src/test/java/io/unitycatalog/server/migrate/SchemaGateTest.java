@@ -104,15 +104,30 @@ public class SchemaGateTest {
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
   }
 
+  /**
+   * The second column is a Hibernate property that the configuration adds to the URL: H2 reads a
+   * data source property as a setting of the URL too, in any case. {@code \;} in a setting's value
+   * is H2's escaped semicolon, not the end of the setting.
+   */
   @ParameterizedTest
-  @CsvSource({
-    "jdbc:h2:file:{file}",
-    "jdbc:h2:file:{file};IFEXISTS=FALSE",
-    "jdbc:wrapper:h2:file:{file}",
-  })
-  void checkSchemaDoesNotCreateAMissingH2File(String url, @TempDir Path conf, @TempDir Path data)
-      throws IOException {
+  @CsvSource(
+      delimiter = '|',
+      quoteCharacter = '"',
+      value = {
+        "jdbc:h2:file:{file} | ",
+        "jdbc:h2:file:{file};IFEXISTS=FALSE | ",
+        "jdbc:wrapper:h2:file:{file} | ",
+        "jdbc:h2:file:{file};INIT=SET @x 'a\\;IFEXISTS=FALSE' | ",
+        "jdbc:h2:file:{file} | hibernate.hikari.dataSource.IFEXISTS=FALSE",
+        "jdbc:h2:file:{file} | hibernate.hikari.dataSource.ifexists=false",
+      })
+  void checkSchemaDoesNotCreateAMissingH2File(
+      String url, String property, @TempDir Path conf, @TempDir Path data) throws IOException {
     writeConfiguration(conf, url.replace("{file}", data.resolve("uc").toString()));
+    if (property != null) {
+      Files.writeString(
+          conf.resolve("hibernate.properties"), "\n" + property + "\n", StandardOpenOption.APPEND);
+    }
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
     assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(out, true, UTF_8))).isOne();
