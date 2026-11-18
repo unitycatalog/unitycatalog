@@ -48,8 +48,10 @@ def _parse_type(obj):
                 value_type=_parse_type(obj.get("value-type")),
                 value_contains_null=obj.get("value-contains-null", True))
         if t == "struct":
-            fields = [_parse_field(f) for f in obj.get("fields", [])]
-            return DeltaStructType(type=t, fields=fields)
+            fields = obj.get("fields", [])
+            if not isinstance(fields, list):
+                raise ValueError("Expected a list for struct 'fields', got: {}".format(obj))
+            return DeltaStructType(type=t, fields=[_parse_field(f) for f in fields])
         if t:
             return DeltaPrimitiveType(type=t)
         raise ValueError("dict type value missing 'type' field: {}".format(obj))

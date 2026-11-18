@@ -333,6 +333,16 @@ class TestParseTypeEdgeCases:
         with pytest.raises(ValueError, match="Expected str or dict"):
             _parse_type(42)
 
+    @pytest.mark.parametrize("fields", [None, {"name": "id"}])
+    def test_nested_struct_with_fields_that_are_not_a_list_raises(self, fields):
+        nested = {"type": "struct", "fields": fields}
+        column = {"name": "s", "type": nested, "nullable": True, "metadata": {}}
+        with pytest.raises(ValueError, match="Expected a list for struct 'fields'"):
+            DeltaStructType.from_json(json.dumps({"type": "struct", "fields": [column]}))
+        with pytest.raises(ValueError, match="Expected a list for struct 'fields'"):
+            DeltaDataType.from_json(
+                json.dumps({"type": "array", "element-type": nested, "contains-null": True}))
+
 
 class TestParseTypeDirect:
     """Direct unit tests for _parse_type -- dispatch logic without going through the wire."""
