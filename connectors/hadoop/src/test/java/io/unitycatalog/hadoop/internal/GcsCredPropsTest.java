@@ -142,12 +142,35 @@ class GcsCredPropsTest extends CredPropsBaseTest {
 
   /**
    * Hadoop 3.5 ships {@code fs.gs.create.items.conflict.check.enable=true} in its built-in {@code
-   * core-default.xml}. That is not the user's choice, so it must not keep the check on.
+   * core-default.xml}. That is not the user's choice, so it must not keep the check on. (Hadoop has
+   * no default for the other GCS keys; the connector's own {@code true} default for the
+   * hierarchical namespace key is not in the Hadoop configuration at all.)
    */
   @Test
   void hadoopBuiltInDefaultDoesNotKeepTheGcsChecksOn() throws Exception {
     Configuration conf = new Configuration(false);
     String defaults =
+        "<configuration><property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property></configuration>";
+    conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
+    assertThat(conf.get(CONFLICT_CHECK_KEY)).isEqualTo("true");
+    assertThat(conf.get(HNS_FOLDERS_KEY)).isNull();
+
+    assertThat(tableProps(conf))
+        .containsEntry(CONFLICT_CHECK_KEY, "false")
+        .containsEntry(HNS_FOLDERS_KEY, "false");
+  }
+
+  /** Values from {@code core-site.xml}, which loads after the defaults, are the user's own. */
+  @Test
+  void coreSiteValuesOnTopOfHadoopDefaultsAreRespected() throws Exception {
+    Configuration conf = new Configuration(false);
+    String defaults =
+        "<configuration><property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property></configuration>";
+    String site =
         "<configuration>"
             + "<property><name>"
             + CONFLICT_CHECK_KEY
@@ -157,30 +180,11 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             + "</name><value>true</value></property>"
             + "</configuration>";
     conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
-    assertThat(conf.get(CONFLICT_CHECK_KEY)).isEqualTo("true");
-    assertThat(conf.get(HNS_FOLDERS_KEY)).isEqualTo("true");
-
-    assertThat(tableProps(conf))
-        .containsEntry(CONFLICT_CHECK_KEY, "false")
-        .containsEntry(HNS_FOLDERS_KEY, "false");
-  }
-
-  /** A value from {@code core-site.xml}, which loads after the defaults, is the user's own. */
-  @Test
-  void coreSiteValueOnTopOfHadoopDefaultIsRespected() throws Exception {
-    Configuration conf = new Configuration(false);
-    String defaults =
-        "<configuration><property><name>"
-            + CONFLICT_CHECK_KEY
-            + "</name><value>true</value></property></configuration>";
-    String site =
-        "<configuration><property><name>"
-            + CONFLICT_CHECK_KEY
-            + "</name><value>true</value></property></configuration>";
-    conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
     conf.addResource(new ByteArrayInputStream(site.getBytes(UTF_8)), "core-site.xml");
 
-    assertThat(tableProps(conf)).containsEntry(CONFLICT_CHECK_KEY, "true");
+    assertThat(tableProps(conf))
+        .containsEntry(CONFLICT_CHECK_KEY, "true")
+        .containsEntry(HNS_FOLDERS_KEY, "true");
   }
 
   @Test

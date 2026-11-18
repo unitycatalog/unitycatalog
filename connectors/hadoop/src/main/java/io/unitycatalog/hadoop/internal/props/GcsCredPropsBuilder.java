@@ -23,10 +23,11 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
     // Each setting makes the GCS connector call Google about more than the table's own path, which
     // a UC-vended downscoped token (scoped to a table's path prefix) is not allowed to do, so the
     // call fails:
-    //   - the conflict check stats every ancestor directory on file creation; Hadoop 3.5's
-    //     core-default.xml turns it on;
-    //   - the hierarchical namespace lookup reads the bucket's layout when writing files; the
-    //     connector (4.0.x) turns it on itself, on every Spark version;
+    //   - the conflict check stats every ancestor folder when a file or folder is created; Hadoop
+    //     3.5's core-default.xml turns it on;
+    //   - the hierarchical namespace lookup reads the bucket's layout when a folder is deleted or
+    //     renamed, which the parquet commit does; the connector turns it on itself, on every Spark
+    //     version;
     //   - the implicit directory repair recreates the parent folder after a directory delete, such
     //     as the partition delete of INSERT OVERWRITE on a parquet table; the connector turns it on
     //     itself.
@@ -35,6 +36,11 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
     setOffUnlessEngineSets(GCS_CONFLICT_CHECK_KEY);
     setOffUnlessEngineSets(GCS_HNS_FOLDERS_KEY);
     setOffUnlessEngineSets(GCS_IMPLICIT_DIR_REPAIR_KEY);
+  }
+
+  /** Sets {@code key} to false unless the engine's configuration sets it. */
+  private void setOffUnlessEngineSets(String key) {
+    set(key, engineSets(key) ? hadoopConf().get(key) : "false");
   }
 
   @Override

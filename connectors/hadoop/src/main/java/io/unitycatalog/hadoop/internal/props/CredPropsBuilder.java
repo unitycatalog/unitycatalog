@@ -184,18 +184,9 @@ public abstract class CredPropsBuilder {
     if (hadoopConf().get(key) == null) {
       return false;
     }
+    // Hadoop records no source for a key it did not load from a resource: treat that as set.
     String[] sources = hadoopConf().getPropertySources(key);
     return sources == null || !Arrays.stream(sources).allMatch("core-default.xml"::equals);
-  }
-
-  /**
-   * Sets {@code key} to false unless the engine's configuration sets it. A value only from Hadoop's
-   * defaults is not the engine's: Hadoop 3.5 ships {@code fs.gs.*} defaults in {@code
-   * core-default.xml}, including {@code true} for the conflict check, so reading the key with a
-   * fallback of {@code false} would find that default and keep the check on.
-   */
-  protected void setOffUnlessEngineSets(String key) {
-    set(key, engineSets(key) ? hadoopConf().get(key) : "false");
   }
 
   protected boolean isCredScopedFsEnabled() {

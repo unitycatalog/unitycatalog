@@ -456,19 +456,20 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
     ```
 
 !!! note "Unity Catalog Spark connector before 0.8.0"
-    Two settings of Google's connector make it read more than the table's own folder, which the folder-scoped tokens
-    Unity Catalog vends cannot do, so access fails:
+    Three settings of Google's connector touch more than the table's own folder, which the folder-scoped tokens Unity
+    Catalog vends cannot do, so the call fails with `403`:
 
-    - `fs.gs.hierarchical.namespace.folders.enable` reads the bucket's layout. The connector turns it on itself, on every
-      Spark version, and it breaks writes to non-Delta tables.
-    - `fs.gs.create.items.conflict.check.enable` reads the folders above a table. Hadoop 3.5 (Spark 4.2.x) turns it on,
-      and it breaks all access.
+    - `fs.gs.hierarchical.namespace.folders.enable` reads the bucket's layout when a folder is deleted or renamed. The
+      connector turns it on itself, on every Spark version. Parquet tables fail because their commit deletes folders;
+      Delta tables do not.
+    - `fs.gs.create.items.conflict.check.enable` reads every folder above a new file or folder. Hadoop 3.5 (Spark 4.2.x)
+      turns it on. Creating a table or writing to it fails.
     - `fs.gs.implicit.dir.repair.enable` recreates the parent folder after a folder is deleted. The connector turns it on
       itself, and it breaks `INSERT OVERWRITE` on parquet tables.
 
-    From 0.8.0 Unity Catalog turns both off itself, so the `--conf` lines for them in the commands above can be dropped.
-    If your credentials are broad enough for those reads (for example on a hierarchical-namespace bucket), set either one
-    to `true` in your Spark config and the connector keeps your value.
+    From 0.8.0 Unity Catalog turns all three off itself, so the `--conf` lines for them in the commands above can be
+    dropped. If your credentials are broad enough for those calls (for example on a hierarchical-namespace bucket), set
+    one to `true` in your Spark config and the connector keeps your value.
 
 ## Querying cloud paths with Unity Catalog credentials
 
@@ -509,6 +510,18 @@ SELECT 1 AS i, 'a' AS s;
 
     If Unity Catalog cannot vend for a path (not managed by UC, or no permission), Spark falls back to ambient Hadoop
     credentials already configured on the session.
+
+## Structured Streaming checkpoints
+
+Unity Catalog vends credentials for the table's own folder, and Delta uses them for the data and commits it writes
+there. The `checkpointLocation` of a streaming query is different: Spark writes its offsets and commit log there
+itself, not through the table, so Unity Catalog vends nothing for it. The Spark session needs its own access to the
+checkpoint location, for example a machine identity or an application default login (on GCS, also set
+`spark.hadoop.fs.gs.auth.type=APPLICATION_DEFAULT`).
+
+!!! warning
+    Limit that login to the checkpoint location. If it can also read the table's storage, Spark can bypass the
+    short-lived credentials Unity Catalog vends for the table.
 
 ## Using Spark SQL to query Unity Catalog schemas and tables
 
