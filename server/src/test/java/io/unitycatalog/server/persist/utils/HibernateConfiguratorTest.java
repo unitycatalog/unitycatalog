@@ -174,6 +174,37 @@ class HibernateConfiguratorTest {
         .hasMessageContaining(setting + "=create is not supported");
   }
 
+  /**
+   * Hibernate reads JVM system properties when its Environment class loads, so a child JVM sets one
+   * and starts a configurator.
+   */
+  @Test
+  void refusesASchemaActionSetAsASystemProperty() throws Exception {
+    String setting = "jakarta.persistence.schema-generation.database.action";
+    Process child =
+        new ProcessBuilder(
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-D" + setting + "=drop-and-create",
+                "-cp",
+                System.getProperty("java.class.path"),
+                HibernateConfiguratorTest.class.getName())
+            .redirectErrorStream(true)
+            .start();
+    String output = new String(child.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+
+    assertThat(child.waitFor()).isZero();
+    assertThat(output).contains(setting + "=drop-and-create is not supported");
+  }
+
+  /** The child JVM of {@link #refusesASchemaActionSetAsASystemProperty}. */
+  public static void main(String[] args) {
+    try (HibernateConfigurator configurator = new HibernateConfigurator(h2Properties())) {
+      System.out.println("started");
+    } catch (IllegalStateException e) {
+      System.out.println(e.getMessage());
+    }
+  }
+
   /** Hibernate mode refuses them too, so switching back to the schema steps stays possible. */
   @ParameterizedTest
   @CsvSource({

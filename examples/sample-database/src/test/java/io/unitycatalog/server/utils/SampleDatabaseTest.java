@@ -214,27 +214,12 @@ public class SampleDatabaseTest {
       })
   void buildsTheSampleDatabaseOnlyWhereTheServerStarts(String commandLine, @TempDir Path dir)
       throws Exception {
-    Path root = Path.of("").toAbsolutePath();
-    while (root != null && !Files.isRegularFile(root.resolve("bin/start-uc-server"))) {
-      root = root.getParent();
-    }
-    assertThat(root).isNotNull();
-    // A source checkout whose build/sbt only records its arguments and whose java does nothing.
-    Path bin = Files.createDirectories(dir.resolve("bin"));
-    Files.copy(root.resolve("bin/start-uc-server"), bin.resolve("start-uc-server"));
-    Files.createDirectories(dir.resolve("server/src/main/java/io/unitycatalog/server"));
-    Files.createFile(
-        dir.resolve("server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"));
-    Files.createDirectories(dir.resolve("server/target"));
-    Files.createFile(dir.resolve("server/target/unitycatalog-server.jar"));
-    Files.writeString(dir.resolve("server/target/classpath"), "none");
     Path calls = dir.resolve("sbt-calls");
-    writeExecutable(dir.resolve("build/sbt"), "echo \"$@\" >> '" + calls + "'\n");
-    writeExecutable(dir.resolve("fake/java"), "exit 0\n");
+    createSourceCheckout(dir, "echo \"$@\" >> '" + calls + "'\n", "exit 0\n");
 
     String[] args = commandLine.isEmpty() ? new String[0] : commandLine.split(" ");
     ProcessBuilder launcher = new ProcessBuilder();
-    launcher.command().add(bin.resolve("start-uc-server").toString());
+    launcher.command().add(dir.resolve("bin/start-uc-server").toString());
     launcher.command().addAll(List.of(args));
     launcher.environment().put("PATH", dir.resolve("fake") + ":" + System.getenv("PATH"));
     launcher.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD);
@@ -242,6 +227,19 @@ public class SampleDatabaseTest {
 
     boolean built = Files.exists(calls) && Files.readString(calls).contains("buildSampleDatabase");
     assertThat(built).as(commandLine).isEqualTo(startsServer(args));
+  }
+
+  @Test
+  void startsTheServerWhenBuildingTheSampleDatabaseFails(@TempDir Path dir) throws Exception {
+    Path javaRan = dir.resolve("java-ran");
+    createSourceCheckout(dir, "exit 1\n", "touch '" + javaRan + "'\n");
+
+    ProcessBuilder launcher = new ProcessBuilder(dir.resolve("bin/start-uc-server").toString());
+    launcher.environment().put("PATH", dir.resolve("fake") + ":" + System.getenv("PATH"));
+    launcher.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD);
+    assertThat(launcher.start().waitFor()).isZero();
+
+    assertThat(javaRan).exists();
   }
 
   @Test
@@ -260,6 +258,30 @@ public class SampleDatabaseTest {
             "null/upgrade-schema",
             "v/version",
             "h/help");
+  }
+
+  /**
+   * Lays out a source checkout in {@code dir} whose build/sbt runs {@code sbtBody} and whose java
+   * runs {@code javaBody}.
+   */
+  private static void createSourceCheckout(Path dir, String sbtBody, String javaBody)
+      throws IOException {
+    Path root = Path.of("").toAbsolutePath();
+    while (root != null && !Files.isRegularFile(root.resolve("bin/start-uc-server"))) {
+      root = root.getParent();
+    }
+    assertThat(root).isNotNull();
+    // A source checkout whose build/sbt only records its arguments and whose java does nothing.
+    Path bin = Files.createDirectories(dir.resolve("bin"));
+    Files.copy(root.resolve("bin/start-uc-server"), bin.resolve("start-uc-server"));
+    Files.createDirectories(dir.resolve("server/src/main/java/io/unitycatalog/server"));
+    Files.createFile(
+        dir.resolve("server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"));
+    Files.createDirectories(dir.resolve("server/target"));
+    Files.createFile(dir.resolve("server/target/unitycatalog-server.jar"));
+    Files.writeString(dir.resolve("server/target/classpath"), "none");
+    writeExecutable(dir.resolve("build/sbt"), sbtBody);
+    writeExecutable(dir.resolve("fake/java"), javaBody);
   }
 
   private static void writeExecutable(Path file, String body) throws IOException {

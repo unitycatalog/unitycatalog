@@ -34,7 +34,8 @@ build/sbt package buildSampleDatabase
 The sample database is a local file that the server changes as you use it. Building it keeps an existing
 `etc/db/h2db.mv.db`, and the folder it is in must be on a file system that supports hard links. To reset it to the
 sample data, stop the server, move `etc/db/h2db.mv.db` aside and run `build/sbt buildSampleDatabase` again (starting
-the server with `bin/start-uc-server` builds it too). The file is no longer part of the repository, so `git checkout`
+the server with `bin/start-uc-server` builds it too). In a source checkout the launcher builds `etc/db/h2db.mv.db` when it is missing, whatever database
+the configuration uses, and starts the server even when that build fails. The file is no longer part of the repository, so `git checkout`
 does not restore it. If you changed the sample database in a checkout from before it was built, copy
 `etc/db/h2db.mv.db` somewhere safe before you update the checkout: git deletes the file, or refuses to update while
 it has local changes.

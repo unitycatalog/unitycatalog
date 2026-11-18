@@ -271,19 +271,19 @@ public class UnityCatalogServer implements AutoCloseable {
   /**
    * Closes the database configuration this server built. An in-memory database lasts only as long
    * as its server, but H2 keeps one that sets DB_CLOSE_DELAY=-1 until the JVM ends, so the database
-   * that this server chose for itself drops its tables first. A database that the configuration
-   * names is never dropped: another server may be using it.
+   * that this server chose for itself is shut down first, which removes it. A database that the
+   * configuration names is never dropped: another server may be using it.
    */
   private void closeOwnedDatabase() {
     try {
       if (dropsDatabaseAtClose) {
         try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
             Statement statement = connection.createStatement()) {
-          statement.execute("DROP ALL OBJECTS");
+          statement.execute("SHUTDOWN");
         }
       }
     } catch (SQLException | RuntimeException e) {
-      LOGGER.warn("Could not drop the in-memory database", e);
+      LOGGER.warn("Could not shut down the in-memory database", e);
     } finally {
       hibernateConfigurator.close();
     }
