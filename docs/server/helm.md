@@ -149,7 +149,8 @@ the same `--values` file. If you pass any `--values` or `--set`, Helm doesn't ke
 install, so pass the full file each time.
 
 An upgrade stops all server pods before it starts the new ones, so the server is unavailable until the new pods are
-ready. In each new pod, the `upgrade-schema` init container runs `bin/start-uc-server --upgrade-schema`, which brings
+ready. In each new pod, the `upgrade-schema` init container (left out with `server.db.schemaManagement: hibernate`; see
+[Letting Hibernate manage the schema](upgrades.md#letting-hibernate-manage-the-schema)) runs `bin/start-uc-server --upgrade-schema`, which brings
 the database schema up to date before the server starts. If it fails, Kubernetes runs it again; read its log with
 `kubectl logs <pod> --namespace unitycatalog -c upgrade-schema` and fix the cause it names. With `--wait`, set a
 `--timeout` longer than the schema upgrade takes. See [Upgrading the database schema](upgrades.md).

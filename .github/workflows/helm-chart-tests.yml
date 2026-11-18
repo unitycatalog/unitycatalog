@@ -148,6 +148,12 @@ jobs:
             exit 1
           fi
           grep -qF 'set server.db.schemaManagement' <<<"$err"
+          # A value other than flyway or hibernate fails the render; the case doesn't matter.
+          if err="$(helm template uc helm --set server.db.schemaManagement=hibernat 2>&1)"; then
+            exit 1
+          fi
+          grep -qF 'server.db.schemaManagement must be flyway or hibernate' <<<"$err"
+          helm template uc helm --set server.db.schemaManagement=Hibernate >/dev/null
           # The driver jar goes on the module path, and the database name and URL parameters are encoded: + would
           # read as a space.
           out="$(helm template uc helm -f helm/ci/mysql-values.yaml --set-string 'server.db.mysqlConfig.dbName=uc+db' \

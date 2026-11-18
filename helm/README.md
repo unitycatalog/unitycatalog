@@ -831,8 +831,8 @@ postgres
 			<td>Who changes the database schema
 
 Supported values: `flyway` (before the server starts, an init container brings the schema up to
-date with `bin/start-uc-server --upgrade-schema`), `hibernate` (Hibernate updates the schema at
-start, as before 0.8; a temporary fallback).
+date with `bin/start-uc-server --upgrade-schema`), `hibernate` (the server runs no schema steps and
+Hibernate updates the schema at start; a temporary fallback).
 With `server.config.override`, the chart can't see the override's `server.schema-management`:
 set this value to match it. `server.config.extraProperties` can't set `server.schema-management`.
 See docs/server/upgrades.md.

@@ -3,6 +3,7 @@ package io.unitycatalog.server.migrate;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
@@ -18,6 +19,10 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import javax.sql.DataSource;
@@ -78,6 +83,46 @@ public class SchemaGateTest {
     assertThatThrownBy(() -> TestServer.startWithHibernateManagedSchema(db, storageRoot))
         .hasMessageContaining("The schema is newer than this release (version 1000");
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(upgraded);
+  }
+
+  @Test
+  void hibernateModeFailsWhenTheUserCannotReadTheSchemaHistory() throws Exception {
+    // Only MySQL hides a table the user has no privilege on.
+    assumeTrue(DatabaseKind.of(db.dataSource()) == DatabaseKind.MYSQL);
+    new SchemaMigrator(db.dataSource(), List.of("classpath:db/test-steps/ahead")).upgradeSchema();
+    List<String> tables = new ArrayList<>();
+    String database;
+    try (Connection connection = db.dataSource().getConnection();
+        Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery("SELECT DATABASE()")) {
+        rs.next();
+        database = rs.getString(1);
+      }
+      try (ResultSet rs = statement.executeQuery("SHOW TABLES")) {
+        while (rs.next()) {
+          if (!rs.getString(1).equals("uc_schema_history")) {
+            tables.add(rs.getString(1));
+          }
+        }
+      }
+      statement.execute("CREATE USER 'restricted'@'%' IDENTIFIED BY 'restricted'");
+      for (String table : tables) {
+        statement.execute(
+            "GRANT SELECT, INSERT, UPDATE, DELETE, ALTER, CREATE, INDEX ON `%s`.`%s` TO 'restricted'@'%%'"
+                .formatted(database, table));
+      }
+    }
+    Properties restricted = db.hibernateProperties();
+    restricted.setProperty("hibernate.connection.username", "restricted");
+    restricted.setProperty("hibernate.connection.password", "restricted");
+
+    // MySQL hides the table from this user, which must not read as "no history".
+    assertThatThrownBy(() -> db.openHibernateConfigurator(restricted, true).close())
+        .hasMessageContaining("Could not read the schema history uc_schema_history");
+    try (Connection connection = db.dataSource().getConnection();
+        Statement statement = connection.createStatement()) {
+      statement.execute("DROP USER 'restricted'@'%'");
+    }
   }
 
   @Test

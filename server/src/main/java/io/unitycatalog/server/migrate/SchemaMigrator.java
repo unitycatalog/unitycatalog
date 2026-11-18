@@ -1289,7 +1289,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * without one.
    */
   private String newestRecordedVersion() {
-    if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
+    if (!historyTableExists()) {
       return null;
     }
     return Arrays.stream(flyway().load().info().applied())
@@ -1298,6 +1298,36 @@ public final class SchemaMigrator implements AutoCloseable {
         .max(MigrationVersion::compareTo)
         .map(MigrationVersion::getVersion)
         .orElse(null);
+  }
+
+  /**
+   * Whether the schema history table exists, asked of the table itself: MySQL leaves a table that
+   * the user has no privilege on out of the metadata. Only the error for a missing table means
+   * absent; any other error (such as a missing privilege) is thrown.
+   */
+  private boolean historyTableExists() {
+    try (Connection connection = dataSource.getConnection()) {
+      String q = connection.getMetaData().getIdentifierQuoteString();
+      String scope =
+          connection.getSchema() != null ? connection.getSchema() : connection.getCatalog();
+      String table = (scope == null ? "" : q + scope + q + ".") + q + HISTORY_TABLE + q;
+      try (Statement statement = connection.createStatement();
+          ResultSet rs = statement.executeQuery("SELECT 1 FROM " + table + " WHERE 1 = 0")) {
+        return true;
+      }
+    } catch (SQLException e) {
+      // Table not found. SQLState 42S02: H2 and MySQL; 42P01: PostgreSQL. H2 error codes 42102 and
+      // 42104 (an empty database); MySQL error code 1146.
+      if ("42S02".equals(e.getSQLState())
+          || "42P01".equals(e.getSQLState())
+          || e.getErrorCode() == 42102
+          || e.getErrorCode() == 42104
+          || e.getErrorCode() == 1146) {
+        return false;
+      }
+      throw new IllegalStateException(
+          "Could not read the schema history " + HISTORY_TABLE + ": " + e.getMessage(), e);
+    }
   }
 
   /**

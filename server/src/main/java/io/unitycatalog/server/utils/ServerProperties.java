@@ -335,7 +335,7 @@ public class ServerProperties {
     // Bounds Armeria's graceful request drain; the blocking-executor drain gets what is left.
     // Not a total shutdown deadline, so leave headroom under the orchestrator grace period.
     SHUTDOWN_TIMEOUT("server.shutdown-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
-    // Who changes the schema: the schema steps, or Hibernate's update as before 0.8 (a fallback).
+    // Who changes the schema: the schema steps, or Hibernate's update at start (a fallback).
     SCHEMA_MANAGEMENT(
         "server.schema-management", "flyway", new EnumValidator(true, "flyway", "hibernate")),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),

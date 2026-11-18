@@ -62,7 +62,9 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 - The backend database can be configured by modifying the `etc/conf/hibernate.properties` file.
 - You need to provide the connection details to connect to your database server.
 - The server doesn't set up the schema of a new database. Before the first start, run
-    `bin/start-uc-server --upgrade-schema` once; see [Upgrading the database schema](upgrades.md).
+    `bin/start-uc-server --upgrade-schema` once; see [Upgrading the database schema](upgrades.md). With
+    `server.schema-management=hibernate` you don't; see
+    [Letting Hibernate manage the schema](upgrades.md#letting-hibernate-manage-the-schema).
 - With an H2 file database, set the URL as the default file does:
     `jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=0`.
     - `DB_CLOSE_ON_EXIT=FALSE` stops H2 from closing the database as soon as the JVM starts to exit. Without it,

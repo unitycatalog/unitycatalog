@@ -4,10 +4,11 @@ Unity Catalog uses [Flyway](https://flywaydb.org/) to manage the schema of its d
 release ships the schema steps it needs, and each step is applied once and recorded in the
 `uc_schema_history` table.
 
-Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
-`hibernate.hbm2ddl.auto` (for example to `update`), the server ignores it and logs a warning. You can delete the
-line. In the default mode (`server.schema-management=flyway`), it refuses to start when any other Hibernate setting
-asks for a schema action other than `none`: `jakarta.persistence.schema-generation.database.action` (or its
+In the default mode (`server.schema-management=flyway`), Hibernate no longer changes the schema. If your
+`etc/conf/hibernate.properties` still sets `hibernate.hbm2ddl.auto` (for example to `update`), the server ignores it
+and logs a warning. You can delete the line. In hibernate mode, the server always sets the schema action to `update`
+and logs a warning only for a value other than `none` or `update`. In the default mode, the server refuses to start
+when any other Hibernate setting asks for a schema action other than `none`: `jakarta.persistence.schema-generation.database.action` (or its
 `javax.` form), or a variant of a schema action setting such as `hibernate.hbm2ddl.auto.orm`, in
 `hibernate.properties`, as a JVM system property, or in a `hibernate.properties` on the classpath. Set it to `none`
 or remove it. For a temporary fallback to Hibernate, see
@@ -183,8 +184,10 @@ on every start. The newer-version check still runs: a `uc_schema_history` table,
 one, is left as it is, except that the server refuses to start when it records a step newer than its
 release (`The schema is newer than this release`), because Hibernate's update would change that
 release's schema back, or when it can't read the table. Run the newer release, or restore the
-backup. Hibernate mode doesn't support `hibernate.default_schema` and `hibernate.default_catalog`
-either, so that you can switch back to the schema steps.
+backup. Hibernate mode refuses to start with `hibernate.default_schema` or `hibernate.default_catalog`, so that
+you can switch back to the schema steps, which use the schema of the connection. Put the schema in the connection
+instead: `currentSchema=<schema>` in a PostgreSQL URL, the database name in a MySQL URL, or `;SCHEMA=<schema>` in
+an H2 URL.
 
 To go back to the schema steps, set `server.schema-management=flyway`, the default, and run
 `bin/start-uc-server --upgrade-schema`:

@@ -1,4 +1,7 @@
 {{- define "unitycatalog.server.configTemplate" -}}
+{{- if not (has (.Values.server.db.schemaManagement | default "flyway" | lower) (list "flyway" "hibernate")) -}}
+{{- fail (printf "server.db.schemaManagement must be flyway or hibernate, not %q." (toString .Values.server.db.schemaManagement)) -}}
+{{- end -}}
 
 {{- if .Values.server.config.override -}}
 {{ .Values.server.config.override }}
