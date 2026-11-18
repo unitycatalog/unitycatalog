@@ -23,15 +23,17 @@ build_sample_database() {
 }
 
 # This function succeeds when the command line starts the server: it holds nothing but the port
-# options, in any spelling the option parser takes (one or two dashes, the start of the name, the
-# value after a space or an =). A schema command, --version, --help or an unknown option does not
-# start it.
+# options (one or two dashes, the start of the name, the value after a space or an =) and words that
+# are not options. A -- ends the options: the words after it are not options. A schema command,
+# --version, --help or an unknown option does not start it.
 starts_server() {
+  local arg long name
   while [ $# -gt 0 ]; do
     arg=$1
     shift
     case "$arg" in
-      -p[0-9]*|-|--) continue ;;
+      --) return 0 ;;
+      -p[0-9]*|-) continue ;;
       -*) ;;
       *) continue ;;
     esac
@@ -42,7 +44,7 @@ starts_server() {
     if [ "$long" = "$arg" ] && [ "${#name}" -lt 2 ] && [ "$name" != p ]; then
       return 1
     fi
-    case "port" in "$name"*) ;; *) case "obs-port" in "$name"*) ;; *) return 1 ;; esac ;; esac
+    [[ port == "$name"* || obs-port == "$name"* ]] || return 1
     case "$arg" in
       *=*) ;;
       *)

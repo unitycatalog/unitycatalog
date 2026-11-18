@@ -390,7 +390,7 @@ lazy val apiDocs = (project in file("api"))
   )
 
 // Builds the quickstart's sample database etc/db/h2db.mv.db (SampleDatabase, in the sampleDatabase
-// project), refusing a file that exists.
+// project), keeping a file that exists.
 lazy val buildSampleDatabase = taskKey[Unit]("Build the sample database etc/db/h2db.mv.db")
 
 lazy val server = (project in file("server"))
