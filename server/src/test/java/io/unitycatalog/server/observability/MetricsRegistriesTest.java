@@ -44,8 +44,8 @@ public class MetricsRegistriesTest {
           .contains(
               "http_server_requests_total 1.0",
               "http_server_total_duration_seconds_count 1",
-              "http_server_total_duration_seconds_sum",
-              "http_server_total_duration_seconds_max",
+              "http_server_total_duration_seconds_sum 0.005",
+              "http_server_total_duration_seconds_max 0.005",
               "http_server_active_requests 0.0",
               "other_timer_seconds{quantile=\"0.5\"}")
           .doesNotContain(

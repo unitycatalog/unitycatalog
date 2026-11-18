@@ -237,10 +237,13 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
     // The base test setup creates a catalog before each test.
     assertThat(httpServerLines)
         .anySatisfy(
-            line ->
-                assertThat(line)
-                    .startsWith("http_server_total_duration_seconds_count{")
-                    .contains("method=\"createCatalog\""))
+            line -> {
+              assertThat(line)
+                  .startsWith("http_server_total_duration_seconds_count{")
+                  .contains("method=\"createCatalog\"");
+              assertThat(Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)))
+                  .isGreaterThanOrEqualTo(1);
+            })
         .anySatisfy(line -> assertThat(line).startsWith("http_server_active_requests{"));
 
     return response
