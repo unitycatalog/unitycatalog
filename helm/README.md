@@ -273,7 +273,7 @@ false
 </td>
 			<td>Enable httpRoute for the server
 
-[Kubernetes docs](https://gateway-api.sigs.k8s.io/api-types/httproute/)
+[Kubernetes docs](https://gateway-api.sigs.k8s.io/reference/api-types/httproute/)
 </td>
 		</tr>
 		<tr>
