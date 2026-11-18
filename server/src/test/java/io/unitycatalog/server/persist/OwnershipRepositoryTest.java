@@ -307,8 +307,10 @@ public class OwnershipRepositoryTest {
                 .createNativeMutationQuery("ALTER TABLE casbin_rule RENAME TO unavailable_policy")
                 .executeUpdate());
     try {
-      assertThatThrownBy(authorizer::reloadAuthorizations)
-          .isInstanceOfAny(RuntimeException.class, Error.class);
+      assertThatExceptionOfType(BaseException.class)
+          .isThrownBy(authorizer::reloadAuthorizations)
+          .extracting(BaseException::getErrorCode)
+          .isEqualTo(ErrorCode.UNAVAILABLE);
       for (UUID id : List.of(firstId, secondId, thirdId)) {
         assertThat(authorizer.authorize(id, SecurableType.CATALOG, resourceId, Privileges.OWNER))
             .isFalse();
@@ -370,6 +372,37 @@ public class OwnershipRepositoryTest {
     }
     assertThat(authorizer.authorize(thirdId, SecurableType.CATALOG, resourceId, Privileges.SELECT))
         .isFalse();
+  }
+
+  @Test
+  void creatingOwnerDoesNotBlockUnrelatedGrants() throws Exception {
+    UUID created = UUID.randomUUID();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try (Session session = sessionFactory.openSession()) {
+      Transaction transaction = session.beginTransaction();
+      try {
+        repositories.getOwnershipRepository().initializeOwner(session, created, FIRST_OWNER);
+        Future<Boolean> grant =
+            executor.submit(
+                () -> authorizer.grantAuthorization(thirdId, resourceId, Privileges.SELECT));
+        assertThat(grant.get(10, TimeUnit.SECONDS)).isTrue();
+        transaction.commit();
+      } finally {
+        if (transaction.isActive()) {
+          transaction.rollback();
+        }
+      }
+    } finally {
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
+    authorizer.loadOwner(created);
+    assertThat(authorizer.listAuthorizations(firstId, created)).containsExactly(Privileges.OWNER);
+    assertThat(authorizer.listAuthorizations(thirdId, resourceId))
+        .containsExactlyInAnyOrder(Privileges.MANAGE, Privileges.SELECT);
+    assertThat(CapturingAuditSink.RECORDS)
+        .extracting(AuditRecord::getAction, AuditRecord::getPrincipalId, AuditRecord::getResourceId)
+        .containsExactly(tuple(AuditRecord.Action.GRANT, firstId, created));
   }
 
   @Test

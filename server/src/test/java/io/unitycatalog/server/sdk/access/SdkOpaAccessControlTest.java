@@ -216,7 +216,7 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
       assertThatExceptionOfType(ApiException.class)
           .isThrownBy(() -> adminTables.updateTable(fullName, new UpdateTable().owner(BOB)))
           .extracting(ApiException::getCode)
-          .isEqualTo(ErrorCode.INTERNAL.getHttpStatus().code());
+          .isEqualTo(ErrorCode.UNAVAILABLE.getHttpStatus().code());
       assertThat(adminTables.getTable(fullName, null, null, null).getOwner()).isEqualTo(BOB);
       assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null, null));
       assertApiException(

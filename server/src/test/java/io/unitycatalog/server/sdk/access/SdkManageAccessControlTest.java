@@ -33,6 +33,7 @@ import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CatalogInfo;
@@ -691,7 +692,21 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
     String name = "committed_child";
     String fullName = (type == SecurableType.SCHEMA ? CATALOG_NAME : SCHEMA_FULL_NAME) + "." + name;
     String parentId = targets.get(type == SecurableType.SCHEMA ? 0 : 1).id();
-    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.MANAGE);
+    grantPermissions(
+        PRINCIPAL_1,
+        SecurableType.CATALOG,
+        CATALOG_NAME,
+        Privileges.USE_CATALOG,
+        Privileges.CREATE_SCHEMA);
+    grantPermissions(
+        PRINCIPAL_1,
+        SecurableType.SCHEMA,
+        SCHEMA_FULL_NAME,
+        Privileges.USE_SCHEMA,
+        Privileges.CREATE_TABLE,
+        Privileges.CREATE_FUNCTION,
+        Privileges.CREATE_VOLUME,
+        Privileges.CREATE_MODEL);
     var sessions = hibernateConfigurator.getSessionFactory();
     AtomicReference<UUID> createdId = new AtomicReference<>();
     sessions
@@ -730,7 +745,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
       assertThatExceptionOfType(ApiException.class)
           .isThrownBy(() -> createRecoveryResource(type, staging, name))
           .extracting(ApiException::getCode)
-          .isEqualTo(ErrorCode.INTERNAL.getHttpStatus().code());
+          .isEqualTo(ErrorCode.UNAVAILABLE.getHttpStatus().code());
     } finally {
       if (createdId.get() != null) {
         sessions.inTransaction(
@@ -753,23 +768,27 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
                     .getResultList());
     assertThat(storedParents).containsExactly(parentId);
 
-    // A real transfer reloads policy from storage; it must preserve the child's inherited access.
-    CatalogsApi catalogs = new CatalogsApi(adminApiClient);
+    // The creator must recover without another ownership transfer or a background poll.
     if (staging) {
-      // The staging creator must still be able to use the catalog after transferring it.
-      grantPermissions(
-          catalogs.getCatalog(CATALOG_NAME, false).getOwner(),
-          SecurableType.CATALOG,
-          CATALOG_NAME,
-          Privileges.USE_CATALOG);
+      assertThat(
+              new DeltaTemporaryCredentialsApi(manager)
+                  .getStagingTableCredentials(createdId.get())
+                  .getStorageCredentials())
+          .hasSize(1);
+    } else {
+      readMetadata(type, fullName);
     }
+
+    // A real transfer reloads policy from storage; it must preserve the child's inherited access.
+    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.MANAGE);
+    CatalogsApi catalogs = new CatalogsApi(adminApiClient);
     catalogs.updateCatalog(CATALOG_NAME, new UpdateCatalog().owner(PRINCIPAL_2));
     assertOwnerGrants(targets.get(0).id(), recipientId);
     if (staging) {
       String location =
           sessions.fromSession(
               session -> session.find(StagingTableDAO.class, createdId.get()).getStagingLocation());
-      new TablesApi(adminApiClient)
+      new TablesApi(manager)
           .createTable(
               new CreateTable()
                   .name(name)
@@ -787,7 +806,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
   private void createRecoveryResource(SecurableType type, boolean staging, String name)
       throws Exception {
     if (staging) {
-      new TablesApi(adminApiClient)
+      new TablesApi(manager)
           .createStagingTable(
               new CreateStagingTable()
                   .catalogName(CATALOG_NAME)
@@ -797,18 +816,18 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
     }
     switch (type) {
       case SCHEMA ->
-          new SchemasApi(adminApiClient)
+          new SchemasApi(manager)
               .createSchema(new CreateSchema().catalogName(CATALOG_NAME).name(name));
       case TABLE ->
           createExternalTable(
-              new TablesApi(adminApiClient),
+              new TablesApi(manager),
               CATALOG_NAME,
               SCHEMA_NAME,
               name,
               testDirectoryRoot.resolve(name).toString());
-      case FUNCTION -> new FunctionsApi(adminApiClient).createFunction(newFunction(name));
+      case FUNCTION -> new FunctionsApi(manager).createFunction(newFunction(name));
       case VOLUME ->
-          new VolumesApi(adminApiClient)
+          new VolumesApi(manager)
               .createVolume(
                   new CreateVolumeRequestContent()
                       .catalogName(CATALOG_NAME)
@@ -817,7 +836,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
                       .volumeType(VolumeType.EXTERNAL)
                       .storageLocation(testDirectoryRoot.resolve(name).toUri().toString()));
       case REGISTERED_MODEL ->
-          new RegisteredModelsApi(adminApiClient)
+          new RegisteredModelsApi(manager)
               .createRegisteredModel(
                   new CreateRegisteredModel()
                       .catalogName(CATALOG_NAME)

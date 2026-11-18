@@ -171,6 +171,12 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
         .setParameter("resource", resource.toString())
         .setParameter("owner", Privileges.OWNER.getValue())
         .executeUpdate();
+    addOwner(session, resource, newOwner);
+    return oldOwners;
+  }
+
+  /** Saves an OWNER grant in the caller's transaction. */
+  public static void addOwner(Session session, UUID resource, UUID newOwner) {
     session
         .createNativeMutationQuery(
             "INSERT INTO casbin_rule (ptype, v0, v1, v2) VALUES ('p', :principal, :resource,"
@@ -179,7 +185,6 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
         .setParameter("resource", resource.toString())
         .setParameter("owner", Privileges.OWNER.getValue())
         .executeUpdate();
-    return oldOwners;
   }
 
   /** Saves the parent link in the transaction that creates the child. */
@@ -248,6 +253,10 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
       } finally {
         enforcer.enableAutoSave(true);
       }
+    } catch (RuntimeException | Error e) {
+      // The resource committed, so later requests must be able to recover its saved policy.
+      reloadRequired = true;
+      throw new BaseException(ErrorCode.UNAVAILABLE, "Authorization policy must be reloaded.", e);
     } finally {
       reloadLock.writeLock().unlock();
     }
@@ -277,7 +286,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
         currentEnforcer.set(denying);
         reloadRequired = true;
         LOGGER.error("Could not reload policy after ownership transfer; access is denied", e);
-        throw e;
+        throw new BaseException(ErrorCode.UNAVAILABLE, "Authorization policy must be reloaded.", e);
       }
     } finally {
       reloadLock.writeLock().unlock();

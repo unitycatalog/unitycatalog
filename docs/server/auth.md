@@ -429,15 +429,16 @@ The object owner and its `OWNER` grant are saved in one database transaction. Af
 the server reloads its local permission cache. Enable [policy refresh](#multiple-server-instances)
 on every instance to detect changes from other servers, subject to its concurrent-commit limitation.
 
-If the local reload fails, the request returns an error even though the transfer may have
+If the local reload fails, the request returns `UNAVAILABLE` even though the transfer may have
 committed. With native authorization, permission checks on this instance deny every user,
 including metastore admins, until a reload succeeds. A denied request retries the reload even
 when policy refresh is disabled. Native grant changes and permission listings also retry the
 reload. Read the owner after recovery before retrying a transfer.
 
 Creation also saves its `OWNER` grant and any parent permission link in the resource transaction.
-A failed cache load can return an error after creation commits. Read the object after recovery
-before retrying creation.
+A failed cache load returns `UNAVAILABLE` after creation commits. Later denied requests and native
+grant operations retry the load, even when policy refresh is disabled. Read the object after
+recovery before retrying creation.
 
 ### Restart the UC Server
 

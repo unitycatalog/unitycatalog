@@ -34,7 +34,10 @@ public class OwnershipRepository {
   /** Saves the creator's OWNER grant and optional parent link in the create transaction. */
   public void initializeOwner(Session session, UUID resource, String owner, UUID parent) {
     if (authorizationEnabled) {
-      replaceOwner(session, resource, findOwner(session, owner));
+      UUID principal = findOwner(session, owner).getId();
+      // New resources have no owner grants to lock or replace.
+      JCasbinAuthorizer.addOwner(session, resource, principal);
+      auditor.ifPresent(a -> a.recordOwnershipTransfer(session, resource, List.of(), principal));
       if (parent != null) {
         JCasbinAuthorizer.addHierarchyChild(session, parent, resource);
       }
