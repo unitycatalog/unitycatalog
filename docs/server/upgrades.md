@@ -17,13 +17,15 @@ or remove it. For a temporary fallback to Hibernate, see
 In the default mode, the server doesn't change the schema of its own tables when it starts. It starts only on a
 database at the schema
 version of its release whose schema history passes Flyway's checks and whose schema is the one its
-release's steps build. Otherwise it refuses to start
+release's steps build. The schema must be exactly that one, so an index or column that you add to a `uc_*` table yourself stops the start (Hibernate's
+update used to tolerate them). Otherwise it refuses to start
 and tells you what to do, which is to run `bin/start-uc-server --upgrade-schema` when that brings the database
 there. The one exception is an in-memory
 database (`server.env=test`, or an in-memory H2 URL such as `jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1`), which only the
 server's own process can reach: the server sets up its schema at start. The server refuses an unnamed in-memory URL
 (`jdbc:h2:mem:` or `jdbc:h2:.`), because every connection would get its own empty database.
-`--upgrade-schema` on an in-memory database succeeds without doing anything. With authorization enabled, the authorization library runs
+`--upgrade-schema` on an in-memory database succeeds without doing anything. The server sets it up through its own
+connection pool, which needs at least 4 connections for that: with a smaller pool the setup waits for a connection. With authorization enabled, the authorization library runs
 `CREATE TABLE IF NOT EXISTS casbin_rule` at every start, so the database user needs the `CREATE` privilege (on
 PostgreSQL, on the schema) while authorization is enabled.
 
@@ -287,3 +289,18 @@ Messages that the server prints when it refuses to start, and that `--check-sche
 : The command could not get the lock that keeps two migration runs apart, so it changed nothing.
   Check that the database is reachable and that its user can run the lock call
   (`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on MySQL), then run the command again.
+
+`<setting> is not supported: the schema migration uses the connection's schema. Remove it and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).`
+: `<setting>` is `hibernate.default_schema` or `hibernate.default_catalog`. The schema migration uses
+  the schema of the connection, so Unity Catalog refuses a schema or catalog that only Hibernate
+  would use. Remove the setting and put the schema in `hibernate.connection.url`: `currentSchema=`
+  for PostgreSQL, the database name for MySQL, `;SCHEMA=` for H2.
+
+`H2 in server mode is not supported: the schema migration needs one server per H2 file. Use a jdbc:h2:file: URL without AUTO_SERVER.`
+: The URL opens H2 in server mode (`jdbc:h2:tcp:`, `jdbc:h2:ssl:` or `AUTO_SERVER` on), which lets
+  several processes open the same database and run a schema step twice at once. Use a
+  `jdbc:h2:file:` URL without `AUTO_SERVER`.
+
+`Unsupported database <product>: use H2, PostgreSQL or MySQL`
+: The database behind `hibernate.connection.url` is none of the three that the schema steps
+  support. Point the URL at an H2, PostgreSQL or MySQL database.

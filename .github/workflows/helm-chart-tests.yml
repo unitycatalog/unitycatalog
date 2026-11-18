@@ -180,6 +180,8 @@ jobs:
           grep -qE '^    type: Recreate$' <<<"$out"
           if err="$(helm template uc helm --set server.deployment.updateStrategy.type=RollingUpdate 2>&1)"; then exit 1; fi
           grep -qF 'updateStrategy.type must be Recreate' <<<"$err"
+          if err="$(helm template uc helm --set server.deployment.updateStrategy.rollingUpdate.maxSurge=1 2>&1)"; then exit 1; fi
+          grep -qF 'updateStrategy.type must be Recreate' <<<"$err"
           out="$(helm template uc helm --set server.deployment.updateStrategy.type=Recreate)"
           grep -qE '^    type: Recreate$' <<<"$out"
           # The H2 file database supports one server; PostgreSQL takes more.
