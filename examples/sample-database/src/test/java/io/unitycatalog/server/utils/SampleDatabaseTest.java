@@ -95,9 +95,7 @@ public class SampleDatabaseTest {
             SampleDatabase.class.getName(),
             file.toString());
     build.environment().put("UC_SERVER_AUTHORIZATION_PROVIDER", "opa");
-    build
-        .redirectErrorStream(true)
-        .redirectOutput(Path.of("/tmp/disprove-tim-GEFE/child.log").toFile());
+    build.redirectErrorStream(true).redirectOutput(dir.resolve("build.log").toFile());
 
     assertThat(build.start().waitFor()).isZero();
     assertThat(file).exists();
