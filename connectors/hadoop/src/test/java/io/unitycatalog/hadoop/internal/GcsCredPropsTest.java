@@ -150,10 +150,29 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             + "</configuration>";
     conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
     assertThat(conf.get(CONFLICT_CHECK_KEY)).isEqualTo("true");
+    assertThat(conf.get(HNS_FOLDERS_KEY)).isEqualTo("true");
 
     assertThat(tableProps(conf))
         .containsEntry(CONFLICT_CHECK_KEY, "false")
         .containsEntry(HNS_FOLDERS_KEY, "false");
+  }
+
+  /** A value from {@code core-site.xml}, which loads after the defaults, is the user's own. */
+  @Test
+  void coreSiteValueOnTopOfHadoopDefaultIsRespected() throws Exception {
+    Configuration conf = new Configuration(false);
+    String defaults =
+        "<configuration><property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property></configuration>";
+    String site =
+        "<configuration><property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property></configuration>";
+    conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
+    conf.addResource(new ByteArrayInputStream(site.getBytes(UTF_8)), "core-site.xml");
+
+    assertThat(tableProps(conf)).containsEntry(CONFLICT_CHECK_KEY, "true");
   }
 
   @Test
@@ -201,7 +220,9 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             location(),
             UCCredentialHadoopConfs.PathOperation.PATH_READ,
             Map.of());
-    assertThat(pathProps).containsEntry(CONFLICT_CHECK_KEY, "false");
+    assertThat(pathProps)
+        .containsEntry(CONFLICT_CHECK_KEY, "false")
+        .containsEntry(HNS_FOLDERS_KEY, "false");
 
     Map<String, String> deltaProps =
         CredPropsUtil.createDeltaTableCredProps(
@@ -216,6 +237,8 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             location(),
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
-    assertThat(deltaProps).containsEntry(CONFLICT_CHECK_KEY, "false");
+    assertThat(deltaProps)
+        .containsEntry(CONFLICT_CHECK_KEY, "false")
+        .containsEntry(HNS_FOLDERS_KEY, "false");
   }
 }
