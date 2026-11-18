@@ -53,6 +53,10 @@ object PythonClientPostBuildTest {
       "the all.yaml init with a bare delta import",
       allYamlInit + "from delta.api.delta_tables_api import DeltaTablesApi\n")
     expectRunOrderProblem(init, "the all.yaml init with an import delta. line", allYamlInit + "import delta.api\n")
+    expectRunOrderProblem(
+      init,
+      "the all.yaml init with an indented bare delta import",
+      allYamlInit + "    from delta.api.delta_tables_api import DeltaTablesApi\n")
   }
 
   private def expectRunOrderProblem(init: Path, name: String, content: String): Unit = {
