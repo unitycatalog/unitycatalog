@@ -1,5 +1,6 @@
 package io.unitycatalog.server.cleanup;
 
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.observability.StorageCleanupMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.CleanupTaskRepository;
@@ -217,6 +218,12 @@ public final class StorageCleanupWorker implements AutoCloseable {
   }
 
   private static String safeError(Exception exception) {
-    return "Storage cleanup failed: " + exception.getClass().getSimpleName();
+    // A general error the server chose, such as for a failed AssumeRole, carries the failure as its
+    // cause; naming its class keeps the record specific without the failure's message.
+    String name =
+        exception instanceof BaseException be && exception.getCause() != null
+            ? be.getErrorCode() + " caused by " + exception.getCause().getClass().getSimpleName()
+            : exception.getClass().getSimpleName();
+    return "Storage cleanup failed: " + name;
   }
 }

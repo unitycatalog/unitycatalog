@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.RegisteredModelsApi;
 import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.ListRegisteredModelsResponse;
 import io.unitycatalog.client.model.UpdateRegisteredModel;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -59,27 +61,16 @@ public class ModelCli {
   private static String listRegisteredModels(
       RegisteredModelsApi registeredModelsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    String catalogName = "";
-    String schemaName = "";
-    if (json.has(CliParams.CATALOG_NAME.getServerParam())) {
-      catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
-    }
-    if (json.has(CliParams.SCHEMA_NAME.getServerParam())) {
-      schemaName = json.getString(CliParams.SCHEMA_NAME.getServerParam());
-    }
-    int maxResults = 100;
-    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
-      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
-    }
-    String pageToken = null;
-    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
-      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
-    }
+    String catalogName = json.optString(CliParams.CATALOG_NAME.getServerParam(), "");
+    String schemaName = json.optString(CliParams.SCHEMA_NAME.getServerParam(), "");
     return objectWriter.writeValueAsString(
-        registeredModelsApi
-            .listRegisteredModels(
-                catalogName, schemaName, maxResults, pageToken, /* includeBrowse= */ false)
-            .getRegisteredModels());
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) ->
+                registeredModelsApi.listRegisteredModels(
+                    catalogName, schemaName, maxResults, pageToken, /* includeBrowse= */ false),
+            ListRegisteredModelsResponse::getRegisteredModels,
+            ListRegisteredModelsResponse::getNextPageToken));
   }
 
   private static String getRegisteredModel(RegisteredModelsApi registeredModelsApi, JSONObject json)

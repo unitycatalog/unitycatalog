@@ -10,11 +10,14 @@ import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.JdbcSettings;
 import org.hibernate.cfg.SchemaToolingSettings;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 /**
  * The steps build the schema Hibernate builds from the entities, so Hibernate's update at server
- * start changes nothing on a database that the steps built.
+ * start changes nothing on a database that the steps built. Runs with {@code
+ * UC_TEST_MIGRATION_CHECKS=true}.
  */
+@EnabledIfEnvironmentVariable(named = "UC_TEST_MIGRATION_CHECKS", matches = "true")
 public class BaselineMatchesEntitiesTest {
 
   @TempDatabase(empty = true)

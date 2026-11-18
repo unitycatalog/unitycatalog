@@ -4,6 +4,9 @@ import importlib
 import logging
 import mmap
 import multiprocessing
+import os
+import signal
+import struct
 import sys
 import time
 
@@ -276,7 +279,10 @@ linux_only = pytest.mark.skipif(
 
 @pytest.fixture
 def parent_address_space_above_memory_limit():
-    reservation = mmap.mmap(-1, 1024 * MB, flags=mmap.MAP_PRIVATE, prot=mmap.PROT_READ)
+    try:
+        reservation = mmap.mmap(-1, 1024 * MB, flags=mmap.MAP_PRIVATE, prot=mmap.PROT_READ)
+    except OSError as e:
+        pytest.skip(f"Unable to reserve 1 GB of address space: {e}")
     yield
     reservation.close()
 
@@ -343,6 +349,73 @@ def test_unpicklable_result_reports_the_pickling_error():
     assert "pickle" in result.lower()
 
 
+def write_partial_result_frame(sender):
+    # The length header promises 100 bytes and only 7 follow, so the reader hits EOF mid-frame.
+    os.write(sender.fileno(), struct.pack("!i", 100) + b"partial")
+
+
+def write_partial_result_frame_and_exit(sender):
+    write_partial_result_frame(sender)
+    os._exit(0)
+
+
+def write_partial_result_frame_and_get_killed(sender):
+    write_partial_result_frame(sender)
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        (
+            write_partial_result_frame_and_exit,
+            "exited with code 0, but its result could not be read: OSError",
+        ),
+        (write_partial_result_frame_and_get_killed, "terminated with a signal 9."),
+    ],
+    ids=["exit", "killed"],
+)
+@pytest.mark.skipif(not local_executor.is_sandbox_supported(), reason="Needs the fork start method")
+def test_partial_result_is_reported_with_how_the_process_ended(target, expected):
+    ctx = multiprocessing.get_context("fork")
+    receiver, sender = ctx.Pipe(duplex=False)
+    process = ctx.Process(target=target, args=(sender,))
+    process.start()
+    sender.close()
+
+    succeeded, result = local_executor._receive_result(receiver, process)
+
+    assert process.exitcode is not None
+    assert not succeeded
+    assert expected in result
+
+
+def fail_to_unpickle(error_type):
+    raise error_type("cannot rebuild this object")
+
+
+class UnpicklableInParent:
+    def __init__(self, error_type):
+        self.error_type = error_type
+
+    def __reduce__(self):
+        return fail_to_unpickle, (self.error_type,)
+
+
+@pytest.mark.parametrize("error_type", [ValueError, EOFError])
+def test_result_that_cannot_be_unpickled_is_reported_as_unreadable(error_type):
+    def unreadable_result():
+        return UnpicklableInParent(error_type)
+
+    succeeded, result = run_in_sandbox(unreadable_result, {})
+
+    assert not succeeded
+    assert (
+        f"exited with code 0, but its result could not be read: "
+        f"{error_type.__name__}: cannot rebuild this object" in result
+    )
+
+
 def test_process_exiting_without_result_reports_its_exit_code():
     def exit_process():
         import os
@@ -361,14 +434,30 @@ def read_memory_limit():
     return resource.getrlimit(resource.RLIMIT_AS)
 
 
-def test_memory_limit_is_not_applied_when_address_space_size_is_unknown(monkeypatch, tmp_path):
+def test_memory_limit_is_not_applied_when_address_space_size_is_unknown(
+    monkeypatch, tmp_path, caplog
+):
     resource = pytest.importorskip("resource")
     monkeypatch.setattr(local_executor, "_STATM_PATH", str(tmp_path / "missing"))
+    original_limits = resource.getrlimit(resource.RLIMIT_AS)
+    limited_resources = []
 
+    with (
+        monkeypatch.context() as patched,
+        caplog.at_level(logging.INFO, logger=local_executor.__name__),
+    ):
+        patched.setattr(
+            local_executor.resource,
+            "setrlimit",
+            lambda limited_resource, limits: limited_resources.append(limited_resource),
+        )
+        local_executor._limit_resources(cpu_time_limit=resource.RLIM_INFINITY, memory_limit=1)
     succeeded, result = run_in_sandbox(read_memory_limit, {})
 
+    assert "cannot read the current address space size" in caplog.text
+    assert resource.RLIMIT_AS not in limited_resources
     assert succeeded, result
-    assert result == resource.getrlimit(resource.RLIMIT_AS)
+    assert result == original_limits
 
 
 @linux_only

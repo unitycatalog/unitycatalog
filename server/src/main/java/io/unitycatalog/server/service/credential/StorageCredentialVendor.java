@@ -12,8 +12,10 @@ public interface StorageCredentialVendor {
    *
    * @param path the normalized storage location URL (e.g., s3://bucket/path)
    * @param privileges the set of privileges required (SELECT, UPDATE)
-   * @param use who the credential is for. It only labels the audit record; it does not change what
-   *     is vended. Pass {@link CredentialUse#CLIENT} for a credential returned to the API caller.
+   * @param use who the credential is for. It labels the audit record, and a credential the server
+   *     uses itself always carries usable keys, even when the path's storage credential vends no
+   *     keys to clients. Pass {@link CredentialUse#CLIENT} for a credential returned to the API
+   *     caller.
    * @return temporary credentials scoped to the requested path and privileges
    */
   TemporaryCredentials vendCredential(

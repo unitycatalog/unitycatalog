@@ -1,22 +1,9 @@
 import { proxyClient } from "@/lib/transport";
-import { getToken } from "@/lib/session";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 // Native Unity Catalog REST surface prefixes. Mirrors the current ui's constants.
 export const UC_API_PREFIX = "/api/2.1/unity-catalog";
 export const UC_AUTH_API_PREFIX = "/api/1.0/unity-control";
-
-/** Skips per-table column/property hydration on GET /tables list. */
-export const LIST_TABLES_QUERY = {
-  omit_columns: "true",
-  omit_properties: "true",
-} as const;
-
-/** Merge {@link LIST_TABLES_QUERY} into a GET /tables list query. */
-export function withListTablesQuery(
-  query: Record<string, string | undefined>,
-): Record<string, string | undefined> {
-  return { ...LIST_TABLES_QUERY, ...query };
-}
 
 export type RawResult = {
   httpStatus: number;
@@ -41,15 +28,14 @@ function toKV(query?: Record<string, string | undefined>) {
   return out;
 }
 
-// ucCall returns the raw proxied response (status + body string). Auth is
-// cookie-based and handled by the bridge, so serverUrl/token are left empty and
-// resolved server-side (the bridge falls back to its configured UC_SERVER).
-export async function ucCall(method: string, path: string, opts: CallOpts = {}): Promise<RawResult> {
+// ucCall returns the raw proxied response (status + body string). Authentication
+// is carried by the transport's Authorization header and the browser cookie.
+export async function ucCall(
+  method: string,
+  path: string,
+  opts: CallOpts = {},
+): Promise<RawResult> {
   const res = await proxyClient.call({
-    serverUrl: "",
-    // When set, the bridge forwards this as `Authorization: Bearer`, bypassing
-    // cookie login. Empty means rely on the forwarded session cookie.
-    token: getToken(),
     method,
     path,
     query: toKV(opts.query),
@@ -78,7 +64,11 @@ export class UCError extends Error {
 }
 
 // ucJson parses the response as JSON and throws UCError on non-2xx.
-export async function ucJson<T = unknown>(method: string, path: string, opts: CallOpts = {}): Promise<T> {
+export async function ucJson<T = unknown>(
+  method: string,
+  path: string,
+  opts: CallOpts = {},
+): Promise<T> {
   const res = await ucCall(method, path, opts);
   if (!res.ok) throw new UCError(res.httpStatus, res.body);
   if (!res.body) return undefined as T;
@@ -97,11 +87,26 @@ export function prettyJson(raw: string): string {
   }
 }
 
-// formatEpoch renders a UC millisecond epoch (number or numeric string) as a
-// locale date/time, or an em dash when absent/invalid.
-export function formatEpoch(ms?: number | string | null): string {
-  if (ms === undefined || ms === null || ms === "") return "—";
-  const n = typeof ms === "string" ? Number(ms) : ms;
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  return new Date(n).toLocaleString();
+// splitFullName splits a dotted UC full name (catalog.schema.object) into its
+// parts. UC names cannot contain ".", and a missing part is "" so a partial
+// route parameter leaves the dependent query disabled.
+export function splitFullName(fullName: string): [string, string, string] {
+  const [first = "", second = "", third = ""] = fullName.split(".");
+  return [first, second, third];
+}
+
+// objectFullName joins a schema-object reference into its dotted full name.
+export function objectFullName(ref?: {
+  catalogName?: string;
+  schemaName?: string;
+  name?: string;
+}): string {
+  return [ref?.catalogName, ref?.schemaName, ref?.name].join(".");
+}
+
+export function formatTimestamp(value?: Timestamp): string {
+  if (!value) return "—";
+  return new Date(
+    Number(value.seconds) * 1000 + value.nanos / 1_000_000,
+  ).toLocaleString();
 }

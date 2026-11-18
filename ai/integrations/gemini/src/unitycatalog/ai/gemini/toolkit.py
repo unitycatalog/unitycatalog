@@ -103,7 +103,7 @@ class UCFunctionToolkit(BaseModel):
         """
 
         fields_dict = {}
-        param_infos = function_info.input_params.parameters
+        param_infos = function_info.input_params.parameters if function_info.input_params else []
         if param_infos is None:
             raise ValueError("Function input parameters are None.")
 

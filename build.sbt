@@ -328,19 +328,24 @@ lazy val pythonClient = (project in file("clients/python"))
           outputDir = outputDir,
           generatorName = "python",
           specs = Seq(
+            // The delta.yaml run goes first because its "__init__.py" filter matches by file name: besides the
+            // delta api/ and models/ inits (patchDeltaDataTypeModule needs the models one), it also writes
+            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite.
+            OpenApiSpec(
+              inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
+              packageName = s"$artifactNamePrefix.client",
+              apiPackage = "delta.api",
+              modelPackage = "delta.models",
+              additionalProperties = commonProps,
+              globalProperties = Map("apis" -> "", "models" -> "", "supportingFiles" -> "__init__.py")
+            ),
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
               additionalProperties = commonProps,
-              // Overrides python/asyncio/rest.mustache with the v7.11.0 version. See the header of
-              // build/templates/asyncio/rest.mustache for when to remove it.
+              // Overrides python/asyncio/rest.mustache with the v7.11.0 version (see its header for when to
+              // remove it) and python/api_client.mustache so the shared ApiClient also resolves Delta models.
               templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath
-            ),
-            OpenApiSpec(
-              inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
-              packageName = s"$artifactNamePrefix.delta",
-              additionalProperties = commonProps,
-              globalProperties = Map("apis" -> "", "models" -> "")
             )
           )
         )
@@ -501,6 +506,8 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
       // The upgrade tests run older releases, whose servers read Vert.x's version file at start.
       "io.vertx" % "vertx-core" % "4.5.34" % Test,
+      // Reads the schema steps' SQL in MigrationStepRulesTest (Apache-2.0 or LGPL-2.1; tests only).
+      "com.github.jsqlparser" % "jsqlparser" % "5.4" % Test,
 
       // Integration testing
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
@@ -681,7 +688,7 @@ lazy val cli = (project in file("examples") / "cli")
       "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     ),
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    Test / forkOptions := (Test / forkOptions).value.withWorkingDirectory((ThisBuild / baseDirectory).value),
   )
 
 // What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
@@ -953,3 +960,16 @@ addCommandAlias(
     s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database", "UC_TEST_MIGRATION_CHECKS" -> "true", "UC_UPDATE_SCHEMA_EFFECTS" -> "true")""" +
       " ; server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest"
   }.mkString)
+
+// Runs every project's tests with s3:// paths on one S3-compatible storage. One alias per
+// SupportedStorage constant except EMULATED (the default). Forked tests also inherit the shell's
+// environment, so UC_TEST_DATABASE set there selects the database as well.
+def testOnStorage(storage: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_STORAGE" -> "$storage") ; test"""
+addCommandAlias("testMinIO", testOnStorage("MINIO"))
+addCommandAlias("testCeph", testOnStorage("CEPH"))
+addCommandAlias("testCephStaticKey", testOnStorage("CEPH_STATIC_KEY"))
+addCommandAlias("testRustFS", testOnStorage("RUSTFS"))
+addCommandAlias("testSeaweedFS", testOnStorage("SEAWEEDFS"))
+addCommandAlias("testGarage", testOnStorage("GARAGE"))
+addCommandAlias("testGarageStaticKey", testOnStorage("GARAGE_STATIC_KEY"))

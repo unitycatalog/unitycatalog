@@ -91,6 +91,9 @@ public abstract class BaseExceptionHandler implements ExceptionHandlerFunction {
     if (cause instanceof BaseException be) {
       return be;
     }
+    if (StorageExceptions.isStorageFailure(cause)) {
+      return StorageExceptions.toGeneralError(cause);
+    }
     if (cause instanceof JWTVerificationException) {
       // Use a generic message to avoid leaking JWT verification details to the client
       return wrapException(ErrorCode.UNAUTHENTICATED, "Invalid access token.", cause);

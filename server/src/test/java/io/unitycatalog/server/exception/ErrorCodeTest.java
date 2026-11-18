@@ -26,6 +26,9 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.delta.model.DeltaErrorType;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.List;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
@@ -40,8 +43,10 @@ import org.apache.iceberg.exceptions.ServiceUnavailableException;
 import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 import org.apache.iceberg.rest.responses.ErrorResponseParser;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import software.amazon.awssdk.core.exception.SdkClientException;
 
 /**
  * Pins the response each API sends for every {@link ErrorCode}, so a change to a status or an error
@@ -144,6 +149,34 @@ public class ErrorCodeTest {
     assertThat(delta.status().code()).isEqualTo(expected.deltaStatus());
     assertThat(deltaError.path("code").asInt()).isEqualTo(expected.deltaStatus());
     assertThat(deltaError.path("type").asText()).isEqualTo(expected.deltaType().getValue());
+  }
+
+  @Test
+  public void everyApiReportsStorageFailuresAsAGeneralError() throws Exception {
+    SdkClientException storage = SdkClientException.create("Connect to storage.example.com failed");
+    for (Throwable failure :
+        List.of(
+            storage,
+            new UncheckedIOException(new IOException("read failed", storage)),
+            // Would be INVALID_ARGUMENT without the storage failure in its causes.
+            new IllegalArgumentException("bad location", storage))) {
+      for (BaseExceptionHandler handler :
+          List.of(
+              GlobalExceptionHandler.INSTANCE,
+              IcebergRestExceptionHandler.INSTANCE,
+              DeltaApiExceptionHandler.INSTANCE)) {
+        AggregatedHttpResponse response = errorResponse(handler, failure);
+        assertThat(response.status().code()).isEqualTo(500);
+        assertThat(response.contentUtf8())
+            .contains("Failed to access storage.")
+            .doesNotContain("storage.example.com");
+      }
+    }
+    // An error the server already chose is reported as it is, whatever its cause.
+    BaseException chosen = new BaseException(ErrorCode.NOT_FOUND, "Table not found", storage);
+    assertThat(errorResponse(GlobalExceptionHandler.INSTANCE, chosen).status().code())
+        .isEqualTo(404);
+    assertThat(StorageExceptions.isStorageFailure(new RuntimeException(chosen))).isFalse();
   }
 
   private static AggregatedHttpResponse errorResponse(

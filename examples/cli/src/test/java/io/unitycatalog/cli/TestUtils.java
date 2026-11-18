@@ -16,20 +16,11 @@ public class TestUtils {
   public static ObjectMapper objectMapper = new ObjectMapper();
 
   public static JsonNode executeCliCommand(List<String> args) {
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    PrintStream printStream = new PrintStream(outputStream);
-    PrintStream oldOut = System.out;
-    String output;
+    String output = executeCliCommandForOutput(args);
     try {
-      System.setOut(printStream);
-      UnityCatalogCli.main(args.toArray(String[]::new));
-      System.out.flush();
-      output = outputStream.toString();
       return parseJsonOutput(output);
     } catch (JsonProcessingException e) {
       System.out.println("Error parsing output: " + e.getMessage());
-    } finally {
-      System.setOut(oldOut);
     }
     return null;
   }
@@ -38,6 +29,26 @@ public class TestUtils {
     List<String> commandLine = new ArrayList<>(args);
     addServerAndAuthParams(commandLine, serverConfig);
     return executeCliCommand(commandLine);
+  }
+
+  /** Runs a CLI command and returns what it printed, for commands whose output is not JSON. */
+  public static String executeCliCommandForOutput(ServerConfig serverConfig, List<String> args) {
+    List<String> commandLine = new ArrayList<>(args);
+    addServerAndAuthParams(commandLine, serverConfig);
+    return executeCliCommandForOutput(commandLine);
+  }
+
+  private static String executeCliCommandForOutput(List<String> args) {
+    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    PrintStream oldOut = System.out;
+    try {
+      System.setOut(new PrintStream(outputStream));
+      UnityCatalogCli.main(args.toArray(String[]::new));
+      System.out.flush();
+      return outputStream.toString();
+    } finally {
+      System.setOut(oldOut);
+    }
   }
 
   private static JsonNode parseJsonOutput(String output) throws JsonProcessingException {

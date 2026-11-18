@@ -12,9 +12,9 @@ EXECUTOR_MAX_MEMORY_LIMIT = _EnvironmentVariable(
     "EXECUTOR_MAX_MEMORY_LIMIT",
     int,
     100,
-    "Maximum memory limit for the executor measured in MB. In sandbox mode, this is the virtual memory "
-    "the function can allocate on top of the address space the forked process inherits. In the "
-    "Databricks client's local mode, it caps the whole subprocess.",
+    "Maximum memory limit for the executor measured in MB. In sandbox mode, this is the virtual "
+    "memory the function can allocate on top of the address space the forked process inherits. "
+    "In the Databricks client's local mode, it caps the whole subprocess.",
 )
 
 EXECUTOR_TIMEOUT = _EnvironmentVariable(

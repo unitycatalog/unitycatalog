@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.unitycatalog.server.utils.NormalizedURL;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -104,6 +105,30 @@ public class AwsPolicyGeneratorTest {
     assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
         .map(JsonNode::asText)
         .containsExactly(expectedPath, expectedPath + "/", expectedPath + "/*");
+  }
+
+  @Test
+  public void testS3CompatiblePolicyUsesAwsPartitionAndOmitsKms() throws Exception {
+    // A non-AWS role ARN format must not leak into the S3 resource ARNs these stores expect.
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE),
+            List.of(NormalizedURL.from("s3://compat-bucket/data")),
+            "arn:minio:iam:::role/uc-role",
+            Region.US_EAST_1,
+            /* isS3Compatible= */ true);
+
+    List<String> resources = new ArrayList<>();
+    JSON_MAPPER
+        .readTree(policy)
+        .get("Statement")
+        .forEach(statement -> statement.path("Resource").forEach(r -> resources.add(r.asText())));
+    assertThat(resources)
+        .containsExactly(
+            "arn:aws:s3:::compat-bucket/data/*",
+            "arn:aws:s3:::compat-bucket/data",
+            "arn:aws:s3:::compat-bucket");
+    assertThat(policy).doesNotContain("kms:");
   }
 
   @Test

@@ -39,6 +39,11 @@ public final class DeltaCredentialsMapper {
       config.setS3AccessKeyId(aws.getAccessKeyId());
       config.setS3SecretAccessKey(aws.getSecretAccessKey());
       config.setS3SessionToken(aws.getSessionToken());
+      if (aws.getS3Endpoint() != null) {
+        // Requests to it always use path-style addressing, which the API implies.
+        config.setS3Endpoint(aws.getS3Endpoint());
+        config.setClientRegion(aws.getS3Region());
+      }
     }
     var azure = credentials.getAzureUserDelegationSas();
     if (azure != null) {

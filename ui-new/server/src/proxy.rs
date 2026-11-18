@@ -6,7 +6,7 @@ use axum::Json;
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
+use crate::{AppState, FORWARDED_HEADERS};
 
 const MAX_RESPONSE_SIZE: usize = 4 * 1024 * 1024;
 
@@ -92,6 +92,14 @@ pub async fn call_handler(
             "serverUrl is not supported",
         );
     }
+    // The browser's Authorization header is the one source of a bearer token.
+    if !req.token.is_empty() {
+        return connect_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_argument",
+            "token is not supported; send an Authorization header",
+        );
+    }
 
     let method = if req.method.is_empty() {
         reqwest::Method::GET
@@ -132,16 +140,10 @@ pub async fn call_handler(
         rb = rb.query(&query);
     }
 
-    // Forward the browser's session cookie to UC (cookie-based auth).
-    if let Some(cookie) = headers.get(header::COOKIE) {
-        rb = rb.header(header::COOKIE, cookie);
-    }
-    if let Some(authorization) = headers.get(header::AUTHORIZATION) {
-        rb = rb.header(header::AUTHORIZATION, authorization);
-    }
-    // Optional explicit bearer token (paste-token style); usually empty.
-    if !req.token.is_empty() {
-        rb = rb.bearer_auth(&req.token);
+    for name in FORWARDED_HEADERS {
+        if let Some(value) = headers.get(&name) {
+            rb = rb.header(name, value);
+        }
     }
     if !req.json_body.is_empty() {
         let content_type = if req.content_type.is_empty() {
