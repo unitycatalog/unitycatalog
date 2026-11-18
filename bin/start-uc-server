@@ -24,10 +24,21 @@ build_sample_database() {
   fi
 }
 
+# This function succeeds when its argument is a number the option parser takes as a port value: an
+# optional + or -, then digits, within the range of an int.
+is_port_number() {
+  local digits=${1#[+-]} limit=2147483647
+  [ -n "$digits" ] && [ -z "${digits//[0-9]/}" ] || return 1
+  [ "${1:0:1}" = "-" ] && limit=2147483648
+  digits=${digits#"${digits%%[!0]*}"}
+  [ "${#digits}" -le 10 ] && (( 10#${digits:-0} <= limit ))
+}
+
 # This function succeeds when the command line starts the server: it holds nothing but the port
-# options (one or two dashes, the start of the name, the value after a space or an =) and words that
-# are not options. A -- ends the options: the words after it are not options. A schema command,
-# --version, --help or an unknown option does not start it.
+# options (one or two dashes, the start of the name, the value after a space, an = or, for -p, right
+# after it) and words that are not options. A port value is a number the option parser takes. A --
+# ends the options: the words after it are not options. A schema command, --version, --help or an
+# unknown option does not start it.
 starts_server() {
   local arg long name
   while [ $# -gt 0 ]; do
@@ -35,7 +46,7 @@ starts_server() {
     shift
     case "$arg" in
       --) return 0 ;;
-      -p[0-9]*|-) continue ;;
+      -) continue ;;
       -*) ;;
       *) continue ;;
     esac
@@ -46,16 +57,21 @@ starts_server() {
     if [ "$long" = "$arg" ] && [ "${#name}" -lt 2 ] && [ "$name" != p ]; then
       return 1
     fi
-    [[ port == "$name"* || obs-port == "$name"* ]] || return 1
-    case "$arg" in
-      *=*) ;;
-      *)
-        # The value is the next word, which an option does not start.
-        [ $# -ge 1 ] || return 1
-        case "$1" in -*) return 1 ;; esac
-        shift
-        ;;
-    esac
+    if [[ port == "$name"* || obs-port == "$name"* ]]; then
+      case "$arg" in
+        *=*) is_port_number "${arg#*=}" || return 1 ;;
+        *)
+          # The value is the next word.
+          [ $# -ge 1 ] && is_port_number "$1" || return 1
+          shift
+          ;;
+      esac
+    elif [ "$long" = "$arg" ] && [ "${name:0:1}" = p ] && [[ "$arg" != *=* ]]; then
+      # -p with its value right after it.
+      is_port_number "${name:1}" || return 1
+    else
+      return 1
+    fi
   done
 }
 
