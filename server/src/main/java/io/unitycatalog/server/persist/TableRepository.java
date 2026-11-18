@@ -52,8 +52,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.iceberg.view.ViewMetadata;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -757,6 +759,50 @@ public class TableRepository {
         Optional.empty(),
         Optional.of(metadataLocation),
         (session, dao, tableInfo) -> tableInfo);
+  }
+
+  public record CreatedIcebergView(TableInfo view, ViewMetadata metadata) {}
+
+  public CreatedIcebergView createViewForIceberg(
+      CreateTable request, Function<TableInfo, ViewMetadata> metadataWriter) {
+    if (request.getTableType() != TableType.VIEW) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Expected an ordinary view");
+    }
+    return createTableImpl(
+        request,
+        Optional.empty(),
+        Optional.empty(),
+        (session, dao, info) -> {
+          ViewMetadata metadata = metadataWriter.apply(info);
+          dao.setIcebergViewMetadataLocation(metadata.metadataFileLocation());
+          return new CreatedIcebergView(info, metadata);
+        });
+  }
+
+  public record IcebergViewState(UUID viewId, String metadataLocation) {}
+
+  /** Read the identity and metadata pointer of a view created through IRC. */
+  public IcebergViewState getIcebergViewState(String catalog, String schema, String name) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTableOrThrow(session, catalog, schema, name);
+          requireIcebergView(dao, name);
+          return new IcebergViewState(dao.getId(), dao.getIcebergViewMetadataLocation());
+        },
+        "Failed to load view " + name,
+        /* readOnly= */ true);
+  }
+
+  private static void requireIcebergView(TableInfoDAO dao, String name) {
+    if (!TableType.VIEW.getValue().equals(dao.getType())
+        || dao.getIcebergViewMetadataLocation() == null) {
+      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "View does not exist: " + name);
+    }
+  }
+
+  public TableInfoDAO deleteViewForIceberg(String catalog, String schema, String name) {
+    return deleteTable(catalog, schema, name, dao -> requireIcebergView(dao, name));
   }
 
   /**
