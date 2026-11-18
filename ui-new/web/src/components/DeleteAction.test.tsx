@@ -17,7 +17,7 @@ describe("DeleteAction", () => {
   });
 
   async function confirmDelete() {
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete table" }));
     await userEvent.type(
       screen.getByLabelText("Enter events to confirm"),
       "events",
@@ -37,7 +37,7 @@ describe("DeleteAction", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete table" }));
     const confirm = screen.getByRole("button", { name: "Delete permanently" });
     expect(confirm).toBeDisabled();
 
@@ -66,7 +66,7 @@ describe("DeleteAction", () => {
     await confirmDelete();
 
     await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce());
-    expect(toast.success).toHaveBeenCalledWith("table deleted");
+    expect(toast.success).toHaveBeenCalledWith("Table deleted");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -100,13 +100,13 @@ describe("DeleteAction", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete table" }));
     await userEvent.type(
       screen.getByLabelText("Enter events to confirm"),
       "events",
     );
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete table" }));
 
     expect(screen.getByLabelText("Enter events to confirm")).toHaveValue("");
     expect(
@@ -122,10 +122,10 @@ describe("DeleteAction", () => {
         onDelete={vi.fn()}
       />,
     );
-    const trigger = screen.getByRole("button", { name: "Delete" });
+    const trigger = screen.getByRole("button", { name: "Delete table" });
 
     await userEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Delete table?" });
+    const dialog = screen.getByRole("dialog", { name: "Delete table events?" });
     expect(screen.getByLabelText("Enter events to confirm")).toHaveFocus();
     for (let step = 0; step < 4; step += 1) {
       await userEvent.tab();

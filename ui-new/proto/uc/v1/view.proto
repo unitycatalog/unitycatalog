@@ -49,7 +49,7 @@ message ListViewsResponse {
   PageResponse page = 2;
 }
 
-// GetViewRequest selects a metric view.
+// GetViewRequest selects a metric view. A table at this name is NOT_FOUND.
 message GetViewRequest {
   SchemaObjectRef view = 1 [(buf.validate.field).required = true];
 }
@@ -86,9 +86,9 @@ message CreateViewResponse {
   MetricViewInfo view = 1 [(buf.validate.field).required = true];
 }
 
-// DeleteViewRequest deletes the UC table resource at this name. Tables share
-// the same underlying REST resource, so callers must select the correct typed
-// service before deletion.
+// DeleteViewRequest deletes a metric view. Tables share UC's table resource,
+// so the bridge reads the kind first; a table at this name is
+// FAILED_PRECONDITION and nothing is deleted.
 //
 // UC has no native table update operation, so the UI contract intentionally
 // exposes create and delete without destructive delete-and-recreate editing.

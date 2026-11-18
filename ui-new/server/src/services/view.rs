@@ -1,14 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Map};
 
 use super::{
-    column_value, dependencies_value, object_full_name, page_query, properties_value, UiRpc,
+    column_value, dependencies_value, object_full_name, page_query, properties_value, TableKind,
+    UiRpc,
 };
 use crate::mapping;
 use crate::proto::uc::v1::*;
-use crate::upstream::path_segment;
 
 #[protovalidate_buffa::connect_impl]
 impl ViewService for UiRpc {
@@ -27,7 +27,7 @@ impl ViewService for UiRpc {
         let value = self.upstream.get(&ctx, "/tables", query).await?;
         let views = mapping::required_array(&value, "tables")?
             .iter()
-            .filter(|table| table.get("table_type").and_then(Value::as_str) == Some("METRIC_VIEW"))
+            .filter(|table| TableKind::of(table) == TableKind::MetricView)
             .map(mapping::metric_view_summary)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListViewsResponse {
@@ -44,18 +44,8 @@ impl ViewService for UiRpc {
     ) -> ServiceResult<GetViewResponse> {
         let name = object_full_name(&request.view);
         let value = self
-            .upstream
-            .get(
-                &ctx,
-                &format!("/tables/{}", path_segment(&name)),
-                Vec::new(),
-            )
+            .get_table_resource(&ctx, &name, TableKind::MetricView)
             .await?;
-        if value.get("table_type").and_then(Value::as_str) != Some("METRIC_VIEW") {
-            return Err(ConnectError::not_found(format!(
-                "Metric view not found: {name}"
-            )));
-        }
         Ok(Response::new(GetViewResponse {
             view: mapping::metric_view_info(&value)?.into(),
             ..Default::default()
@@ -128,12 +118,7 @@ impl ViewService for UiRpc {
         request: ServiceRequest<'_, DeleteViewRequest>,
     ) -> ServiceResult<DeleteViewResponse> {
         let name = object_full_name(&request.view);
-        self.upstream
-            .delete(
-                &ctx,
-                &format!("/tables/{}", path_segment(&name)),
-                Vec::new(),
-            )
+        self.delete_table_resource(&ctx, &name, TableKind::MetricView)
             .await?;
         Ok(Response::new(DeleteViewResponse::default()))
     }

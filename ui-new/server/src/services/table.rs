@@ -1,12 +1,12 @@
-use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
+use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
 use super::{
-    column_value, data_source_format, object_full_name, page_query, properties_value, UiRpc,
+    column_value, data_source_format, object_full_name, page_query, properties_value, TableKind,
+    UiRpc,
 };
 use crate::mapping;
 use crate::proto::uc::v1::*;
-use crate::upstream::path_segment;
 
 #[protovalidate_buffa::connect_impl]
 impl TableService for UiRpc {
@@ -25,7 +25,7 @@ impl TableService for UiRpc {
         let value = self.upstream.get(&ctx, "/tables", query).await?;
         let tables = mapping::required_array(&value, "tables")?
             .iter()
-            .filter(|table| table.get("table_type").and_then(Value::as_str) != Some("METRIC_VIEW"))
+            .filter(|table| TableKind::of(table) == TableKind::Table)
             .map(mapping::table_summary)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListTablesResponse {
@@ -42,18 +42,8 @@ impl TableService for UiRpc {
     ) -> ServiceResult<GetTableResponse> {
         let full_name = object_full_name(&request.table);
         let value = self
-            .upstream
-            .get(
-                &ctx,
-                &format!("/tables/{}", path_segment(&full_name)),
-                Vec::new(),
-            )
+            .get_table_resource(&ctx, &full_name, TableKind::Table)
             .await?;
-        if value.get("table_type").and_then(Value::as_str) == Some("METRIC_VIEW") {
-            return Err(ConnectError::not_found(format!(
-                "Table not found: {full_name}"
-            )));
-        }
         Ok(Response::new(GetTableResponse {
             table: mapping::table_info(&value)?.into(),
             ..Default::default()
@@ -113,12 +103,7 @@ impl TableService for UiRpc {
         request: ServiceRequest<'_, DeleteTableRequest>,
     ) -> ServiceResult<DeleteTableResponse> {
         let full_name = object_full_name(&request.table);
-        self.upstream
-            .delete(
-                &ctx,
-                &format!("/tables/{}", path_segment(&full_name)),
-                Vec::new(),
-            )
+        self.delete_table_resource(&ctx, &full_name, TableKind::Table)
             .await?;
         Ok(Response::new(DeleteTableResponse::default()))
     }

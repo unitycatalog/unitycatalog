@@ -1,5 +1,5 @@
 use buffa::EnumValue;
-use connectrpc::{ConnectError, Router};
+use connectrpc::{ConnectError, RequestContext, Router};
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ use crate::proto::uc::v1::{
     ModelServiceExt, SchemaServiceExt, TableServiceExt, UnityProxyServiceExt, ViewServiceExt,
     VolumeServiceExt, VolumeType,
 };
-use crate::upstream::Upstream;
+use crate::upstream::{path_segment, Upstream};
 use crate::AppState;
 
 mod catalog;
@@ -34,6 +34,77 @@ impl UiRpc {
             state,
         }
     }
+
+    /// Reads the UC table resource at `full_name`. A resource of the other kind
+    /// is NOT_FOUND to the typed service asking for `expected`.
+    async fn get_table_resource(
+        &self,
+        ctx: &RequestContext,
+        full_name: &str,
+        expected: TableKind,
+    ) -> Result<Value, ConnectError> {
+        let value = self
+            .upstream
+            .get(ctx, &table_path(full_name), Vec::new())
+            .await?;
+        match kind_mismatch(&value, full_name, expected) {
+            Some(message) => Err(ConnectError::not_found(message)),
+            None => Ok(value),
+        }
+    }
+
+    /// Deletes the UC table resource at `full_name` only if it is `expected`.
+    /// UC's delete takes just the name, so the kind is read first.
+    async fn delete_table_resource(
+        &self,
+        ctx: &RequestContext,
+        full_name: &str,
+        expected: TableKind,
+    ) -> Result<(), ConnectError> {
+        let path = table_path(full_name);
+        let value = self.upstream.get(ctx, &path, Vec::new()).await?;
+        if let Some(message) = kind_mismatch(&value, full_name, expected) {
+            return Err(ConnectError::failed_precondition(format!(
+                "{message}; nothing was deleted"
+            )));
+        }
+        self.upstream.delete(ctx, &path, Vec::new()).await
+    }
+}
+
+/// Tables and metric views share UC's `/tables/{full_name}` resource; the typed
+/// table and view services each act only on their own kind.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TableKind {
+    Table,
+    MetricView,
+}
+
+impl TableKind {
+    fn of(table: &Value) -> Self {
+        if table.get("table_type").and_then(Value::as_str) == Some("METRIC_VIEW") {
+            Self::MetricView
+        } else {
+            Self::Table
+        }
+    }
+
+    fn noun(self) -> &'static str {
+        match self {
+            Self::Table => "a table",
+            Self::MetricView => "a metric view",
+        }
+    }
+}
+
+fn kind_mismatch(table: &Value, full_name: &str, expected: TableKind) -> Option<String> {
+    let actual = TableKind::of(table);
+    (actual != expected)
+        .then(|| format!("{full_name} is {}, not {}", actual.noun(), expected.noun()))
+}
+
+fn table_path(full_name: &str) -> String {
+    format!("/tables/{}", path_segment(full_name))
 }
 
 pub(crate) fn router(state: AppState) -> Router {

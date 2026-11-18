@@ -467,50 +467,105 @@ async fn list_tables_omits_metric_views() {
 }
 
 #[tokio::test]
-async fn table_and_view_deletes_use_the_shared_table_resource_directly() {
-    let uc = MockServer::start().await;
-    Mock::given(method("DELETE"))
-        .and(path(
-            "/api/2.1/unity-catalog/tables/main%2Edefault%2Emetrics",
-        ))
-        .respond_with(ResponseTemplate::new(200))
-        .expect(1)
-        .mount(&uc)
-        .await;
-    Mock::given(method("DELETE"))
-        .and(path(
-            "/api/2.1/unity-catalog/tables/main%2Edefault%2Eevents",
-        ))
-        .respond_with(ResponseTemplate::new(200))
-        .expect(1)
-        .mount(&uc)
-        .await;
-    let app = build_app(uc.uri());
-
-    let table_response = app
-        .clone()
-        .oneshot(rpc_request(
+async fn table_and_view_rpcs_act_only_on_their_own_kind() {
+    // Tables and metric views share UC's table resource. Each typed service reads
+    // the kind first: a get of the other kind is not found, and a delete of the
+    // other kind is refused before UC is asked to delete anything.
+    let cases = [
+        ("TableService", "GetTable", "table", "MANAGED", None),
+        ("ViewService", "GetView", "view", "METRIC_VIEW", None),
+        (
+            "TableService",
+            "GetTable",
+            "table",
+            "METRIC_VIEW",
+            Some((
+                "not_found",
+                "main.default.obj is a metric view, not a table",
+            )),
+        ),
+        (
+            "ViewService",
+            "GetView",
+            "view",
+            "EXTERNAL",
+            Some((
+                "not_found",
+                "main.default.obj is a table, not a metric view",
+            )),
+        ),
+        ("TableService", "DeleteTable", "table", "MANAGED", None),
+        ("ViewService", "DeleteView", "view", "METRIC_VIEW", None),
+        (
             "TableService",
             "DeleteTable",
-            serde_json::json!({
-                "table": {"catalogName": "main", "schemaName": "default", "name": "metrics"}
-            }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(table_response.status(), StatusCode::OK);
-
-    let view_response = app
-        .oneshot(rpc_request(
+            "table",
+            "METRIC_VIEW",
+            Some((
+                "failed_precondition",
+                "main.default.obj is a metric view, not a table; nothing was deleted",
+            )),
+        ),
+        (
             "ViewService",
             "DeleteView",
-            serde_json::json!({
-                "view": {"catalogName": "main", "schemaName": "default", "name": "events"}
-            }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(view_response.status(), StatusCode::OK);
+            "view",
+            "EXTERNAL",
+            Some((
+                "failed_precondition",
+                "main.default.obj is a table, not a metric view; nothing was deleted",
+            )),
+        ),
+    ];
+
+    for (service, rpc, field, table_type, refusal) in cases {
+        let uc = MockServer::start().await;
+        let resource = "/api/2.1/unity-catalog/tables/main%2Edefault%2Eobj";
+        Mock::given(method("GET"))
+            .and(path(resource))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "name": "obj",
+                "catalog_name": "main",
+                "schema_name": "default",
+                "table_type": table_type
+            })))
+            .expect(1)
+            .mount(&uc)
+            .await;
+        let deletes = u64::from(rpc.starts_with("Delete") && refusal.is_none());
+        Mock::given(method("DELETE"))
+            .and(path(resource))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(deletes)
+            .mount(&uc)
+            .await;
+
+        let response = build_app(uc.uri())
+            .oneshot(rpc_request(
+                service,
+                rpc,
+                serde_json::json!({
+                    field: {"catalogName": "main", "schemaName": "default", "name": "obj"}
+                }),
+            ))
+            .await
+            .unwrap();
+
+        let status = response.status();
+        let json = body_json(response).await;
+        match refusal {
+            None => assert_eq!(
+                status,
+                StatusCode::OK,
+                "{service}/{rpc} on {table_type}: {json}"
+            ),
+            Some((code, message)) => {
+                assert_eq!(json["code"], code, "{service}/{rpc} on {table_type}");
+                assert_eq!(json["message"], message, "{service}/{rpc} on {table_type}");
+            }
+        }
+        uc.verify().await;
+    }
 }
 
 #[tokio::test]

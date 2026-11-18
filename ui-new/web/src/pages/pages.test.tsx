@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -44,6 +44,7 @@ import FunctionDetails from "@/pages/FunctionDetails";
 import ModelDetails from "@/pages/ModelDetails";
 import ModelVersionDetails from "@/pages/ModelVersionDetails";
 import MetricViewDetails from "@/pages/MetricViewDetails";
+import { navigateMock } from "@/test/tanstack-router-mock";
 
 const identity = { catalogName: "main", schemaName: "default" };
 const rpc: RpcHandlers = {
@@ -259,6 +260,84 @@ describe("MetricViewDetails", () => {
     expect(await screen.findByText("total")).toBeInTheDocument();
     expect(screen.getByText(/source: main.default.events/)).toBeInTheDocument();
   });
+});
+
+// Tables and metric views share one UC resource, so each page's delete must
+// refuse the other kind rather than remove it.
+describe("delete on a table or metric view page", () => {
+  beforeEach(() => {
+    toastError.mockClear();
+    navigateMock.mockClear();
+  });
+
+  const refuse = (message: string, code: Code) => () => {
+    throw new ConnectError(message, code);
+  };
+  const tableIsNotAView = "main.default.events is a table, not a metric view";
+  const viewIsNotATable = "main.default.events is a metric view, not a table";
+
+  it.each([
+    {
+      kind: "metric view",
+      page: <MetricViewDetails catalog="main" schema="default" view="events" />,
+      mismatch: tableIsNotAView,
+      rpc: {
+        ...rpc,
+        views: {
+          getView: refuse(tableIsNotAView, Code.NotFound),
+          deleteView: refuse(
+            `${tableIsNotAView}; nothing was deleted`,
+            Code.FailedPrecondition,
+          ),
+        },
+      },
+    },
+    {
+      kind: "table",
+      page: <TableDetails catalog="main" schema="default" table="events" />,
+      mismatch: viewIsNotATable,
+      rpc: {
+        ...rpc,
+        tables: {
+          getTable: refuse(viewIsNotATable, Code.NotFound),
+          deleteTable: refuse(
+            `${viewIsNotATable}; nothing was deleted`,
+            Code.FailedPrecondition,
+          ),
+        },
+      },
+    },
+  ])(
+    "keeps the $kind delete available but reports a refused other kind",
+    async ({ kind, page, mismatch, rpc }) => {
+      renderWithProviders(page, { handler, rpc });
+      expect(
+        await screen.findByText(`[not_found] ${mismatch}`),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole("button", { name: `Delete ${kind}` }),
+      );
+      expect(
+        screen.getByRole("dialog", { name: `Delete ${kind} events?` }),
+      ).toBeInTheDocument();
+      await userEvent.type(
+        screen.getByLabelText("Enter events to confirm"),
+        "events",
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: "Delete permanently" }),
+      );
+
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          `[failed_precondition] ${mismatch}; nothing was deleted`,
+        ),
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(navigateMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("VolumeDetails", () => {
