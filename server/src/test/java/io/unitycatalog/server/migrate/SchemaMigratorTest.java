@@ -178,7 +178,9 @@ public class SchemaMigratorTest {
     /** The schema is neither the one before the failed step nor the one after it. */
     SCHEMA_NEITHER_BEFORE_NOR_AFTER,
     /** The failed step is below the recorded version, so it is not one that the run retries. */
-    FAILED_BELOW_THE_RECORDED_VERSION
+    FAILED_BELOW_THE_RECORDED_VERSION,
+    /** The failed step's script was edited after it failed. */
+    EDITED_FAILED_STEP
   }
 
   @ParameterizedTest
@@ -216,6 +218,15 @@ public class SchemaMigratorTest {
                     + " WHERE %1$sversion%1$s = '2'")
                 .formatted(identifierQuote(db.dataSource())));
         message = "Detected failed migration to version 2";
+      }
+      case EDITED_FAILED_STEP -> {
+        UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+        UpgradeTestUtils.execute(
+            db,
+            ("UPDATE %1$suc_schema_history%1$s SET %1$schecksum%1$s = %1$schecksum%1$s + 1"
+                    + " WHERE %1$sversion%1$s = '1000'")
+                .formatted(identifierQuote(db.dataSource())));
+        message = "Its script differs from the one that failed";
       }
     }
 

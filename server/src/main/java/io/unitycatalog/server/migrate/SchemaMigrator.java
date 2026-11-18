@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -615,7 +616,8 @@ public final class SchemaMigrator implements AutoCloseable {
    * Throws unless Flyway's validation of the schema history passes: no failed step, no edited step
    * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
    * recorded version may be pending and may have failed: the upgrade runs them. A failed step that
-   * is not one of this build's pending steps, such as a newer release's, is still refused.
+   * is not one of this build's pending steps, such as a newer release's, or whose script changed
+   * since it failed, is still refused.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
@@ -626,13 +628,33 @@ public final class SchemaMigrator implements AutoCloseable {
     if (upgrading) {
       configuration.ignoreMigrationPatterns("*:pending");
     }
+    Flyway flyway = configuration.load();
+    // Flyway reports a failed step before it compares checksums, so an edit to it goes unreported.
+    Set<String> edited =
+        Arrays.stream(flyway.info().all())
+            .filter(
+                m ->
+                    m.getVersion() != null
+                        && retried.contains(m.getVersion().getVersion())
+                        && m.getState().isFailed()
+                        && !Objects.equals(m.getAppliedChecksum(), m.getResolvedChecksum()))
+            .map(m -> m.getVersion().getVersion())
+            .collect(Collectors.toSet());
     String errors =
-        configuration.load().validateWithResult().invalidMigrations.stream()
+        flyway.validateWithResult().invalidMigrations.stream()
             .filter(
                 m ->
                     !(m.errorDetails.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION
-                        && retried.contains(m.version)))
-            .map(m -> m.errorDetails.errorMessage)
+                        && retried.contains(m.version)
+                        && !edited.contains(m.version)))
+            .map(
+                m ->
+                    m.errorDetails.errorMessage
+                        + (edited.contains(m.version)
+                            ? "\nIts script differs from the one that failed (checksum), so it is"
+                                + " not tried again: run the release whose step failed, or restore"
+                                + " the backup."
+                            : ""))
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
       throw new IllegalStateException(
