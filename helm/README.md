@@ -834,7 +834,7 @@ Supported values: `flyway` (before the server starts, an init container brings t
 date with `bin/start-uc-server --upgrade-schema`), `hibernate` (Hibernate updates the schema at
 start, as before 0.8; a temporary fallback).
 With `server.config.override`, the chart can't see the override's `server.schema-management`:
-set this value to match it.
+set this value to match it. `server.config.extraProperties` can't set `server.schema-management`.
 See docs/server/upgrades.md.
 </td>
 		</tr>

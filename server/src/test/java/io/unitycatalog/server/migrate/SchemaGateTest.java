@@ -3,23 +3,30 @@ package io.unitycatalog.server.migrate;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
-import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
+import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Properties;
 import javax.sql.DataSource;
@@ -82,26 +89,85 @@ public class SchemaGateTest {
   }
 
   @Test
-  void hibernateModeRefusesANewerSchemaInHibernatesDefaultSchema() {
-    DatabaseKind kind = DatabaseKind.of(db.dataSource());
-    assumeFalse(kind == DatabaseKind.MYSQL, "MySQL has no schemas within a database");
-    // The newer release's steps ran in schema ucx; the connection's own schema stays empty.
-    UpgradeTestUtils.execute(db, "CREATE SCHEMA ucx");
-    Properties inUcx = db.hibernateProperties();
-    String url = inUcx.getProperty("hibernate.connection.url");
-    inUcx.setProperty(
-        "hibernate.connection.url",
-        kind == DatabaseKind.H2
-            ? url + ";SCHEMA=UCX"
-            : url + (url.contains("?") ? "&" : "?") + "currentSchema=ucx");
-    try (HikariDataSource pool = new HikariDataSource(HibernateConfigurator.hikariConfig(inUcx))) {
-      new SchemaMigrator(pool, List.of("classpath:db/test-steps/ahead")).upgradeSchema();
+  void serverStartsInHibernateModeFromTheServerProperties() throws Exception {
+    // No injected configurator: the server reads server.schema-management itself. The test
+    // environment's in-memory database is the server's own, so this does not use db.
+    Properties properties = new Properties();
+    properties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    properties.setProperty(Property.SCHEMA_MANAGEMENT.getKey(), "hibernate");
+    properties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), storageRoot.toUri().toString());
+    int port;
+    try (ServerSocket socket = new ServerSocket(0)) {
+      port = socket.getLocalPort();
     }
-    Properties hibernateMode = db.hibernateProperties();
-    hibernateMode.setProperty("hibernate.default_schema", "ucx");
+    UnityCatalogServer server =
+        UnityCatalogServer.builder()
+            .port(port)
+            .serverProperties(new ServerProperties(properties))
+            .build();
+    try (Connection connection =
+            DriverManager.getConnection("jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+        Statement statement = connection.createStatement()) {
+      server.start();
+      // Hibernate created the tables, and no schema step recorded a history.
+      assertThat(tableCount(statement, "UC_CATALOGS")).isOne();
+      assertThat(tableCount(statement, "UC_SCHEMA_HISTORY")).isZero();
+      // Leave the shared in-memory database empty for the next server, which sets it up itself.
+      statement.execute("DROP ALL OBJECTS");
+    } finally {
+      server.close();
+    }
+  }
 
-    assertThatThrownBy(() -> db.openHibernateConfigurator(hibernateMode, true).close())
+  private static int tableCount(Statement statement, String table) throws SQLException {
+    try (ResultSet rs =
+        statement.executeQuery(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '" + table + "'")) {
+      rs.next();
+      return rs.getInt(1);
+    }
+  }
+
+  @Test
+  void hibernateModeChecksWithAPoolOfOne() {
+    new SchemaMigrator(db.dataSource(), List.of("classpath:db/test-steps/ahead")).upgradeSchema();
+    Properties onePool = db.hibernateProperties();
+    onePool.setProperty("hibernate.hikari.maximumPoolSize", "1");
+    onePool.setProperty("hibernate.hikari.connectionTimeout", "1000");
+
+    assertThatThrownBy(() -> db.openHibernateConfigurator(onePool, true).close())
         .hasMessageContaining("The schema is newer than this release (version 1000");
+  }
+
+  @Test
+  void hibernateModeFailsWhenTheSchemaHistoryCannotBeRead() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    String q = DatabaseKind.of(db.dataSource()) == DatabaseKind.MYSQL ? "`" : "\"";
+    UpgradeTestUtils.execute(
+        db,
+        "ALTER TABLE %1$suc_schema_history%1$s RENAME COLUMN %1$sversion%1$s TO %1$sversion_x%1$s"
+            .formatted(q));
+
+    assertThatThrownBy(() -> TestServer.startWithHibernateManagedSchema(db, storageRoot))
+        .isInstanceOf(RuntimeException.class);
+  }
+
+  @Test
+  void hibernateModeLeavesTheConnectionsSchemaAndCatalogAlone() throws SQLException {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    String schema;
+    String catalog;
+    try (Connection connection = db.dataSource().getConnection()) {
+      schema = connection.getSchema();
+      catalog = connection.getCatalog();
+    }
+
+    try (HibernateConfigurator configurator =
+            db.openHibernateConfigurator(db.hibernateProperties(), true);
+        Connection connection = configurator.getDataSource().getConnection()) {
+      assertThat(connection.getSchema()).isEqualTo(schema);
+      assertThat(connection.getCatalog()).isEqualTo(catalog);
+    }
   }
 
   /**
@@ -109,15 +175,14 @@ public class SchemaGateTest {
    * of its own, started with {@code -Dhibernate.default_schema=ucx}.
    */
   @Test
-  void hibernateModeRefusesANewerSchemaInADefaultSchemaFromASystemProperty(@TempDir Path dir)
-      throws Exception {
+  void hibernateModeRefusesADefaultSchemaFromASystemProperty(@TempDir Path dir) throws Exception {
     Process process =
         new ProcessBuilder(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-Dhibernate.default_schema=ucx",
                 "-cp",
                 System.getProperty("java.class.path"),
-                ForkedNewerSchemaInDefaultSchema.class.getName(),
+                ForkedDefaultSchema.class.getName(),
                 dir.resolve("uc").toString())
             .redirectErrorStream(true)
             .start();
@@ -126,34 +191,18 @@ public class SchemaGateTest {
     assertThat(process.waitFor()).as(output).isZero();
   }
 
-  /** Exits with 0 when Hibernate mode refuses a newer release's schema history in schema ucx. */
-  public static final class ForkedNewerSchemaInDefaultSchema {
+  /** Exits with 0 when Hibernate mode refuses the default schema that the system property sets. */
+  public static final class ForkedDefaultSchema {
     public static void main(String[] args) {
       Properties properties = new Properties();
       properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       properties.setProperty("hibernate.connection.url", "jdbc:h2:file:" + args[0]);
       properties.setProperty("hibernate.connection.user", "sa");
-      Properties inUcx = new Properties();
-      inUcx.putAll(properties);
-      inUcx.setProperty("hibernate.connection.url", "jdbc:h2:file:" + args[0] + ";SCHEMA=UCX");
-      try (HikariDataSource pool =
-          new HikariDataSource(HibernateConfigurator.hikariConfig(properties))) {
-        try (var connection = pool.getConnection();
-            var statement = connection.createStatement()) {
-          statement.execute("CREATE SCHEMA ucx");
-        }
-      } catch (java.sql.SQLException e) {
-        throw new IllegalStateException(e);
-      }
-      try (HikariDataSource pool =
-          new HikariDataSource(HibernateConfigurator.hikariConfig(inUcx))) {
-        new SchemaMigrator(pool, List.of("classpath:db/test-steps/ahead")).upgradeSchema();
-      }
       try (HibernateConfigurator configurator = new HibernateConfigurator(properties, true)) {
-        System.out.println("Hibernate mode started on the newer schema");
+        System.out.println("Hibernate mode started with a default schema");
         System.exit(1);
-      } catch (IllegalStateException e) {
-        System.exit(e.getMessage().contains("The schema is newer than this release") ? 0 : 2);
+      } catch (IllegalArgumentException e) {
+        System.exit(e.getMessage().contains("hibernate.default_schema is not supported") ? 0 : 2);
       }
     }
   }
@@ -164,7 +213,7 @@ public class SchemaGateTest {
     DataSource otherProduct =
         UpgradeTestUtils.reportingProduct(db.dataSource(), "Some other database");
 
-    SchemaMigrator.refuseNewerSchema(otherProduct, db.hibernateProperties());
+    SchemaMigrator.refuseNewerSchema(otherProduct);
   }
 
   @Test

@@ -37,6 +37,9 @@ gcs.jsonKeyFilePath.{{ $index }}=/etc/conf/gcs-credentials-{{ $index }}.json
 {{- end }}
 
 {{- range $k, $v := .Values.server.config.extraProperties }}
+{{- if eq $k "server.schema-management" }}
+{{- fail "server.schema-management can't be set in server.config.extraProperties: set server.db.schemaManagement, which also decides whether the upgrade-schema init container runs." }}
+{{- end }}
 {{ $k }}={{ $v }}
 {{- end }}
 

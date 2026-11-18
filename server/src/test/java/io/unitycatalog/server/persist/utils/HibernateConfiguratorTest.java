@@ -14,6 +14,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class HibernateConfiguratorTest {
@@ -173,23 +174,54 @@ class HibernateConfiguratorTest {
         .hasMessageContaining(setting + "=create is not supported");
   }
 
-  @Test
-  void hibernateModeKeepsHibernatesOwnDefaultSchema() {
+  /** Hibernate mode refuses them too, so switching back to the schema steps stays possible. */
+  @ParameterizedTest
+  @CsvSource({
+    "hibernate.default_schema, false",
+    "hibernate.default_schema, true",
+    "hibernate.default_catalog, false",
+    "hibernate.default_catalog, true"
+  })
+  void refusesHibernatesOwnDefaultSchemaAndCatalog(
+      String setting, boolean schemaManagedByHibernate) {
     Properties properties = h2Properties();
-    properties.setProperty("hibernate.default_schema", "PUBLIC");
+    properties.setProperty(setting, "PUBLIC");
 
-    try (HibernateConfigurator configurator = new HibernateConfigurator(properties, true)) {
-      assertThat(configurator.getSessionFactory().isOpen()).isTrue();
-    }
+    assertThatThrownBy(() -> new HibernateConfigurator(properties, schemaManagedByHibernate))
+        .hasMessageContaining(setting + " is not supported")
+        .hasMessageContaining("set the schema in the JDBC URL instead");
   }
 
-  @Test
-  void refusesHibernatesOwnDefaultSchema() {
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "hibernate.hbm2ddl.auto=create-drop",
+        "hibernate.hbm2ddl.auto=create",
+        "jakarta.persistence.schema-generation.database.action=drop-and-create"
+      })
+  void hibernateModeKeepsRowsWhateverTheSchemaActionSays(String action, @TempDir Path dir)
+      throws SQLException {
     Properties properties = h2Properties();
-    properties.setProperty("hibernate.default_schema", "uc");
+    properties.setProperty("hibernate.connection.url", "jdbc:h2:file:" + dir.resolve("uc"));
+    String[] setting = action.split("=");
+    properties.setProperty(setting[0], setting[1]);
+    try (HibernateConfigurator first = new HibernateConfigurator(properties, true);
+        Connection connection = first.getDataSource().getConnection()) {
+      connection
+          .createStatement()
+          .execute(
+              "INSERT INTO uc_catalogs (id, name) VALUES ('00000000-0000-0000-0000-000000000001',"
+                  + " 'kept')");
+      connection.commit();
+    }
 
-    assertThatThrownBy(() -> new HibernateConfigurator(properties))
-        .hasMessageContaining("set the schema in the JDBC URL instead");
+    try (HibernateConfigurator second = new HibernateConfigurator(properties, true);
+        Connection connection = second.getDataSource().getConnection();
+        ResultSet rows =
+            connection.createStatement().executeQuery("SELECT name FROM uc_catalogs")) {
+      assertThat(rows.next()).isTrue();
+      assertThat(rows.getString(1)).isEqualTo("kept");
+    }
   }
 
   @ParameterizedTest

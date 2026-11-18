@@ -136,6 +136,18 @@ jobs:
             exit 1
           fi
           grep -qF 'driver.subPath is required' <<<"$err"
+          # The schema management mode comes from server.db.schemaManagement alone: flyway runs the upgrade-schema init
+          # container, hibernate does not, and extraProperties can't set it.
+          out="$(helm template uc helm)"
+          grep -qF 'server.schema-management=flyway' <<<"$out"
+          grep -qF -- '- name: upgrade-schema' <<<"$out"
+          out="$(helm template uc helm -f helm/ci/hibernate-values.yaml)"
+          grep -qF 'server.schema-management=hibernate' <<<"$out"
+          ! grep -qF -- '- name: upgrade-schema' <<<"$out" || exit 1
+          if err="$(helm template uc helm --set-string 'server.config.extraProperties.server\.schema-management=hibernate' 2>&1)"; then
+            exit 1
+          fi
+          grep -qF 'set server.db.schemaManagement' <<<"$err"
           # The driver jar goes on the module path, and the database name and URL parameters are encoded: + would
           # read as a space.
           out="$(helm template uc helm -f helm/ci/mysql-values.yaml --set-string 'server.db.mysqlConfig.dbName=uc+db' \

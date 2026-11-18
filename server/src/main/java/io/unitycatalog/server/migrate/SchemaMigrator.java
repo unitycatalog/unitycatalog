@@ -7,7 +7,6 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,7 +16,6 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -155,7 +153,7 @@ public final class SchemaMigrator implements AutoCloseable {
     config.setPoolName("schema-migrator");
     HikariDataSource pool = new HikariDataSource(config);
     try {
-      return new SchemaMigrator(pool, DatabaseKind.of(pool), List.of(), pool);
+      return new SchemaMigrator(pool, DatabaseKind.of(pool), List.of(), pool, true);
     } catch (RuntimeException e) {
       pool.close();
       throw e;
@@ -392,15 +390,18 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Also applies the steps in {@code extraLocations} (tests' own steps). */
   SchemaMigrator(DataSource dataSource, List<String> extraLocations) {
-    this(dataSource, DatabaseKind.of(dataSource), extraLocations, null);
+    this(dataSource, DatabaseKind.of(dataSource), extraLocations, null, true);
   }
 
   private SchemaMigrator(
       DataSource dataSource,
       DatabaseKind kind,
       List<String> extraLocations,
-      HikariDataSource ownedPool) {
-    requireCurrentSchema(dataSource, kind);
+      HikariDataSource ownedPool,
+      boolean requireCurrentSchema) {
+    if (requireCurrentSchema) {
+      requireCurrentSchema(dataSource, kind);
+    }
     this.dataSource = dataSource;
     this.kind = kind;
     List<String> locations = new ArrayList<>();
@@ -1236,32 +1237,40 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * For {@code server.schema-management=hibernate}, before Hibernate updates the schema: throws
-   * when the schema history in the schema Hibernate updates (its {@code hibernate.default_catalog}
-   * and {@code hibernate.default_schema} in {@code hibernateSettings}, else the connection's)
-   * records a step newer than this build's last, applied or failed, which Hibernate's update would
-   * change back. Changes nothing. When the history can't be read (for example a PostgreSQL
-   * connection without a current schema, or a database the schema steps don't support), logs that
-   * and checks nothing, since Hibernate mode doesn't need the schema steps.
+   * when the schema history in the connection's schema records a step newer than this build's last,
+   * applied or failed, which Hibernate's update would change back, or when an existing history
+   * can't be read. Changes nothing. Runs on a pool of its own that is closed before it returns, so
+   * the server's pool is untouched. Checks nothing on a database the schema steps don't support and
+   * on a PostgreSQL connection without a current schema, which Hibernate mode can still run on.
    */
-  public static void refuseNewerSchema(DataSource dataSource, Map<?, ?> hibernateSettings) {
-    String newest;
-    String latest;
+  public static void refuseNewerSchema(Properties hibernateProperties) {
+    HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
+    config.setMaximumPoolSize(POOL_SIZE);
+    config.setMinimumIdle(0);
+    config.setPoolName("schema-check");
+    try (HikariDataSource pool = new HikariDataSource(config)) {
+      refuseNewerSchema(pool);
+    }
+  }
+
+  static void refuseNewerSchema(DataSource dataSource) {
+    DatabaseKind kind;
     try {
-      SchemaMigrator migrator =
-          new SchemaMigrator(
-              inHibernatesSchema(
-                  dataSource,
-                  settingValue(hibernateSettings, "hibernate.default_catalog"),
-                  settingValue(hibernateSettings, "hibernate.default_schema")));
-      newest = migrator.newestRecordedVersion();
-      latest = migrator.latestVersion();
-    } catch (RuntimeException e) {
+      kind = DatabaseKind.of(dataSource);
+    } catch (IllegalArgumentException e) {
       LOGGER.warn(
-          "Could not read the schema history, so Hibernate updates the schema without checking for"
-              + " a newer release's schema: {}",
-          e.getMessage());
+          "Hibernate updates the schema without checking for a newer one: {}", e.getMessage());
       return;
     }
+    if (kind == DatabaseKind.POSTGRESQL && connectionHasNoSchema(dataSource)) {
+      LOGGER.warn(
+          "The connection has no current schema, so Hibernate updates the schema without checking"
+              + " for a newer one.");
+      return;
+    }
+    SchemaMigrator migrator = new SchemaMigrator(dataSource, kind, List.of(), null, false);
+    String newest = migrator.newestRecordedVersion();
+    String latest = migrator.latestVersion();
     if (newest != null
         && MigrationVersion.fromVersion(newest).compareTo(MigrationVersion.fromVersion(latest))
             > 0) {
@@ -1274,9 +1283,12 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  private static String settingValue(Map<?, ?> settings, String name) {
-    Object value = settings.get(name);
-    return value == null ? null : value.toString();
+  private static boolean connectionHasNoSchema(DataSource dataSource) {
+    try (Connection connection = dataSource.getConnection()) {
+      return connection.getSchema() == null;
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
+    }
   }
 
   /**
@@ -1293,90 +1305,6 @@ public final class SchemaMigrator implements AutoCloseable {
         .max(MigrationVersion::compareTo)
         .map(MigrationVersion::getVersion)
         .orElse(null);
-  }
-
-  /**
-   * {@code dataSource} with each connection on {@code catalog} and {@code schema} where set, in the
-   * case the database stores unquoted names in, as Hibernate's unquoted names resolve. The pool
-   * resets both when a connection returns to it.
-   */
-  private static DataSource inHibernatesSchema(
-      DataSource dataSource, String catalog, String schema) {
-    if (isBlank(catalog) && isBlank(schema)) {
-      return dataSource;
-    }
-    return new DataSource() {
-      @Override
-      public Connection getConnection() throws SQLException {
-        return onHibernatesSchema(dataSource.getConnection());
-      }
-
-      @Override
-      public Connection getConnection(String user, String password) throws SQLException {
-        return onHibernatesSchema(dataSource.getConnection(user, password));
-      }
-
-      private Connection onHibernatesSchema(Connection connection) throws SQLException {
-        try {
-          DatabaseMetaData metaData = connection.getMetaData();
-          if (!isBlank(catalog)) {
-            connection.setCatalog(storedCase(metaData, catalog));
-          }
-          if (!isBlank(schema)) {
-            connection.setSchema(storedCase(metaData, schema));
-          }
-          return connection;
-        } catch (SQLException e) {
-          connection.close();
-          throw e;
-        }
-      }
-
-      @Override
-      public PrintWriter getLogWriter() throws SQLException {
-        return dataSource.getLogWriter();
-      }
-
-      @Override
-      public void setLogWriter(PrintWriter out) throws SQLException {
-        dataSource.setLogWriter(out);
-      }
-
-      @Override
-      public void setLoginTimeout(int seconds) throws SQLException {
-        dataSource.setLoginTimeout(seconds);
-      }
-
-      @Override
-      public int getLoginTimeout() throws SQLException {
-        return dataSource.getLoginTimeout();
-      }
-
-      @Override
-      public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
-        return dataSource.getParentLogger();
-      }
-
-      @Override
-      public <T> T unwrap(Class<T> type) throws SQLException {
-        return dataSource.unwrap(type);
-      }
-
-      @Override
-      public boolean isWrapperFor(Class<?> type) throws SQLException {
-        return dataSource.isWrapperFor(type);
-      }
-    };
-  }
-
-  private static boolean isBlank(String value) {
-    return value == null || value.isBlank();
-  }
-
-  private static String storedCase(DatabaseMetaData metaData, String name) throws SQLException {
-    return metaData.storesUpperCaseIdentifiers()
-        ? name.toUpperCase(Locale.ROOT)
-        : metaData.storesLowerCaseIdentifiers() ? name.toLowerCase(Locale.ROOT) : name;
   }
 
   /**

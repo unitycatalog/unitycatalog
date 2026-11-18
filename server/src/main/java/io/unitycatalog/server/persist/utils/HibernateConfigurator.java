@@ -95,11 +95,10 @@ public class HibernateConfigurator implements AutoCloseable {
     if (schemaManagedByHibernate) {
       hibernateProperties = withSchemaUpdatesOn(hibernateProperties);
     }
-    Map<Object, Object> settings = settingsHibernateReads(hibernateProperties);
+    // In both modes, so a database that Hibernate set up can go back to the schema steps.
+    requireSchemaFromConnection(hibernateProperties);
     if (!schemaManagedByHibernate) {
-      // Only the schema steps use the connection's schema; in hibernate mode none runs.
-      requireSchemaFromConnection(hibernateProperties);
-      requireNoSchemaChanges(settings);
+      requireNoSchemaChanges(settingsHibernateReads(hibernateProperties));
     }
     requireNamedMemoryDatabase(hibernateProperties);
     this.schemaManagedByHibernate = schemaManagedByHibernate;
@@ -108,8 +107,7 @@ public class HibernateConfigurator implements AutoCloseable {
     try {
       if (schemaManagedByHibernate) {
         // Before Hibernate's update, which would change a newer release's schema back.
-        // Read from the settings Hibernate reads, JVM system properties too.
-        SchemaMigrator.refuseNewerSchema(dataSource, settings);
+        SchemaMigrator.refuseNewerSchema(hibernateProperties);
       }
       this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
     } catch (Throwable t) {

@@ -146,7 +146,8 @@ public class UnityCatalogServer implements AutoCloseable {
       if (hibernateConfigurator.isSchemaManagedByHibernate()) {
         LOGGER.warn(
             "Hibernate manages the schema (server.schema-management=hibernate): the schema steps"
-                + " and their checks do not run. See docs/server/upgrades.md.");
+                + " do not run; only the check for a newer release's schema does. See"
+                + " docs/server/upgrades.md.");
       } else {
         // Serves only a database already at this release's schema: bin/start-uc-server
         // --upgrade-schema brings it there. An in-memory database lasts only as long as this

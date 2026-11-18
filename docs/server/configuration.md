@@ -75,7 +75,7 @@ The server config file is at the location `etc/conf/server.properties` (relative
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
 - `server.schema-management`: `flyway` (the default): the schema steps manage the schema, and
-    `bin/start-uc-server --upgrade-schema` applies them; the server doesn't change the schema at start (see
+    `bin/start-uc-server --upgrade-schema` applies them; in this mode the server doesn't change the schema at start (see
     [Upgrading the database schema](upgrades.md)). `hibernate`: a temporary fallback where Hibernate updates the
     schema at start, as in 0.7.0; see
     [Letting Hibernate manage the schema](upgrades.md#letting-hibernate-manage-the-schema).

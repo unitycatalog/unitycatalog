@@ -9,7 +9,8 @@ Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` 
 For a temporary fallback to Hibernate, see
 [Letting Hibernate manage the schema](#letting-hibernate-manage-the-schema).
 
-The server doesn't change the schema when it starts. It starts only on a database at the schema
+In the default mode (`server.schema-management=flyway`), the server doesn't change the schema when it
+starts. It starts only on a database at the schema
 version of its release whose schema history passes Flyway's checks and whose schema is the one its
 release's steps build. Otherwise it refuses to start
 and tells you to run `bin/start-uc-server --upgrade-schema`. The one exception is an in-memory
@@ -169,22 +170,24 @@ widened) while the schema history still records the step.
 
 A temporary fallback while the schema steps are new. With `server.schema-management=hibernate` in
 `etc/conf/server.properties` (Helm: `server.db.schemaManagement: hibernate`), the server runs no
-schema steps and none of their checks, and Hibernate updates the schema at start as in 0.7.0
+schema steps, and Hibernate updates the schema at start as in 0.7.0
 (`update`, whatever schema action `hibernate.properties` sets). The server logs a warning
-on every start. A `uc_schema_history` table, if the database has one, is left as it is, except
-that the server refuses to start when it records a step newer than its release (`The schema is
-newer than this release`): Hibernate's update would change that release's schema back. Run the
-newer release, or restore the backup.
+on every start. The newer-version check still runs: a `uc_schema_history` table, if the database has
+one, is left as it is, except that the server refuses to start when it records a step newer than its
+release (`The schema is newer than this release`), because Hibernate's update would change that
+release's schema back, or when it can't read the table. Run the newer release, or restore the
+backup. Hibernate mode doesn't support `hibernate.default_schema` and `hibernate.default_catalog`
+either, so that you can switch back to the schema steps.
 
 To go back to the schema steps, set `server.schema-management=flyway`, the default, and run
 `bin/start-uc-server --upgrade-schema`:
 
-- A database without schema history is adopted when its schema matches either version 1 exactly
-  (a baseline-release database that Hibernate did not change: the steps after version 1 are
-  applied) or this release's latest version exactly (every step is recorded without running).
-  Hibernate widens columns as the steps do, so a database that Hibernate set up in hibernate mode,
-  as a new install or from a 0.7.0 database, usually matches the latest version. Any other schema
-  is refused with the list of differences.
+- A database without schema history is adopted when its schema matches the schema of one of this
+  release's versions exactly: the steps up to that version are recorded without running, and the
+  steps after it are applied. A baseline-release database that Hibernate did not change matches
+  version 1. Hibernate widens columns as the steps do, so a database that Hibernate set up in
+  hibernate mode, as a new install or from a 0.7.0 database, usually matches the latest version. Any
+  other schema is refused with the list of differences.
 - A database with schema history still records the version from before the switch. If a step was
   added since then, Hibernate may already have made part of its change; `--upgrade-schema` then
   refuses and lists the differences. Switch back on the release you switched on, or restore the
