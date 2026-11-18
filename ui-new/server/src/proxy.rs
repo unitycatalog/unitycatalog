@@ -1,11 +1,12 @@
-use axum::http::{header, HeaderValue};
+use axum::http::header;
 use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
 use percent_encoding::percent_decode_str;
 
 use crate::proto::uc::v1::{CallRequest, CallResponse, UnityProxyService};
 use crate::services::UiRpc;
-use crate::FORWARDED_HEADERS;
 
+// Auth, SCIM, and permission replies are small, so the proxy reads less than
+// the typed services do.
 const MAX_RESPONSE_SIZE: usize = 4 * 1024 * 1024;
 
 #[protovalidate_buffa::connect_impl]
@@ -29,12 +30,7 @@ impl UnityProxyService for UiRpc {
             return Err(ConnectError::permission_denied("proxy call is not allowed"));
         }
 
-        let url = format!(
-            "{}{}",
-            self.state.config.uc_server.trim_end_matches('/'),
-            request.path
-        );
-        let mut upstream = self.state.http.request(method, &url);
+        let mut upstream = self.upstream.builder(method, request.path);
         let query: Vec<_> = request
             .query
             .iter()
@@ -43,14 +39,6 @@ impl UnityProxyService for UiRpc {
             .collect();
         if !query.is_empty() {
             upstream = upstream.query(&query);
-        }
-        for name in FORWARDED_HEADERS {
-            if let Some(value) = ctx.header(&name) {
-                upstream = upstream.header(name, value);
-            }
-        }
-        if let Some(remaining) = ctx.time_remaining() {
-            upstream = upstream.timeout(remaining);
         }
         if !request.json_body.is_empty() {
             let content_type = if request.content_type.is_empty() {
@@ -63,50 +51,18 @@ impl UnityProxyService for UiRpc {
                 .body(request.json_body.to_string());
         }
 
-        let mut upstream = upstream.send().await.map_err(|error| {
-            tracing::warn!(%error, "Unity Catalog proxy request failed");
-            if error.is_timeout() {
-                ConnectError::deadline_exceeded("Unity Catalog request timed out")
-            } else {
-                ConnectError::unavailable("Unity Catalog server is unavailable")
-            }
-        })?;
-        let status = upstream.status();
-        let set_cookies: Vec<HeaderValue> = upstream
-            .headers()
-            .get_all(header::SET_COOKIE)
-            .iter()
-            .cloned()
-            .collect();
-        let mut bytes = Vec::new();
-        loop {
-            match upstream.chunk().await {
-                Ok(Some(chunk)) if bytes.len() + chunk.len() <= MAX_RESPONSE_SIZE => {
-                    bytes.extend_from_slice(&chunk);
-                }
-                Ok(Some(_)) => {
-                    return Err(ConnectError::resource_exhausted(
-                        "Unity Catalog response exceeded the proxy limit",
-                    ));
-                }
-                Ok(None) => break,
-                Err(error) => {
-                    tracing::warn!(%error, "failed to read Unity Catalog proxy response");
-                    return Err(ConnectError::internal(
-                        "Invalid response from Unity Catalog server",
-                    ));
-                }
-            }
-        }
-
+        let upstream = self
+            .upstream
+            .send(&ctx, upstream, MAX_RESPONSE_SIZE)
+            .await?;
         let mut response = Response::new(CallResponse {
-            http_status: status.as_u16().into(),
-            body: String::from_utf8_lossy(&bytes).into_owned(),
-            ok: status.is_success(),
+            http_status: upstream.status.as_u16().into(),
+            body: String::from_utf8_lossy(&upstream.bytes).into_owned(),
+            ok: upstream.status.is_success(),
             ..Default::default()
         });
-        for cookie in set_cookies {
-            response.headers.append(header::SET_COOKIE, cookie);
+        for cookie in upstream.headers.get_all(header::SET_COOKIE) {
+            response.headers.append(header::SET_COOKIE, cookie.clone());
         }
         Ok(response)
     }

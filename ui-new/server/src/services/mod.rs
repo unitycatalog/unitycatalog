@@ -23,15 +23,13 @@ mod view;
 mod volume;
 
 pub(crate) struct UiRpc {
-    pub(super) state: AppState,
     pub(super) upstream: Upstream,
 }
 
 impl UiRpc {
     fn new(state: AppState) -> Self {
         Self {
-            upstream: Upstream::new(state.clone()),
-            state,
+            upstream: Upstream::new(state),
         }
     }
 

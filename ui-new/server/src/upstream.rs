@@ -1,12 +1,20 @@
 use connectrpc::{ConnectError, ErrorCode, RequestContext};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use reqwest::{Method, StatusCode};
+use reqwest::header::HeaderMap;
+use reqwest::{Method, RequestBuilder, StatusCode};
 use serde_json::Value;
 
 use crate::{AppState, FORWARDED_HEADERS};
 
 const API_PREFIX: &str = "/api/2.1/unity-catalog";
 const MAX_RESPONSE_SIZE: usize = 32 * 1024 * 1024;
+
+/// A Unity Catalog response, read in full within a size limit.
+pub(crate) struct RawResponse {
+    pub(crate) status: StatusCode,
+    pub(crate) headers: HeaderMap,
+    pub(crate) bytes: Vec<u8>,
+}
 
 /// Shared authenticated client for the Java Unity Catalog REST API.
 #[derive(Clone)]
@@ -59,6 +67,57 @@ impl Upstream {
             .map(|_| ())
     }
 
+    /// Starts a request to `path`, relative to the configured UC server.
+    pub(crate) fn builder(&self, method: Method, path: &str) -> RequestBuilder {
+        let url = format!(
+            "{}{path}",
+            self.state.config.uc_server.trim_end_matches('/')
+        );
+        self.state.http.request(method, url)
+    }
+
+    /// Sends `request` with the caller's forwarded headers and deadline, then
+    /// reads at most `max_size` bytes of the response.
+    pub(crate) async fn send(
+        &self,
+        ctx: &RequestContext,
+        mut request: RequestBuilder,
+        max_size: usize,
+    ) -> Result<RawResponse, ConnectError> {
+        for name in FORWARDED_HEADERS {
+            if let Some(value) = ctx.header(&name) {
+                request = request.header(name, value);
+            }
+        }
+        if let Some(remaining) = ctx.time_remaining() {
+            request = request.timeout(remaining);
+        }
+
+        let mut response = request.send().await.map_err(|error| {
+            tracing::warn!(%error, "Unity Catalog request failed");
+            transport_error(&error)
+        })?;
+        let status = response.status();
+        let headers = std::mem::take(response.headers_mut());
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|error| {
+            tracing::warn!(%error, "failed to read Unity Catalog response");
+            transport_error(&error)
+        })? {
+            if bytes.len() + chunk.len() > max_size {
+                return Err(ConnectError::internal(
+                    "Unity Catalog response is too large",
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(RawResponse {
+            status,
+            headers,
+            bytes,
+        })
+    }
+
     async fn request(
         &self,
         ctx: &RequestContext,
@@ -68,57 +127,21 @@ impl Upstream {
         body: Option<Value>,
     ) -> Result<Value, ConnectError> {
         let expects_json = method != Method::DELETE;
-        let url = format!(
-            "{}{}{}",
-            self.state.config.uc_server.trim_end_matches('/'),
-            API_PREFIX,
-            path
-        );
-        let mut request = self.state.http.request(method, &url).query(&query);
-
-        for name in FORWARDED_HEADERS {
-            if let Some(value) = ctx.header(&name).and_then(|value| value.to_str().ok()) {
-                request = request.header(name, value);
-            }
-        }
-        if let Some(remaining) = ctx.time_remaining() {
-            request = request.timeout(remaining);
-        }
+        let mut request = self
+            .builder(method, &format!("{API_PREFIX}{path}"))
+            .query(&query);
         if let Some(body) = body {
             request = request.json(&body);
         }
 
-        let mut response = request.send().await.map_err(|error| {
-            tracing::warn!(%error, "Unity Catalog request failed");
-            transport_error(&error)
-        })?;
-        let status = response.status();
-        let mut bytes = Vec::new();
-        loop {
-            match response.chunk().await {
-                Ok(Some(chunk)) if bytes.len() + chunk.len() <= MAX_RESPONSE_SIZE => {
-                    bytes.extend_from_slice(&chunk);
-                }
-                Ok(Some(_)) => {
-                    return Err(ConnectError::resource_exhausted(
-                        "Unity Catalog response is too large",
-                    ));
-                }
-                Ok(None) => break,
-                Err(error) => {
-                    tracing::warn!(%error, "failed to read Unity Catalog response");
-                    return Err(transport_error(&error));
-                }
-            }
+        let response = self.send(ctx, request, MAX_RESPONSE_SIZE).await?;
+        if !response.status.is_success() {
+            return Err(map_error(response.status, &response.bytes));
         }
-
-        if !status.is_success() {
-            return Err(map_error(status, bytes.as_slice()));
-        }
-        if !expects_json || bytes.is_empty() {
+        if !expects_json || response.bytes.is_empty() {
             return Ok(Value::Null);
         }
-        serde_json::from_slice(bytes.as_slice()).map_err(|error| {
+        serde_json::from_slice(&response.bytes).map_err(|error| {
             tracing::warn!(%error, "failed to decode Unity Catalog response");
             ConnectError::internal("Invalid response from Unity Catalog server")
         })

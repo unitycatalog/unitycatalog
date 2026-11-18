@@ -167,6 +167,80 @@ async fn call_requires_path() {
 }
 
 #[tokio::test]
+async fn call_rejects_an_invalid_method() {
+    let resp = build_app("http://127.0.0.1:1".to_string())
+        .oneshot(call_request(serde_json::json!({
+            "method": "NOT VALID",
+            "path": "/api/1.0/unity-control/scim2/Me"
+        })))
+        .await
+        .unwrap();
+    let json = body_json(resp).await;
+    assert_eq!(json["code"], "invalid_argument");
+    assert_eq!(json["message"], "method is invalid");
+}
+
+const SCIM_ME: &str = "/api/1.0/unity-control/scim2/Me";
+
+async fn call_me(app: axum::Router) -> serde_json::Value {
+    let resp = app
+        .oneshot(call_request(
+            serde_json::json!({"method": "GET", "path": SCIM_ME}),
+        ))
+        .await
+        .unwrap();
+    body_json(resp).await
+}
+
+#[tokio::test]
+async fn call_maps_an_unreachable_server_to_unavailable() {
+    let json = call_me(build_app("http://127.0.0.1:1".to_string())).await;
+    assert_eq!(json["code"], "unavailable");
+}
+
+#[tokio::test]
+async fn call_maps_a_stalled_body_to_deadline_exceeded() {
+    // Send the response head, then stall before the body completes.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0; 4096];
+        let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await;
+        tokio::io::AsyncWriteExt::write_all(
+            &mut socket,
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 64\r\n\r\n{",
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    });
+    let app = app(AppState {
+        http: reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(200))
+            .build()
+            .unwrap(),
+        config: Arc::new(test_config(format!("http://{address}"))),
+    });
+
+    assert_eq!(call_me(app).await["code"], "deadline_exceeded");
+}
+
+#[tokio::test]
+async fn call_rejects_an_oversized_response() {
+    let uc = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(SCIM_ME))
+        .respond_with(ResponseTemplate::new(200).set_body_string("x".repeat(4 * 1024 * 1024 + 1)))
+        .mount(&uc)
+        .await;
+
+    let json = call_me(build_app(uc.uri())).await;
+    assert_eq!(json["code"], "internal");
+    assert_eq!(json["message"], "Unity Catalog response is too large");
+}
+
+#[tokio::test]
 async fn call_ignores_the_removed_server_url_and_token_fields() {
     // Older clients sent these. The call must still go to the configured UC,
     // and a body token must not become an Authorization header.
