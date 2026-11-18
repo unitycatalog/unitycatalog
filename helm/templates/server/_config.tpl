@@ -168,8 +168,8 @@ The database password, for the server and upgrade-schema containers.
 
 {{/*
 Secrets for the server container (see "Secrets" in docs/server/configuration.md): the database
-password and every part of each storage credential come from here, not from the generated properties
-files, which are written only at pod start.
+password, every part of each storage credential and the credential encryption key come from here,
+not from the generated properties files, which are written only at pod start.
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
 {{- include "unitycatalog.server.dbPasswordEnv" . }}
@@ -201,5 +201,14 @@ files, which are written only at pod start.
     secretKeyRef:
       name: {{ $config.credentialsSecretName | quote }}
       key: clientSecret
+{{- end }}
+{{- with .Values.server.credentialEncryptionKeySecret }}
+{{- if .name }}
+- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .name | quote }}
+      key: {{ required "Credential encryption key secret key is required" .key | quote }}
+{{- end }}
 {{- end }}
 {{- end }}
