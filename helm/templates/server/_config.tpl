@@ -214,7 +214,7 @@ not from the generated properties files, which are written only at pod start.
 
 {{- /*
 The server sets up an in-memory database itself and `--upgrade-schema` refuses one, so a deployment on one
-has no schema to upgrade first. In-memory is what the effective configuration says: server.env=test (the
+has no schema to upgrade first. In-memory is what the generated properties files say: server.env=test (the
 last such line wins, and the server compares the value exactly), or an H2 in-memory URL in the Hibernate
 file: mem: (also the unnamed `.`), and the memFS:, memLZF:, nioMemFS: and nioMemLZF: file systems. Evaluates to "true" or "".
 */}}

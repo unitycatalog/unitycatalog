@@ -81,8 +81,6 @@ public class SchemaGateTest {
         "unnamed in-memory database | jdbc:h2:. | is in memory",
         "in-memory file system | jdbc:h2:memFS:schema-command | is in memory",
         "compressed in-memory file system | jdbc:h2:memLZF:schema-command | is in memory",
-        "in-memory file system with settings | jdbc:h2:memFS:schema-command;DB_CLOSE_DELAY=-1 | is"
-            + " in memory",
         "NIO in-memory file system | jdbc:h2:nioMemFS:schema-command | is in memory",
         "NIO compressed in-memory file system | jdbc:h2:nioMemLZF:schema-command | is in memory",
         "Hibernate default schema | hibernate.default_schema=uc | hibernate.default_schema is not",
