@@ -357,6 +357,15 @@ public class ServerProperties {
         "server.s3-compatible-storage.enabled", "false", BOOLEAN_VALIDATOR),
     // Base64-encoded 256-bit key that storage credential values are encrypted with in the database.
     CREDENTIAL_ENCRYPTION_KEY("server.credential-encryption-key"),
+    // What clients receive for an s3_compatible storage credential without assume_role; see
+    // S3CompatibleStaticKeyVending. The server's own storage access always uses the key pair.
+    S3_COMPATIBLE_STATIC_KEY_VENDING(
+        "server.s3-compatible-storage.static-key-vending",
+        S3CompatibleStaticKeyVending.ENDPOINT_ONLY.value(),
+        new EnumValidator(
+            false,
+            S3CompatibleStaticKeyVending.ENDPOINT_ONLY.value(),
+            S3CompatibleStaticKeyVending.STATIC_KEY.value())),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -637,6 +646,33 @@ public class ServerProperties {
     }
 
     return adlsConfigMap;
+  }
+
+  /** What clients receive for an {@code s3_compatible} storage credential without assume_role. */
+  public enum S3CompatibleStaticKeyVending {
+    /** The S3 endpoint and region, but no keys; engines bring their own. */
+    ENDPOINT_ONLY("endpoint-only"),
+    /** The key pair itself, with a one-hour lifetime; it is not narrowed to the requested path. */
+    STATIC_KEY("static-key");
+
+    private final String value;
+
+    S3CompatibleStaticKeyVending(String value) {
+      this.value = value;
+    }
+
+    /** The property value that selects this mode. */
+    public String value() {
+      return value;
+    }
+  }
+
+  /** The mode set by {@code server.s3-compatible-storage.static-key-vending}. */
+  public S3CompatibleStaticKeyVending getS3CompatibleStaticKeyVending() {
+    String value = get(Property.S3_COMPATIBLE_STATIC_KEY_VENDING);
+    return value.equals(S3CompatibleStaticKeyVending.STATIC_KEY.value())
+        ? S3CompatibleStaticKeyVending.STATIC_KEY
+        : S3CompatibleStaticKeyVending.ENDPOINT_ONLY;
   }
 
   /**

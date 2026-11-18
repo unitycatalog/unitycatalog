@@ -145,7 +145,7 @@ Nicely done! You have called a Function stored in your Unity Catalog.
 
 If the function raises an error, `function call` fails with a message that ends with the Python error, for example
 `Failed to execute function <full_name>: Python function failed with exit code 1: ValueError: a must be positive`.
-The message keeps only the last 4096 bytes of what the function wrote to stderr, with "..." in front when it cut more.
+The message keeps at most the last 4096 bytes of what the function wrote to stderr, with "..." in front when it cut more.
 
 ## Adding Functions to Unity Catalog
 
