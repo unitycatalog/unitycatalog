@@ -57,7 +57,8 @@ import org.hibernate.Transaction;
  * at in the same change. It is built, not checked in: {@code build/sbt buildSampleDatabase} builds
  * {@code etc/db/h2db.mv.db}, {@code bin/start-uc-server} does so in a source checkout where the
  * file is missing, and the tarball and the Docker image ship one built by their build. The folder
- * of the file must be on a file system that supports hard links.
+ * of the file must be on a file system that supports hard links. The sbt task keeps a file that
+ * exists (it logs that and builds nothing); only {@link #build} and {@code main} fail on one.
  */
 public class SampleDatabase {
 
@@ -99,7 +100,8 @@ public class SampleDatabase {
                 + folder
                 + ": "
                 + (reason != null ? reason : e)
-                + ". The folder must be on a file system that supports hard links.",
+                + ". If its file system does not support hard links, build it in a folder whose"
+                + " file system does.",
             e);
       }
     } catch (IOException e) {

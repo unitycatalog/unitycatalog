@@ -90,7 +90,6 @@ public class SampleDatabaseTest {
     Path file = dir.resolve("h2db.mv.db");
     // An environment that makes any server configuration without OPA authorization settings
     // invalid.
-    // invalid.
     ProcessBuilder build =
         new ProcessBuilder(
             Path.of(System.getProperty("java.home"), "bin", "java").toString(),
@@ -233,7 +232,7 @@ public class SampleDatabaseTest {
     writeExecutable(dir.resolve("build/sbt"), "echo \"$@\" >> '" + calls + "'\n");
     writeExecutable(dir.resolve("fake/java"), "exit 0\n");
 
-    String[] args = commandLine.split(" ");
+    String[] args = commandLine.isEmpty() ? new String[0] : commandLine.split(" ");
     ProcessBuilder launcher = new ProcessBuilder();
     launcher.command().add(bin.resolve("start-uc-server").toString());
     launcher.command().addAll(List.of(args));
@@ -243,6 +242,24 @@ public class SampleDatabaseTest {
 
     boolean built = Files.exists(calls) && Files.readString(calls).contains("buildSampleDatabase");
     assertThat(built).as(commandLine).isEqualTo(startsServer(args));
+  }
+
+  @Test
+  void theLauncherKnowsEveryServerOption() {
+    // A new option must also be added to starts_server in bin/start-uc-server.
+    List<String> names = new ArrayList<>();
+    for (org.apache.commons.cli.Option o : new OptionParser().getOptions().getOptions()) {
+      names.add(o.getOpt() + "/" + o.getLongOpt());
+    }
+    assertThat(names)
+        .as("A new option must be added to starts_server in bin/start-uc-server")
+        .containsExactlyInAnyOrder(
+            "p/port",
+            "null/obs-port",
+            "null/check-schema",
+            "null/upgrade-schema",
+            "v/version",
+            "h/help");
   }
 
   private static void writeExecutable(Path file, String body) throws IOException {
