@@ -519,7 +519,9 @@ Unity Catalog vends credentials for the table's own folder, and Delta uses them 
 there. The `checkpointLocation` of a streaming query is different: Spark writes its offsets and commit log there
 itself, not through the table, so Unity Catalog vends nothing for it. The Spark session needs its own access to the
 checkpoint location, for example a machine identity or an application default login (on GCS, also set
-`spark.hadoop.fs.gs.auth.type=APPLICATION_DEFAULT`).
+`spark.hadoop.fs.gs.auth.type=APPLICATION_DEFAULT`). With the default renewing credentials, Unity Catalog sets its own
+auth type for each table, so that session-wide setting only applies to locations Unity Catalog does not vend for, such
+as the checkpoint.
 
 !!! warning
     Limit that login to the checkpoint location. If it can also read the table's storage, Spark can bypass the
