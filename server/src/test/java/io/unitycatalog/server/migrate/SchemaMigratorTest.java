@@ -421,11 +421,11 @@ public class SchemaMigratorTest {
         assertThat(migrator.upgradeSchema()).isOne();
         assertThat(failedRecords()).isZero();
       }
-      Connection closed = state == ConnectionState.CLOSE_FAILS ? deleters.get() : failed.get(0);
-      assertThat(closed.unwrap(Connection.class).isClosed()).isTrue();
       if (state != ConnectionState.CLOSE_FAILS) {
         assertThat(failed).hasSize(1);
       }
+      Connection closed = state == ConnectionState.CLOSE_FAILS ? deleters.get() : failed.get(0);
+      assertThat(closed.unwrap(Connection.class).isClosed()).isTrue();
       return;
     }
     HikariConfig config = HibernateConfigurator.hikariConfig(db.hibernateProperties());
@@ -467,6 +467,10 @@ public class SchemaMigratorTest {
       assertThat(new SchemaMigrator(migrated, NEXT_RELEASE).upgradeSchema()).isOne();
       assertThat(failed).hasSize(1);
       assertThat(failed.get(0).unwrap(Connection.class).isClosed()).isTrue();
+      if (state == ConnectionState.HEALTHY || state == ConnectionState.BROKEN) {
+        // The pool evicted the connection; the abort fallback did not run.
+        assertThat(aborted).isEmpty();
+      }
       if (state == ConnectionState.LOCK_CONNECTION) {
         // The restore failure was injected on the connection that ran the lock SQL.
         assertThat(failed.get(0)).isSameAs(lockers.get());

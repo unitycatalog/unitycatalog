@@ -1039,7 +1039,8 @@ public final class SchemaMigrator implements AutoCloseable {
    * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
    * recorded version may be pending and may have failed: the upgrade runs them. A failed step that
    * is not one of this build's pending steps, such as a newer release's, or whose script changed
-   * since it failed, is still refused.
+   * since it failed, is still refused: a published step is never changed, and a fix for a failed
+   * step ships as a new step.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
@@ -1072,10 +1073,12 @@ public final class SchemaMigrator implements AutoCloseable {
             .map(
                 m ->
                     m.errorDetails.errorMessage
-                        + (edited.contains(m.version)
+                        + (m.errorDetails.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION
+                                && edited.contains(m.version)
                             ? "\nIts script differs from the one that failed (checksum), so it is"
-                                + " not tried again: run the release whose step failed, or restore"
-                                + " the backup."
+                                + " not tried again. A published step is never changed: a fix for"
+                                + " a failed step ships as a new step. Run the release whose step"
+                                + " failed, or restore the backup."
                             : ""))
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
@@ -1483,7 +1486,7 @@ public final class SchemaMigrator implements AutoCloseable {
         DataSource dataSource, Connection connection, boolean autoCommit) {
       try {
         connection.setAutoCommit(autoCommit);
-      } catch (SQLException e) {
+      } catch (SQLException | RuntimeException e) {
         LOGGER.warn("Could not restore the connection's auto-commit setting; closing it", e);
         closeUnderlying(dataSource, connection);
       }
@@ -1512,18 +1515,17 @@ public final class SchemaMigrator implements AutoCloseable {
     }
 
     /**
-     * Discards the schema migration's database connection and ends its database session. A Hikari
-     * pool evicts it, so it is not handed out again; for any other pool, or a connection that
-     * Hikari did not hand out itself, the connection is aborted, and closed directly when that left
-     * it open (a driver's abort may do nothing, as H2's does). On H2 the pool keeps a wrapped
-     * connection that was closed directly: H2's abort does nothing and its closed-connection error
-     * does not make Hikari drop it.
+     * Discards the schema migration's database connection and makes a best effort to end its
+     * database session. A Hikari pool evicts it, so it is not handed out again; for any other pool,
+     * or a connection that Hikari did not hand out itself, the connection is aborted, and closed
+     * directly when that left it open (a driver's abort may do nothing, as H2's does).
      */
     private static void closeUnderlying(DataSource dataSource, Connection connection) {
       boolean evicted = false;
       try {
         // Hikari ignores an eviction of a connection that is not its own, such as one that the
-        // caller's DataSource wraps.
+        // caller's DataSource wraps. The class-name check only has to be right when it says yes: a
+        // name that does not match (for example under shading) means abort instead of evict.
         if (dataSource.isWrapperFor(HikariDataSource.class)
             && connection.getClass().getName().startsWith("com.zaxxer.hikari.")) {
           dataSource.unwrap(HikariDataSource.class).evictConnection(connection);
@@ -1539,6 +1541,10 @@ public final class SchemaMigrator implements AutoCloseable {
       } catch (SQLException | RuntimeException e) {
         LOGGER.warn("Could not abort the schema migration's database connection", e);
       }
+      // Also after an eviction: Hikari closes an evicted connection asynchronously, so the session
+      // would stay open until it does.
+      // On H2 the pool keeps a wrapped connection that was closed directly: H2's abort does
+      // nothing and its closed-connection error does not make Hikari drop it.
       try {
         if (!connection.unwrap(Connection.class).isClosed()) {
           connection.unwrap(Connection.class).close();
