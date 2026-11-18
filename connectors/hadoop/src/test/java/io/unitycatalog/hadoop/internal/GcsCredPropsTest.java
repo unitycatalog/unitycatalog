@@ -192,6 +192,27 @@ class GcsCredPropsTest extends CredPropsBaseTest {
         .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "true");
   }
 
+  /** Each key is decided on its own: setting one does not change the other two. */
+  @Test
+  void eachKeyIsDecidedIndependently() throws Exception {
+    Map<String, String> expected =
+        Map.of(
+            CONFLICT_CHECK_KEY,
+            "false",
+            HNS_FOLDERS_KEY,
+            "false",
+            IMPLICIT_DIR_REPAIR_KEY,
+            "false");
+    for (String key : expected.keySet()) {
+      Configuration conf = new Configuration(false);
+      conf.set(key, "true");
+
+      Map<String, String> props = tableProps(conf);
+
+      expected.forEach((k, v) -> assertThat(props).containsEntry(k, k.equals(key) ? "true" : v));
+    }
+  }
+
   @Test
   void userValuesWinOverHadoopDefaults() throws Exception {
     Configuration conf = new Configuration(false);
