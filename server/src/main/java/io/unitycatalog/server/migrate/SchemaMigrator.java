@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -451,6 +452,7 @@ public final class SchemaMigrator implements AutoCloseable {
         boolean record = adopted || !runs(step, schema);
         if (!record) {
           refuseTakenNames(step);
+          refuseMissingDroppedNames(step);
         }
         // Only once the schema check passed, so that a run that refuses leaves the history as is.
         deleteFailedRecord(step);
@@ -508,6 +510,7 @@ public final class SchemaMigrator implements AutoCloseable {
       Map<String, String> descriptions = descriptions();
       SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
       boolean adopted = hasLastStepsSchemaWithoutHistory();
+      boolean simulated = false;
       for (String step : pending) {
         boolean runs = !adopted && runs(step, schema);
         out.println(
@@ -518,6 +521,12 @@ public final class SchemaMigrator implements AutoCloseable {
                 + (runs ? ": runs" : ": recorded without running (its change is already there)"));
         if (runs) {
           refuseTakenNames(step);
+          // Once a step was simulated, the names of later steps come from the steps, not the
+          // database.
+          if (!simulated) {
+            refuseMissingDroppedNames(step);
+          }
+          simulated = true;
           schema = expected(step);
         }
       }
@@ -666,6 +675,55 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private static final Pattern CONSTRAINT = Pattern.compile("(?i)\\bconstraint\\s+(\\w+)");
 
+  private static final Pattern DROP_CONSTRAINT =
+      Pattern.compile("(?i)\\bdrop\\s+constraint\\s+(?!if\\s+exists\\b)(\\w+)");
+
+  /**
+   * Refuses when pending {@code step} drops a constraint by name without {@code IF EXISTS} and the
+   * database has no constraint of that name, for instance because it was renamed: the step would
+   * fail. Meant for a database at the step's previous schema.
+   */
+  private void refuseMissingDroppedNames(String step) {
+    Set<String> dropped = new TreeSet<>();
+    Matcher m = DROP_CONSTRAINT.matcher(stepScript(step));
+    while (m.find()) {
+      dropped.add(m.group(1).toLowerCase(Locale.ROOT));
+    }
+    if (dropped.isEmpty()) {
+      return;
+    }
+    String sql =
+        switch (kind) {
+          case H2 ->
+              "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = SCHEMA()";
+          case POSTGRESQL ->
+              "SELECT c.conname FROM pg_constraint c JOIN pg_namespace n"
+                  + " ON n.oid = c.connamespace WHERE n.nspname = current_schema()";
+          case MYSQL ->
+              "SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = DATABASE()";
+        };
+    try (Connection connection = dataSource.getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
+      while (rs.next()) {
+        dropped.remove(rs.getString(1).toLowerCase(Locale.ROOT));
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not read the schema's names: " + e.getMessage(), e);
+    }
+    if (!dropped.isEmpty()) {
+      throw new IllegalStateException(
+          "Schema step "
+              + step
+              + " drops the constraint "
+              + dropped.iterator().next()
+              + ", but the database has no constraint of that name, for instance because it was"
+              + " renamed. Restore the name, or restore the backup, then run the command again.");
+    }
+  }
+
   /**
    * Refuses when a name that pending {@code step} gives an index or a constraint is taken by an
    * object that is not Unity Catalog's (not on a {@code uc_*} table): the step would then skip
@@ -677,6 +735,7 @@ public final class SchemaMigrator implements AutoCloseable {
   private void refuseTakenNames(String step) {
     Set<String> added = new HashSet<>(expected(step).entries());
     added.removeAll(expected(previousStep(step)).entries());
+    Set<String> tables = namesOf(added, "table ");
     Set<String> indexes = namesOf(added, "index ");
     Set<String> foreignKeys = namesOf(added, "fk ");
     Set<String> constraints = new HashSet<>();
@@ -690,7 +749,9 @@ public final class SchemaMigrator implements AutoCloseable {
               "SELECT 'index', INDEX_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.INDEXES"
                   + " WHERE INDEX_SCHEMA = SCHEMA() UNION ALL SELECT 'constraint',"
                   + " CONSTRAINT_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS"
-                  + " WHERE CONSTRAINT_SCHEMA = SCHEMA()";
+                  + " WHERE CONSTRAINT_SCHEMA = SCHEMA() UNION ALL SELECT 'view', TABLE_NAME,"
+                  + " NULL FROM INFORMATION_SCHEMA.TABLES"
+                  + " WHERE TABLE_SCHEMA = SCHEMA() AND TABLE_TYPE = 'VIEW'";
           case POSTGRESQL ->
               "SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'p' THEN 'table' WHEN 'v' THEN"
                   + " 'view' WHEN 'm' THEN 'view' WHEN 'S' THEN 'sequence' WHEN 'i' THEN 'index'"
@@ -702,7 +763,9 @@ public final class SchemaMigrator implements AutoCloseable {
           case MYSQL ->
               "SELECT 'foreign key', CONSTRAINT_NAME, TABLE_NAME"
                   + " FROM information_schema.TABLE_CONSTRAINTS"
-                  + " WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'";
+                  + " WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'"
+                  + " UNION ALL SELECT 'view', TABLE_NAME, NULL FROM information_schema.TABLES"
+                  + " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'VIEW'";
         };
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement();
@@ -711,21 +774,25 @@ public final class SchemaMigrator implements AutoCloseable {
         String holder = rs.getString(1);
         String name = rs.getString(2).toLowerCase(Locale.ROOT);
         String table = rs.getString(3);
-        String owner = (table == null ? name : table).toLowerCase(Locale.ROOT);
-        if (owner.startsWith("uc_")) {
+        // Unity Catalog's only: a uc_* table, or an index or constraint on one. A view or a
+        // sequence has no owning table and is never skipped.
+        String owner = table != null ? table : holder.equals("table") ? name : "";
+        if (owner.toLowerCase(Locale.ROOT).startsWith("uc_")) {
           continue; // Unity Catalog's own: the schema check covers it
         }
         boolean taken =
             switch (kind) {
-              case H2 -> (holder.equals("index") ? indexes : constraints).contains(name);
-              case POSTGRESQL -> indexes.contains(name);
-              case MYSQL -> foreignKeys.contains(name);
+              case H2 ->
+                  (holder.equals("index") ? indexes : holder.equals("view") ? tables : constraints)
+                      .contains(name);
+              case POSTGRESQL -> indexes.contains(name) || tables.contains(name);
+              case MYSQL -> (holder.equals("view") ? tables : foreignKeys).contains(name);
             };
         if (taken) {
           throw new IllegalStateException(
               "Schema step "
                   + step
-                  + " creates an index or constraint named "
+                  + " creates a table, index or constraint named "
                   + name
                   + ", but the "
                   + holder
