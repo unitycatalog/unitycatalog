@@ -1238,8 +1238,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * when the schema history in the connection's schema records a step newer than this build's last,
    * applied or failed, which Hibernate's update would change back, or when an existing history
    * can't be read. Changes nothing. Runs on a pool of its own that is closed before it returns, so
-   * the server's pool is untouched. Checks nothing on a database the schema steps don't support and
-   * on a PostgreSQL connection without a current schema, which Hibernate mode can still run on.
+   * the server's pool is untouched. Checks nothing on a database the schema steps don't support.
    */
   public static void refuseNewerSchema(Properties hibernateProperties) {
     HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
@@ -1260,12 +1259,6 @@ public final class SchemaMigrator implements AutoCloseable {
           "Hibernate updates the schema without checking for a newer one: {}", e.getMessage());
       return;
     }
-    if (kind == DatabaseKind.POSTGRESQL && connectionHasNoSchema(dataSource)) {
-      LOGGER.warn(
-          "The connection has no current schema, so Hibernate updates the schema without checking"
-              + " for a newer one.");
-      return;
-    }
     SchemaMigrator migrator = new SchemaMigrator(dataSource, kind, List.of(), null, false);
     String newest = migrator.newestRecordedVersion();
     String latest = migrator.latestVersion();
@@ -1278,14 +1271,6 @@ public final class SchemaMigrator implements AutoCloseable {
               + ", this release ends at "
               + latest
               + "). Run the newer release.");
-    }
-  }
-
-  private static boolean connectionHasNoSchema(DataSource dataSource) {
-    try (Connection connection = dataSource.getConnection()) {
-      return connection.getSchema() == null;
-    } catch (SQLException e) {
-      throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
     }
   }
 

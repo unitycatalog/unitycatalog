@@ -38,6 +38,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -145,7 +146,26 @@ public class UnityCatalogServerTest extends BaseServerTest {
     properties.setProperty(Property.SCHEMA_MANAGEMENT.getKey(), "hibernate");
 
     try (UnityCatalogServer server = ownedServer(properties, hibernateFile)) {
+      server.start();
       assertThat(dir.resolve("new.mv.db")).exists();
+      // Hibernate created the tables, and no schema step recorded a history.
+      try (Connection connection = DriverManager.getConnection("jdbc:h2:file:" + h2File, "", "")) {
+        assertThat(tableCount(connection, "UC_CATALOGS")).isOne();
+        assertThat(tableCount(connection, "UC_SCHEMA_HISTORY")).isZero();
+      }
+    }
+  }
+
+  private static int tableCount(Connection connection, String table) throws SQLException {
+    try (ResultSet rs =
+        connection
+            .createStatement()
+            .executeQuery(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '"
+                    + table
+                    + "'")) {
+      rs.next();
+      return rs.getInt(1);
     }
   }
 

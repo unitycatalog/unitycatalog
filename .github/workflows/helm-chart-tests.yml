@@ -136,8 +136,8 @@ jobs:
             exit 1
           fi
           grep -qF 'driver.subPath is required' <<<"$err"
-          # The schema management mode comes from server.db.schemaManagement alone: flyway runs the upgrade-schema init
-          # container, hibernate does not, and extraProperties can't set it.
+          # Without a config override, the schema management mode comes from server.db.schemaManagement: flyway runs the
+          # upgrade-schema init container, hibernate does not, and extraProperties can't set it.
           out="$(helm template uc helm)"
           grep -qF 'server.schema-management=flyway' <<<"$out"
           grep -qF -- '- name: upgrade-schema' <<<"$out"
