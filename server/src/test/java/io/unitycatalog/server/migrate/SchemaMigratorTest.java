@@ -189,6 +189,8 @@ public class SchemaMigratorTest {
         UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
         migrator = new SchemaMigrator(db.dataSource());
         message = "Detected failed migration to version 1000";
+        // A server of this release refuses to start on it too.
+        assertThatThrownBy(migrator::requireCurrentSchema).hasMessageContaining(message);
       }
       case SCHEMA_NEITHER_BEFORE_NOR_AFTER -> {
         UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");

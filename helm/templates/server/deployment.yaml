@@ -172,11 +172,11 @@ spec:
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- /* With the schema steps (flyway), the server does not change a persistent database's schema at start. This container
-      brings it up to date first, after extraInitContainers so that a database proxy run as a native sidecar is up. An
-      in-memory database (server.env=test, or an in-memory H2 URL) has none to upgrade: the server sets
-      it up itself, and --upgrade-schema refuses it, so the container is left out, as it is in hibernate mode. */}}
-      {{- if and (eq (.Values.server.db.schemaManagement | default "flyway" | lower) "flyway") (not (include "unitycatalog.server.inMemoryDatabase" .)) }}
+      {{- /* With the schema steps (flyway), the server does not change a persistent database's schema at start. This
+      container brings it up to date first, after extraInitContainers so that a database proxy run as a native sidecar is
+      up. For an in-memory database it does nothing: the server sets that database up itself. In hibernate mode it is left
+      out. */}}
+      {{- if eq (.Values.server.db.schemaManagement | default "flyway" | lower) "flyway" }}
         - name: upgrade-schema
           {{- with .Values.server.deployment.securityContext }}
           securityContext: {{- toYaml . | nindent 12 }}

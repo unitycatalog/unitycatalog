@@ -187,35 +187,67 @@ public class UnityCatalogServerTest extends BaseServerTest {
   }
 
   /**
-   * An in-memory test database lasts as long as its server: the next server in this JVM starts on
-   * an empty one, whether server.env=test or a missing hibernate.properties chose it.
+   * An in-memory test database lasts as long as its server, whether server.env=test or a missing
+   * hibernate.properties chose it. A server's database is its own: closing one server leaves
+   * another that is running with its tables.
    */
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
-  public void closingAServerDropsItsOwnInMemoryTestDatabase(
+  public void closingAServerDropsItsOwnInMemoryTestDatabaseOnly(
       boolean serverEnvTest, @TempDir Path dir) throws Exception {
     Properties properties = new Properties();
     Path hibernateFile = dir.resolve("hibernate.properties");
     if (serverEnvTest) {
       properties.setProperty(Property.SERVER_ENV.getKey(), "test");
     }
-    String testDatabase = "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1";
 
-    try (UnityCatalogServer first = ownedServer(properties, hibernateFile);
-        Connection connection = DriverManager.getConnection(testDatabase, "", "")) {
-      connection.createStatement().execute("CREATE TABLE first_servers_data (id INT)");
+    UnityCatalogServer first = ownedServer(properties, hibernateFile);
+    String firstUrl = databaseUrl(first);
+    try (UnityCatalogServer second = ownedServer(properties, hibernateFile)) {
+      assertThat(databaseUrl(second)).isNotEqualTo(firstUrl);
+      try (Connection connection = DriverManager.getConnection(firstUrl, "", "")) {
+        connection.createStatement().execute("CREATE TABLE first_servers_data (id INT)");
+      }
+      first.close();
+
+      assertThat(tableCount(firstUrl, "FIRST_SERVERS_DATA")).isZero();
+      assertThat(tableCount(databaseUrl(second), "UC_CATALOGS")).isOne();
     }
+  }
 
-    try (UnityCatalogServer second = ownedServer(properties, hibernateFile);
-        Connection connection = DriverManager.getConnection(testDatabase, "", "");
+  /** A database that the configuration names is never dropped: another server may use it. */
+  @Test
+  public void closingAServerLeavesAConfiguredInMemoryDatabaseAlone(@TempDir Path dir)
+      throws Exception {
+    String url = "jdbc:h2:mem:configured;DB_CLOSE_DELAY=-1";
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    Files.writeString(
+        hibernateFile,
+        "hibernate.connection.driver_class=org.h2.Driver\nhibernate.connection.url=" + url + "\n");
+
+    ownedServer(new Properties(), hibernateFile).close();
+
+    assertThat(tableCount(url, "UC_CATALOGS")).isOne();
+  }
+
+  private static String databaseUrl(UnityCatalogServer server) {
+    return server
+        .hibernateConfigurator()
+        .getHibernateProperties()
+        .getProperty("hibernate.connection.url");
+  }
+
+  private static int tableCount(String url, String table) throws Exception {
+    try (Connection connection = DriverManager.getConnection(url, "", "");
         ResultSet tables =
             connection
                 .createStatement()
                 .executeQuery(
-                    "SELECT COUNT(*) FROM information_schema.tables"
-                        + " WHERE table_name = 'FIRST_SERVERS_DATA'")) {
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '"
+                        + table
+                        + "'")) {
       tables.next();
-      assertThat(tables.getInt(1)).isZero();
+      return tables.getInt(1);
     }
   }
 

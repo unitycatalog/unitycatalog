@@ -22,7 +22,8 @@ and tells you what to do, which is to run `bin/start-uc-server --upgrade-schema`
 there. The one exception is an in-memory
 database (`server.env=test`, or an in-memory H2 URL such as `jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1`), which only the
 server's own process can reach: the server sets up its schema at start. The server refuses an unnamed in-memory URL
-(`jdbc:h2:mem:` or `jdbc:h2:.`), because every connection would get its own empty database. With authorization enabled, the authorization library runs
+(`jdbc:h2:mem:` or `jdbc:h2:.`), because every connection would get its own empty database.
+`--upgrade-schema` on an in-memory database succeeds without doing anything. With authorization enabled, the authorization library runs
 `CREATE TABLE IF NOT EXISTS casbin_rule` at every start, so the database user needs the `CREATE` privilege (on
 PostgreSQL, on the schema) while authorization is enabled.
 
@@ -39,7 +40,11 @@ exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
 - `--upgrade-schema` brings the database to the schema version of its release. It sets up an empty
   database (a new install), adopts a database from the baseline release, and applies the steps that
   are not applied yet. If it fails, fix the cause it names
-  and run the same command again: it also retries a step that a crash left half done.
+  and run the same command again: it also retries a step that a crash left half done. For an in-memory
+  database it does nothing and exits with 0, because the server sets that database up itself.
+  In a source checkout, the quickstart's sample database (`etc/db/h2db.mv.db`) is built by
+  `build/sbt buildSampleDatabase` or by the first start and needs no `--upgrade-schema`: running it first
+  creates an empty database instead.
 
 ## The baseline release
 
@@ -254,6 +259,11 @@ Messages that the server prints when it refuses to start, and that `--check-sche
   applied. Renaming the other index and running the command again does not create it; follow the
   note: restore the backup (on a new install, drop the `uc_*` tables and `uc_schema_history`),
   rename the other index or give Unity Catalog its own schema, then run the command again.
+
+`The database is in memory: the server sets it up itself when it starts, so there is nothing to upgrade.`
+: `--upgrade-schema` prints this and exits with 0 for an in-memory database, so a deployment that runs it
+  before every start, such as the Helm chart's init container, works on one. `--check-schema` prints the same
+  message with `check` and exits with 1: there is no database to check until the server starts.
 
 `The H2 database file that hibernate.connection.url names is not found.`
 : The server refuses to start on an H2 database file that does not exist, and doesn't create it.

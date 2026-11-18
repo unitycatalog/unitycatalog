@@ -62,7 +62,10 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 - The backend database can be configured by modifying the `etc/conf/hibernate.properties` file.
 - You need to provide the connection details to connect to your database server.
 - The server doesn't set up the schema of a new database. Before the first start, run
-    `bin/start-uc-server --upgrade-schema` once; see [Upgrading the database schema](upgrades.md). With
+    `bin/start-uc-server --upgrade-schema` once; see [Upgrading the database schema](upgrades.md).
+    In a source checkout, the quickstart's sample database (`etc/db/h2db.mv.db`) is built by
+    `build/sbt buildSampleDatabase` or by the first start and needs no `--upgrade-schema`: running it first
+    creates an empty database instead. With
     `server.schema-management=hibernate` you don't; see
     [Letting Hibernate manage the schema](upgrades.md#letting-hibernate-manage-the-schema).
 - With an H2 file database, set the URL as the default file does:

@@ -95,6 +95,9 @@ public class UnityCatalogServer implements AutoCloseable {
   /** True when the pool's live connection is to an in-memory database, decided at construction. */
   private boolean inMemoryDatabase;
 
+  // Whether the in-memory database is one that this server chose for itself, and so drops at close.
+  private boolean dropsDatabaseAtClose;
+
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
 
@@ -130,6 +133,7 @@ public class UnityCatalogServer implements AutoCloseable {
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
     // An injected configurator stays the caller's to close; only a self-built one is ours.
     this.ownsHibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator == null;
+    String ownTestDatabaseUrl = null;
     if (ownsHibernateConfigurator) {
       boolean schemaManagedByHibernate =
           unityCatalogServerBuilder.serverProperties.isSchemaManagedByHibernate();
@@ -144,6 +148,7 @@ public class UnityCatalogServer implements AutoCloseable {
       }
       this.hibernateConfigurator =
           new HibernateConfigurator(ownProperties, schemaManagedByHibernate);
+      ownTestDatabaseUrl = HibernateConfigurator.ownTestDatabaseUrl(ownProperties);
     } else {
       this.hibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator;
     }
@@ -151,7 +156,12 @@ public class UnityCatalogServer implements AutoCloseable {
     try {
       // Whether the database is in memory is read from the connection the server's pool opens,
       // the one the server will use; an in-memory database lasts only as long as this server.
-      this.inMemoryDatabase = SchemaMigrator.isInMemory(hibernateConfigurator.getDataSource());
+      String connectionUrl = SchemaMigrator.connectionUrl(hibernateConfigurator.getDataSource());
+      this.inMemoryDatabase = SchemaMigrator.isInMemoryUrl(connectionUrl);
+      this.dropsDatabaseAtClose =
+          inMemoryDatabase
+              && ownTestDatabaseUrl != null
+              && sameDatabase(ownTestDatabaseUrl, connectionUrl);
       if (hibernateConfigurator.isSchemaManagedByHibernate()) {
         LOGGER.warn(
             "Hibernate manages the schema (server.schema-management=hibernate): the schema steps"
@@ -249,14 +259,24 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
+  HibernateConfigurator hibernateConfigurator() {
+    return hibernateConfigurator;
+  }
+
+  /** Whether the URLs name the same H2 database, whatever settings follow the name. */
+  private static boolean sameDatabase(String url, String connectionUrl) {
+    return url.split(";", 2)[0].equalsIgnoreCase(connectionUrl.split(";", 2)[0]);
+  }
+
   /**
    * Closes the database configuration this server built. An in-memory database lasts only as long
-   * as its server, but H2 keeps one that sets DB_CLOSE_DELAY=-1 until the JVM ends, so its tables
-   * are dropped first: the next server in this JVM must not find this server's data.
+   * as its server, but H2 keeps one that sets DB_CLOSE_DELAY=-1 until the JVM ends, so the database
+   * that this server chose for itself drops its tables first. A database that the configuration
+   * names is never dropped: another server may be using it.
    */
   private void closeOwnedDatabase() {
     try {
-      if (inMemoryDatabase) {
+      if (dropsDatabaseAtClose) {
         try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
             Statement statement = connection.createStatement()) {
           statement.execute("DROP ALL OBJECTS");
