@@ -807,10 +807,40 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     }
     delete(externalLocationName, Optional.of(false));
 
-    // Force deletion remains allowed while cleanup is pending.
+    // Forced changes remain allowed while cleanup is pending.
     create(externalLocationName, externalLocationRoot);
     createCleanupTask(externalLocationRoot + "/third");
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    externalLocationName,
+                    new UpdateExternalLocation().url(anotherTestUrl()).force(true))
+                .getUrl())
+        .isEqualTo(anotherTestUrl());
     delete(externalLocationName, Optional.of(true));
+  }
+
+  @Test
+  public void testPendingCleanupIsReportedBeforeAStorageUser() throws ApiException {
+    String root = testUrl() + "/cleanup-and-volume";
+    create(EXTERNAL_LOCATION_NAME, root);
+    volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(VOLUME_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(root + "/volume"));
+    createCleanupTask(root + "/cleanup");
+
+    assertPendingCleanupRefused(
+        () ->
+            externalLocationOperations.deleteExternalLocation(
+                EXTERNAL_LOCATION_NAME, Optional.of(false)));
+    assertPendingCleanupRefused(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(anotherTestUrl())));
   }
 
   private void assertPendingCleanupRefused(Executable action) {
