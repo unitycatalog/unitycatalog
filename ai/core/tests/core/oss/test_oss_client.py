@@ -3227,7 +3227,8 @@ async def test_cancelling_close_async_still_closes_the_client():
     await assert_session_closed(client)
 
 
-def test_a_second_close_waits_for_the_first_to_finish():
+@pytest.mark.asyncio
+async def test_a_second_close_waits_for_the_first_to_finish():
     api_client = ApiClient(
         configuration=Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
     )
@@ -3243,12 +3244,10 @@ def test_a_second_close_waits_for_the_first_to_finish():
     api_client.rest_client.close = slow_close
     first = UnitycatalogFunctionClient(api_client=api_client)
     second = UnitycatalogFunctionClient(api_client=api_client)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        first_close = executor.submit(first.close)
-        assert closing_started.wait(30)
-        second_close = executor.submit(second.close)
-        time.sleep(0.5)
-        assert not second_close.done()
-        release.set()
-        first_close.result(timeout=30)
-        second_close.result(timeout=30)
+    first_close = asyncio.ensure_future(asyncio.to_thread(first.close))
+    assert await asyncio.to_thread(closing_started.wait, 30)
+    second_close = asyncio.ensure_future(asyncio.to_thread(second.close))
+    await asyncio.sleep(0.5)
+    assert not second_close.done()
+    release.set()
+    await asyncio.wait_for(asyncio.gather(first_close, second_close), timeout=30)
