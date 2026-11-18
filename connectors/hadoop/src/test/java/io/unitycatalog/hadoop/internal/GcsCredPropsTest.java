@@ -16,6 +16,7 @@ class GcsCredPropsTest extends CredPropsBaseTest {
 
   private static final String CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
   private static final String HNS_FOLDERS_KEY = "fs.gs.hierarchical.namespace.folders.enable";
+  private static final String IMPLICIT_DIR_REPAIR_KEY = "fs.gs.implicit.dir.repair.enable";
   private static final String STATIC_EXPIRATION_KEY = "fs.gs.auth.access.token.expiration";
   private static final String CUSTOM_IMPL = "com.example.CustomGcsFileSystem";
   private static final String GHFS = "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem";
@@ -41,7 +42,14 @@ class GcsCredPropsTest extends CredPropsBaseTest {
   @Override
   Map<String, String> defaultKeys() {
     return props(
-        CONFLICT_CHECK_KEY, "false", HNS_FOLDERS_KEY, "false", "fs.gs.impl.disable.cache", "true");
+        CONFLICT_CHECK_KEY,
+        "false",
+        HNS_FOLDERS_KEY,
+        "false",
+        IMPLICIT_DIR_REPAIR_KEY,
+        "false",
+        "fs.gs.impl.disable.cache",
+        "true");
   }
 
   /**
@@ -186,10 +194,12 @@ class GcsCredPropsTest extends CredPropsBaseTest {
     // A user setting, even one that equals Hadoop's default, is respected.
     conf.set(CONFLICT_CHECK_KEY, "true");
     conf.set(HNS_FOLDERS_KEY, "true");
+    conf.set(IMPLICIT_DIR_REPAIR_KEY, "true");
 
     assertThat(tableProps(conf))
         .containsEntry(CONFLICT_CHECK_KEY, "true")
-        .containsEntry(HNS_FOLDERS_KEY, "true");
+        .containsEntry(HNS_FOLDERS_KEY, "true")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "true");
   }
 
   private Map<String, String> tableProps(Configuration conf) throws Exception {

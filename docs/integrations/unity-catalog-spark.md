@@ -401,6 +401,7 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
         --conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false" \
+        --conf "spark.hadoop.fs.gs.implicit.dir.repair.enable=false" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
@@ -423,6 +424,7 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
         --conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false" \
+        --conf "spark.hadoop.fs.gs.implicit.dir.repair.enable=false" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
@@ -446,6 +448,7 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
         --conf "spark.hadoop.fs.gs.create.items.conflict.check.enable=false" \
         --conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false" \
+        --conf "spark.hadoop.fs.gs.implicit.dir.repair.enable=false" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
@@ -460,6 +463,8 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
       Spark version, and it breaks writes to non-Delta tables.
     - `fs.gs.create.items.conflict.check.enable` reads the folders above a table. Hadoop 3.5 (Spark 4.2.x) turns it on,
       and it breaks all access.
+    - `fs.gs.implicit.dir.repair.enable` recreates the parent folder after a folder is deleted. The connector turns it on
+      itself, and it breaks `INSERT OVERWRITE` on parquet tables.
 
     From 0.8.0 Unity Catalog turns both off itself, so the `--conf` lines for them in the commands above can be dropped.
     If your credentials are broad enough for those reads (for example on a hierarchical-namespace bucket), set either one

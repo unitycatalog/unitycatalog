@@ -15,19 +15,26 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
       "fs.gs.auth.access.token.expiration";
   private static final String GCS_CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
   private static final String GCS_HNS_FOLDERS_KEY = "fs.gs.hierarchical.namespace.folders.enable";
+  private static final String GCS_IMPLICIT_DIR_REPAIR_KEY = "fs.gs.implicit.dir.repair.enable";
 
   GcsCredPropsBuilder(Configuration conf) {
     super(conf);
     set("fs.gs.impl.disable.cache", "true");
-    // Both settings are on by default in the GCS connector, and each makes it call Google about
-    // more than the table's own path, which a UC-vended downscoped token (scoped to a table's path
-    // prefix) is not allowed to do, so the call returns 403:
-    //   - the conflict check stats every ancestor directory on file creation;
-    //   - the hierarchical namespace lookup reads the bucket's layout when writing files.
-    // Default both to false; users with broader credentials can opt back in via Hadoop/Spark
+    // Each setting makes the GCS connector call Google about more than the table's own path, which
+    // a UC-vended downscoped token (scoped to a table's path prefix) is not allowed to do, so the
+    // call fails:
+    //   - the conflict check stats every ancestor directory on file creation; Hadoop 3.5's
+    //     core-default.xml turns it on;
+    //   - the hierarchical namespace lookup reads the bucket's layout when writing files; the
+    //     connector (4.0.x) turns it on itself, on every Spark version;
+    //   - the implicit directory repair recreates the parent folder after a directory delete, such
+    //     as the partition delete of INSERT OVERWRITE on a parquet table; the connector turns it on
+    //     itself.
+    // Default all three to false; users with broader credentials can opt back in via Hadoop/Spark
     // config.
     setOffUnlessEngineSets(GCS_CONFLICT_CHECK_KEY);
     setOffUnlessEngineSets(GCS_HNS_FOLDERS_KEY);
+    setOffUnlessEngineSets(GCS_IMPLICIT_DIR_REPAIR_KEY);
   }
 
   @Override
