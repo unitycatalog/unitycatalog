@@ -146,12 +146,30 @@ jobs:
           for ref in UC_S3_ACCESSKEY_0:ci-s3-credentials:accessKey UC_S3_SECRETKEY_0:ci-s3-credentials:secretKey \
             UC_ADLS_TENANTID_0:ci-adls-credentials:tenantId UC_ADLS_CLIENTID_0:ci-adls-credentials:clientId \
             UC_ADLS_CLIENTSECRET_0:ci-adls-credentials:clientSecret \
-            UC_HIBERNATE_CONNECTION_PASSWORD:ci-db-password:password; do
+            UC_HIBERNATE_CONNECTION_PASSWORD:ci-db-password:password \
+            UC_SERVER_CREDENTIAL_ENCRYPTION_KEY:ci-credential-encryption:ciEncryptionKey; do
             IFS=: read -r name secret key <<<"$ref"
             grep -A4 -- "- name: $name\$" <<<"$out" | tr -d '\n' | grep -qE "name: \"$secret\" +key: \"?$key\"?( |\$)"
           done
           # None in the file, which the init container writes only at pod start.
-          ! grep -qE 'server\.client-secret|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)|hibernate\.connection\.password' <<<"$out" || exit 1
+          ! grep -qE 'server\.client-secret|server\.credential-encryption-key|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)|hibernate\.connection\.password' <<<"$out" || exit 1
+          # The credential encryption key is passed only when its Secret is named, with any database.
+          default_render="$(helm template uc helm)"
+          ! grep -qF 'UC_SERVER_CREDENTIAL_ENCRYPTION_KEY' <<<"$default_render" || exit 1
+          # With any database, in the one env list of the server container, and never in the file.
+          for values in "" "-f helm/ci/postgresql-values.yaml" "-f helm/ci/mysql-values.yaml"; do
+            key_only="$(helm template uc helm $values --set server.credentialEncryptionKeySecret.name=k)"
+            [ "$(grep -c -- '- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY$' <<<"$key_only")" -eq 1 ]
+            grep -A4 -- "- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY\$" <<<"$key_only" | tr -d '\n' \
+              | grep -qE 'name: "k" +key: "?encryptionKey"?( |$)'
+            ! grep -qE 'server\.credential-encryption-key' <<<"$key_only" || exit 1
+          done
+          # On MySQL, JDK_JAVA_OPTIONS follows the key in the same env list: no second env: between
+          # them.
+          mysql_out="$(helm template uc helm -f helm/ci/mysql-values.yaml --set server.credentialEncryptionKeySecret.name=k)"
+          between="$(sed -n '/- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY$/,/- name: JDK_JAVA_OPTIONS$/p' <<<"$mysql_out")"
+          grep -qF -- '- name: JDK_JAVA_OPTIONS' <<<"$between"
+          ! grep -qE '^\s*env:' <<<"$between" || exit 1
           # The rendered chart no longer has DB_PASSWORD.
           ! grep -qF 'DB_PASSWORD' <<<"$out" || exit 1
           # The deprecated init container variables are there only for a custom template.
@@ -230,6 +248,14 @@ jobs:
           done
           values=()
           [ "$DB" = file ] || values=(--values "helm/ci/$DB-values.yaml")
+          # The PostgreSQL case also turns on s3_compatible credentials, with an encryption key from a
+          # Secret; the other cases keep the default install.
+          if [ "$DB" = postgresql ]; then
+            kubectl create secret generic credential-encryption --namespace uc \
+              --from-literal=encryptionKey="$(openssl rand -base64 32)"
+            values+=(--set server.credentialEncryptionKeySecret.name=credential-encryption \
+              --set-string 'server.config.extraProperties.server\.s3-compatible-storage\.enabled=true')
+          fi
           helm install uc "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace uc --create-namespace --wait --timeout 600s \
             "${values[@]}" \
             --set server.deployment.image.repository=unitycatalog \
@@ -238,4 +264,10 @@ jobs:
             --set server.deployment.enableReadinessProbe=true \
             --set ui.deployment.image.repository=unitycatalog-ui \
             --set ui.deployment.image.pullPolicy=Never
+          if [ "$DB" = postgresql ]; then
+            # The server read the key, which it checks at startup with the feature on.
+            kubectl logs --namespace uc deployment/uc-unitycatalog-server --container server \
+              | grep -F 'Using the UC_SERVER_CREDENTIAL_ENCRYPTION_KEY environment variable' > /dev/null \
+              || { echo "::error::The server did not read the credential encryption key"; exit 1; }
+          fi
           helm test uc --namespace uc --logs

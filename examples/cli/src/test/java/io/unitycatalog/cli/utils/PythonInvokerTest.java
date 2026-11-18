@@ -157,11 +157,22 @@ public class PythonInvokerTest {
             () ->
                 PythonInvoker.invokePython(
                     intFunction("raise ValueError('x')"), PYTHON_ENGINE, tempDir, "5"))
-        .isInstanceOf(ApiException.class);
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("ValueError: x");
 
     try (Stream<Path> files = Files.list(tempDir)) {
       assertThat(files).isEmpty();
     }
+  }
+
+  @Test
+  public void testCallUsesTheGivenTempDir(@TempDir Path tempDir) {
+    Path missing = tempDir.resolve("missing");
+
+    assertThatThrownBy(
+            () -> PythonInvoker.invokePython(intFunction("return a"), PYTHON_ENGINE, missing, "5"))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining(missing.toString());
   }
 
   @Test

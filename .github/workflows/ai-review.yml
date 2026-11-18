@@ -17,7 +17,7 @@
 #   secrets.OMNIGENT_BOT_APP_ID + secrets.OMNIGENT_BOT_APP_KEY
 #   vars.OMNIGENT_BOT_LOGIN  Exact GitHub App login used for history deduplication.
 #
-# Trigger: workflow_dispatch (manual) or /review comment from triage-or-higher users.
+# Trigger: workflow_dispatch (manual) or /review comment from users with the triage, moderate, or higher role.
 # Output: artifact only (pilot mode).
 # =============================================================================
 name: AI PR Review
@@ -128,7 +128,7 @@ jobs:
           echo "auth_subject=$auth_subject" >> "$GITHUB_OUTPUT"
           echo "pr_number=$n" >> "$GITHUB_OUTPUT"
 
-      - name: Check trigger subject has triage-or-higher access
+      - name: Check trigger subject has triage, moderate, or higher access
         id: access
         if: steps.trigger.outputs.skip != 'true'
         env:
@@ -140,13 +140,15 @@ jobs:
           # Gate on the granular role (role_name), not the coarse .permission:
           # triage collaborators report .permission == "read", so only role_name
           # distinguishes a triage collaborator from public read access.
+          # moderate is an org custom repository role whose .permission is also
+          # "read"; its holders are maintainer-granted, so they may run reviews.
           role="$(gh api "repos/${REPO}/collaborators/${AUTH_SUBJECT}/permission" --jq '.role_name' 2>/dev/null || echo none)"
           case "$role" in
-            admin|maintain|write|triage)
+            admin|maintain|write|triage|moderate)
               echo "allowed=true" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo "::notice::${AUTH_SUBJECT} has '${role}' access, not triage/write/maintain/admin; skipping."
+              echo "::notice::${AUTH_SUBJECT} has '${role}' access, not triage/moderate/write/maintain/admin; skipping."
               echo "allowed=false" >> "$GITHUB_OUTPUT"
               ;;
           esac
