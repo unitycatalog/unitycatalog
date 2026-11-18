@@ -20,9 +20,9 @@ release's steps build. Otherwise it refuses to start
 and tells you what to do, which is to run `bin/start-uc-server --upgrade-schema` when that brings the database
 there. The one exception is an in-memory
 database (`server.env=test`, or an in-memory H2 URL such as `jdbc:h2:mem:`), which only the server's own process can
-reach: the server sets up its schema at start. With authorization enabled, the authorization library also creates
-its `casbin_rule` table when it is missing, so keep the DDL privilege (`CREATE TABLE`) for the database user until
-that table exists.
+reach: the server sets up its schema at start. With authorization enabled, the authorization library runs
+`CREATE TABLE IF NOT EXISTS casbin_rule` at every start, so the database user needs the `CREATE` privilege (on
+PostgreSQL, on the schema) while authorization is enabled.
 
 Two options of `bin/start-uc-server` check and change the schema. Neither starts the server. Both
 exit with 0 when they succeed, and with 1 and the reasons when they refuse (see

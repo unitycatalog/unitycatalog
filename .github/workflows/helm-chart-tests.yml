@@ -199,9 +199,10 @@ jobs:
             ! renders_upgrade_schema --set-string "server.config.override=$override" || exit 1
           done
           ! renders_upgrade_schema --set 'server.config.extraProperties.server\.env=test' || exit 1
-          for url in 'jdbc:h2:mem:uc;DB_CLOSE_DELAY=-1' 'jdbc:h2:memFS:uc' 'jdbc:h2:memLZF:uc' 'jdbc:h2:.'; do
+          for url in 'jdbc:h2:mem:uc;DB_CLOSE_DELAY=-1' 'jdbc:h2:memFS:uc' 'jdbc:h2:memLZF:uc' 'jdbc:h2:nioMemFS:uc' 'jdbc:h2:nioMemLZF:uc' 'jdbc:h2:.'; do
             ! renders_upgrade_schema --set-string "server.db.overrideConfig=hibernate.connection.url=$url" || exit 1
           done
+          ! renders_upgrade_schema --set-string 'server.db.overrideConfig=hibernate.hikari.dataSource.url=jdbc:h2:mem:uc' || exit 1
           # A later server.env wins, as it does in the server, and a file URL keeps the container.
           renders_upgrade_schema --set-string "server.config.override=server.env=test"$'\n''server.env=prod'
           renders_upgrade_schema --set-string 'server.db.overrideConfig=hibernate.connection.url=jdbc:h2:file:/data/uc'

@@ -39,6 +39,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -74,7 +75,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
   }
 
   @Test
-  public void opaRequiresAUrlAndReleasesNativeAuthorizerOnClose() {
+  public void opaRequiresAUrlAndReleasesNativeAuthorizerOnClose() throws Exception {
     ServerProperties properties = new ServerProperties(serverProperties);
     properties.set(Property.AUTHORIZATION_ENABLED, "enable");
     properties.set(Property.AUTHORIZATION_PROVIDER, "opa");
@@ -97,11 +98,26 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .serverProperties(properties)
             .hibernateConfigurator(hibernateConfigurator)
             .build();
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection()) {
+      connection.createStatement().execute("CREATE TABLE callers_table (id INT)");
+      if (!connection.getAutoCommit()) {
+        connection.commit();
+      }
+    }
     try {
       assertThat(hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections())
           .isEqualTo(connections + 1);
     } finally {
       server.close();
+    }
+    // A database the caller injected stays the caller's, with its data.
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
+        Statement statement = connection.createStatement()) {
+      statement.execute("SELECT id FROM callers_table");
+      statement.execute("DROP TABLE callers_table");
+      if (!connection.getAutoCommit()) {
+        connection.commit();
+      }
     }
     assertThat(hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections())
         .isEqualTo(connections);
@@ -110,8 +126,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
 
   /**
    * A server that builds its own database configuration refuses an H2 file that does not exist, and
-   * does not create it. {@code TestServer} injects the configurator, so this is the one test that
-   * starts the server as the launcher does.
+   * does not create it.
    */
   @Test
   public void startRefusesAMissingH2FileWithoutCreatingIt(@TempDir Path dir) throws Exception {
@@ -202,7 +217,10 @@ public class UnityCatalogServerTest extends BaseServerTest {
     }
   }
 
-  /** A server that builds its own database configuration from {@code hibernateFile}. */
+  /**
+   * A server that builds its own database configuration from {@code hibernateFile}. {@code
+   * TestServer} injects the configurator; this builds one as the launcher does.
+   */
   private UnityCatalogServer ownedServer(Properties properties, Path hibernateFile) {
     return UnityCatalogServer.builder()
         .port(0)

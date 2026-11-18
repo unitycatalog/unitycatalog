@@ -92,6 +92,9 @@ public class UnityCatalogServer implements AutoCloseable {
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
 
+  /** True when the configured database is in memory, decided from its URL at construction. */
+  private final boolean inMemoryDatabase;
+
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
 
@@ -144,6 +147,8 @@ public class UnityCatalogServer implements AutoCloseable {
     } else {
       this.hibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator;
     }
+    this.inMemoryDatabase =
+        SchemaMigrator.isInMemory(hibernateConfigurator.getHibernateProperties());
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
       Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
@@ -251,7 +256,7 @@ public class UnityCatalogServer implements AutoCloseable {
    */
   private void closeOwnedDatabase() {
     try {
-      if (new SchemaMigrator(hibernateConfigurator.getDataSource()).isInMemory()) {
+      if (inMemoryDatabase) {
         try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
             Statement statement = connection.createStatement()) {
           statement.execute("DROP ALL OBJECTS");
