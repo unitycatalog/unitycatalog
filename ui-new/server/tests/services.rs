@@ -385,6 +385,89 @@ async fn create_function_uses_uc_request_envelope() {
     assert_eq!(body_json(response).await["function"]["name"], "answer");
 }
 
+/// Pads `prefix` with `fill` to exactly `bytes` UTF-8 bytes.
+fn padded(prefix: &str, bytes: usize, fill: char) -> String {
+    let text = format!(
+        "{prefix}{}",
+        fill.to_string()
+            .repeat((bytes - prefix.len()) / fill.len_utf8())
+    );
+    assert_eq!(text.len(), bytes);
+    text
+}
+
+#[tokio::test]
+async fn definitions_are_limited_to_one_mebibyte_of_utf8() {
+    const LIMIT: usize = 1024 * 1024;
+    const VIEW_YAML: &str = "dimensions:\n  - name: event_day\n    expr: event_day\n# ";
+    // (UTF-8 bytes, padding character, accepted)
+    let cases = [
+        (LIMIT, 'a', true),
+        (LIMIT + 1, 'a', false),
+        // Fewer than LIMIT characters, but more than LIMIT bytes.
+        (LIMIT + 2, 'é', false),
+        // JSON escaping doubles the request on the wire; it still fits the
+        // transport limit, so validation decides.
+        (LIMIT, '"', true),
+    ];
+
+    for (bytes, fill, accepted) in cases {
+        let uc = MockServer::start().await;
+        let object = |name: &str| serde_json::json!({"name": name, "catalog_name": "main", "schema_name": "default"});
+        for (uc_path, reply) in [
+            ("/api/2.1/unity-catalog/functions", object("f")),
+            ("/api/2.1/unity-catalog/tables", object("m")),
+        ] {
+            Mock::given(method("POST"))
+                .and(path(uc_path))
+                .respond_with(ResponseTemplate::new(200).set_body_json(reply))
+                .expect(u64::from(accepted))
+                .mount(&uc)
+                .await;
+        }
+        let app = build_app(uc.uri());
+        let reference = |name: &str| serde_json::json!({"catalogName": "main", "schemaName": "default", "name": name});
+        let requests = [
+            (
+                "FunctionService",
+                "CreateFunction",
+                serde_json::json!({
+                    "function": reference("f"),
+                    "returnType": "COLUMN_TYPE_NAME_LONG",
+                    "routineDefinition": padded("", bytes, fill)
+                }),
+            ),
+            (
+                "ViewService",
+                "CreateView",
+                serde_json::json!({
+                    "view": reference("m"),
+                    "columns": [{"name": "event_day", "typeName": "COLUMN_TYPE_NAME_DATE"}],
+                    "viewDefinition": padded(VIEW_YAML, bytes, fill),
+                    "dependencies": [{"tableFullName": "main.default.events"}]
+                }),
+            ),
+        ];
+
+        for (service, rpc, request) in requests {
+            let response = app
+                .clone()
+                .oneshot(rpc_request(service, rpc, request))
+                .await
+                .unwrap();
+            let status = response.status();
+            let json = body_json(response).await;
+            let case = format!("{service}/{rpc} with {bytes} bytes of {fill:?}");
+            if accepted {
+                assert_eq!(status, StatusCode::OK, "{case}: {json}");
+            } else {
+                assert_eq!(json["code"], "invalid_argument", "{case}: {json}");
+            }
+        }
+        uc.verify().await;
+    }
+}
+
 #[tokio::test]
 async fn list_views_returns_filtered_empty_page_with_next_token() {
     let uc = MockServer::start().await;

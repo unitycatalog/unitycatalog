@@ -43,6 +43,9 @@ message TableSummary {
 
 // TableInfo contains complete details for a non-metric-view table record.
 message TableInfo {
+  reserved 13, 14;
+  reserved "view_definition", "dependencies";
+
   string catalog_name = 1;
   string schema_name = 2;
   string name = 3;

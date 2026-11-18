@@ -5,9 +5,12 @@ package uc.v1;
 import "buf/validate/validate.proto";
 import "uc/v1/common.proto";
 
-// FunctionLanguage is the language family of a UC function.
 // FunctionParameterInfo describes one function parameter.
 message FunctionParameterInfo {
+  reserved 3, 6, 8 to 12;
+  reserved "type_json", "parameter_default", "type_precision", "type_scale",
+      "type_interval_type", "parameter_mode", "parameter_type";
+
   string name = 1;
   string type_text = 2;
   ColumnTypeName type_name = 4;
@@ -45,6 +48,9 @@ message FunctionParameterInput {
 
 // FunctionSummary contains the fields needed to render a function list.
 message FunctionSummary {
+  reserved 6;
+  reserved "language";
+
   string catalog_name = 1;
   string schema_name = 2;
   string name = 3;
@@ -56,6 +62,11 @@ message FunctionSummary {
 
 // FunctionInfo contains the complete function details exposed by the UI.
 message FunctionInfo {
+  reserved 8, 10 to 13, 15, 18, 19;
+  reserved "language", "sql_data_access", "is_deterministic", "is_null_call",
+      "external_language", "properties_json", "return_parameters",
+      "routine_dependencies";
+
   string catalog_name = 1;
   string schema_name = 2;
   string name = 3;
@@ -129,7 +140,7 @@ message CreateFunctionRequest {
   }];
   string routine_definition = 4 [(buf.validate.field).string = {
     min_len: 1
-    max_len: 1048576
+    max_bytes: 1048576
   }];
   optional string comment = 5 [(buf.validate.field).string.max_len = 65536];
 }
