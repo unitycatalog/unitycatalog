@@ -232,8 +232,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   local `file:` storage vends no credential, so it has no `CLEANUP` record.
 - `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
   changed.
-- `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG`, or `OWNER` for the
-  ownership grant made when an object is created.
+- `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG` or `OWNER`.
+  Creation records an `OWNER` grant. Ownership transfer records `OWNER` revokes and the new grant.
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
   that request. It is absent on records not made while serving a request: `CLEANUP` records and
   `system:server` records.

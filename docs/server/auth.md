@@ -432,7 +432,8 @@ on every instance to detect changes from other servers, subject to its concurren
 If the local reload fails, the request returns an error even though the transfer may have
 committed. With native authorization, permission checks on this instance deny every user,
 including metastore admins, until a reload succeeds. A denied request retries the reload even
-when policy refresh is disabled. Read the owner after recovery before retrying a transfer.
+when policy refresh is disabled. Native grant changes and permission listings also retry the
+reload. Read the owner after recovery before retrying a transfer.
 
 ### Restart the UC Server
 

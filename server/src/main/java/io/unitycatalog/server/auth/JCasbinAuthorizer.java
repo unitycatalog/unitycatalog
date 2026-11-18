@@ -1,5 +1,6 @@
 package io.unitycatalog.server.auth;
 
+import dev.failsafe.ExecutionContext;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
@@ -11,6 +12,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -76,7 +78,15 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   public JCasbinAuthorizer(
       HibernateConfigurator hibernateConfigurator, ServerProperties serverProperties)
       throws Exception {
-    this.adapter = new JDBCAdapter(autocommitOnCheckout(hibernateConfigurator.getDataSource()));
+    this.adapter =
+        new JDBCAdapter(autocommitOnCheckout(hibernateConfigurator.getDataSource())) {
+          @Override
+          protected void retry(ExecutionContext<Void> context) throws SQLException {
+            // The adapter replaces this connection without returning it to the pool.
+            conn.close();
+            super.retry(context);
+          }
+        };
     this.sessionFactory = hibernateConfigurator.getSessionFactory();
 
     InputStream modelStream = this.getClass().getResourceAsStream("/jcasbin_auth_model.conf");
@@ -222,8 +232,9 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   /**
    * Reloads this instance's policy after an ownership update. On failure, permission checks deny
    * every user, including metastore admins, until a reload succeeds. A denied request retries the
-   * reload even when policy refresh is disabled. The caller receives the failure even if the
-   * ownership update already committed.
+   * reload even when policy refresh is disabled. Native grant changes and permission listings also
+   * retry the reload. The caller receives the failure even if the ownership update already
+   * committed.
    */
   @Override
   public void reloadAuthorizations() {
@@ -258,6 +269,15 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
    * names refer to the live-enforcer pointer, not to Casbin read vs write.
    */
   private <T> T withPolicy(Function<SyncedEnforcer, T> action) {
+    if (reloadRequired) {
+      // Recover native grants even when OPA handles permission decisions.
+      try {
+        refreshAuthorizations(System.nanoTime());
+      } catch (RuntimeException | Error e) {
+        // The JDBC adapter throws Error after SQL retries fail.
+        throw new BaseException(ErrorCode.UNAVAILABLE, "Authorization policy must be reloaded.", e);
+      }
+    }
     reloadLock.readLock().lock();
     try {
       if (reloadRequired) {

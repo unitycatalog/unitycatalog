@@ -314,31 +314,31 @@ public class OwnershipRepositoryTest {
         assertThat(authorizer.authorize(id, SecurableType.CATALOG, resourceId, Privileges.MANAGE))
             .isFalse();
       }
+      // Operations must refuse the incomplete policy while the store is unavailable.
+      List<Runnable> blocked =
+          List.of(
+              () -> authorizer.grantAuthorization(thirdId, resourceId, Privileges.MANAGE),
+              () -> authorizer.revokeAuthorization(secondId, resourceId, Privileges.OWNER),
+              () -> authorizer.clearAuthorizationsForPrincipal(secondId),
+              () -> authorizer.clearAuthorizationsForResource(resourceId),
+              () -> authorizer.addHierarchyChild(resourceId, UUID.randomUUID()),
+              () -> authorizer.removeHierarchyChild(resourceId, childId),
+              () -> authorizer.removeHierarchyChildren(resourceId),
+              () -> authorizer.listAuthorizations(resourceId),
+              () -> authorizer.listAuthorizations(secondId, resourceId),
+              () -> authorizer.getHierarchyParent(childId));
+      for (Runnable operation : blocked) {
+        assertThatExceptionOfType(BaseException.class)
+            .isThrownBy(operation::run)
+            .extracting(BaseException::getErrorCode)
+            .isEqualTo(ErrorCode.UNAVAILABLE);
+      }
     } finally {
       sessionFactory.inTransaction(
           session ->
               session
                   .createNativeMutationQuery("ALTER TABLE unavailable_policy RENAME TO casbin_rule")
                   .executeUpdate());
-    }
-    // The store is available again, but the live policy is still incomplete until recovery.
-    List<Runnable> blocked =
-        List.of(
-            () -> authorizer.grantAuthorization(thirdId, resourceId, Privileges.MANAGE),
-            () -> authorizer.revokeAuthorization(secondId, resourceId, Privileges.OWNER),
-            () -> authorizer.clearAuthorizationsForPrincipal(secondId),
-            () -> authorizer.clearAuthorizationsForResource(resourceId),
-            () -> authorizer.addHierarchyChild(resourceId, UUID.randomUUID()),
-            () -> authorizer.removeHierarchyChild(resourceId, childId),
-            () -> authorizer.removeHierarchyChildren(resourceId),
-            () -> authorizer.listAuthorizations(resourceId),
-            () -> authorizer.listAuthorizations(secondId, resourceId),
-            () -> authorizer.getHierarchyParent(childId));
-    for (Runnable operation : blocked) {
-      assertThatExceptionOfType(BaseException.class)
-          .isThrownBy(operation::run)
-          .extracting(BaseException::getErrorCode)
-          .isEqualTo(ErrorCode.UNAVAILABLE);
     }
     if (loadOwner) {
       authorizer.loadOwner(resourceId);

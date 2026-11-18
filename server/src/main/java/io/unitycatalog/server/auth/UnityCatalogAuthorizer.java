@@ -45,7 +45,13 @@ public interface UnityCatalogAuthorizer {
 
   Map<UUID, List<Privileges>> listAuthorizations(UUID resource);
 
-  /** Loads the saved OWNER grant for a created resource without writing it again. */
+  /**
+   * Loads the saved OWNER grant for a created resource without writing it again.
+   *
+   * <p>Creation saves the native grant in the resource transaction before this call.
+   * Implementations with a separate grant store must handle creation explicitly. The default only
+   * reloads policy.
+   */
   default void loadOwner(UUID resource) {
     reloadAuthorizations();
   }
