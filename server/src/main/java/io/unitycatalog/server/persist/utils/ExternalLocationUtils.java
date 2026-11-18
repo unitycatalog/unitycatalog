@@ -705,6 +705,16 @@ public class ExternalLocationUtils {
     return isSameOrUnder(currentUrl, newUrl);
   }
 
+  /** Returns whether the parent paths of {@code url} can be built, which fails for s3:///. */
+  public static boolean canBuildParentPaths(NormalizedURL url) {
+    try {
+      getParentPathsList(url);
+      return true;
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+  }
+
   /** Returns whether {@code url} is {@code ancestor} itself or a path under it. */
   public static boolean isSameOrUnder(NormalizedURL url, NormalizedURL ancestor) {
     return url.equals(ancestor) || getParentPathsList(url).contains(ancestor);
