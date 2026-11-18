@@ -276,8 +276,8 @@ public class SchemaMigratorTest {
     /** The restore fails on a pool that keeps its connections as they are. */
     UNPOOLED,
     /**
-     * The restore fails on a Hikari pool's connection that the caller's DataSource wraps, so the
-     * pool can't evict it.
+     * The restore fails on a Hikari pool's connection that the caller's DataSource wraps; the
+     * wrapper unwraps to Hikari's connection, so the pool evicts it.
      */
     WRAPPED_POOL,
     /** The delete fails, and the restore fails too. */
@@ -300,10 +300,6 @@ public class SchemaMigratorTest {
   @EnumSource(ConnectionState.class)
   void cleansUpTheConnectionWhenItCannotBeRestored(ConnectionState state) throws SQLException {
     assumeFalse(state == ConnectionState.LOCK_CONNECTION && isH2(), "H2 has no run lock");
-    assumeFalse(
-        state == ConnectionState.WRAPPED_POOL && isH2(),
-        "On H2 the pool keeps a wrapped connection that was closed directly: H2's abort does"
-            + " nothing and its closed-connection error does not make Hikari drop it");
     new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
     UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
     UpgradeTestUtils.execute(
@@ -321,6 +317,7 @@ public class SchemaMigratorTest {
     AtomicReference<Connection> migrators = new AtomicReference<>();
     AtomicReference<Connection> deleters = new AtomicReference<>();
     List<Connection> failed = new CopyOnWriteArrayList<>();
+    List<Connection> physical = new CopyOnWriteArrayList<>(); // the database connections of failed
     List<Connection> aborted = new CopyOnWriteArrayList<>();
     AtomicReference<Connection> lockers = new AtomicReference<>();
     DataSource real = db.dataSource();
@@ -331,6 +328,16 @@ public class SchemaMigratorTest {
                     getClass().getClassLoader(),
                     new Class<?>[] {Connection.class},
                     (pp, mm, aa) -> {
+                      // A wrapping pool unwraps the standard way.
+                      if (state == ConnectionState.WRAPPED_POOL && mm.getName().equals("unwrap")) {
+                        Class<?> iface = (Class<?>) aa[0];
+                        return iface.isInstance(c) ? c : c.unwrap(iface);
+                      }
+                      if (state == ConnectionState.WRAPPED_POOL
+                          && mm.getName().equals("isWrapperFor")) {
+                        Class<?> iface = (Class<?>) aa[0];
+                        return iface.isInstance(c) || c.isWrapperFor(iface);
+                      }
                       if (mm.getName().equals("abort")) {
                         aborted.add(c);
                       }
@@ -369,6 +376,7 @@ public class SchemaMigratorTest {
                           && !(Boolean) aa[0]
                           && migrators.compareAndSet(c, null)) {
                         failed.add(c);
+                        physical.add(c.unwrap(Connection.class));
                         if (state == ConnectionState.BROKEN) {
                           c.close();
                           throw new SQLException("Test: connection lost", "08003");
@@ -466,7 +474,7 @@ public class SchemaMigratorTest {
       armed.set(true);
       assertThat(new SchemaMigrator(migrated, NEXT_RELEASE).upgradeSchema()).isOne();
       assertThat(failed).hasSize(1);
-      assertThat(failed.get(0).unwrap(Connection.class).isClosed()).isTrue();
+      assertThat(failed.get(0).isClosed()).isTrue();
       if (state == ConnectionState.HEALTHY || state == ConnectionState.BROKEN) {
         // The pool evicted the connection; the abort fallback did not run.
         assertThat(aborted).isEmpty();
@@ -476,13 +484,16 @@ public class SchemaMigratorTest {
         assertThat(failed.get(0)).isSameAs(lockers.get());
       }
       if (state == ConnectionState.WRAPPED_POOL) {
-        // The pool ignores an eviction of a connection that is not its own, so the connection is
-        // aborted instead.
-        assertThat(aborted).containsExactly(failed.get(0));
+        // The pool evicted the connection through the wrapper; the abort fallback did not run.
+        assertThat(aborted).isEmpty();
       }
       try (Connection next = pool.getConnection();
           Statement select = next.createStatement()) {
         assertThat(select.execute("SELECT 1")).isTrue();
+        if (state == ConnectionState.WRAPPED_POOL) {
+          // The connection that failed is not handed out again.
+          assertThat(next.unwrap(Connection.class)).isNotSameAs(physical.get(0));
+        }
       }
     }
     assertThat(failedRecords()).isZero();

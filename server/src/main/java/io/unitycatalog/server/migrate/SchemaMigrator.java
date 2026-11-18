@@ -2,6 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.pool.ProxyConnection;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
@@ -1516,20 +1517,24 @@ public final class SchemaMigrator implements AutoCloseable {
 
     /**
      * Discards the schema migration's database connection and makes a best effort to end its
-     * database session. A Hikari pool evicts it, so it is not handed out again; for any other pool,
-     * or a connection that Hikari did not hand out itself, the connection is aborted, and closed
-     * directly when that left it open (a driver's abort may do nothing, as H2's does).
+     * database session. A Hikari pool evicts it, so it is not handed out again, also when the
+     * caller's DataSource wraps the pool and the connection can be unwrapped to Hikari's own. For
+     * any other pool, or a connection that cannot be unwrapped to Hikari's own, the connection is
+     * aborted, and closed directly when that left it open (a driver's abort may do nothing, as H2's
+     * does).
      */
     private static void closeUnderlying(DataSource dataSource, Connection connection) {
       boolean evicted = false;
       try {
-        // Hikari ignores an eviction of a connection that is not its own, such as one that the
-        // caller's DataSource wraps. The class-name check only has to be right when it says yes: a
-        // name that does not match (for example under shading) means abort instead of evict.
-        if (dataSource.isWrapperFor(HikariDataSource.class)
-            && connection.getClass().getName().startsWith("com.zaxxer.hikari.")) {
-          dataSource.unwrap(HikariDataSource.class).evictConnection(connection);
-          evicted = true;
+        // Hikari ignores an eviction of a connection that is not its own, so a wrapped connection
+        // is unwrapped first. The class-name check only has to be right when it says yes: a name
+        // that does not match (for example under shading) means abort instead of evict.
+        if (dataSource.isWrapperFor(HikariDataSource.class)) {
+          Connection own = hikariConnection(connection);
+          if (own.getClass().getName().startsWith("com.zaxxer.hikari.")) {
+            dataSource.unwrap(HikariDataSource.class).evictConnection(own);
+            evicted = true;
+          }
         }
       } catch (SQLException | RuntimeException e) {
         LOGGER.warn("Could not evict the schema migration's database connection from its pool", e);
@@ -1543,8 +1548,9 @@ public final class SchemaMigrator implements AutoCloseable {
       }
       // Also after an eviction: Hikari closes an evicted connection asynchronously, so the session
       // would stay open until it does.
-      // On H2 the pool keeps a wrapped connection that was closed directly: H2's abort does
-      // nothing and its closed-connection error does not make Hikari drop it.
+      // On H2 the pool keeps a connection that was closed directly: H2's abort does nothing and
+      // its closed-connection error does not make Hikari drop it. So a wrapper that cannot unwrap
+      // to Hikari's connection leaves the pool with that connection on H2.
       try {
         if (!connection.unwrap(Connection.class).isClosed()) {
           connection.unwrap(Connection.class).close();
@@ -1555,6 +1561,14 @@ public final class SchemaMigrator implements AutoCloseable {
                 + " until that database session ends",
             e);
       }
+    }
+
+    /** Hikari's own connection behind a wrapper, or the connection itself when there is none. */
+    private static Connection hikariConnection(Connection connection) throws SQLException {
+      return !connection.getClass().getName().startsWith("com.zaxxer.hikari.")
+              && connection.isWrapperFor(ProxyConnection.class)
+          ? connection.unwrap(ProxyConnection.class)
+          : connection;
     }
 
     private static void close(Connection connection) {
