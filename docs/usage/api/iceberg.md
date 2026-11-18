@@ -28,7 +28,8 @@ off, set this in `etc/conf/server.properties` and restart the server:
 server.iceberg-table.enabled=false
 ```
 
-When writes are off, a write request fails with an error that says so, and tables that were already created stay
+When writes are off, a write request returns HTTP 400 with the message `Iceberg table writes are currently disabled.
+To enable them, set 'server.iceberg-table.enabled=true' in server.properties`. Tables that were already created stay
 readable. `GET /v1/config` only lists the endpoints the server supports, so the list it returns changes with this
 setting.
 
@@ -56,17 +57,17 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 
 ### Tables
 
-| Method | Path                                                                       | Operation         | Description                                                                                                         | Write |
-|--------|----------------------------------------------------------------------------|-------------------|---------------------------------------------------------------------------------------------------------------------|-------|
-| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables`                     | `listTables`      | List tables                                                                                                         |       |
-| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables`                     | `createTable`     | Create a table (staged create supported)                                                                            | Yes   |
-| HEAD   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `tableExists`     | Check if a table exists                                                                                             |       |
-| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `loadTable`       | Load table metadata                                                                                                 |       |
-| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `updateTable`     | Commit changes to a table                                                                                           | Yes   |
-| DELETE | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `dropTable`       | Drop a table                                                                                                        | Yes   |
-| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials` | `loadCredentials` | Get temporary storage credentials. A local `file://` table returns an empty list; a caller without access gets a permission error. |       |
-| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics`     | `reportMetrics`   | Report scan or commit metrics                                                                                       |       |
-| POST   | `/v1/catalogs/{catalog}/tables/rename`                                     | `renameTable`     | Rename a table                                                                                                      | Yes   |
+| Method | Path                                                                       | Operation         | Description                                                                                                                     | Write |
+|--------|----------------------------------------------------------------------------|-------------------|---------------------------------------------------------------------------------------------------------------------------------|-------|
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables`                     | `listTables`      | List tables                                                                                                                     |       |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables`                     | `createTable`     | Create a table. Set `stage-create` to `true` to stage the create; the table is not registered until a commit with `assert-create` arrives. | Yes   |
+| HEAD   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `tableExists`     | Check if a table exists                                                                                                         |       |
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `loadTable`       | Load table metadata                                                                                                             |       |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `updateTable`     | Commit changes to a table                                                                                                       | Yes   |
+| DELETE | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `dropTable`       | Drop a table                                                                                                                    | Yes   |
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials` | `loadCredentials` | Get temporary storage credentials                                                                                               |       |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics`     | `reportMetrics`   | Report scan or commit metrics                                                                                                   |       |
+| POST   | `/v1/catalogs/{catalog}/tables/rename`                                     | `renameTable`     | Rename a table                                                                                                                  | Yes   |
 
 ### Views
 
@@ -84,7 +85,10 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
   tables through the [Unity Catalog REST API](index.md).
 - **`purgeRequested` does not delete files of external tables.** Dropping an external table removes it from the
   catalog but leaves its data and metadata files in place, even when the client asks for a purge. Dropping a managed
-  table removes its storage directory.
+  table schedules its storage directory for removal by the storage cleanup worker, after
+  `server.storage-cleanup.initial-delay` (default `P7D`).
+- **Local tables get no credentials.** `loadCredentials` returns an empty list for a local `file://` table. A caller
+  without access to the table gets a permission error.
 - **Metrics reports are accepted but not stored.**
 
 ## Quickstart
