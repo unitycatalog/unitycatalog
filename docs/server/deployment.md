@@ -63,6 +63,9 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 - You need to provide the connection details to connect to your database server.
 - The server doesn't set up the schema of a new database. Before the first start, run
     `bin/start-uc-server --upgrade-schema` once; see [Upgrading the database schema](upgrades.md).
+    In a source checkout, the quickstart's sample database (`etc/db/h2db.mv.db`) is built by
+    `build/sbt buildSampleDatabase` or by the first start and needs no `--upgrade-schema`: running it first
+    creates an empty database instead.
 - With an H2 file database, set the URL as the default file does:
     `jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=0`.
     - `DB_CLOSE_ON_EXIT=FALSE` stops H2 from closing the database as soon as the JVM starts to exit. Without it,

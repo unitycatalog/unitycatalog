@@ -173,10 +173,8 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- /* The server does not change a persistent database's schema at start. This container
-      brings it up to date first, after extraInitContainers so that a database proxy run as a native sidecar is up. An
-      in-memory database (server.env=test, or an in-memory H2 URL) has none to upgrade: the server sets
-      it up itself, and --upgrade-schema refuses it, so the container is left out. */}}
-      {{- if not (include "unitycatalog.server.inMemoryDatabase" .) }}
+      brings it up to date first, after extraInitContainers so that a database proxy run as a native sidecar is up. For an
+      in-memory database it does nothing: the server sets that database up itself. */}}
         - name: upgrade-schema
           {{- with .Values.server.deployment.securityContext }}
           securityContext: {{- toYaml . | nindent 12 }}
@@ -193,7 +191,6 @@ spec:
             {{- join "\n" . | nindent 12 }}
           {{- end }}
           volumeMounts: {{- include "unitycatalog.server.volumeMounts" . | nindent 12 }}
-      {{- end }}
       {{- $obsPort := .Values.server.deployment.obsPort }}
       {{- if and $obsPort (eq (toString $obsPort) (toString .Values.server.deployment.port)) }}
       {{- fail "server.deployment.obsPort must differ from server.deployment.port" }}

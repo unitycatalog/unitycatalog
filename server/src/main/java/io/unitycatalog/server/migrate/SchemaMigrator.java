@@ -163,8 +163,9 @@ public final class SchemaMigrator implements AutoCloseable {
    * Runs {@code bin/start-uc-server --check-schema} (when {@code upgrade} is false) or {@code
    * --upgrade-schema} on the database that the configuration files in {@code configurationFolder}
    * set, printing what it found to {@code out}. Returns the exit code: 0 when the check or the
-   * upgrade went through, 1 otherwise, also for a configuration with nothing to upgrade: a missing
-   * configuration file or an in-memory database.
+   * upgrade went through, 1 otherwise, also for a missing configuration file. An in-memory database
+   * is set up by the server itself: the upgrade succeeds without doing anything, and the check
+   * fails.
    */
   public static int runCommand(boolean upgrade, Path configurationFolder, PrintStream out) {
     String command = "bin/start-uc-server " + (upgrade ? "--upgrade-schema" : "--check-schema");
@@ -189,9 +190,15 @@ public final class SchemaMigrator implements AutoCloseable {
       }
       try (SchemaMigrator migrator = fromHibernateProperties(hibernateProperties)) {
         if (migrator.isInMemory()) {
-          throw new IllegalStateException(
-              "The configured database is in memory, so there is nothing to check or upgrade: the"
-                  + " server sets up an in-memory database itself.");
+          // The server sets it up when it starts, so an upgrade has nothing to do and succeeds, as
+          // in a deployment that runs the upgrade before every start. A check has nothing to
+          // report on a database that does not exist yet, and so fails.
+          String message =
+              "The database is in memory: the server sets it up itself when it starts, so there is"
+                  + " nothing to "
+                  + (upgrade ? "upgrade." : "check.");
+          out.println(message);
+          return upgrade ? 0 : 1;
         }
         if (!upgrade) {
           return migrator.checkSchema(out);
@@ -303,8 +310,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */
   public boolean isInMemory() {
+    return isH2InMemory(connectionUrl());
+  }
+
+  /** The URL of the connection the pool opens. */
+  public String connectionUrl() {
     try (Connection connection = dataSource.getConnection()) {
-      return isH2InMemory(connection.getMetaData().getURL());
+      return connection.getMetaData().getURL();
     } catch (SQLException e) {
       throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
     }
@@ -1084,10 +1096,11 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Throws unless Flyway's validation of the schema history passes: no failed step, no edited step
-   * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
-   * recorded version may be pending and may have failed: the upgrade runs them. A failed step that
-   * is not one of this build's pending steps, such as a newer release's, is still refused.
+   * Throws unless Flyway's validation of the schema history passes: no failed step (also a newer
+   * release's), no edited step (checksum), no step missing below the recorded version. With {@code
+   * upgrading}, steps after the recorded version may be pending and may have failed: the upgrade
+   * runs them. A failed step that is not one of this build's pending steps, such as a newer
+   * release's, is still refused.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
@@ -1095,9 +1108,9 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     FluentConfiguration configuration = flyway();
     Set<String> retried = upgrading ? Set.copyOf(pendingSteps()) : Set.of();
-    if (upgrading) {
-      configuration.ignoreMigrationPatterns("*:pending");
-    }
+    // Flyway ignores a newer release's steps (future) unless told otherwise. Nothing is ignored
+    // but, for an upgrade, the steps it is about to run (pending).
+    configuration.ignoreMigrationPatterns(upgrading ? "*:pending" : "");
     String errors =
         configuration.load().validateWithResult().invalidMigrations.stream()
             .filter(

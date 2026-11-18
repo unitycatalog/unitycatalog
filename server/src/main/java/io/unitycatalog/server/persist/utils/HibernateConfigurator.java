@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -344,9 +345,7 @@ public class HibernateConfigurator implements AutoCloseable {
     Properties hibernateProperties = new Properties();
     if (!hibernatePropertiesPath.toFile().exists()) {
       LOGGER.warn("Hibernate properties file not found: {}", hibernatePropertiesPath);
-      hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-      hibernateProperties.setProperty(
-          "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+      useOwnTestDatabase(hibernateProperties);
     } else {
       try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
@@ -358,12 +357,32 @@ public class HibernateConfigurator implements AutoCloseable {
         hibernateProperties, serverProperties.getEnv(DB_PASSWORD_KEY), hibernatePropertiesPath);
 
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
-      hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-      hibernateProperties.setProperty(
-          "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+      useOwnTestDatabase(hibernateProperties);
       LOGGER.debug("Hibernate configuration set for testing");
     }
     return withSchemaUpdatesOff(hibernateProperties);
+  }
+
+  private static final String OWN_TEST_DATABASE_URL = "unitycatalog.ownTestDatabaseUrl";
+
+  /**
+   * Points {@code properties} at a new in-memory H2 database with a name of its own, so that two
+   * servers in one JVM never share one, and records its URL for {@link #ownTestDatabaseUrl}.
+   */
+  private static void useOwnTestDatabase(Properties properties) {
+    String url = "jdbc:h2:mem:testdb-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1";
+    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    properties.setProperty("hibernate.connection.url", url);
+    properties.setProperty(OWN_TEST_DATABASE_URL, url);
+  }
+
+  /**
+   * The in-memory database that {@link #setupHibernateProperties} chose for {@code properties}
+   * itself, or {@code null} when the configuration names the database. Only a database chosen here
+   * is the server's to drop.
+   */
+  public static String ownTestDatabaseUrl(Properties properties) {
+    return properties.getProperty(OWN_TEST_DATABASE_URL);
   }
 
   /**
