@@ -185,8 +185,9 @@ Messages that the server prints when it refuses to start, and that `--check-sche
 `Schema step <n> creates a table, index or constraint named <name>, but the <object> <name> ... already has that name`
 : An object that is not Unity Catalog's holds a name that the step needs, in a namespace that the
   database shares between tables: on H2 the index names and the constraint names of a schema, and
-  the names of its tables and views; on PostgreSQL the names of a schema's tables, views, sequences
-  and indexes; on MySQL the foreign key names of a database, and the names of its tables and views.
+  the names of its tables, views and synonyms; on PostgreSQL the names of a schema's tables
+  (also partitioned ones), views, sequences and indexes, and its types (for a table's name); on MySQL the foreign key names of a database, and the names of its tables
+  and views.
   A view, a sequence or an index on another application's table never counts as Unity Catalog's,
   even when its name starts with `uc_`. The step did not run. Rename that object, or give Unity
   Catalog a schema of its own, then run the command again.
