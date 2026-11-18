@@ -439,6 +439,31 @@ async fn config_reports_auth_flags() {
 }
 
 #[tokio::test]
+async fn unknown_routes_are_not_found() {
+    // The bridge no longer serves the SPA, so only RPCs, /config, and /healthz
+    // resolve.
+    for (method, uri) in [
+        ("POST", "/uc.v1.FooService/Bar"),
+        ("POST", "/uc.v1.CatalogService/Missing"),
+        ("GET", "/"),
+        ("GET", "/catalog/main"),
+    ] {
+        let resp = build_app("http://127.0.0.1:1".to_string())
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{method} {uri}");
+    }
+}
+
+#[tokio::test]
 async fn healthz_ok() {
     let app = build_app("http://127.0.0.1:1".to_string());
     let resp = app

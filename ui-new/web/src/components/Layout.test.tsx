@@ -61,7 +61,9 @@ describe("Layout", () => {
     renderWithProviders(<Layout>x</Layout>, { handler: emptyCatalogs });
     await userEvent.click(screen.getByRole("button", { name: /^Log out$/ }));
     await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Sign out failed: UC request failed (HTTP 500): {}"),
+      expect(toastError).toHaveBeenCalledWith(
+        "Sign out failed: UC request failed (HTTP 500): {}",
+      ),
     );
   });
 

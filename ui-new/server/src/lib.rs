@@ -60,8 +60,9 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-/// Builds the bridge router. Vite serves the SPA in development and Nginx serves
-/// it in containers; both proxy RPCs and `/config` to this process.
+/// Builds the bridge router. Vite serves the SPA in development and a separate
+/// web server does in production; both proxy RPCs, `/config`, and `/healthz` to
+/// this process.
 pub fn app(state: AppState) -> Router {
     let rpc = services::router(state.clone()).into_axum_service();
 

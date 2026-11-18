@@ -677,6 +677,43 @@ async fn delete_accepts_non_json_success_body() {
 }
 
 #[tokio::test]
+async fn malformed_uc_lists_map_to_internal() {
+    let cases = [
+        (
+            serde_json::json!({"tables": [{"catalog_name": "main", "schema_name": "default"}]}),
+            "Invalid response from Unity Catalog server: missing or invalid name",
+        ),
+        (
+            serde_json::json!({"tables": "not a list"}),
+            "Invalid response from Unity Catalog server",
+        ),
+    ];
+
+    for (reply, message) in cases {
+        let uc = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/2.1/unity-catalog/tables"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(reply))
+            .expect(1)
+            .mount(&uc)
+            .await;
+
+        let response = build_app(uc.uri())
+            .oneshot(rpc_request(
+                "TableService",
+                "ListTables",
+                serde_json::json!({"schema": {"catalogName": "main", "name": "default"}}),
+            ))
+            .await
+            .unwrap();
+
+        let json = body_json(response).await;
+        assert_eq!(json["code"], "internal", "{message}");
+        assert_eq!(json["message"], message);
+    }
+}
+
+#[tokio::test]
 async fn upstream_not_found_maps_to_connect_not_found() {
     let uc = MockServer::start().await;
     Mock::given(method("GET"))

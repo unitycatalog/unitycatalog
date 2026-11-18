@@ -1,4 +1,4 @@
-/// Runtime configuration, read entirely from the environment so the same image
+/// Runtime configuration, read entirely from the environment so the same build
 /// can be pointed at any Unity Catalog server without a rebuild.
 #[derive(Clone, Debug)]
 pub struct Config {
