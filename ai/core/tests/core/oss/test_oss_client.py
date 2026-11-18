@@ -3134,18 +3134,21 @@ async def test_a_custom_rest_client_is_reported_as_unused(caplog):
         await client.close_async()
 
 
+@pytest.mark.asyncio
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="needs os.fork")
-def test_a_forked_child_sends_requests_on_its_own_thread(not_found_server):
+async def test_a_forked_child_sends_requests_on_its_own_thread(not_found_server):
     client = function_client(not_found_server)
     with pytest.raises(NotFoundException):
-        client.delete_function("catalog.schema.missing")
+        await client.delete_function_async("catalog.schema.missing")
 
     pid = os.fork()
     if pid == 0:
         try:
-            client.delete_function("catalog.schema.missing")
-        except NotFoundException:
-            os._exit(0)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                error = executor.submit(client.delete_function, "catalog.schema.missing").exception(
+                    timeout=30
+                )
+            os._exit(0 if isinstance(error, NotFoundException) else 1)
         finally:
             os._exit(1)
     try:
@@ -3158,7 +3161,7 @@ def test_a_forked_child_sends_requests_on_its_own_thread(not_found_server):
         if status[0] == 0:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
-        client.close()
+        await client.close_async()
 
 
 @pytest.mark.asyncio
