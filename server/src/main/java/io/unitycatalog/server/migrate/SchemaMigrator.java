@@ -1320,7 +1320,8 @@ public final class SchemaMigrator implements AutoCloseable {
       String q = connection.getMetaData().getIdentifierQuoteString();
       String scope =
           connection.getSchema() != null ? connection.getSchema() : connection.getCatalog();
-      String table = (scope == null ? "" : q + scope + q + ".") + q + HISTORY_TABLE + q;
+      String table =
+          (scope == null ? "" : q + scope.replace(q, q + q) + q + ".") + q + HISTORY_TABLE + q;
       try (Statement statement = connection.createStatement();
           ResultSet rs = statement.executeQuery("SELECT 1 FROM " + table + " WHERE 1 = 0")) {
         return true;

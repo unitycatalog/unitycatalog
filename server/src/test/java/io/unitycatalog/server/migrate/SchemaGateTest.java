@@ -126,6 +126,34 @@ public class SchemaGateTest {
   }
 
   @Test
+  void hibernateModeStartsInASchemaWhoseNameHasAQuote() throws Exception {
+    DatabaseKind kind = DatabaseKind.of(db.dataSource());
+    assumeTrue(kind == DatabaseKind.POSTGRESQL || kind == DatabaseKind.MYSQL);
+    String url = db.jdbcUrl();
+    try (Connection connection = db.dataSource().getConnection();
+        Statement statement = connection.createStatement()) {
+      if (kind == DatabaseKind.POSTGRESQL) {
+        statement.execute("CREATE SCHEMA \"team\"\"blue\"");
+        url += "?currentSchema=%22team%22%22blue%22";
+      } else {
+        statement.execute("CREATE DATABASE `team``blue`");
+        url = url.substring(0, url.lastIndexOf('/') + 1) + "team%60blue";
+      }
+    }
+    Properties quoted = db.hibernateProperties();
+    quoted.setProperty("hibernate.connection.url", url);
+
+    // An empty schema has no history to read, which must not depend on how its name is spelled.
+    db.openHibernateConfigurator(quoted, true).close();
+    if (kind == DatabaseKind.MYSQL) {
+      try (Connection connection = db.dataSource().getConnection();
+          Statement statement = connection.createStatement()) {
+        statement.execute("DROP DATABASE `team``blue`");
+      }
+    }
+  }
+
+  @Test
   void hibernateModeChecksWithAPoolOfOne() {
     new SchemaMigrator(db.dataSource(), List.of("classpath:db/test-steps/ahead")).upgradeSchema();
     Properties onePool = db.hibernateProperties();
