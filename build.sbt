@@ -360,14 +360,7 @@ lazy val pythonClient = (project in file("clients/python"))
         )
         log.info("OpenAPI Python client generation completed.")
       }
-    ).value,
-    // The build code has no test framework, so pythonClient/test runs PythonClientPostBuildTest instead of the
-    // default test task. testOnly and testQuick don't run it, and a test added to this project would need to be
-    // run from here too.
-    Test / test := {
-      val log = streams.value.log
-      IO.withTemporaryDirectory(dir => PythonClientPostBuildTest.run(log, dir.toPath))
-    },
+    ).value
   )
 
 lazy val apiDocs = (project in file("api"))

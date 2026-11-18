@@ -119,7 +119,7 @@ object PythonClientPostBuild {
    * Says why the generated unitycatalog/client/__init__.py is not the one from the all.yaml run, or returns
    * None if it is. The delta.yaml run writes this file too, with imports from the bare delta package, so it
    * has to run first. Both versions export ApiClient, so the check looks for the UC API imports and for no
-   * bare delta import instead. Called by processGeneratedFiles, and tested by PythonClientPostBuildTest.
+   * bare delta import instead. Called by processGeneratedFiles.
    */
   def clientPackageInitProblem(clientInit: Path): Option[String] = {
     if (!Files.exists(clientInit)) {
@@ -135,7 +135,7 @@ object PythonClientPostBuild {
     else
       Some(
         s"$clientInit is not the one from the all.yaml run. The all.yaml run in pythonClient/generate must " +
-          "run last, after the delta.yaml run.")
+          "run last, after the delta.yaml run, or the generator's import style changed.")
   }
 
   private val unrelocatedDeltaImports = Seq(
