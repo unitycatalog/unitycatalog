@@ -44,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
@@ -54,7 +55,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.ValueSource;
 
 public class SchemaMigratorTest {
 
@@ -267,16 +267,42 @@ public class SchemaMigratorTest {
         .isEqualTo(SchemaState.CURRENT);
   }
 
+  /** What goes wrong with the connection that deletes a failed step's record. */
+  enum ConnectionState {
+    /** The restore of the auto-commit setting fails; the connection stays open in a Hikari pool. */
+    HEALTHY,
+    /** The restore fails because the connection is already lost, which Hikari notices itself. */
+    BROKEN,
+    /** The restore fails on a pool that keeps its connections as they are. */
+    UNPOOLED,
+    /**
+     * The restore fails on a Hikari pool's connection that the caller's DataSource wraps, so the
+     * pool can't evict it.
+     */
+    WRAPPED_POOL,
+    /** The delete fails, and the restore fails too. */
+    DELETE_FAILS,
+    /** The delete and the restore succeed, and closing the connection throws. */
+    CLOSE_FAILS,
+    /** The restore fails on the run lock's connection, which only PostgreSQL and MySQL have. */
+    LOCK_CONNECTION
+  }
+
   /**
-   * Deleting a failed step's record succeeded, but the connection can't get its auto-commit setting
-   * back, whether it stays open ("healthy") or is lost ("broken") in a Hikari pool, or stays open
-   * in a pool that keeps its connections as they are ("unpooled"): the run goes on, and the
-   * connection is closed rather than handed out again with auto-commit on.
+   * A connection of the schema migration can't get its auto-commit setting back, or fails to close,
+   * whether it stays open ("healthy") or is lost ("broken") in a Hikari pool, or stays open in a
+   * pool that keeps its connections as they are ("unpooled"): the run goes on, and the connection
+   * is closed rather than handed out again with auto-commit on. When the delete of the failed
+   * step's record fails as well, its error is the one reported.
    */
   @ParameterizedTest
-  @ValueSource(strings = {"healthy", "broken", "unpooled"})
-  void runsAgainAFailedStepWhenTheConnectionCannotBeRestored(String connectionState)
+  @EnumSource(ConnectionState.class)
+  void runsAgainAFailedStepWhenTheConnectionCannotBeRestored(ConnectionState state)
       throws SQLException {
+    assumeFalse(state == ConnectionState.LOCK_CONNECTION && isH2(), "H2 has no run lock");
+    assumeFalse(
+        state == ConnectionState.WRAPPED_POOL && isH2(),
+        "H2's abort does nothing, and its errors on a closed connection don't make Hikari drop it");
     new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
     UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
     UpgradeTestUtils.execute(
@@ -284,17 +310,78 @@ public class SchemaMigratorTest {
         ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
                 + " WHERE %1$sversion%1$s = '1000'")
             .formatted(identifierQuote(db.dataSource())));
+    boolean unpooled =
+        state == ConnectionState.UNPOOLED
+            || state == ConnectionState.DELETE_FAILS
+            || state == ConnectionState.CLOSE_FAILS;
+    boolean restoreFails =
+        state != ConnectionState.CLOSE_FAILS && state != ConnectionState.LOCK_CONNECTION;
     AtomicBoolean armed = new AtomicBoolean();
     AtomicReference<Connection> migrators = new AtomicReference<>();
+    AtomicReference<Connection> deleters = new AtomicReference<>();
     List<Connection> failed = new CopyOnWriteArrayList<>();
+    List<Connection> aborted = new CopyOnWriteArrayList<>();
     DataSource real = db.dataSource();
-    DataSource failing =
+    Function<Connection, Connection> failing =
+        c ->
+            (Connection)
+                Proxy.newProxyInstance(
+                    getClass().getClassLoader(),
+                    new Class<?>[] {Connection.class},
+                    (pp, mm, aa) -> {
+                      if (mm.getName().equals("abort")) {
+                        aborted.add(c);
+                      }
+                      if (mm.getName().equals("close")
+                          && unpooled
+                          && (migrators.get() == c || failed.contains(c))) {
+                        return null; // a pool that keeps the connection as it is
+                      }
+                      if (mm.getName().equals("close")
+                          && state == ConnectionState.CLOSE_FAILS
+                          && deleters.get() == c) {
+                        c.close();
+                        throw new SQLException("Test: the close fails");
+                      }
+                      // The connection that deletes the failed record fails its restore, the next
+                      // setAutoCommit(false).
+                      if (mm.getName().equals("prepareStatement")
+                          && aa[0].toString().contains("DELETE FROM")
+                          && armed.get()) {
+                        deleters.compareAndSet(null, c);
+                        if (restoreFails) {
+                          migrators.compareAndSet(null, c);
+                        }
+                        if (state == ConnectionState.DELETE_FAILS) {
+                          throw new SQLException("Test: the delete fails");
+                        }
+                      }
+                      // The run lock's connection is the first to turn auto-commit on.
+                      if (mm.getName().equals("setAutoCommit")
+                          && (Boolean) aa[0]
+                          && state == ConnectionState.LOCK_CONNECTION
+                          && armed.get()) {
+                        migrators.compareAndSet(null, c);
+                      }
+                      if (mm.getName().equals("setAutoCommit")
+                          && !(Boolean) aa[0]
+                          && migrators.compareAndSet(c, null)) {
+                        failed.add(c);
+                        if (state == ConnectionState.BROKEN) {
+                          c.close();
+                          throw new SQLException("Test: connection lost", "08003");
+                        }
+                        throw new SQLException("Test: the restore fails");
+                      }
+                      return invoke(mm, c, aa);
+                    });
+    DataSource unpooledSource =
         (DataSource)
             Proxy.newProxyInstance(
                 getClass().getClassLoader(),
                 new Class<?>[] {DataSource.class},
                 (p, m, a) -> {
-                  if (m.getName().equals("isWrapperFor") && connectionState.equals("unpooled")) {
+                  if (m.getName().equals("isWrapperFor")) {
                     return false; // not a Hikari pool
                   }
                   Object result = invoke(m, real, a);
@@ -302,62 +389,74 @@ public class SchemaMigratorTest {
                     return result;
                   }
                   Connection c = (Connection) result;
-                  if (connectionState.equals("unpooled")) {
-                    c.setAutoCommit(false); // the setting that the restore puts back
-                  }
-                  return Proxy.newProxyInstance(
-                      getClass().getClassLoader(),
-                      new Class<?>[] {Connection.class},
-                      (pp, mm, aa) -> {
-                        if (mm.getName().equals("close")
-                            && connectionState.equals("unpooled")
-                            && (migrators.get() == c || failed.contains(c))) {
-                          return null; // a pool that keeps the connection as it is
-                        }
-                        // The connection that deletes the failed record fails its restore, the next
-                        // setAutoCommit(false).
-                        if (mm.getName().equals("prepareStatement")
-                            && aa[0].toString().contains("DELETE FROM")
-                            && armed.get()) {
-                          migrators.compareAndSet(null, c);
-                        }
-                        if (mm.getName().equals("setAutoCommit")
-                            && !(Boolean) aa[0]
-                            && migrators.compareAndSet(c, null)) {
-                          failed.add(c);
-                          if (connectionState.equals("broken")) {
-                            c.close();
-                            throw new SQLException("Test: connection lost", "08003");
-                          }
-                          throw new SQLException("Test: the restore fails");
-                        }
-                        return invoke(mm, c, aa);
-                      });
+                  c.setAutoCommit(false); // the setting that the restore puts back
+                  return failing.apply(c);
                 });
 
-    if (connectionState.equals("unpooled")) {
+    if (unpooled) {
       armed.set(true);
-      assertThat(new SchemaMigrator(failing, NEXT_RELEASE).upgradeSchema()).isOne();
-      assertThat(failed).hasSize(1);
-      assertThat(failed.get(0).unwrap(Connection.class).isClosed()).isTrue();
-    } else {
-      HikariConfig config = HibernateConfigurator.hikariConfig(db.hibernateProperties());
-      config.setDataSource(failing);
+      SchemaMigrator migrator = new SchemaMigrator(unpooledSource, NEXT_RELEASE);
+      if (state == ConnectionState.DELETE_FAILS) {
+        assertThatThrownBy(migrator::upgradeSchema).hasMessageContaining("Test: the delete fails");
+        assertThat(failedRecords()).isOne();
+      } else {
+        assertThat(migrator.upgradeSchema()).isOne();
+        assertThat(failedRecords()).isZero();
+      }
+      Connection closed = state == ConnectionState.CLOSE_FAILS ? deleters.get() : failed.get(0);
+      assertThat(closed.unwrap(Connection.class).isClosed()).isTrue();
+      if (state != ConnectionState.CLOSE_FAILS) {
+        assertThat(failed).hasSize(1);
+      }
+      return;
+    }
+    HikariConfig config = HibernateConfigurator.hikariConfig(db.hibernateProperties());
+    if (state != ConnectionState.WRAPPED_POOL) {
+      DataSource inner =
+          (DataSource)
+              Proxy.newProxyInstance(
+                  getClass().getClassLoader(),
+                  new Class<?>[] {DataSource.class},
+                  (p, m, a) -> {
+                    Object result = invoke(m, real, a);
+                    return m.getName().equals("getConnection")
+                        ? failing.apply((Connection) result)
+                        : result;
+                  });
+      config.setDataSource(inner);
       config.setJdbcUrl(null);
       config.setDriverClassName(null);
       config.setUsername(null);
       config.setPassword(null);
-      try (HikariDataSource pool = new HikariDataSource(config)) {
-        // The pool has set up its first connection: the next restore is the migrator's.
-        pool.getConnection().close();
-        armed.set(true);
-        assertThat(new SchemaMigrator(pool, NEXT_RELEASE).upgradeSchema()).isOne();
-        assertThat(failed).hasSize(1);
-        assertThat(failed.get(0).unwrap(Connection.class).isClosed()).isTrue();
-        try (Connection next = pool.getConnection();
-            Statement select = next.createStatement()) {
-          assertThat(select.execute("SELECT 1")).isTrue();
-        }
+    }
+    try (HikariDataSource pool = new HikariDataSource(config)) {
+      DataSource migrated =
+          state != ConnectionState.WRAPPED_POOL
+              ? pool
+              : (DataSource)
+                  Proxy.newProxyInstance(
+                      getClass().getClassLoader(),
+                      new Class<?>[] {DataSource.class},
+                      (p, m, a) -> {
+                        Object result = invoke(m, pool, a);
+                        return m.getName().equals("getConnection")
+                            ? failing.apply((Connection) result)
+                            : result;
+                      });
+      // The pool has set up its first connection: the next restore is the migrator's.
+      pool.getConnection().close();
+      armed.set(true);
+      assertThat(new SchemaMigrator(migrated, NEXT_RELEASE).upgradeSchema()).isOne();
+      assertThat(failed).hasSize(1);
+      assertThat(failed.get(0).unwrap(Connection.class).isClosed()).isTrue();
+      if (state == ConnectionState.WRAPPED_POOL) {
+        // The pool ignores an eviction of a connection that is not its own, so the connection is
+        // aborted instead.
+        assertThat(aborted).containsExactly(failed.get(0));
+      }
+      try (Connection next = pool.getConnection();
+          Statement select = next.createStatement()) {
+        assertThat(select.execute("SELECT 1")).isTrue();
       }
     }
     assertThat(failedRecords()).isZero();
@@ -991,8 +1090,34 @@ public class SchemaMigratorTest {
             sql -> sql.contains("pg_advisory_unlock(") || sql.contains("RELEASE_LOCK("),
             sql -> null);
 
-    assertThatThrownBy(new SchemaMigrator(failing)::upgradeSchema)
+    // The connection that was discarded is not used again.
+    AtomicBoolean discarded = new AtomicBoolean();
+    AtomicInteger usedAfterwards = new AtomicInteger();
+    DataSource watching =
+        UpgradeTestUtils.proxy(
+            DataSource.class,
+            (p, m, a) -> {
+              Object result = m.invoke(failing, a);
+              if (!m.getName().equals("getConnection")) {
+                return result;
+              }
+              Connection connection = (Connection) result;
+              return UpgradeTestUtils.proxy(
+                  Connection.class,
+                  (pp, mm, aa) -> {
+                    if (mm.getName().equals("abort")) {
+                      discarded.set(true);
+                    } else if (mm.getName().equals("setAutoCommit") && discarded.get()) {
+                      usedAfterwards.incrementAndGet();
+                    }
+                    return mm.invoke(connection, aa);
+                  });
+            });
+
+    assertThatThrownBy(new SchemaMigrator(watching)::upgradeSchema)
         .hasMessageContaining("Could not release the schema migration lock");
+    assertThat(discarded).isTrue();
+    assertThat(usedAfterwards).hasValue(0);
     // The lock's database session was closed, so a run on other connections takes it at once.
     try (HikariDataSource other = new HikariDataSource()) {
       Properties properties = db.hibernateProperties();

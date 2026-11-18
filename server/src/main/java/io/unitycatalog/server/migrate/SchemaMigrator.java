@@ -1457,11 +1457,13 @@ public final class SchemaMigrator implements AutoCloseable {
       if (connection == null) {
         return;
       }
+      boolean discarded = false;
       try {
         if (!isTrue(connection, unlockSql)) {
           throw new SQLException("the database did not hold it for this run");
         }
       } catch (SQLException e) {
+        discarded = true;
         closeUnderlying(dataSource, connection);
         throw new IllegalStateException(
             "Could not release the schema migration lock: "
@@ -1469,15 +1471,17 @@ public final class SchemaMigrator implements AutoCloseable {
                 + ". The database releases it when the connection closes; run the command again.",
             e);
       } finally {
-        restoreAutoCommit(dataSource, connection, autoCommit);
+        if (!discarded) {
+          restoreAutoCommit(dataSource, connection, autoCommit);
+        }
         close(connection);
       }
     }
 
     /**
      * Puts back the connection's auto-commit setting, for a pool that does not reset it. If that
-     * fails, closes the database connection underneath, so the pool does not hand it out again with
-     * the wrong setting.
+     * fails, closes the schema migration's database connection underneath, so the pool does not
+     * hand it out again with the wrong setting.
      */
     private static void restoreAutoCommit(
         DataSource dataSource, Connection connection, boolean autoCommit) {
@@ -1512,26 +1516,30 @@ public final class SchemaMigrator implements AutoCloseable {
     }
 
     /**
-     * Discards the connection and ends its database session. A Hikari pool evicts it, so it is not
-     * handed out again; for any other pool, the connection is aborted, and closed directly when
-     * that left it open (a driver's abort may do nothing, as H2's does).
+     * Discards the schema migration's database connection and ends its database session. A Hikari
+     * pool evicts it, so it is not handed out again; for any other pool, or a connection that
+     * Hikari did not hand out itself, the connection is aborted, and closed directly when that left
+     * it open (a driver's abort may do nothing, as H2's does).
      */
     private static void closeUnderlying(DataSource dataSource, Connection connection) {
       boolean evicted = false;
       try {
-        if (dataSource.isWrapperFor(HikariDataSource.class)) {
+        // Hikari ignores an eviction of a connection that is not its own, such as one that the
+        // caller's DataSource wraps.
+        if (dataSource.isWrapperFor(HikariDataSource.class)
+            && connection.getClass().getName().startsWith("com.zaxxer.hikari.")) {
           dataSource.unwrap(HikariDataSource.class).evictConnection(connection);
           evicted = true;
         }
       } catch (SQLException | RuntimeException e) {
-        LOGGER.warn("Could not evict the schema migration lock's connection from its pool", e);
+        LOGGER.warn("Could not evict the schema migration's database connection from its pool", e);
       }
       try {
         if (!evicted) {
           connection.abort(Runnable::run);
         }
       } catch (SQLException | RuntimeException e) {
-        LOGGER.warn("Could not abort the schema migration lock's database connection", e);
+        LOGGER.warn("Could not abort the schema migration's database connection", e);
       }
       try {
         if (!connection.unwrap(Connection.class).isClosed()) {
@@ -1539,7 +1547,7 @@ public final class SchemaMigrator implements AutoCloseable {
         }
       } catch (SQLException | RuntimeException e) {
         LOGGER.warn(
-            "Could not close the schema migration lock's database connection; the lock stays held"
+            "Could not close the schema migration's database connection; a lock it holds stays held"
                 + " until that database session ends",
             e);
       }
@@ -1552,7 +1560,7 @@ public final class SchemaMigrator implements AutoCloseable {
         }
       } catch (SQLException | RuntimeException e) {
         // A pool may throw on a connection it evicted.
-        LOGGER.debug("Could not close the schema migration lock's connection", e);
+        LOGGER.debug("Could not close the schema migration's database connection", e);
       }
     }
   }
