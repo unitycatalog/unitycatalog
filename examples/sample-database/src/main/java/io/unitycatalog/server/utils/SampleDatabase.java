@@ -35,9 +35,11 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
@@ -85,7 +87,7 @@ public class SampleDatabase {
       buildInto(building);
       try {
         Files.createLink(h2File, building);
-      } catch (FileAlreadyExistsException e) {
+      } catch (FileAlreadyExistsException | AccessDeniedException | NoSuchFileException e) {
         throw e;
       } catch (UnsupportedOperationException | FileSystemException e) {
         throw new IllegalStateException(
