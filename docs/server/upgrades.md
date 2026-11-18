@@ -5,17 +5,24 @@ release ships the schema steps it needs, and each step is applied once and recor
 `uc_schema_history` table.
 
 Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
-`hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
-For a temporary fallback to Hibernate, see
+`hibernate.hbm2ddl.auto` (for example to `update`), the server ignores it and logs a warning. You can delete the
+line. In the default mode (`server.schema-management=flyway`), it refuses to start when any other Hibernate setting
+asks for a schema action other than `none`: `jakarta.persistence.schema-generation.database.action` (or its
+`javax.` form), or a variant of a schema action setting such as `hibernate.hbm2ddl.auto.orm`, in
+`hibernate.properties`, as a JVM system property, or in a `hibernate.properties` on the classpath. Set it to `none`
+or remove it. For a temporary fallback to Hibernate, see
 [Letting Hibernate manage the schema](#letting-hibernate-manage-the-schema).
 
-In the default mode (`server.schema-management=flyway`), the server doesn't change the schema when it
-starts. It starts only on a database at the schema
+In the default mode, the server doesn't change the schema of its own tables when it starts. It starts only on a
+database at the schema
 version of its release whose schema history passes Flyway's checks and whose schema is the one its
 release's steps build. Otherwise it refuses to start
-and tells you to run `bin/start-uc-server --upgrade-schema`. The one exception is an in-memory
-database (`server.env=test`, or a `jdbc:h2:mem:` URL), which only the server's own process can
-reach: the server sets up its schema at start.
+and tells you what to do, which is to run `bin/start-uc-server --upgrade-schema` when that brings the database
+there. The one exception is an in-memory
+database (`server.env=test`, or an in-memory H2 URL such as `jdbc:h2:mem:`), which only the server's own process can
+reach: the server sets up its schema at start. With authorization enabled, the authorization library also creates
+its `casbin_rule` table when it is missing, so keep the DDL privilege (`CREATE TABLE`) for the database user until
+that table exists.
 
 Two options of `bin/start-uc-server` check and change the schema. Neither starts the server. Both
 exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
@@ -248,8 +255,9 @@ Messages that the server prints when it refuses to start, and that `--check-sche
 `The database's schema history does not match this release's schema steps: <reasons>`
 : Flyway's check of `uc_schema_history` failed, for example because a recorded step differs from
   this release's step of the same version (its checksum), or this release lacks a recorded step.
-  `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. Run the release
-  that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand.
+  `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. `--upgrade-schema`
+  and `--check-schema` refuse the same history, so neither is the way out: run the release that applied the
+  steps, or restore the backup. Do not edit `uc_schema_history` by hand.
 
 `<setting>=<value> is not supported: the schema steps manage the schema. Set it to none.`
 : A Hibernate setting asks Hibernate to create, update or validate the schema itself:

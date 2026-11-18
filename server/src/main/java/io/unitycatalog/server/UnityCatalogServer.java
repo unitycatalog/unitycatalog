@@ -58,6 +58,9 @@ import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
@@ -129,7 +132,8 @@ public class UnityCatalogServer implements AutoCloseable {
           unityCatalogServerBuilder.serverProperties.isSchemaManagedByHibernate();
       Properties ownProperties =
           HibernateConfigurator.setupHibernateProperties(
-              unityCatalogServerBuilder.serverProperties);
+              unityCatalogServerBuilder.serverProperties,
+              unityCatalogServerBuilder.hibernatePropertiesFile);
       if (!schemaManagedByHibernate) {
         // Before Hibernate connects: H2 creates a missing database file when it connects. In
         // hibernate mode, Hibernate sets up a new database there, as in 0.7.0.
@@ -234,9 +238,29 @@ public class UnityCatalogServer implements AutoCloseable {
       return;
     }
     try {
-      hibernateConfigurator.close();
+      closeOwnedDatabase();
     } catch (Throwable closeFailure) {
       primaryFailure.addSuppressed(closeFailure);
+    }
+  }
+
+  /**
+   * Closes the database configuration this server built. An in-memory database lasts only as long
+   * as its server, but H2 keeps one that sets DB_CLOSE_DELAY=-1 until the JVM ends, so its tables
+   * are dropped first: the next server in this JVM must not find this server's data.
+   */
+  private void closeOwnedDatabase() {
+    try {
+      if (new SchemaMigrator(hibernateConfigurator.getDataSource()).isInMemory()) {
+        try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
+            Statement statement = connection.createStatement()) {
+          statement.execute("DROP ALL OBJECTS");
+        }
+      }
+    } catch (SQLException | RuntimeException e) {
+      LOGGER.warn("Could not drop the in-memory database", e);
+    } finally {
+      hibernateConfigurator.close();
     }
   }
 
@@ -627,7 +651,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(auditor, null, "the audit sink");
       closeQuietly(cloudCredentialVendor, null, "the cloud credential vendor");
       closeQuietly(
-          ownsHibernateConfigurator ? hibernateConfigurator : null, null, "the database pool");
+          ownsHibernateConfigurator ? this::closeOwnedDatabase : null, null, "the database pool");
     }
   }
 
@@ -660,6 +684,7 @@ public class UnityCatalogServer implements AutoCloseable {
     private CloudCredentialVendor cloudCredentialVendor;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
     private Path configurationFolder = Path.of("etc", "conf");
+    private Path hibernatePropertiesFile = Path.of("etc", "conf", "hibernate.properties");
 
     private Builder() {}
 
@@ -725,6 +750,12 @@ public class UnityCatalogServer implements AutoCloseable {
      */
     public UnityCatalogServer.Builder configurationFolder(Path configurationFolder) {
       this.configurationFolder = Objects.requireNonNull(configurationFolder, "configurationFolder");
+      return this;
+    }
+
+    /** Tests point a server that builds its own database configuration at their own file. */
+    Builder hibernatePropertiesFile(Path hibernatePropertiesFile) {
+      this.hibernatePropertiesFile = hibernatePropertiesFile;
       return this;
     }
 

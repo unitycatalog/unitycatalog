@@ -22,10 +22,11 @@ ENV MAVEN_PROXY_URL=${MAVEN_PROXY_URL}
 
 WORKDIR $HOME
 
-COPY --parents dev/ build/ project/ examples/ server/ api/ clients/ etc/ version.sbt build.sbt ./
+COPY --parents dev/ build/ project/ examples/ server/ api/ clients/ version.sbt build.sbt ./
 
-# The image ships a sample database built here, never one from the build context.
-RUN apk add --no-cache bash && rm -f etc/db/h2db.* etc/db/building-* && ./build/sbt -info clean package buildSampleDatabase
+# The image ships a sample database built here, never one from the build context. etc/ is not copied
+# into this stage, so a change in it does not rebuild this layer.
+RUN apk add --no-cache bash && ./build/sbt -info clean package buildSampleDatabase
 
 # Small runtime image
 FROM alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805 as runtime
@@ -66,8 +67,8 @@ EOF
 USER $USER
 
 # Copy remaining directories here for caching optimization
-COPY --chown=$USER:$USER --parents bin/ $HOME/
-COPY --from=base --chown=$USER:$USER $HOME/etc/ $HOME/etc/
+COPY --chown=$USER:$USER --parents bin/ etc/ $HOME/
+COPY --from=base --chown=$USER:$USER $HOME/etc/db/h2db.mv.db $HOME/etc/db/h2db.mv.db
 
 WORKDIR $HOME
 

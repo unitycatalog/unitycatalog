@@ -173,8 +173,10 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- /* The server never changes the schema at start. This container brings it up to date
-      first, after extraInitContainers so that a database proxy run as a native sidecar is up. */}}
-      {{- if eq (.Values.server.db.schemaManagement | default "flyway" | lower) "flyway" }}
+      first, after extraInitContainers so that a database proxy run as a native sidecar is up. An
+      in-memory database (server.env=test, or an in-memory H2 URL) has none to upgrade: the server sets
+      it up itself, and --upgrade-schema refuses it. */}}
+      {{- if and (eq (.Values.server.db.schemaManagement | default "flyway" | lower) "flyway") (not (include "unitycatalog.server.inMemoryDatabase" .)) }}
         - name: upgrade-schema
           {{- with .Values.server.deployment.securityContext }}
           securityContext: {{- toYaml . | nindent 12 }}

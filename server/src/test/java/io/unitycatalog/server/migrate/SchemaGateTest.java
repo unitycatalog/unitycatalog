@@ -45,6 +45,7 @@ public class SchemaGateTest {
   @Test
   void refusesToStartOnADatabaseThatIsNotSetUp() {
     assertThatThrownBy(() -> TestServer.start(db, storageRoot))
+        .hasMessageContaining("The database has no Unity Catalog schema yet")
         .hasMessageContaining("bin/start-uc-server --upgrade-schema");
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
   }
@@ -285,6 +286,12 @@ public class SchemaGateTest {
         "unnamed in-memory database | jdbc:h2:. | is in memory",
         "Hibernate manages the schema | server.schema-management=hibernate"
             + " | Set server.schema-management=flyway",
+        "in-memory file system | jdbc:h2:memFS:schema-command | is in memory",
+        "compressed in-memory file system | jdbc:h2:memLZF:schema-command | is in memory",
+        "in-memory file system with settings | jdbc:h2:memFS:schema-command;DB_CLOSE_DELAY=-1 | is"
+            + " in memory",
+        "NIO in-memory file system | jdbc:h2:nioMemFS:schema-command | is in memory",
+        "NIO compressed in-memory file system | jdbc:h2:nioMemLZF:schema-command | is in memory",
         "Hibernate default schema | hibernate.default_schema=uc | hibernate.default_schema is not",
         "Hibernate default catalog | hibernate.default_catalog=uc | hibernate.default_catalog is"
             + " not",

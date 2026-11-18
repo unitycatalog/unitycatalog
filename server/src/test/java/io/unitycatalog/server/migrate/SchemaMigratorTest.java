@@ -175,6 +175,8 @@ public class SchemaMigratorTest {
         db, historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE"));
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
     String message = "schema history does not match";
+    // A history failure is not one that --upgrade-schema gets past: it refuses the same way.
+    String advice = "Run the release that applied the steps, or restore the backup";
     switch (refusal) {
       case EDITED_STEP ->
           UpgradeTestUtils.execute(
@@ -192,6 +194,7 @@ public class SchemaMigratorTest {
         UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
         UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
         message = "so schema step 1000 can't run";
+        advice = "then run bin/start-uc-server --upgrade-schema again";
       }
       case FAILED_BELOW_THE_RECORDED_VERSION -> {
         UpgradeTestUtils.execute(
@@ -207,8 +210,10 @@ public class SchemaMigratorTest {
 
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
-    assertThat(out.toString(StandardCharsets.UTF_8)).contains(message);
-    assertThatThrownBy(migrator::upgradeSchema).hasMessageContaining(message);
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains(message).contains(advice);
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining(message)
+        .hasMessageContaining(advice);
     assertThat(failedRecords()).isOne();
   }
 
@@ -480,8 +485,16 @@ public class SchemaMigratorTest {
             switch (database) {
               case AHEAD -> "newer than this release";
               case SCHEMA_DIFFERS -> "unexpected column uc_catalogs.extra ";
+              case EDITED_STEP, STEP_MISSING_BELOW ->
+                  "Run the release that applied the steps, or restore the backup";
               default -> "bin/start-uc-server --upgrade-schema";
             });
+    if (database == NotCurrent.EDITED_STEP || database == NotCurrent.STEP_MISSING_BELOW) {
+      // --upgrade-schema refuses a history that fails Flyway's validation, so it is no advice.
+      assertThatThrownBy(migrator::requireCurrentSchema)
+          .hasMessageNotContaining("--upgrade-schema")
+          .hasMessageNotContaining("--check-schema");
+    }
   }
 
   /** Databases the server refuses to start on, for a release that ends at step 1000. */

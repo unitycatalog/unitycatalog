@@ -159,9 +159,14 @@ a native sidecar in `server.deployment.extraInitContainers`, with `restartPolicy
 A proxy in `server.deployment.extraContainers` starts only after the init containers, so the schema upgrade can't reach
 the database.
 
+The chart leaves out the `upgrade-schema` init container when the configuration uses an in-memory database
+(`server.env=test`, or an in-memory H2 URL in `server.db.overrideConfig`): the server sets that database up itself,
+and `--upgrade-schema` refuses it.
+
 `helm rollback` after an upgrade starts the old release on the upgraded schema, which the old release must not run on.
-To go back, restore the backup you took before the upgrade, then roll back. For the same reason, don't use
-`helm upgrade --atomic`, which rolls back by itself when the upgrade fails.
+To go back, scale the server deployment to 0 and wait for every server pod to stop (an H2 file database is held
+open by a running pod). Restore the backup you took before the upgrade, then roll back. For the same reason, don't
+use `helm upgrade --atomic`, which rolls back by itself when the upgrade fails.
 
 `helm uninstall unitycatalog --namespace unitycatalog` removes the release. It keeps the chart-created H2 database
 PersistentVolumeClaim and token signing key Secret, and a later install with the same release name and
