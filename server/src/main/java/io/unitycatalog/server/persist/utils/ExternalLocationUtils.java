@@ -696,6 +696,15 @@ public class ExternalLocationUtils {
         : String.format("%s '%s'", type, id);
   }
 
+  /**
+   * Returns whether an external location moved from {@code currentUrl} to {@code newUrl} still
+   * covers everything under {@code currentUrl}, which holds when the new URL is the same or a
+   * parent. A narrowed or unrelated URL does not, so the in-use check applies to it.
+   */
+  public static boolean stillCovers(NormalizedURL newUrl, NormalizedURL currentUrl) {
+    return isSameOrUnder(currentUrl, newUrl);
+  }
+
   /** Returns whether {@code url} is {@code ancestor} itself or a path under it. */
   public static boolean isSameOrUnder(NormalizedURL url, NormalizedURL ancestor) {
     return url.equals(ancestor) || getParentPathsList(url).contains(ancestor);
