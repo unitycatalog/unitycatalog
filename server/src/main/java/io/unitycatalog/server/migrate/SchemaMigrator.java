@@ -223,8 +223,9 @@ public final class SchemaMigrator implements AutoCloseable {
    * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
    * connects, and a check must change nothing. Sets {@code IFEXISTS=TRUE} on each H2 file URL the
    * pool may use ({@code hibernate.connection.url}, or the data source class's URL property), also
-   * behind a wrapping driver, replacing an {@code IFEXISTS} the URL sets. Returns whether there was
-   * one.
+   * behind a wrapping driver, replacing an {@code IFEXISTS} the URL sets, and removing one that a
+   * data source property sets (H2 reads those as settings of the URL, and refuses a different
+   * value). Returns whether there was one.
    */
   private static boolean openH2OnlyIfItExists(Properties hibernateProperties) {
     boolean h2File = false;
@@ -235,12 +236,53 @@ public final class SchemaMigrator implements AutoCloseable {
                   && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("url"));
       String url = hibernateProperties.getProperty(key);
       if (urlSetting && HibernateConfigurator.h2Url(url) != null && !isH2InMemory(url)) {
-        hibernateProperties.setProperty(
-            key, url.replaceAll("(?i);\\s*ifexists\\s*=[^;]*", "") + ";IFEXISTS=TRUE");
+        hibernateProperties.setProperty(key, withIfExists(url));
         h2File = true;
       }
     }
+    if (h2File) {
+      for (String key : hibernateProperties.stringPropertyNames()) {
+        if (key.startsWith(HIKARI_DATA_SOURCE)
+            && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("ifexists")) {
+          hibernateProperties.remove(key);
+        }
+      }
+    }
     return h2File;
+  }
+
+  /**
+   * {@code url} with {@code IFEXISTS=TRUE} as its last setting, after dropping its other {@code
+   * IFEXISTS} settings. H2 ends a setting at a {@code ;} that no backslash escapes, and a backslash
+   * escapes the character after it, so a {@code ;IFEXISTS=} inside a setting's value, such as
+   * {@code INIT}, is not a setting.
+   */
+  private static String withIfExists(String url) {
+    int settings = url.indexOf(';');
+    if (settings < 0) {
+      return url + ";IFEXISTS=TRUE";
+    }
+    List<String> kept = new ArrayList<>();
+    StringBuilder setting = new StringBuilder();
+    String rest = url.substring(settings + 1);
+    for (int i = 0; i <= rest.length(); i++) {
+      if (i == rest.length() || rest.charAt(i) == ';') {
+        String text = setting.toString();
+        int equal = text.indexOf('=');
+        if (!text.isEmpty()
+            && !(equal >= 0 && text.substring(0, equal).trim().equalsIgnoreCase("ifexists"))) {
+          kept.add(text);
+        }
+        setting.setLength(0);
+      } else {
+        setting.append(rest.charAt(i));
+        if (rest.charAt(i) == '\\' && i + 1 < rest.length()) {
+          setting.append(rest.charAt(++i));
+        }
+      }
+    }
+    kept.add("IFEXISTS=TRUE");
+    return url.substring(0, settings) + ";" + String.join(";", kept);
   }
 
   private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
@@ -447,15 +489,20 @@ public final class SchemaMigrator implements AutoCloseable {
       // step that changes nothing on this database: its schemas before and after are the same, so
       // runs() would run it, and an adoption records it.
       boolean adopted = hasLastStepsSchemaWithoutHistory();
-      // Before any step runs, so that a step that would fail leaves the database as it is.
-      simulate(pendingSteps(), adopted, (step, runs) -> {});
+      // Before any step runs, so that a step that would fail or clash with another application's
+      // names leaves the database as it is, and a check reports what the upgrade does.
+      simulate(
+          pendingSteps(),
+          adopted,
+          (step, runs) -> {
+            if (runs) {
+              refuseTakenNames(step);
+            }
+          });
       int changed = 0;
       for (String step : pendingSteps()) {
         SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
         boolean record = adopted || !runs(step, schema);
-        if (!record) {
-          refuseTakenNames(step);
-        }
         // Only once the schema check passed, so that a run that refuses leaves the history as is.
         deleteFailedRecord(step);
         MigrateResult result =
@@ -675,19 +722,31 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final Pattern DROP_CONSTRAINT =
       Pattern.compile("(?i)\\bdrop\\s+constraint\\s+(if\\s+exists\\s+)?(\\w+)");
 
+  private static final Pattern STATEMENT_TABLE =
+      Pattern.compile(
+          "(?i)\\b(?:alter|create)\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?(?:only\\s+)?(\\w+)");
+
+  /**
+   * A constraint as {@code table.name}, in lower case: PostgreSQL and MySQL name a constraint per
+   * table, so another application's table can have a constraint of the same name.
+   */
+  private static String constraintKey(String table, String name) {
+    return table.toLowerCase(Locale.ROOT) + "." + name.toLowerCase(Locale.ROOT);
+  }
+
   /**
    * Goes through the pending steps as {@link #upgradeSchema()} would on {@code schema} of the
    * database, without running them, and returns the schema after them. {@code onStep} gets each
    * step and whether it runs. Refuses when a step that runs drops a constraint by name, without
-   * {@code IF EXISTS}, that is not there, for instance because it was renamed: the step would fail.
-   * A constraint is there when the database has it, or an earlier step that runs creates it: by
-   * name, or, for a CHECK that a step adds to a table without naming it, under the name that
-   * PostgreSQL gives it, which starts with the table's name.
+   * {@code IF EXISTS}, that is not there on the table it alters, for instance because it was
+   * renamed: the step would fail. A constraint is there when the table has it, or an earlier step
+   * that runs creates it: by name, or, for a CHECK that a step adds to a table without naming it,
+   * under the name that PostgreSQL gives it, which starts with the table's name.
    */
   private SchemaSnapshot simulate(
       List<String> pending, boolean adopted, BiConsumer<String, Boolean> onStep) {
     SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
-    Set<String> available = pending.isEmpty() ? new HashSet<>() : constraintNames();
+    Set<String> available = pending.isEmpty() ? new HashSet<>() : constraintKeys();
     Set<String> checkedTables = new HashSet<>();
     for (String step : pending) {
       boolean runs = !adopted && runs(step, schema);
@@ -695,30 +754,39 @@ public final class SchemaMigrator implements AutoCloseable {
       if (!runs) {
         continue; // its change is already in the database, and so are its names
       }
-      String script = stepScript(step);
+      // One entry per statement (a step's statements do not contain a semicolon otherwise).
+      String[] statements = stepScript(step).replaceAll("(?m)--.*$", "").split(";");
       Set<String> required = new TreeSet<>();
       Set<String> dropped = new HashSet<>();
-      Matcher m = DROP_CONSTRAINT.matcher(script);
-      while (m.find()) {
-        String name = m.group(2).toLowerCase(Locale.ROOT);
-        dropped.add(name);
-        if (m.group(1) == null) {
-          required.add(name);
+      for (String statement : statements) {
+        String table = statementTable(statement);
+        Matcher m = DROP_CONSTRAINT.matcher(statement);
+        while (m.find()) {
+          String name = m.group(2).toLowerCase(Locale.ROOT);
+          dropped.add(constraintKey(table, name));
+          if (m.group(1) == null) {
+            required.add(constraintKey(table, name));
+          }
         }
       }
-      for (String name : required) {
+      for (String key : required) {
+        int dot = key.indexOf('.');
+        String table = key.substring(0, dot);
+        String name = key.substring(dot + 1);
         boolean unnamedCheck =
             name.endsWith("_check")
-                && checkedTables.stream().anyMatch(t -> name.startsWith(t + "_"));
-        if (!available.contains(name) && !unnamedCheck) {
+                && checkedTables.contains(table)
+                && name.startsWith(table + "_");
+        if (!available.contains(key) && !unnamedCheck) {
           throw new IllegalStateException(
               "Schema step "
                   + step
                   + " drops the constraint "
                   + name
-                  + ", but the database has no constraint of that name, for instance because it was"
-                  + " renamed. Restore the name, or restore the backup, then run the command"
-                  + " again.");
+                  + ", but the database has no constraint of that name on the table "
+                  + table
+                  + ", for instance because it was renamed. Restore the name, or restore the"
+                  + " backup, then run the command again.");
         }
       }
       SchemaSnapshot after = expected(step);
@@ -726,42 +794,52 @@ public final class SchemaMigrator implements AutoCloseable {
       added.removeAll(expected(previousStep(step)).entries());
       added.stream()
           .filter(e -> e.startsWith("check "))
-          .forEach(e -> checkedTables.add(e.split(" ")[1]));
+          .forEach(e -> checkedTables.add(e.split(" ")[1].toLowerCase(Locale.ROOT)));
       available.removeAll(dropped);
-      Matcher created = CONSTRAINT.matcher(DROP_CONSTRAINT.matcher(script).replaceAll(""));
-      while (created.find()) {
-        available.add(created.group(1).toLowerCase(Locale.ROOT));
+      for (String statement : statements) {
+        String table = statementTable(statement);
+        Matcher created = CONSTRAINT.matcher(DROP_CONSTRAINT.matcher(statement).replaceAll(""));
+        while (created.find()) {
+          available.add(constraintKey(table, created.group(1)));
+        }
       }
       schema = after;
     }
     return schema;
   }
 
-  /** The names of the constraints in the database's schema, in lower case. */
-  private Set<String> constraintNames() {
+  /** The table that {@code statement} alters or creates, or an empty name. */
+  private static String statementTable(String statement) {
+    Matcher m = STATEMENT_TABLE.matcher(statement);
+    return m.find() ? m.group(1) : "";
+  }
+
+  /** The constraints in the database's schema, as {@link #constraintKey}s. */
+  private Set<String> constraintKeys() {
     String sql =
         switch (kind) {
           case H2 ->
-              "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS"
+              "SELECT TABLE_NAME, CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS"
                   + " WHERE CONSTRAINT_SCHEMA = SCHEMA()";
           case POSTGRESQL ->
-              "SELECT c.conname FROM pg_constraint c JOIN pg_namespace n"
-                  + " ON n.oid = c.connamespace WHERE n.nspname = current_schema()";
+              "SELECT t.relname, c.conname FROM pg_constraint c JOIN pg_class t"
+                  + " ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = c.connamespace"
+                  + " WHERE n.nspname = current_schema()";
           case MYSQL ->
-              "SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS"
+              "SELECT TABLE_NAME, CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS"
                   + " WHERE CONSTRAINT_SCHEMA = DATABASE()";
         };
-    Set<String> names = new HashSet<>();
+    Set<String> keys = new HashSet<>();
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement();
         ResultSet rs = statement.executeQuery(sql)) {
       while (rs.next()) {
-        names.add(rs.getString(1).toLowerCase(Locale.ROOT));
+        keys.add(constraintKey(rs.getString(1), rs.getString(2)));
       }
     } catch (SQLException e) {
       throw new IllegalStateException("Could not read the schema's names: " + e.getMessage(), e);
     }
-    return names;
+    return keys;
   }
 
   /**
