@@ -13,6 +13,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,9 +34,12 @@ public class SchemaGateTest {
         "\nhibernate.hikari.maximumPoolSize=1\nhibernate.hikari.connectionTimeout=1000\n",
         StandardOpenOption.APPEND);
 
-    assertThat(SchemaMigrator.runCommand(conf, new PrintStream(new ByteArrayOutputStream())))
+    assertThat(SchemaMigrator.runCommand(true, conf, new PrintStream(new ByteArrayOutputStream())))
         .isZero();
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
+    // On H2 the check opens the file that now exists, with IFEXISTS=TRUE added to its URL.
+    assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(new ByteArrayOutputStream())))
+        .isZero();
   }
 
   @ParameterizedTest
@@ -63,10 +67,47 @@ public class SchemaGateTest {
       Files.delete(conf.resolve(setup.split(" ")[0]));
     }
 
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
-    assertThat(SchemaMigrator.runCommand(conf, new PrintStream(out, true, UTF_8))).isOne();
-    assertThat(out.toString(UTF_8)).contains(message);
+    for (boolean upgrade : List.of(false, true)) {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      assertThat(SchemaMigrator.runCommand(upgrade, conf, new PrintStream(out, true, UTF_8)))
+          .isOne();
+      assertThat(out.toString(UTF_8)).contains(message);
+    }
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  /**
+   * The second column is a Hibernate property that the configuration adds to the URL: H2 reads a
+   * data source property as a setting of the URL too, in any case. {@code \;} in a setting's value
+   * is H2's escaped semicolon, not the end of the setting.
+   */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      quoteCharacter = '"',
+      value = {
+        "jdbc:h2:file:{file} | ",
+        "jdbc:h2:file:{file};IFEXISTS=FALSE | ",
+        "jdbc:wrapper:h2:file:{file} | ",
+        "jdbc:h2:file:{file};INIT=SET @x 'a\\;IFEXISTS=FALSE' | ",
+        "jdbc:h2:file:{file} | hibernate.hikari.dataSource.IFEXISTS=FALSE",
+        "jdbc:h2:file:{file} | hibernate.hikari.dataSource.ifexists=false",
+      })
+  void checkSchemaDoesNotCreateAMissingH2File(
+      String url, String property, @TempDir Path conf, @TempDir Path data) throws IOException {
+    writeConfiguration(conf, url.replace("{file}", data.resolve("uc").toString()));
+    if (property != null) {
+      Files.writeString(
+          conf.resolve("hibernate.properties"), "\n" + property + "\n", StandardOpenOption.APPEND);
+    }
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(out, true, UTF_8))).isOne();
+
+    assertThat(out.toString(UTF_8)).contains("is not found").contains("etc/conf");
+    try (var files = Files.list(data)) {
+      assertThat(files).isEmpty();
+    }
   }
 
   /** An empty {@code server.properties}, and {@code hibernate.properties} for {@code url}. */
@@ -76,6 +117,10 @@ public class SchemaGateTest {
     hibernate.setProperty("hibernate.connection.url", url);
     if (url.startsWith("jdbc:h2:")) {
       hibernate.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    }
+    if (url.startsWith(SchemaMigratorTest.WrappingDriver.PREFIX)) {
+      hibernate.setProperty(
+          "hibernate.connection.driver_class", SchemaMigratorTest.WrappingDriver.class.getName());
     }
     if (url.startsWith("jdbc:h2:mem:")) {
       // Without credentials, as the server's default in-memory database: other tests in this JVM

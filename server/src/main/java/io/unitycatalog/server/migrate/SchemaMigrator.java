@@ -19,12 +19,16 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -154,13 +158,14 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Runs {@code bin/start-uc-server --upgrade-schema} on the database that the configuration files
-   * in {@code configurationFolder} set, printing what it found to {@code out}. Returns the exit
-   * code: 0 when the upgrade went through, 1 otherwise, also for a configuration with nothing to
-   * upgrade: a missing configuration file or an in-memory database.
+   * Runs {@code bin/start-uc-server --check-schema} (when {@code upgrade} is false) or {@code
+   * --upgrade-schema} on the database that the configuration files in {@code configurationFolder}
+   * set, printing what it found to {@code out}. Returns the exit code: 0 when the check or the
+   * upgrade went through, 1 otherwise, also for a configuration with nothing to upgrade: a missing
+   * configuration file or an in-memory database.
    */
-  public static int runCommand(Path configurationFolder, PrintStream out) {
-    String command = "bin/start-uc-server --upgrade-schema";
+  public static int runCommand(boolean upgrade, Path configurationFolder, PrintStream out) {
+    String command = "bin/start-uc-server " + (upgrade ? "--upgrade-schema" : "--check-schema");
     try {
       Path serverFile = configurationFolder.resolve("server.properties");
       Path hibernateFile = configurationFolder.resolve("hibernate.properties");
@@ -175,13 +180,19 @@ public final class SchemaMigrator implements AutoCloseable {
         }
       }
       ServerProperties serverProperties = new ServerProperties(serverFile.toString());
-      try (SchemaMigrator migrator =
-          fromHibernateProperties(
-              HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile))) {
+      Properties hibernateProperties =
+          HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile);
+      if (!upgrade) {
+        openH2OnlyIfItExists(hibernateProperties);
+      }
+      try (SchemaMigrator migrator = fromHibernateProperties(hibernateProperties)) {
         if (migrator.isInMemory()) {
           throw new IllegalStateException(
-              "The configured database is in memory, so there is nothing to upgrade: the server"
-                  + " sets up an in-memory database itself.");
+              "The configured database is in memory, so there is nothing to check or upgrade: the"
+                  + " server sets up an in-memory database itself.");
+        }
+        if (!upgrade) {
+          return migrator.checkSchema(out);
         }
         migrator.upgradeSchema();
         out.println("The database schema is at version " + migrator.latestVersion() + ".");
@@ -189,7 +200,13 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     } catch (RuntimeException e) {
       LOGGER.error("{} failed", command, e);
-      out.println(e.getMessage());
+      out.println(
+          !upgrade && isH2DatabaseNotFound(e)
+              ? "The H2 database file that hibernate.connection.url names is not found, and a"
+                  + " check does not create it: check the configuration, and run "
+                  + command
+                  + " in the Unity Catalog folder, the one that holds etc/conf."
+              : e.getMessage());
       return 1;
     }
   }
@@ -199,7 +216,88 @@ public final class SchemaMigrator implements AutoCloseable {
    * jdbc:h2:.}.
    */
   private static boolean isH2InMemory(String url) {
-    return url.startsWith("jdbc:h2:mem:") || url.matches("jdbc:h2:\\.(;.*)?");
+    String h2 = HibernateConfigurator.h2Url(url);
+    return h2 != null && (h2.startsWith("jdbc:h2:mem:") || h2.matches("jdbc:h2:\\.(;.*)?"));
+  }
+
+  /**
+   * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
+   * connects, and a check must change nothing. Sets {@code IFEXISTS=TRUE} on each H2 file URL the
+   * pool may use ({@code hibernate.connection.url}, or the data source class's URL property), also
+   * behind a wrapping driver, replacing an {@code IFEXISTS} the URL sets, and removing one that a
+   * data source property sets (H2 reads those as settings of the URL, and refuses a different
+   * value). Returns whether there was one.
+   */
+  private static boolean openH2OnlyIfItExists(Properties hibernateProperties) {
+    boolean h2File = false;
+    for (String key : hibernateProperties.stringPropertyNames()) {
+      boolean urlSetting =
+          key.equals("hibernate.connection.url")
+              || (key.startsWith(HIKARI_DATA_SOURCE)
+                  && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("url"));
+      String url = hibernateProperties.getProperty(key);
+      if (urlSetting && HibernateConfigurator.h2Url(url) != null && !isH2InMemory(url)) {
+        hibernateProperties.setProperty(key, withIfExists(url));
+        h2File = true;
+      }
+    }
+    if (h2File) {
+      for (String key : hibernateProperties.stringPropertyNames()) {
+        if (key.startsWith(HIKARI_DATA_SOURCE)
+            && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("ifexists")) {
+          hibernateProperties.remove(key);
+        }
+      }
+    }
+    return h2File;
+  }
+
+  /**
+   * {@code url} with {@code IFEXISTS=TRUE} as its last setting, after dropping its other {@code
+   * IFEXISTS} settings. H2 ends a setting at a {@code ;} that no backslash escapes, and a backslash
+   * escapes the character after it, so a {@code ;IFEXISTS=} inside a setting's value, such as
+   * {@code INIT}, is not a setting.
+   */
+  private static String withIfExists(String url) {
+    int settings = url.indexOf(';');
+    if (settings < 0) {
+      return url + ";IFEXISTS=TRUE";
+    }
+    List<String> kept = new ArrayList<>();
+    StringBuilder setting = new StringBuilder();
+    String rest = url.substring(settings + 1);
+    for (int i = 0; i <= rest.length(); i++) {
+      if (i == rest.length() || rest.charAt(i) == ';') {
+        String text = setting.toString();
+        int equal = text.indexOf('=');
+        if (!text.isEmpty()
+            && !(equal >= 0 && text.substring(0, equal).trim().equalsIgnoreCase("ifexists"))) {
+          kept.add(text);
+        }
+        setting.setLength(0);
+      } else {
+        setting.append(rest.charAt(i));
+        if (rest.charAt(i) == '\\' && i + 1 < rest.length()) {
+          setting.append(rest.charAt(++i));
+        }
+      }
+    }
+    kept.add("IFEXISTS=TRUE");
+    return url.substring(0, settings) + ";" + String.join(";", kept);
+  }
+
+  private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
+
+  /** Whether H2 failed to open {@code e}'s database because it does not exist. */
+  private static boolean isH2DatabaseNotFound(Throwable e) {
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      // 90013: database not found; 90146: not found with IFEXISTS=TRUE
+      if (cause instanceof SQLException sql
+          && (sql.getErrorCode() == 90013 || sql.getErrorCode() == 90146)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */
@@ -392,6 +490,16 @@ public final class SchemaMigrator implements AutoCloseable {
       // step that changes nothing on this database: its schemas before and after are the same, so
       // runs() would run it, and an adoption records it.
       boolean adopted = hasLastStepsSchemaWithoutHistory();
+      // Before any step runs, so that a step that would fail or clash with another application's
+      // names leaves the database as it is, and a check reports what the upgrade does.
+      simulate(
+          pendingSteps(),
+          adopted,
+          (step, runs) -> {
+            if (runs) {
+              refuseTakenNames(step);
+            }
+          });
       int changed = 0;
       for (String step : pendingSteps()) {
         SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
@@ -409,7 +517,10 @@ public final class SchemaMigrator implements AutoCloseable {
                 .migrate();
         if (result.migrationsExecuted != 1 || !step.equals(recordedVersion())) {
           throw new IllegalStateException(
-              "Schema step " + step + " was not recorded as the only change of its run.");
+              "Schema step "
+                  + step
+                  + " was not recorded as the only change of its run. Run"
+                  + " bin/start-uc-server --check-schema to see the database's state.");
         }
         LOGGER.info(
             record
@@ -421,6 +532,72 @@ public final class SchemaMigrator implements AutoCloseable {
       requireCurrent();
       return changed;
     }
+  }
+
+  /**
+   * For {@code bin/start-uc-server --check-schema}: prints the database's schema version and what
+   * {@link #upgradeSchema()} would do with each pending step, and whether the schema allows the
+   * upgrade, running the same checks on the schema as it would. It does not test the database
+   * user's privileges or the run lock. Changes nothing and takes no run lock, so it can run while
+   * servers of the previous release still serve. A step of this build that failed counts as
+   * pending, since the upgrade deletes its record once the step's schema check passes.
+   *
+   * @return 0 when the schema allows the upgrade, 1 when it would refuse
+   */
+  int checkSchema(PrintStream out) {
+    try {
+      refuseIfUnsupported(state());
+      requireValidHistory(true);
+      String recorded = recordedVersion();
+      out.println(
+          "Database schema version: "
+              + (recorded == null ? "none" : recorded)
+              + "; this release ends at "
+              + latestVersion()
+              + ".");
+      List<String> pending = pendingSteps();
+      out.println(pending.isEmpty() ? "Pending steps: none." : "Pending steps:");
+      Map<String, String> descriptions = descriptions();
+      SchemaSnapshot schema =
+          simulate(
+              pending,
+              hasLastStepsSchemaWithoutHistory(),
+              (step, runs) -> {
+                out.println(
+                    "  "
+                        + step
+                        + " "
+                        + descriptions.get(step)
+                        + (runs
+                            ? ": runs"
+                            : ": recorded without running (its change is already there)"));
+                if (runs) {
+                  refuseTakenNames(step);
+                }
+              });
+      SchemaSnapshot expected = expected(latestVersion());
+      if (!schema.equals(expected)) {
+        throw new IllegalStateException(
+            "The database schema differs from the schema of version "
+                + latestVersion()
+                + ":\n"
+                + differences(schema, expected));
+      }
+      out.println("The schema allows the upgrade: --upgrade-schema would run the steps above.");
+      return 0;
+    } catch (IllegalStateException e) {
+      out.println(e.getMessage());
+      out.println("The schema does not allow the upgrade.");
+      return 1;
+    }
+  }
+
+  private Map<String, String> descriptions() {
+    Map<String, String> descriptions = new HashMap<>();
+    for (MigrationInfo m : resolvedSteps(flyway().load().info())) {
+      descriptions.put(m.getVersion().getVersion(), m.getDescription());
+    }
+    return descriptions;
   }
 
   /**
@@ -512,28 +689,266 @@ public final class SchemaMigrator implements AutoCloseable {
    * INDEX} statement of their own.
    */
   private Set<String> indexesCreatedSeparately(String step) {
+    Matcher m = CREATE_INDEX.matcher(stepScript(step));
+    Set<String> indexes = new HashSet<>();
+    while (m.find()) {
+      indexes.add(m.group(2).toLowerCase(Locale.ROOT) + "." + m.group(1).toLowerCase(Locale.ROOT));
+    }
+    return indexes;
+  }
+
+  /** The text of {@code step}'s script, from the first of the step locations that has it. */
+  private String stepScript(String step) {
     String script =
         resolvedSteps(flyway().load().info()).stream()
             .filter(m -> m.getVersion().getVersion().equals(step))
             .map(MigrationInfo::getScript)
             .findFirst()
             .orElseThrow();
-    String path = "db/migration/" + kind.folder() + "/" + script;
-    try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
-      if (in == null) {
-        throw new IllegalStateException(
-            "This build has no script " + path + " for its step " + step);
+    for (String location : locations) {
+      String path = location.replaceFirst("^classpath:", "") + "/" + script;
+      try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+        if (in != null) {
+          return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
       }
-      Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-      Set<String> indexes = new HashSet<>();
-      while (m.find()) {
-        indexes.add(
-            m.group(2).toLowerCase(Locale.ROOT) + "." + m.group(1).toLowerCase(Locale.ROOT));
-      }
-      return indexes;
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
     }
+    throw new IllegalStateException("This build has no script " + script + " for its step " + step);
+  }
+
+  private static final Pattern CONSTRAINT = Pattern.compile("(?i)\\bconstraint\\s+(\\w+)");
+
+  private static final Pattern DROP_CONSTRAINT =
+      Pattern.compile("(?i)\\bdrop\\s+constraint\\s+(if\\s+exists\\s+)?(\\w+)");
+
+  private static final Pattern STATEMENT_TABLE =
+      Pattern.compile(
+          "(?i)\\b(?:alter|create)\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?(?:only\\s+)?(\\w+)");
+
+  /**
+   * A constraint as {@code table.name}, in lower case: PostgreSQL and MySQL name a constraint per
+   * table, so another application's table can have a constraint of the same name.
+   */
+  private static String constraintKey(String table, String name) {
+    return table.toLowerCase(Locale.ROOT) + "." + name.toLowerCase(Locale.ROOT);
+  }
+
+  /**
+   * Goes through the pending steps as {@link #upgradeSchema()} would on {@code schema} of the
+   * database, without running them, and returns the schema after them. {@code onStep} gets each
+   * step and whether it runs. Refuses when a step that runs drops a constraint by name, without
+   * {@code IF EXISTS}, that is not there on the table it alters, for instance because it was
+   * renamed: the step would fail. A constraint is there when the table has it, or an earlier step
+   * that runs creates it: by name, or, for a CHECK that a step adds to a table without naming it,
+   * under the name that PostgreSQL gives it, which starts with the table's name.
+   */
+  private SchemaSnapshot simulate(
+      List<String> pending, boolean adopted, BiConsumer<String, Boolean> onStep) {
+    SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+    Set<String> available = pending.isEmpty() ? new HashSet<>() : constraintKeys();
+    Set<String> checkedTables = new HashSet<>();
+    for (String step : pending) {
+      boolean runs = !adopted && runs(step, schema);
+      onStep.accept(step, runs);
+      if (!runs) {
+        continue; // its change is already in the database, and so are its names
+      }
+      // One entry per statement (a step's statements do not contain a semicolon otherwise).
+      String[] statements = stepScript(step).replaceAll("(?m)--.*$", "").split(";");
+      Set<String> required = new TreeSet<>();
+      Set<String> dropped = new HashSet<>();
+      for (String statement : statements) {
+        String table = statementTable(statement);
+        Matcher m = DROP_CONSTRAINT.matcher(statement);
+        while (m.find()) {
+          String name = m.group(2).toLowerCase(Locale.ROOT);
+          dropped.add(constraintKey(table, name));
+          if (m.group(1) == null) {
+            required.add(constraintKey(table, name));
+          }
+        }
+      }
+      for (String key : required) {
+        int dot = key.indexOf('.');
+        String table = key.substring(0, dot);
+        String name = key.substring(dot + 1);
+        boolean unnamedCheck =
+            name.endsWith("_check")
+                && checkedTables.contains(table)
+                && name.startsWith(table + "_");
+        if (!available.contains(key) && !unnamedCheck) {
+          throw new IllegalStateException(
+              "Schema step "
+                  + step
+                  + " drops the constraint "
+                  + name
+                  + ", but the database has no constraint of that name on the table "
+                  + table
+                  + ", for instance because it was renamed. Restore the name, or restore the"
+                  + " backup, then run the command again.");
+        }
+      }
+      SchemaSnapshot after = expected(step);
+      Set<String> added = new HashSet<>(after.entries());
+      added.removeAll(expected(previousStep(step)).entries());
+      added.stream()
+          .filter(e -> e.startsWith("check "))
+          .forEach(e -> checkedTables.add(e.split(" ")[1].toLowerCase(Locale.ROOT)));
+      available.removeAll(dropped);
+      for (String statement : statements) {
+        String table = statementTable(statement);
+        Matcher created = CONSTRAINT.matcher(DROP_CONSTRAINT.matcher(statement).replaceAll(""));
+        while (created.find()) {
+          available.add(constraintKey(table, created.group(1)));
+        }
+      }
+      schema = after;
+    }
+    return schema;
+  }
+
+  /** The table that {@code statement} alters or creates, or an empty name. */
+  private static String statementTable(String statement) {
+    Matcher m = STATEMENT_TABLE.matcher(statement);
+    return m.find() ? m.group(1) : "";
+  }
+
+  /** The constraints in the database's schema, as {@link #constraintKey}s. */
+  private Set<String> constraintKeys() {
+    String sql =
+        switch (kind) {
+          case H2 ->
+              "SELECT TABLE_NAME, CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = SCHEMA()";
+          case POSTGRESQL ->
+              "SELECT t.relname, c.conname FROM pg_constraint c JOIN pg_class t"
+                  + " ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = c.connamespace"
+                  + " WHERE n.nspname = current_schema()";
+          case MYSQL ->
+              "SELECT TABLE_NAME, CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = DATABASE()";
+        };
+    Set<String> keys = new HashSet<>();
+    try (Connection connection = dataSource.getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
+      while (rs.next()) {
+        keys.add(constraintKey(rs.getString(1), rs.getString(2)));
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not read the schema's names: " + e.getMessage(), e);
+    }
+    return keys;
+  }
+
+  /**
+   * Refuses when a name that pending {@code step} gives an index or a constraint is taken by an
+   * object that is not Unity Catalog's (not on a {@code uc_*} table): the step would then skip
+   * creating its index, as it creates indexes only if they don't exist, or fail part way. The names
+   * that clash are those the database shares between tables: H2's index names and constraint names
+   * in a schema, PostgreSQL's names of the schema's tables, views, sequences and indexes, and
+   * MySQL's foreign key names in a database.
+   */
+  private void refuseTakenNames(String step) {
+    Set<String> added = new HashSet<>(expected(step).entries());
+    added.removeAll(expected(previousStep(step)).entries());
+    Set<String> tables = namesOf(added, "table ");
+    Set<String> indexes = namesOf(added, "index ");
+    Set<String> foreignKeys = namesOf(added, "fk ");
+    Set<String> constraints = new HashSet<>();
+    Matcher m = CONSTRAINT.matcher(stepScript(step));
+    while (m.find()) {
+      constraints.add(m.group(1).toLowerCase(Locale.ROOT));
+    }
+    String sql =
+        switch (kind) {
+          case H2 ->
+              "SELECT 'index', INDEX_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.INDEXES"
+                  + " WHERE INDEX_SCHEMA = SCHEMA() UNION ALL SELECT 'constraint',"
+                  + " CONSTRAINT_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = SCHEMA() UNION ALL SELECT 'view', TABLE_NAME,"
+                  + " NULL FROM INFORMATION_SCHEMA.TABLES"
+                  + " WHERE TABLE_SCHEMA = SCHEMA() AND TABLE_TYPE = 'VIEW'"
+                  + " UNION ALL SELECT 'synonym', SYNONYM_NAME, NULL"
+                  + " FROM INFORMATION_SCHEMA.SYNONYMS WHERE SYNONYM_SCHEMA = SCHEMA()";
+          case POSTGRESQL ->
+              "SELECT CASE c.relkind WHEN 'r' THEN 'table' WHEN 'p' THEN 'partitioned table' WHEN"
+                  + " 'v' THEN 'view' WHEN 'm' THEN 'view' WHEN 'S' THEN 'sequence' WHEN 'i' THEN"
+                  + " 'index' WHEN 'I' THEN 'index' ELSE 'relation' END, c.relname, t.relname FROM"
+                  + " pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_index x"
+                  + " ON x.indexrelid = c.oid LEFT JOIN pg_class t ON t.oid = x.indrelid WHERE"
+                  + " n.nspname = current_schema()"
+                  // A type that is not a relation's row type, which shares the names of tables.
+                  + " UNION ALL SELECT 'type', y.typname, NULL FROM pg_type y"
+                  + " JOIN pg_namespace m ON m.oid = y.typnamespace"
+                  + " WHERE m.nspname = current_schema() AND y.typrelid = 0"
+                  + " AND y.typcategory <> 'A'";
+          case MYSQL ->
+              "SELECT 'foreign key', CONSTRAINT_NAME, TABLE_NAME"
+                  + " FROM information_schema.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'"
+                  + " UNION ALL SELECT 'view', TABLE_NAME, NULL FROM information_schema.TABLES"
+                  + " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'VIEW'";
+        };
+    try (Connection connection = dataSource.getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
+      while (rs.next()) {
+        String holder = rs.getString(1);
+        String name = rs.getString(2).toLowerCase(Locale.ROOT);
+        String table = rs.getString(3);
+        // Unity Catalog's only: a uc_* table, or an index or constraint on one. A view or a
+        // sequence has no owning table and is never skipped.
+        String owner = table != null ? table : holder.equals("table") ? name : "";
+        if (owner.toLowerCase(Locale.ROOT).startsWith("uc_")) {
+          continue; // Unity Catalog's own: the schema check covers it
+        }
+        boolean taken =
+            switch (kind) {
+              case H2 ->
+                  (holder.equals("index")
+                          ? indexes
+                          : holder.equals("view") || holder.equals("synonym")
+                              ? tables
+                              : constraints)
+                      .contains(name);
+              case POSTGRESQL ->
+                  holder.equals("type")
+                      ? tables.contains(name)
+                      : indexes.contains(name) || tables.contains(name);
+              case MYSQL -> (holder.equals("view") ? tables : foreignKeys).contains(name);
+            };
+        if (taken) {
+          throw new IllegalStateException(
+              "Schema step "
+                  + step
+                  + " creates a table, index or constraint named "
+                  + name
+                  + ", but the "
+                  + holder
+                  + " "
+                  + name
+                  + (table == null ? "" : " on table " + table.toLowerCase(Locale.ROOT))
+                  + " already has that name"
+                  + (kind == DatabaseKind.MYSQL ? " in the database" : " in the schema")
+                  + ", which is not Unity Catalog's. Rename it, or give Unity Catalog a schema of"
+                  + " its own, then run the command again.");
+        }
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not read the schema's names: " + e.getMessage(), e);
+    }
+  }
+
+  /** The names of {@code entries} of a kind ({@code "index "}, {@code "fk "}), not generated. */
+  private static Set<String> namesOf(Set<String> entries, String kindPrefix) {
+    return entries.stream()
+        .filter(e -> e.startsWith(kindPrefix))
+        .map(e -> e.split(" ")[1].substring(e.split(" ")[1].indexOf('.') + 1))
+        .filter(name -> !name.endsWith("_*"))
+        .collect(Collectors.toSet());
   }
 
   /**

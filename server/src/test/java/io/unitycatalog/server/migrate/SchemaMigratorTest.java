@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -13,9 +14,12 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.Driver;
@@ -236,6 +240,9 @@ public class SchemaMigratorTest {
       }
     }
 
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains(message);
     assertThatThrownBy(migrator::upgradeSchema).hasMessageContaining(message);
     assertThat(failedRecords()).isOne();
   }
@@ -505,10 +512,68 @@ public class SchemaMigratorTest {
 
     List<String> sent = new CopyOnWriteArrayList<>();
     SchemaMigrator migrator = new SchemaMigrator(sending(sent), NEXT_RELEASE);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).doesNotContain(": runs");
     assertThat(migrator.upgradeSchema()).isEqualTo(steps - (stoppedRecord - 1));
     assertThat(sent)
         .noneMatch(sql -> isStep1(sql) || isStep2(sql) || sql.contains("uc_test_only_step"));
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
+  @Test
+  void checksAnEmptyDatabaseWithoutChangingIt() {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("  1 baseline 0 7: runs")
+        .endsWith("The schema allows the upgrade: --upgrade-schema would run the steps above.\n");
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void checksAFailedStepAsOneToRunAgain() {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    migrator.upgradeSchema();
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+    String failed =
+        historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE");
+    UpgradeTestUtils.execute(db, failed);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains("  1000 test only step: runs");
+    // The failed record is still there: the check changes nothing.
+    assertThat(failedRecords()).isOne();
+  }
+
+  @Test
+  void checksAVersionedDatabaseWithAPendingStep() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    String recorded = migrator.recordedVersion();
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains("  1000 test only step: runs");
+    assertThat(migrator.recordedVersion()).isEqualTo(recorded);
+  }
+
+  @Test
+  void checksADatabaseWhoseSchemaDiffers() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(
+            new SchemaMigrator(db.dataSource())
+                .checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8)))
+        .isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("unexpected column uc_catalogs.extra ")
+        .endsWith("The schema does not allow the upgrade.\n");
   }
 
   @Test
@@ -548,21 +613,157 @@ public class SchemaMigratorTest {
     UpgradeTestUtils.execute(db, "SELECT id FROM orders");
   }
 
-  @Test
-  void refusesWhenAnotherTablesIndexTookAStepsIndexName() {
-    assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL names indexes per table");
+  /**
+   * Another application's object holds a name that step 1 gives a table, an index or a constraint,
+   * in a namespace that the database shares between tables. {@code clashesOn} names the databases
+   * where it does, and {@code name} the name; on the others the upgrade goes through.
+   */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "CREATE INDEX idx_name ON other_app (x) | H2 POSTGRESQL | idx_name",
+        "CREATE TABLE idx_name (x INT) | POSTGRESQL | idx_name",
+        "CREATE VIEW idx_name AS SELECT x FROM other_app | POSTGRESQL | idx_name",
+        "ALTER TABLE other_app ADD CONSTRAINT idx_name UNIQUE (x) | POSTGRESQL | idx_name",
+        "CREATE INDEX uc_tables_pkey ON other_app (x) | POSTGRESQL | uc_tables_pkey",
+        "CREATE INDEX UKknh5y40jwdrv7qixutbl6c96r ON other_app (x)"
+            + " | POSTGRESQL | ukknh5y40jwdrv7qixutbl6c96r",
+        "ALTER TABLE other_app ADD CONSTRAINT uc_users_external_id_key UNIQUE (x)"
+            + " | H2 POSTGRESQL | uc_users_external_id_key",
+        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t CHECK (x > 0)"
+            + " | H2 | fkegal88myrpa6m0jle9iv4p37t",
+        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t"
+            + " FOREIGN KEY (x) REFERENCES other_parent (id)"
+            + " | H2 MYSQL | fkegal88myrpa6m0jle9iv4p37t",
+        "CREATE INDEX FKegal88myrpa6m0jle9iv4p37t ON other_app (x)"
+            + " | '' | fkegal88myrpa6m0jle9iv4p37t",
+        "CREATE VIEW uc_catalogs AS SELECT x FROM other_app | H2 POSTGRESQL MYSQL | uc_catalogs",
+        "CREATE SEQUENCE uc_catalogs | POSTGRESQL | uc_catalogs",
+        "CREATE INDEX uc_catalogs ON other_app (x) | POSTGRESQL | uc_catalogs",
+        "CREATE VIEW uc_catalogs_pkey AS SELECT x FROM other_app | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE SEQUENCE uc_catalogs_pkey | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE VIEW uc_users_external_id_key AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_users_external_id_key",
+        "CREATE SYNONYM uc_catalogs FOR other_app | H2 | uc_catalogs",
+        "CREATE TABLE uc_catalogs (x INT) PARTITION BY RANGE (x) | POSTGRESQL | uc_catalogs",
+        "CREATE TYPE uc_catalogs AS ENUM ('a') | POSTGRESQL | uc_catalogs",
+        "CREATE DOMAIN uc_catalogs AS INT | POSTGRESQL | uc_catalogs",
+        "CREATE DOMAIN uc_catalogs AS INT | '' | uc_catalogs",
+        "CREATE TYPE uc_catalogs_pkey AS ENUM ('a') | '' | uc_catalogs_pkey",
+        "CREATE TYPE uc_catalogs AS (a INT) | POSTGRESQL | uc_catalogs",
+        "CREATE MATERIALIZED VIEW uc_catalogs AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_catalogs",
+        "CREATE MATERIALIZED VIEW uc_catalogs_pkey AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE VIEW unrelated_view AS SELECT x FROM other_app | '' | unrelated_view",
+      })
+  void refusesWhenAnotherApplicationsObjectTookAStepsName(
+      String object, String clashesOn, String name) {
+    assumeFalse(
+        object.startsWith("CREATE SEQUENCE") && db.jdbcUrl().startsWith("jdbc:mysql:"),
+        "MySQL has no sequences");
+    // Each statement is only supported by the databases that can clash on it or that accept it.
+    String upper = object.toUpperCase(java.util.Locale.ROOT);
+    boolean h2 = db.jdbcUrl().startsWith("jdbc:h2:");
+    boolean postgres = db.jdbcUrl().startsWith("jdbc:postgresql:");
+    assumeFalse(upper.startsWith("CREATE SYNONYM") && !h2, "SYNONYM is H2 only");
+    assumeFalse(
+        (upper.startsWith("CREATE TYPE")
+                || upper.contains("PARTITION BY")
+                || upper.startsWith("CREATE MATERIALIZED VIEW"))
+            && !postgres,
+        "PostgreSQL only");
+    assumeFalse(
+        upper.startsWith("CREATE DOMAIN") && !clashesOn.isEmpty() && !postgres,
+        "PostgreSQL's DOMAIN row");
+    assumeFalse(upper.startsWith("CREATE DOMAIN") && clashesOn.isEmpty() && !h2, "H2's DOMAIN row");
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_parent (id INT PRIMARY KEY)");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
-    UpgradeTestUtils.execute(db, "CREATE INDEX idx_name ON other_app (x)");
+    UpgradeTestUtils.execute(db, object);
+    String database =
+        db.jdbcUrl().startsWith("jdbc:h2:")
+            ? "H2"
+            : db.jdbcUrl().startsWith("jdbc:postgresql:") ? "POSTGRESQL" : "MYSQL";
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    int check = migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8));
 
-    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
-        .hasMessageMatching("(?is).*index idx_name is used by table other_app.*")
-        .hasMessageContaining("restore the backup")
-        .hasMessageContaining("rename that index");
+    if (!List.of(clashesOn.split(" ")).contains(database)) {
+      assertThat(check).isZero();
+      assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+      return;
+    }
+    assertThat(check).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 1 creates a table, index or constraint named " + name)
+        .contains("which is not Unity Catalog's");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 1 creates a table, index or constraint named");
+    // Refused before the step ran: nothing to restore.
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
 
-    // Renaming the other index does not create ours: a rerun still refuses.
-    UpgradeTestUtils.execute(db, "ALTER INDEX idx_name RENAME TO other_app_x");
-    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
-        .hasMessageContaining("missing index uc_tables.idx_name");
+  /**
+   * {@code fromBaseline}: a 0.7.0 database without schema history, so that steps 2 and 3 are both
+   * pending and step 2 is simulated first; otherwise only step 3 is pending. {@code onOtherTable}:
+   * another application's table has a constraint of the dropped name; PostgreSQL's constraint names
+   * are per table, so that is not the constraint that the step drops.
+   */
+  @ParameterizedTest
+  @CsvSource({"false, false", "true, false", "false, true", "true, true"})
+  void refusesAStepThatDropsAConstraintTheDatabaseNoLongerHasByThatName(
+      boolean fromBaseline, boolean onOtherTable) {
+    assumeTrue(db.jdbcUrl().startsWith("jdbc:postgresql:"), "Step 3 drops a CHECK by name there");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    if (fromBaseline) {
+      UpgradeTestUtils.createBaselineSchema(db);
+    } else {
+      migrator.upgradeSchema();
+    }
+    UpgradeTestUtils.execute(
+        db,
+        "ALTER TABLE uc_credentials DROP CONSTRAINT uc_credentials_credential_type_check,"
+            + " ADD CONSTRAINT renamed_type_check CHECK (credential_type IN ('AWS_IAM_ROLE'))");
+    if (onOtherTable) {
+      UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+      UpgradeTestUtils.execute(
+          db,
+          "ALTER TABLE other_app ADD CONSTRAINT uc_credentials_credential_type_check"
+              + " CHECK (x > 0)");
+    }
+    if (!fromBaseline) {
+      UpgradeTestUtils.execute(db, "DELETE FROM uc_schema_history WHERE version = '3'");
+    }
+    String recorded = migrator.recordedVersion();
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 3 drops the constraint uc_credentials_credential_type_check");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 3 drops the constraint")
+        .hasMessageContaining("uc_credentials_credential_type_check");
+    // Refused before any step ran.
+    assertThat(migrator.recordedVersion()).isEqualTo(recorded);
+    assertThat(recorded).isEqualTo(fromBaseline ? null : "2");
+  }
+
+  /** A clash on a later step is refused by the upgrade as the check reports it: before any step. */
+  @Test
+  void refusesBeforeAnyStepWhenALaterStepsNameIsTaken() {
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+    UpgradeTestUtils.execute(db, "CREATE VIEW uc_test_only_step AS SELECT x FROM other_app");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 1000 creates a table, index or constraint named uc_test_only_step");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 1000 creates a table, index or constraint named");
+    // Nothing ran, not even the steps before the one that clashes.
+    assertThat(migrator.recordedVersion()).isNull();
   }
 
   @Test
