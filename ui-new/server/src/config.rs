@@ -17,11 +17,27 @@ pub struct Config {
     pub allowed_origins: Vec<String>,
 }
 
-fn env_bool(key: &str, default: bool) -> Result<bool, String> {
+/// Reads `key`, treating an unset variable as `None`.
+fn env_value(key: &str) -> Result<Option<String>, String> {
     match std::env::var(key) {
-        Ok(value) => parse_bool(key, &value),
-        Err(std::env::VarError::NotPresent) => Ok(default),
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
         Err(error) => Err(format!("{key} is not valid Unicode: {error}")),
+    }
+}
+
+fn env_bool(key: &str, default: bool) -> Result<bool, String> {
+    env_value(key)?.map_or(Ok(default), |value| parse_bool(key, &value))
+}
+
+fn env_port(key: &str, default: u16) -> Result<u16, String> {
+    env_value(key)?.map_or(Ok(default), |value| parse_port(key, &value))
+}
+
+fn parse_port(key: &str, value: &str) -> Result<u16, String> {
+    match value.trim().parse::<u16>() {
+        Ok(port) if port > 0 => Ok(port),
+        _ => Err(format!("{key} must be a port number from 1 to 65535")),
     }
 }
 
@@ -45,10 +61,6 @@ fn env_string(key: &str, default: &str) -> String {
 impl Config {
     /// Load configuration from the process environment, applying defaults.
     pub fn from_env() -> Result<Self, String> {
-        let port = std::env::var("PORT")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(8081);
         let allowed_origins = std::env::var("ALLOWED_ORIGINS")
             .ok()
             .map(|v| {
@@ -59,7 +71,7 @@ impl Config {
             })
             .unwrap_or_default();
         Ok(Config {
-            port,
+            port: env_port("PORT", 8081)?,
             uc_server: env_string("UC_SERVER", "http://localhost:8080"),
             auth_enabled: env_bool("UI_AUTH_ENABLED", false)?,
             google_client_id: env_string("GOOGLE_CLIENT_ID", ""),
@@ -72,7 +84,7 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_bool;
+    use super::{parse_bool, parse_port};
 
     #[test]
     fn parses_explicit_boolean_values() {
@@ -90,5 +102,19 @@ mod tests {
             parse_bool("FLAG", "treu"),
             Err("FLAG must be one of true/false, 1/0, yes/no, or on/off".to_string())
         );
+    }
+
+    #[test]
+    fn parses_ports_from_1_to_65535() {
+        for (value, port) in [("1", 1), (" 8081 ", 8081), ("65535", 65535)] {
+            assert_eq!(parse_port("PORT", value), Ok(port));
+        }
+        for value in ["", "0", "65536", "-1", "80a"] {
+            assert_eq!(
+                parse_port("PORT", value),
+                Err("PORT must be a port number from 1 to 65535".to_string()),
+                "{value:?}"
+            );
+        }
     }
 }

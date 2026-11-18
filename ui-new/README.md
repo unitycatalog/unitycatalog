@@ -117,13 +117,17 @@ Serve `web/dist` from a web server that proxies `/uc.v1.*`, `/config`, and
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `8081` | Bridge listen port |
+| `PORT` | `8081` | Bridge listen port (1–65535) |
 | `UC_SERVER` | `http://localhost:8080` | Unity Catalog server base URL |
 | `UI_AUTH_ENABLED` | `false` | Gate the SPA behind login |
 | `GOOGLE_CLIENT_ID` | _(empty)_ | Enables the Google sign-in button |
 | `OKTA_AUTH_ENABLED` | `false` | Advertise Okta as enabled |
 | `KEYCLOAK_AUTH_ENABLED` | `false` | Advertise Keycloak as enabled |
 | `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated, each must exactly match the browser's serialized `Origin`—no trailing slash or explicit default port; other entries are logged and skipped); empty = same-origin only |
+
+The `*_ENABLED` variables accept `true`/`false`, `1`/`0`, `yes`/`no`, or
+`on`/`off`, ignoring case. An invalid boolean or `PORT` stops the bridge at
+startup with an error naming the variable.
 
 ## Test
 

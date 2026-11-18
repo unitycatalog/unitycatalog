@@ -13,7 +13,10 @@ async fn main() {
         )
         .init();
 
-    let config = Config::from_env().expect("invalid server configuration");
+    let config = Config::from_env().unwrap_or_else(|error| {
+        tracing::error!("invalid server configuration: {error}");
+        std::process::exit(1);
+    });
     let addr: SocketAddr = ([0, 0, 0, 0], config.port).into();
 
     tracing::info!(
