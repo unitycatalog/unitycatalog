@@ -30,6 +30,7 @@ import org.hibernate.annotations.BatchSize;
     name = "uc_tables",
     indexes = {
       @Index(name = "idx_name", columnList = "name"),
+      @Index(name = "uk_uc_tables_schema_name", columnList = "schema_id, name", unique = true),
     })
 // Lombok annotations
 @Getter
