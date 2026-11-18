@@ -114,6 +114,9 @@ _logger = logging.getLogger(__name__)
 _SESSION_CLOSED = "Session is closed"
 
 _clients_to_reset_after_fork: "weakref.WeakSet[_SingleLoopRESTClient]" = weakref.WeakSet()
+# A forked child shares the parent's epoll instance, so finalizing the inherited session would
+# unregister the parent's open sockets from it. The child keeps them here and never finalizes them.
+_inherited_before_fork = []
 
 
 def _reset_clients_after_fork():
@@ -174,6 +177,7 @@ class _SingleLoopRESTClient:
         self._closed = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
+        self._shut_down = threading.Event()
         _clients_to_reset_after_fork.add(self)
 
     def _reset_after_fork(self):
@@ -182,6 +186,10 @@ class _SingleLoopRESTClient:
         it starts its own on its first request. The lock is replaced too, in case another thread
         held it during the fork.
         """
+        _inherited_before_fork.append((self._loop, self._thread, self._rest_client))
+        self._shut_down = threading.Event()
+        if self._closed:
+            self._shut_down.set()
         self._lock = threading.Lock()
         self._loop = None
         self._thread = None
@@ -219,20 +227,25 @@ class _SingleLoopRESTClient:
     def shutdown(self):
         """
         Cancels the requests still running, closes the replaced and the owned sessions, and stops
-        the owned event loop and its thread, even if closing a session fails. A second call does
-        nothing.
+        the owned event loop and its thread, even if closing a session fails. A second call, such as
+        one from another client on the same ApiClient, returns once the first one is done.
         """
         with self._lock:
-            if self._closed:
-                return
+            first = not self._closed
             self._closed = True
-            loop = self._started_loop()
+            loop = self._started_loop() if first else None
+        if not first:
+            self._shut_down.wait()
+            return
         try:
             asyncio.run_coroutine_threadsafe(self._close(), loop).result()
         finally:
-            loop.call_soon_threadsafe(loop.stop)
-            self._thread.join()
-            loop.close()
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+                self._thread.join()
+                loop.close()
+            finally:
+                self._shut_down.set()
 
     def _started_loop(self) -> asyncio.AbstractEventLoop:
         if self._loop is None:

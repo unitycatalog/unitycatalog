@@ -2948,6 +2948,28 @@ def not_found_server():
     server.server_close()
 
 
+class KeepAliveNotFoundHandler(NotFoundHandler):
+    protocol_version = "HTTP/1.1"
+    client_ports = []
+
+    def do_GET(self):
+        KeepAliveNotFoundHandler.client_ports.append(self.client_address[1])
+        super().do_GET()
+
+    do_DELETE = do_GET
+
+
+@pytest.fixture
+def keep_alive_server():
+    KeepAliveNotFoundHandler.client_ports = []
+    server = ThreadingHTTPServer(("127.0.0.1", 0), KeepAliveNotFoundHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_address[1]}/api/2.1/unity-catalog"
+    server.shutdown()
+    server.server_close()
+
+
 @pytest.fixture
 def silent_server():
     """A server that accepts connections and never answers. Sets `accepted` on each one."""
@@ -3136,8 +3158,8 @@ async def test_a_custom_rest_client_is_reported_as_unused(caplog):
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="needs os.fork")
-async def test_a_forked_child_sends_requests_on_its_own_thread(not_found_server):
-    client = function_client(not_found_server)
+async def test_a_forked_child_sends_requests_on_its_own_thread(keep_alive_server):
+    client = function_client(keep_alive_server)
     with pytest.raises(NotFoundException):
         await client.delete_function_async("catalog.schema.missing")
 
@@ -3157,6 +3179,12 @@ async def test_a_forked_child_sends_requests_on_its_own_thread(not_found_server)
             time.sleep(0.05)
         assert status[0] == pid, "the child's request hung"
         assert os.waitstatus_to_exitcode(status[1]) == 0
+        with pytest.raises(NotFoundException):
+            await asyncio.wait_for(
+                client.delete_function_async("catalog.schema.missing"), timeout=10
+            )
+        parent_first, child, parent_after_fork = KeepAliveNotFoundHandler.client_ports
+        assert parent_after_fork == parent_first != child
     finally:
         if status[0] == 0:
             os.kill(pid, signal.SIGKILL)
@@ -3197,3 +3225,30 @@ async def test_cancelling_close_async_still_closes_the_client():
         threading.excepthook = hook
     assert thread_errors == []
     await assert_session_closed(client)
+
+
+def test_a_second_close_waits_for_the_first_to_finish():
+    api_client = ApiClient(
+        configuration=Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
+    )
+    closing_started = threading.Event()
+    release = threading.Event()
+    replaced_close = api_client.rest_client.close
+
+    async def slow_close():
+        closing_started.set()
+        await asyncio.get_running_loop().run_in_executor(None, release.wait, 30)
+        await replaced_close()
+
+    api_client.rest_client.close = slow_close
+    first = UnitycatalogFunctionClient(api_client=api_client)
+    second = UnitycatalogFunctionClient(api_client=api_client)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_close = executor.submit(first.close)
+        assert closing_started.wait(30)
+        second_close = executor.submit(second.close)
+        time.sleep(0.5)
+        assert not second_close.done()
+        release.set()
+        first_close.result(timeout=30)
+        second_close.result(timeout=30)
