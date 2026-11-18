@@ -289,20 +289,21 @@ public class SchemaMigratorTest {
   }
 
   /**
-   * A connection of the schema migration can't get its auto-commit setting back, or fails to close,
-   * whether it stays open ("healthy") or is lost ("broken") in a Hikari pool, or stays open in a
-   * pool that keeps its connections as they are ("unpooled"): the run goes on, and the connection
-   * is closed rather than handed out again with auto-commit on. When the delete of the failed
-   * step's record fails as well, its error is the one reported.
+   * A connection of the schema migration can't get its auto-commit setting back, or fails to close
+   * (see {@link ConnectionState} for each case): the run goes on, and the connection is closed
+   * rather than handed out again with auto-commit on. When the delete of the failed step's record
+   * fails as well (DELETE_FAILS), its error is the one reported and the record stays. When the
+   * delete and the restore succeed and only the close throws (CLOSE_FAILS), the step still runs
+   * again and the run succeeds.
    */
   @ParameterizedTest
   @EnumSource(ConnectionState.class)
-  void runsAgainAFailedStepWhenTheConnectionCannotBeRestored(ConnectionState state)
-      throws SQLException {
+  void cleansUpTheConnectionWhenItCannotBeRestored(ConnectionState state) throws SQLException {
     assumeFalse(state == ConnectionState.LOCK_CONNECTION && isH2(), "H2 has no run lock");
     assumeFalse(
         state == ConnectionState.WRAPPED_POOL && isH2(),
-        "H2's abort does nothing, and its errors on a closed connection don't make Hikari drop it");
+        "On H2 the pool keeps a wrapped connection that was closed directly: H2's abort does"
+            + " nothing and its closed-connection error does not make Hikari drop it");
     new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
     UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
     UpgradeTestUtils.execute(
@@ -321,6 +322,7 @@ public class SchemaMigratorTest {
     AtomicReference<Connection> deleters = new AtomicReference<>();
     List<Connection> failed = new CopyOnWriteArrayList<>();
     List<Connection> aborted = new CopyOnWriteArrayList<>();
+    AtomicReference<Connection> lockers = new AtomicReference<>();
     DataSource real = db.dataSource();
     Function<Connection, Connection> failing =
         c ->
@@ -373,7 +375,23 @@ public class SchemaMigratorTest {
                         }
                         throw new SQLException("Test: the restore fails");
                       }
-                      return invoke(mm, c, aa);
+                      Object result = invoke(mm, c, aa);
+                      if (mm.getName().equals("createStatement")) {
+                        // The connection that runs the lock SQL is the run lock's.
+                        Statement statement = (Statement) result;
+                        return Proxy.newProxyInstance(
+                            getClass().getClassLoader(),
+                            new Class<?>[] {Statement.class},
+                            (ppp, mmm, aaa) -> {
+                              if (mmm.getName().equals("executeQuery")
+                                  && (aaa[0].toString().contains("advisory_lock")
+                                      || aaa[0].toString().contains("GET_LOCK"))) {
+                                lockers.set(c);
+                              }
+                              return invoke(mmm, statement, aaa);
+                            });
+                      }
+                      return result;
                     });
     DataSource unpooledSource =
         (DataSource)
@@ -449,6 +467,10 @@ public class SchemaMigratorTest {
       assertThat(new SchemaMigrator(migrated, NEXT_RELEASE).upgradeSchema()).isOne();
       assertThat(failed).hasSize(1);
       assertThat(failed.get(0).unwrap(Connection.class).isClosed()).isTrue();
+      if (state == ConnectionState.LOCK_CONNECTION) {
+        // The restore failure was injected on the connection that ran the lock SQL.
+        assertThat(failed.get(0)).isSameAs(lockers.get());
+      }
       if (state == ConnectionState.WRAPPED_POOL) {
         // The pool ignores an eviction of a connection that is not its own, so the connection is
         // aborted instead.

@@ -1457,13 +1457,12 @@ public final class SchemaMigrator implements AutoCloseable {
       if (connection == null) {
         return;
       }
-      boolean discarded = false;
       try {
         if (!isTrue(connection, unlockSql)) {
           throw new SQLException("the database did not hold it for this run");
         }
+        restoreAutoCommit(dataSource, connection, autoCommit);
       } catch (SQLException e) {
-        discarded = true;
         closeUnderlying(dataSource, connection);
         throw new IllegalStateException(
             "Could not release the schema migration lock: "
@@ -1471,9 +1470,6 @@ public final class SchemaMigrator implements AutoCloseable {
                 + ". The database releases it when the connection closes; run the command again.",
             e);
       } finally {
-        if (!discarded) {
-          restoreAutoCommit(dataSource, connection, autoCommit);
-        }
         close(connection);
       }
     }
@@ -1519,7 +1515,9 @@ public final class SchemaMigrator implements AutoCloseable {
      * Discards the schema migration's database connection and ends its database session. A Hikari
      * pool evicts it, so it is not handed out again; for any other pool, or a connection that
      * Hikari did not hand out itself, the connection is aborted, and closed directly when that left
-     * it open (a driver's abort may do nothing, as H2's does).
+     * it open (a driver's abort may do nothing, as H2's does). On H2 the pool keeps a wrapped
+     * connection that was closed directly: H2's abort does nothing and its closed-connection error
+     * does not make Hikari drop it.
      */
     private static void closeUnderlying(DataSource dataSource, Connection connection) {
       boolean evicted = false;
