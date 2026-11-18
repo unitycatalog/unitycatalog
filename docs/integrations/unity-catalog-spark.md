@@ -400,6 +400,7 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
+        --conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
@@ -421,6 +422,7 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
+        --conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
@@ -450,12 +452,18 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
         --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
 
-!!! note "Unity Catalog Spark connector before 0.8.0 on Spark 4.2.x"
-    Hadoop 3.5 turns on two settings of Google's connector that make it read the folders above a table and the bucket's
-    layout, which the folder-scoped tokens Unity Catalog vends cannot do, so access fails with `403`. From 0.8.0 the
-    connector turns them off itself, so the two `--conf` lines in the Spark 4.2.x command above can be dropped. If your
-    credentials are broad enough for those reads (for example on a hierarchical-namespace bucket), set either one to
-    `true` in your Spark config and the connector keeps your value.
+!!! note "Unity Catalog Spark connector before 0.8.0"
+    Two settings of Google's connector make it read more than the table's own folder, which the folder-scoped tokens
+    Unity Catalog vends cannot do, so access fails:
+
+    - `fs.gs.hierarchical.namespace.folders.enable` reads the bucket's layout. The connector turns it on itself, on every
+      Spark version, and it breaks writes to non-Delta tables.
+    - `fs.gs.create.items.conflict.check.enable` reads the folders above a table. Hadoop 3.5 (Spark 4.2.x) turns it on,
+      and it breaks all access.
+
+    From 0.8.0 Unity Catalog turns both off itself, so the `--conf` lines for them in the commands above can be dropped.
+    If your credentials are broad enough for those reads (for example on a hierarchical-namespace bucket), set either one
+    to `true` in your Spark config and the connector keeps your value.
 
 ## Querying cloud paths with Unity Catalog credentials
 
