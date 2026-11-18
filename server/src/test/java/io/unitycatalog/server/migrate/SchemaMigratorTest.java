@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -492,9 +493,9 @@ public class SchemaMigratorTest {
   }
 
   /**
-   * Another application's object holds a name that step 1 gives an index or a constraint, in a
-   * namespace that the database shares between tables. {@code clashesOn} names the databases where
-   * it does, and {@code name} the name; on the others the upgrade goes through.
+   * Another application's object holds a name that step 1 gives a table, an index or a constraint,
+   * in a namespace that the database shares between tables. {@code clashesOn} names the databases
+   * where it does, and {@code name} the name; on the others the upgrade goes through.
    */
   @ParameterizedTest
   @CsvSource(
@@ -516,9 +517,19 @@ public class SchemaMigratorTest {
             + " | H2 MYSQL | fkegal88myrpa6m0jle9iv4p37t",
         "CREATE INDEX FKegal88myrpa6m0jle9iv4p37t ON other_app (x)"
             + " | '' | fkegal88myrpa6m0jle9iv4p37t",
+        "CREATE VIEW uc_catalogs AS SELECT x FROM other_app | H2 POSTGRESQL MYSQL | uc_catalogs",
+        "CREATE SEQUENCE uc_catalogs | POSTGRESQL | uc_catalogs",
+        "CREATE INDEX uc_catalogs ON other_app (x) | POSTGRESQL | uc_catalogs",
+        "CREATE VIEW uc_catalogs_pkey AS SELECT x FROM other_app | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE SEQUENCE uc_catalogs_pkey | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE VIEW uc_users_external_id_key AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_users_external_id_key",
       })
   void refusesWhenAnotherApplicationsObjectTookAStepsName(
       String object, String clashesOn, String name) {
+    assumeFalse(
+        object.startsWith("CREATE SEQUENCE") && db.jdbcUrl().startsWith("jdbc:mysql:"),
+        "MySQL has no sequences");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_parent (id INT PRIMARY KEY)");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
     UpgradeTestUtils.execute(db, object);
@@ -537,12 +548,47 @@ public class SchemaMigratorTest {
     }
     assertThat(check).isOne();
     assertThat(out.toString(StandardCharsets.UTF_8))
-        .contains("Schema step 1 creates an index or constraint named " + name)
+        .contains("Schema step 1 creates a table, index or constraint named " + name)
         .contains("which is not Unity Catalog's");
     assertThatThrownBy(migrator::upgradeSchema)
-        .hasMessageContaining("Schema step 1 creates an index or constraint named");
+        .hasMessageContaining("Schema step 1 creates a table, index or constraint named");
     // Refused before the step ran: nothing to restore.
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  /**
+   * {@code fromBaseline}: a 0.7.0 database without schema history, so that steps 2 and 3 are both
+   * pending and step 2 is simulated first; otherwise only step 3 is pending.
+   */
+  @ParameterizedTest
+  @CsvSource({"false", "true"})
+  void refusesAStepThatDropsAConstraintTheDatabaseNoLongerHasByThatName(boolean fromBaseline) {
+    assumeTrue(db.jdbcUrl().startsWith("jdbc:postgresql:"), "Step 3 drops a CHECK by name there");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    if (fromBaseline) {
+      UpgradeTestUtils.createBaselineSchema(db);
+    } else {
+      migrator.upgradeSchema();
+    }
+    UpgradeTestUtils.execute(
+        db,
+        "ALTER TABLE uc_credentials DROP CONSTRAINT uc_credentials_credential_type_check,"
+            + " ADD CONSTRAINT renamed_type_check CHECK (credential_type IN ('AWS_IAM_ROLE'))");
+    if (!fromBaseline) {
+      UpgradeTestUtils.execute(db, "DELETE FROM uc_schema_history WHERE version = '3'");
+    }
+    String recorded = migrator.recordedVersion();
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 3 drops the constraint uc_credentials_credential_type_check");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 3 drops the constraint")
+        .hasMessageContaining("uc_credentials_credential_type_check");
+    // Refused before any step ran.
+    assertThat(migrator.recordedVersion()).isEqualTo(recorded);
+    assertThat(recorded).isEqualTo(fromBaseline ? null : "2");
   }
 
   @Test

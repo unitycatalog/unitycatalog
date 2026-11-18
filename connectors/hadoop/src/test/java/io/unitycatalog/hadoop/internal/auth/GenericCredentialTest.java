@@ -1,13 +1,27 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class GenericCredentialTest {
+  @Test
+  void onlyS3CompatibleKeyPairsGoWithoutASessionToken() {
+    // AWS S3 always vends a session token, so its absence is an error there.
+    assertThatThrownBy(() -> new AwsCredential("ak", "sk", null, 1L, "s3://bucket/t"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("AWS session token is missing");
+    assertThat(
+            new AwsCredential("ak", "sk", null, 1L, "s3://bucket/t", "http://storage.example.com")
+                .sessionToken())
+        .isNull();
+  }
+
   @ParameterizedTest(name = "{0}")
   @MethodSource("equalCredentials")
   void equalCredentialsHaveSameHashCode(

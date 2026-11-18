@@ -70,6 +70,8 @@ public class MultiCredentialScopedFsTest extends BaseSparkIntegrationTest {
 
   @Test
   public void bothCredentialsAreRequiredToReadBothLocations() {
+    assumeEmulatedS3Storage(
+        "the per-path fake file system and a mocked credential fetcher stand in for the server");
     CredentialTestFileSystem.credentialCheckEnabled = false;
     try {
       sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", locationA);

@@ -9,16 +9,14 @@ import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.client.model.FunctionParameterInfo;
 import io.unitycatalog.client.model.FunctionParameterInfos;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -152,27 +150,40 @@ public class PythonInvokerTest {
   }
 
   @Test
-  public void testCallsLeaveNoErrorOutputFile() throws IOException, ApiException {
-    Set<Path> before = errorOutputFiles();
-
-    PythonInvoker.invokePython(intFunction("return a"), PYTHON_ENGINE, "5");
+  public void testCallsLeaveNoErrorOutputFile(@TempDir Path tempDir)
+      throws IOException, ApiException {
+    PythonInvoker.invokePython(intFunction("return a"), PYTHON_ENGINE, tempDir, "5");
     assertThatThrownBy(
             () ->
                 PythonInvoker.invokePython(
-                    intFunction("raise ValueError('x')"), PYTHON_ENGINE, "5"))
-        .isInstanceOf(ApiException.class);
+                    intFunction("raise ValueError('x')"), PYTHON_ENGINE, tempDir, "5"))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("ValueError: x");
 
-    assertThat(errorOutputFiles()).isSubsetOf(before);
+    try (Stream<Path> files = Files.list(tempDir)) {
+      assertThat(files).isEmpty();
+    }
   }
 
-  private static Set<Path> errorOutputFiles() throws IOException {
-    try (DirectoryStream<Path> files =
-        Files.newDirectoryStream(
-            Paths.get(System.getProperty("java.io.tmpdir")), "uc-function-*.stderr")) {
-      Set<Path> result = new HashSet<>();
-      files.forEach(result::add);
-      return result;
-    }
+  @Test
+  public void testCallUsesTheGivenTempDir(@TempDir Path tempDir) {
+    Path missing = tempDir.resolve("missing");
+
+    assertThatThrownBy(
+            () -> PythonInvoker.invokePython(intFunction("return a"), PYTHON_ENGINE, missing, "5"))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining(missing.toString());
+  }
+
+  @Test
+  public void testDeleteQuietlyDoesNotThrowWhenTheDeleteFails(@TempDir Path tempDir)
+      throws IOException {
+    Path directory = Files.createDirectory(tempDir.resolve("not-empty"));
+    Files.writeString(directory.resolve("file"), "x");
+
+    PythonInvoker.deleteQuietly(directory);
+
+    assertThat(directory).exists();
   }
 
   private static FunctionInfo intFunction(String body) {

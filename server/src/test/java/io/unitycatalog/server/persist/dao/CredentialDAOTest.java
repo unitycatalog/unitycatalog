@@ -39,12 +39,12 @@ public class CredentialDAOTest {
 
   @Test
   public void testWriteOnlyFieldIsStoredButNotInResponse() throws Exception {
-    CredentialDAO dao =
-        s3CompatibleDao(
-            new S3CompatibleRequest()
-                .accessKeyId("key-id-1")
-                .secretAccessKey("write-only-value")
-                .s3Endpoint(S3_ENDPOINT));
+    S3CompatibleRequest request =
+        new S3CompatibleRequest()
+            .accessKeyId("key-id-1")
+            .secretAccessKey("write-only-value")
+            .s3Endpoint(S3_ENDPOINT);
+    CredentialDAO dao = s3CompatibleDao(request);
 
     assertThat(dao.getS3SecretAccessKey(SECRET_STORE)).isEqualTo("write-only-value");
     // Stored encrypted: a server with another key cannot read it.
@@ -58,6 +58,15 @@ public class CredentialDAOTest {
     String json = new ObjectMapper().writeValueAsString(info);
     assertThat(json).doesNotContain("write-only-value").doesNotContain("secret_access_key");
     assertThat(info.getS3Compatible().getAccessKeyId()).isEqualTo("key-id-1");
+    // The vend cache keys on the fingerprint of the stored value: the same value has the same
+    // one, and the key pair stored again (with a fresh nonce) has another.
+    String one = "{\"access_key_id\":\"key-id-1\",\"s3_endpoint\":\"" + S3_ENDPOINT + "\"}";
+    String two = "{\"access_key_id\":\"key-id-2\",\"s3_endpoint\":\"" + S3_ENDPOINT + "\"}";
+    assertThat(CredentialDAO.builder().credential(one).build().getCredentialFingerprint())
+        .isEqualTo(CredentialDAO.builder().credential(one).build().getCredentialFingerprint())
+        .isNotEqualTo(CredentialDAO.builder().credential(two).build().getCredentialFingerprint());
+    assertThat(s3CompatibleDao(request).getCredentialFingerprint())
+        .isNotEqualTo(dao.getCredentialFingerprint());
   }
 
   @Test
