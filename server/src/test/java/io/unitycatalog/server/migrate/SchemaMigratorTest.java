@@ -287,6 +287,9 @@ public class SchemaMigratorTest {
                 getClass().getClassLoader(),
                 new Class<?>[] {DataSource.class},
                 (p, m, a) -> {
+                  if (m.getName().equals("isWrapperFor") && connectionState.equals("unpooled")) {
+                    return false; // not a Hikari pool
+                  }
                   Object result = invoke(m, real, a);
                   if (!m.getName().equals("getConnection")) {
                     return result;
