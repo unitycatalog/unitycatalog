@@ -882,7 +882,8 @@ public final class SchemaMigrator implements AutoCloseable {
           }
         }
       } finally {
-        connection.setAutoCommit(autoCommit);
+        // Never replaces the DELETE's own failure.
+        RunLock.restoreAutoCommit(connection, autoCommit);
       }
     } catch (SQLException e) {
       throw new IllegalStateException(
