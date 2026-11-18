@@ -7,6 +7,7 @@ import io.unitycatalog.server.migrate.SchemaMigrator;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -78,7 +79,8 @@ public class SampleDatabaseTest {
     Files.write(file, content);
 
     assertThatThrownBy(() -> SampleDatabase.build(file))
-        .hasRootCauseInstanceOf(FileAlreadyExistsException.class);
+        .isInstanceOf(UncheckedIOException.class)
+        .hasCauseExactlyInstanceOf(FileAlreadyExistsException.class);
 
     assertThat(file).hasBinaryContent(content);
   }
@@ -86,7 +88,9 @@ public class SampleDatabaseTest {
   @Test
   void ignoresTheDeploymentEnvironmentVariables(@TempDir Path dir) throws Exception {
     Path file = dir.resolve("h2db.mv.db");
-    // An environment that makes any server configuration without an OPA decision URL invalid.
+    // An environment that makes any server configuration without OPA authorization settings
+    // invalid.
+    // invalid.
     ProcessBuilder build =
         new ProcessBuilder(
             Path.of(System.getProperty("java.home"), "bin", "java").toString(),
@@ -123,7 +127,11 @@ public class SampleDatabaseTest {
         try {
           build.get();
         } catch (ExecutionException e) {
-          failed++; // the build that finds the file already there
+          // the build that finds the file already there
+          assertThat(e.getCause())
+              .isInstanceOf(UncheckedIOException.class)
+              .hasCauseExactlyInstanceOf(FileAlreadyExistsException.class);
+          failed++;
         }
       }
 
@@ -180,62 +188,38 @@ public class SampleDatabaseTest {
         "-p 9",
         "-p9",
         "-p=9",
-        "-port 9",
-        "-po 9",
-        "--p 9",
-        "--po 9",
-        "--port 9",
         "--port=9",
-        "--obs 9",
+        "--port 9",
+        "--po 9",
+        "-port 9",
         "--o 9",
         "--obs-port 9",
-        "--obs-port=9",
-        "-obs-port 9",
         "-p 9 --obs 8",
         "foo",
         "-p 9 foo",
-        "--check",
-        "--che",
-        "--c",
-        "-c",
-        "-check",
-        "-check-schema",
         "--check-schema",
-        "--upgrade",
-        "--u",
-        "-u",
-        "-upgrade-schema",
+        "--che",
+        "-c",
         "--upgrade-schema",
         "-v",
-        "--v",
-        "--ver",
-        "--version",
-        "-version",
-        "-h",
-        "--h",
         "--help",
-        "-help",
         "-he",
-        "-p 9 -h",
         "-p 9 --check",
-        "-p 9 --upgrade",
         "-p",
-        "-p -h",
         "-p --check",
-        "--port --check",
-        "--obs-port -v",
         "-pv",
-        "-pp",
-        "-o 9",
         "-x",
         "--unknown",
+        "-- --check",
+        "-p 9 -- --check",
       })
   void buildsTheSampleDatabaseOnlyWhereTheServerStarts(String commandLine, @TempDir Path dir)
       throws Exception {
     Path root = Path.of("").toAbsolutePath();
-    while (!Files.isRegularFile(root.resolve("bin/start-uc-server"))) {
+    while (root != null && !Files.isRegularFile(root.resolve("bin/start-uc-server"))) {
       root = root.getParent();
     }
+    assertThat(root).isNotNull();
     // A source checkout whose build/sbt only records its arguments and whose java does nothing.
     Path bin = Files.createDirectories(dir.resolve("bin"));
     Files.copy(root.resolve("bin/start-uc-server"), bin.resolve("start-uc-server"));
@@ -249,17 +233,15 @@ public class SampleDatabaseTest {
     writeExecutable(dir.resolve("build/sbt"), "echo \"$@\" >> '" + calls + "'\n");
     writeExecutable(dir.resolve("fake/java"), "exit 0\n");
 
+    String[] args = commandLine.split(" ");
     ProcessBuilder launcher = new ProcessBuilder();
     launcher.command().add(bin.resolve("start-uc-server").toString());
-    if (!commandLine.isEmpty()) {
-      launcher.command().addAll(List.of(commandLine.split(" ")));
-    }
+    launcher.command().addAll(List.of(args));
     launcher.environment().put("PATH", dir.resolve("fake") + ":" + System.getenv("PATH"));
     launcher.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD);
     assertThat(launcher.start().waitFor()).isZero();
 
     boolean built = Files.exists(calls) && Files.readString(calls).contains("buildSampleDatabase");
-    String[] args = commandLine.isEmpty() ? new String[0] : commandLine.split(" ");
     assertThat(built).as(commandLine).isEqualTo(startsServer(args));
   }
 

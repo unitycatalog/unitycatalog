@@ -90,11 +90,16 @@ public class SampleDatabase {
       } catch (FileAlreadyExistsException | AccessDeniedException | NoSuchFileException e) {
         throw e;
       } catch (UnsupportedOperationException | FileSystemException e) {
+        String reason =
+            e instanceof FileSystemException
+                ? ((FileSystemException) e).getReason()
+                : e.getMessage();
         throw new IllegalStateException(
-            "The folder "
+            "Could not link the sample database into "
                 + folder
-                + " must be on a file system that supports hard links to build the sample"
-                + " database.",
+                + ": "
+                + (reason != null ? reason : e)
+                + ". The folder must be on a file system that supports hard links.",
             e);
       }
     } catch (IOException e) {
