@@ -1371,6 +1371,9 @@ paths:
         and leaving out `assume_role` removes it. Updates without either, such as of the name or
         comment, keep the stored credential.
 
+        A `gcp_service_account_key` credential cannot change its type or private key through this
+        endpoint. Its name and comment can still be updated.
+
         EXPERIMENTAL: whoever may update a credential is trusted with where the data under it lives.
         Changing `s3_endpoint` of an `s3_compatible` credential moves data access for every path
         under its external locations, including tables and volumes other principals own, to the new

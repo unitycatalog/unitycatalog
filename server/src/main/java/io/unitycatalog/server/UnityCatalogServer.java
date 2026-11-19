@@ -341,8 +341,8 @@ public class UnityCatalogServer implements AutoCloseable {
     cloudCredentialVendor = repositories.getOwnedCloudCredentialVendor().orElse(null);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
+    warnAboutUnreadableSecrets(repositories);
     if (unityCatalogServerBuilder.serverProperties.isS3CompatibleStorageEnabled()) {
-      warnAboutUnreadableSecrets(repositories);
       if (unityCatalogServerBuilder.serverProperties.getS3CompatibleStaticKeyVending()
           == ServerProperties.S3CompatibleStaticKeyVending.STATIC_KEY) {
         LOGGER.warn(
