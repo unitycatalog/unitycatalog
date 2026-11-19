@@ -6,6 +6,8 @@ import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
@@ -954,6 +956,57 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       } else {
         assertThat(col.getPartitionIndex()).isNull();
       }
+    }
+  }
+
+  /**
+   * A void column (Spark's NullType, {@code VOID}) is created in UC as NULL, and kept in the table
+   * schema, also inside a struct. Writes leave it out of the data files and reads give nulls. Spark
+   * 4.0 still drops void columns from the plan, so selecting them fails there.
+   */
+  @Test
+  public void testVoidColumn() throws ApiException {
+    assumeTrue(testingDelta(), "void columns are a Delta feature");
+    session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setSchemaName(SCHEMA_NAME)
+                .setTableName(TEST_TABLE + "_void")
+                .setColumns(
+                    List.of(
+                        Pair.of("a", "INT"),
+                        Pair.of("n", "VOID"),
+                        Pair.of("st", "STRUCT<x: INT, v: VOID>"))));
+
+    if (canUpdateColumnsToUC()) {
+      List<ColumnInfo> columns = tableOperations.getTable(fullTableName).getColumns();
+      assertThat(columns)
+          .extracting(ColumnInfo::getName, ColumnInfo::getTypeName, ColumnInfo::getTypeText)
+          .containsExactly(
+              tuple("a", ColumnTypeName.INT, "int"),
+              tuple("n", ColumnTypeName.NULL, "void"),
+              tuple("st", ColumnTypeName.STRUCT, "struct<x:int,v:void>"));
+      assertThat(columns.get(1).getTypeJson()).contains("\"type\":\"void\"");
+      assertThat(columns.get(2).getTypeJson()).contains("\"name\":\"v\",\"type\":\"void\"");
+    }
+    assertThat(session.table(fullTableName).schema().catalogString())
+        .isEqualTo("struct<a:int,n:void,st:struct<x:int,v:void>>");
+
+    sql("INSERT INTO %s (a) VALUES (1)", fullTableName);
+    if (isSparkAtLeast(4, 1)) {
+      List<Row> rows = sql("SELECT a, n, st FROM %s", fullTableName);
+      assertThat(rows).hasSize(1);
+      assertThat(rows.get(0).get(0)).isEqualTo(1);
+      assertThat(rows.get(0).isNullAt(1)).isTrue();
+      assertThat(rows.get(0).isNullAt(2)).isTrue();
+    } else {
+      // Spark 4.0 keeps the void columns in the schema but can't read them back: it fails to
+      // resolve them, although the data columns are readable.
+      assertThat(sql("SELECT a FROM %s", fullTableName)).hasSize(1);
+      assertThatThrownBy(() -> sql("SELECT * FROM %s", fullTableName))
+          .isInstanceOf(org.apache.spark.SparkException.class);
     }
   }
 
