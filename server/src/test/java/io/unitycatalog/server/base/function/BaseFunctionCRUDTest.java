@@ -68,6 +68,38 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
         .position(position);
   }
 
+  /** Geo types are not stored for functions, so they are refused as a parameter or return type. */
+  @Test
+  public void testCreateFunctionRejectsGeoTypes() throws ApiException {
+    createCommonResources();
+    for (ColumnTypeName geoType : List.of(ColumnTypeName.GEOMETRY, ColumnTypeName.GEOGRAPHY)) {
+      CreateFunction createFunction =
+          new CreateFunction()
+              .name(FUNCTION_NAME)
+              .catalogName(CATALOG_NAME)
+              .schemaName(SCHEMA_NAME)
+              .parameterStyle(CreateFunction.ParameterStyleEnum.S)
+              .isDeterministic(true)
+              .externalLanguage("python")
+              .dataType(geoType)
+              .fullDataType("geo")
+              .isNullCall(false)
+              .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
+              .routineDefinition("def test():\n  return 1")
+              .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
+              .specificName("test")
+              .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
+              .inputParams(new FunctionParameterInfos().parameters(List.of()));
+      assertThatThrownBy(
+              () ->
+                  functionOperations.createFunction(
+                      new CreateFunctionRequest().functionInfo(createFunction)))
+          .as("function with data type %s", geoType)
+          .isInstanceOf(Exception.class)
+          .hasMessageContaining("is not supported in functions");
+    }
+  }
+
   @Test
   public void testFunctionCRUD() throws ApiException {
     assertThatThrownBy(() -> functionOperations.getFunction(FUNCTION_FULL_NAME))

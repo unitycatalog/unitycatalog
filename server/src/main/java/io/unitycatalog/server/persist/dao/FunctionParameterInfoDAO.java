@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist.dao;
 
-import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.FunctionParameterInfo;
 import io.unitycatalog.server.model.FunctionParameterInfos;
 import io.unitycatalog.server.model.FunctionParameterMode;
@@ -50,7 +49,7 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
   private String typeJson;
 
   @Column(name = "type_name", nullable = false)
-  private ColumnTypeName typeName;
+  private FunctionTypeName typeName;
 
   @Column(name = "type_precision")
   private Integer typePrecision;
@@ -82,7 +81,7 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
         .name(functionParameterInfo.getName())
         .typeText(functionParameterInfo.getTypeText())
         .typeJson(functionParameterInfo.getTypeJson())
-        .typeName(functionParameterInfo.getTypeName())
+        .typeName(FunctionTypeName.from(functionParameterInfo.getTypeName()))
         .typePrecision(functionParameterInfo.getTypePrecision())
         .typeScale(functionParameterInfo.getTypeScale())
         .typeIntervalType(functionParameterInfo.getTypeIntervalType())
@@ -100,7 +99,7 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
         .name(getName())
         .typeText(typeText)
         .typeJson(typeJson)
-        .typeName(typeName)
+        .typeName(typeName == null ? null : typeName.toColumnTypeName())
         .typePrecision(typePrecision)
         .typeScale(typeScale)
         .typeIntervalType(typeIntervalType)

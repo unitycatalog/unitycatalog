@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist.dao;
 
-import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.FunctionInfo;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -52,7 +51,7 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   private String updatedBy;
 
   @Column(name = "data_type")
-  private ColumnTypeName dataType;
+  private FunctionTypeName dataType;
 
   @Column(name = "full_data_type")
   private String fullDataType;
@@ -109,7 +108,7 @@ public class FunctionInfoDAO extends IdentifiableDAO {
             .createdBy(functionInfo.getCreatedBy())
             .updatedAt(functionInfo.getUpdatedAt())
             .updatedBy(functionInfo.getUpdatedBy())
-            .dataType(functionInfo.getDataType())
+            .dataType(FunctionTypeName.from(functionInfo.getDataType()))
             .fullDataType(functionInfo.getFullDataType())
             .externalLanguage(functionInfo.getExternalLanguage())
             .isDeterministic(functionInfo.getIsDeterministic())
@@ -149,7 +148,7 @@ public class FunctionInfoDAO extends IdentifiableDAO {
             .createdBy(createdBy)
             .updatedAt(updatedAt)
             .updatedBy(updatedBy)
-            .dataType(dataType)
+            .dataType(dataType == null ? null : dataType.toColumnTypeName())
             .fullDataType(fullDataType)
             .externalLanguage(externalLanguage)
             .isDeterministic(isDeterministic)
