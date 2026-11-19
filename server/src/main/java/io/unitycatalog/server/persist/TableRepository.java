@@ -1360,7 +1360,7 @@ public class TableRepository {
           session.merge(tableInfoDAO);
           return null;
         },
-        "Failed to rename table " + catalog + "." + schema + "." + table,
+        "Failed to rename table " + catalog + "." + schema + "." + table + " to " + newName,
         /* readOnly= */ false);
   }
 }
