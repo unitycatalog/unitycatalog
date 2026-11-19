@@ -1,0 +1,15 @@
++ column os_recipient_tokens.activated type=bool size=1 nullable=NO default=null
++ column os_recipient_tokens.activation_code type=varchar size=36 nullable=YES default=null
++ column os_recipient_tokens.created_at type=timestamptz size=35 nullable=NO default=null
++ column os_recipient_tokens.expires_at type=timestamptz size=35 nullable=NO default=null
++ column os_recipient_tokens.id type=uuid size=2147483647 nullable=NO default=null
++ column os_recipient_tokens.recipient_id type=uuid size=2147483647 nullable=NO default=null
++ column os_recipient_tokens.superseded_at type=timestamptz size=35 nullable=YES default=null
++ column os_recipient_tokens.token_hash type=varchar size=64 nullable=YES default=null
++ column os_recipient_tokens.updated_at type=timestamptz size=35 nullable=NO default=null
++ fk os_recipient_tokens.fk_recipient_tokens_recipient os_recipient_tokens.recipient_id -> os_recipients.id#1 on update no action on delete no action
++ index os_recipient_tokens.os_recipient_tokens_pkey unique=true column=id#1
++ index os_recipient_tokens.uk_recipient_tokens_activation_code unique=true column=activation_code#1
++ index os_recipient_tokens.uk_recipient_tokens_token_hash unique=true column=token_hash#1
++ pk os_recipient_tokens.id#1
++ table os_recipient_tokens

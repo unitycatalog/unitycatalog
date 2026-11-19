@@ -1,0 +1,22 @@
++ column os_shared_data_objects.auxiliary_locations type=character varying size=8192 nullable=YES default=null
++ column os_shared_data_objects.created_at type=timestamp with time zone size=32 nullable=NO default=null
++ column os_shared_data_objects.full_name type=character varying size=512 nullable=NO default=null
++ column os_shared_data_objects.id type=uuid size=16 nullable=NO default=null
++ column os_shared_data_objects.share_id type=uuid size=16 nullable=NO default=null
++ column os_shared_data_objects.shared_as_schema type=character varying size=255 nullable=NO default=null
++ column os_shared_data_objects.shared_as_table type=character varying size=255 nullable=NO default=null
++ column os_shared_data_objects.source_asset_id type=character varying size=255 nullable=YES default=null
++ column os_shared_data_objects.source_format type=character varying size=255 nullable=YES default=null
++ column os_shared_data_objects.storage_location type=character varying size=2048 nullable=YES default=null
++ column os_shared_data_objects.type type=character varying size=255 nullable=NO default=null
++ column os_shared_data_objects.updated_at type=timestamp with time zone size=32 nullable=NO default=null
++ fk os_shared_data_objects.fk_shared_objects_share os_shared_data_objects.share_id -> os_shares.id#1 on update restrict on delete restrict
++ index os_shared_data_objects.fk_shared_objects_share_index_* unique=false column=share_id#1
++ index os_shared_data_objects.primary_key_* unique=true column=id#1
++ index os_shared_data_objects.uk_shared_objects_alias_index_* unique=true column=share_id#1
++ index os_shared_data_objects.uk_shared_objects_alias_index_* unique=true column=shared_as_schema#2
++ index os_shared_data_objects.uk_shared_objects_alias_index_* unique=true column=shared_as_table#3
++ index os_shared_data_objects.uk_shared_objects_source_index_* unique=true column=full_name#2
++ index os_shared_data_objects.uk_shared_objects_source_index_* unique=true column=share_id#1
++ pk os_shared_data_objects.id#1
++ table os_shared_data_objects
