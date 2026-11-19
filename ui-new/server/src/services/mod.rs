@@ -110,25 +110,40 @@ fn kind_mismatch(
         .then(|| format!("{full_name} is {}, not {}", actual.noun(), expected.noun())))
 }
 
-/// Keeps the rows of one kind from a UC table list. A row of no known kind is
-/// skipped and logged rather than failing the page, so a table type added by a
-/// newer UC server does not break the list.
+/// Keeps the rows of one kind from a UC table list. Rows of no known kind are
+/// skipped rather than failing the page, so a table type added by a newer UC
+/// server does not break the list; one warning per page counts them.
 fn rows_of_kind(rows: &[Value], kind: TableKind) -> Vec<&Value> {
-    rows.iter()
+    let mut unclassified = Vec::new();
+    let kept = rows
+        .iter()
         .filter(|row| match TableKind::of(row) {
             Some(actual) => actual == kind,
             None => {
-                let name = row.get("name").and_then(Value::as_str);
-                let table_type = row.get("table_type").and_then(Value::as_str);
-                tracing::warn!(
-                    name,
-                    table_type,
-                    "skipping a listed table with no known table_type"
-                );
+                unclassified.push(*row);
                 false
             }
         })
-        .collect()
+        .collect();
+    if !unclassified.is_empty() {
+        let examples: Vec<_> = unclassified
+            .iter()
+            .take(3)
+            .map(|row| describe_row(row))
+            .collect();
+        tracing::warn!(
+            count = unclassified.len(),
+            ?examples,
+            "skipped listed tables with no known table_type"
+        );
+    }
+    kept
+}
+
+/// Names a listed row and its raw `table_type` for a log line.
+fn describe_row(row: &Value) -> String {
+    let field = |key: &str| row.get(key).and_then(Value::as_str).unwrap_or("<missing>");
+    format!("{} ({})", field("name"), field("table_type"))
 }
 
 fn table_path(full_name: &str) -> String {
