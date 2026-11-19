@@ -39,6 +39,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.DynamicUpdate;
 
 /**
  * Data Access Object for storing cloud provider credentials in Unity Catalog. The credential
@@ -49,6 +50,7 @@ import lombok.experimental.SuperBuilder;
  * @see AwsCredentialVendor
  */
 @Entity
+@DynamicUpdate
 @Table(name = "uc_credentials")
 // Lombok
 @Getter

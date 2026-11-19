@@ -92,6 +92,9 @@ public class SchemaRepository {
           PropertyDAO.from(schemaInfo.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
               .forEach(session::persist);
           session.persist(schemaInfoDAO);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, schemaInfoDAO.getId(), callerId, catalogDAO.getId());
           addNamespaceData(schemaInfo, createSchema.getCatalogName());
           return schemaInfo;
         },
@@ -272,6 +275,11 @@ public class SchemaRepository {
   }
 
   public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
+    return updateSchema(fullName, updateSchema, () -> {});
+  }
+
+  public SchemaInfo updateSchema(
+      String fullName, UpdateSchema updateSchema, Runnable beforeCommit) {
     if (updateSchema.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
     }
@@ -281,11 +289,18 @@ public class SchemaRepository {
         sessionFactory,
         session -> {
           SchemaInfoDAO schemaInfoDAO = getSchemaDaoOrThrow(session, fullName);
+          if (updateSchema.getOwner() != null) {
+            schemaInfoDAO.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(session, schemaInfoDAO, updateSchema.getOwner(), beforeCommit));
+          }
           if (updateSchema.getNewName() != null) {
             String catalogName = splitSchemaFullName(fullName).catalogName();
             validateSchemaNotExistInCatalog(session, catalogName, updateSchema.getNewName());
           }
           if (updateSchema.getComment() == null
+              && updateSchema.getOwner() == null
               && updateSchema.getNewName() == null
               && (updateSchema.getProperties() == null || updateSchema.getProperties().isEmpty())) {
             return convertFromDAO(session, schemaInfoDAO, fullName);

@@ -14,10 +14,12 @@ import io.unitycatalog.server.model.CreateFunction;
 import io.unitycatalog.server.model.CreateFunctionRequest;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
+import io.unitycatalog.server.model.UpdateFunction;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
@@ -131,6 +133,9 @@ public class FunctionRepository {
                     p.setFunction(dao);
                   });
           session.persist(dao);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, dao.getId(), callerId, schemaInfo.getId());
           // Write the function and its parameters first, so only property rows reach
           // flushProperties and its mapping of database errors to property errors.
           session.flush();
@@ -226,6 +231,37 @@ public class FunctionRepository {
 
   public void addNamespaceInfo(FunctionInfo functionInfo, String catalogName, String schemaName) {
     addNamespaceData(functionInfo, catalogName, schemaName);
+  }
+
+  /** Transfers ownership without changing the function definition or its dependencies. */
+  public FunctionInfo updateFunction(String fullName, UpdateFunction updateFunction) {
+    return updateFunction(fullName, updateFunction, () -> {});
+  }
+
+  public FunctionInfo updateFunction(
+      String fullName, UpdateFunction updateFunction, Runnable beforeCommit) {
+    String[] parts =
+        ValidationUtils.splitFullName(fullName, 3, "Invalid function name: " + fullName);
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          FunctionInfoDAO dao = getFunctionDAO(session, parts[0], parts[1], parts[2]);
+          if (dao == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + fullName);
+          }
+          dao.setOwner(
+              repositories
+                  .getOwnershipRepository()
+                  .updateOwner(session, dao, updateFunction.getOwner(), beforeCommit));
+          dao.setUpdatedAt(System.currentTimeMillis());
+          dao.setUpdatedBy(IdentityUtils.findPrincipalEmailAddress());
+          FunctionInfo result = dao.toFunctionInfo();
+          addNamespaceInfo(result, parts[0], parts[1]);
+          return RepositoryUtils.attachProperties(
+              result, result.getFunctionId(), Constants.FUNCTION, session);
+        },
+        "Failed to update function",
+        /* readOnly= */ false);
   }
 
   public FunctionInfoDAO getFunctionDAO(
