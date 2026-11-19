@@ -28,6 +28,10 @@ public class UCHadoopConfConstants {
   // Whether Unity Catalog vended keys for the bucket, followed by the bucket name: without them the
   // engine's own S3 credentials sign, which may be per Hadoop user.
   public static final String UC_VENDED_S3_KEYS_PREFIX = "fs.unitycatalog.vended.s3.keys.";
+  // A hash of the fixed credential a table load vended without renewal, never the credential
+  // itself: the file system cache key reads it, so a later load's new credential is not served by
+  // a file system that holds an earlier, possibly expired, one.
+  public static final String UC_FIXED_CREDENTIAL_ID_KEY = "fs.unitycatalog.fixed.credential.id";
   // Expired time in milliseconds.
   public static final String S3A_INIT_CRED_EXPIRED_TIME = "fs.s3a.init.credential.expired.time";
 

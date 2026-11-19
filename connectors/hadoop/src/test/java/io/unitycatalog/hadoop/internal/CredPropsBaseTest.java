@@ -14,6 +14,7 @@ import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -387,6 +388,11 @@ abstract class CredPropsBaseTest {
       expected.putAll(requestContext(appVersions));
     } else {
       expected.putAll(staticCredKeys(expiration));
+      if (credScoped) {
+        expected.put(
+            UCHadoopConfConstants.UC_FIXED_CREDENTIAL_ID_KEY,
+            MapIdGenerator.generateId(staticCredKeys(expiration)));
+      }
     }
     expected.put(
         UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
