@@ -9,6 +9,7 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFs;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -128,7 +129,15 @@ public abstract class CredPropsBuilder {
       if (renewCredEnabled) {
         setInitRenewableCredKeys(credential);
       } else {
-        setInitFixedCredKeys(credential);
+        Map<String, String> fixedCredKeys = initFixedCredKeys(credential);
+        fixedCredKeys.forEach(this::set);
+        // Nothing renews a fixed credential, so each one needs its own credential-scoped file
+        // system: a cached one keeps the credential of the table load that created it.
+        if (credScopedFsEnabled) {
+          set(
+              UCHadoopConfConstants.UC_FIXED_CREDENTIAL_ID_KEY,
+              MapIdGenerator.generateId(fixedCredKeys));
+        }
       }
     }
 
@@ -216,6 +225,9 @@ public abstract class CredPropsBuilder {
   /** Writes the renewable-path credential secrets (the {@code init.*} keys) for this cloud. */
   protected abstract void setInitRenewableCredKeys(GenericCredential cred);
 
-  /** Writes the fixed-path credential secrets for this cloud. */
-  protected abstract void setInitFixedCredKeys(GenericCredential cred);
+  /**
+   * Returns the fixed-path credential secrets for this cloud, which {@link #build()} sets, or an
+   * empty map when the credential is not served through them.
+   */
+  protected abstract Map<String, String> initFixedCredKeys(GenericCredential cred);
 }
