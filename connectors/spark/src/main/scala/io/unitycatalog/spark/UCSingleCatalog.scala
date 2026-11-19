@@ -1155,7 +1155,7 @@ private[spark] class UCProxy(
   private[spark] def toStructField(col: ColumnInfo): StructField =
     StructField(
       col.getName,
-      DataType.fromDDL(col.getTypeText),
+      UCColumnConversions.parseDataType(col.getTypeText, col.getTypeJson),
       col.getNullable,
       UCColumnConversions.metadataOf(col.getName, col.getTypeJson))
       .withComment(col.getComment)
@@ -1276,7 +1276,8 @@ private[spark] class UCProxy(
       case _: NullType => ColumnTypeName.NULL
       case _: UserDefinedType[_] => ColumnTypeName.USER_DEFINED_TYPE
       case _: VariantType => ColumnTypeName.VARIANT
-      case _ => ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API
+      case _ =>
+        GeoTypesShim.columnTypeName(dataType).getOrElse(ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API)
     }
   }
 

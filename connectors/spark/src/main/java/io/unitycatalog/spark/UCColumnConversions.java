@@ -9,6 +9,7 @@ import io.unitycatalog.client.internal.Preconditions;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.spark.SparkRuntimeException;
+import org.apache.spark.sql.catalyst.parser.ParseException;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.expressions.NamedReference;
 import org.apache.spark.sql.connector.expressions.Transform;
@@ -60,6 +61,23 @@ public final class UCColumnConversions {
     node.put(FIELD_NULLABLE, field.nullable());
     node.set(FIELD_METADATA, readTree(field.metadata().json()));
     return writeValueAsString(node);
+  }
+
+  /**
+   * The Spark type of a UC column, from its {@code type_text}. Delta writes geometry and geography
+   * there as {@code geometry(OGC:CRS84)}, which Spark's DDL parser rejects (it takes SRIDs), so
+   * fall back to the {@code type_json}, whose type string Spark reads in both forms.
+   */
+  public static DataType parseDataType(String typeText, String typeJson) {
+    try {
+      return DataType.fromDDL(typeText);
+    } catch (Exception e) {
+      // ParseException is a Scala exception, so javac sees it as checked; only try the JSON for it.
+      if (!(e instanceof ParseException) || typeJson == null) {
+        throw e;
+      }
+      return parseColumnJson(typeJson).dataType();
+    }
   }
 
   /**
