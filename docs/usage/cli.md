@@ -15,6 +15,14 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
 
     where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
 
+!!! note "Results of list commands"
+
+    A `list` command returns all the results, requesting as many pages from the server as it takes.
+    Without `--max_results`, a `list` command used to return at most 100 results and now returns all of them.
+    This applies to every `list` command except `user list`, which uses `--start_index` and `--count`.
+    `--max_results` limits the total number of results across those pages, and `0` means no limit, the same as leaving it out.
+    `--page_token` starts the listing at the page that a `next_page_token` from the REST API points to.
+
 ## Credential Management CLI Usage
 
 You can use the Unity Catalog CLI to manage Credentials within your system. The `bin/uc` script
@@ -126,6 +134,45 @@ bin/uc external_location get \
 ```
 
 1. `name`: The name of the External Location.
+
+### Update an External Location
+
+You can update an existing external location using:
+
+```sh
+bin/uc external_location update \
+--name <name> \ # (1)
+[--new_name <new_name>] \ # (2)
+[--url <url>] \ # (3)
+[--credential_name <credential_name>] \ # (4)
+[--comment <comment>] \ # (5)
+[--force true] # (6)
+```
+
+1. `name`: The name of the existing external location.
+2. `new_name`: _\[Optional\]_ The new name of the external location.
+3. `url`: _\[Optional\]_ The new URL of the external location. Changing it fails while the external location is in
+   use, unless the new URL covers the old one. It is in use while a table, volume or registered model is stored under
+   it, a catalog or schema keeps its managed storage under it, or a storage cleanup is pending there.
+4. `credential_name`: _\[Optional\]_ The name of the credential to be associated with.
+5. `comment`: _\[Optional\]_ The new description of the external location.
+6. `force`: _\[Optional\]_ Change the URL even if the external location is in use. Whatever is stored under the old
+   URL can no longer get credentials from this external location.
+
+!!! note "At least one of the optional parameters other than `force` must be specified."
+
+### Delete an External Location
+
+You can delete an existing external location using:
+
+```sh
+bin/uc external_location delete \
+  --name <name> \ # (1)
+  [--force true] # (2)
+```
+
+1. `name`: The name of the external location. Deleting it fails while it is in use, as described for `url` above.
+2. `force`: _\[Optional\]_ Delete the external location even if it is in use.
 
 ## Catalog Management CLI Usage
 
@@ -421,6 +468,12 @@ bin/uc table create \
 4. `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
 5. `properties`: _\[Optional\]_ The properties of the table in JSON format
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
+   For non-Delta tables read or written through the Unity Catalog Spark connector, only keys prefixed with `option.`
+   become reader and writer options, with the prefix removed (e.g., `'{"option.header": "true"}'` for a CSV file with
+   a header row). Other keys, such as a bare `header`, are table properties. This applies to tables created through
+   the REST API too. To fix an existing table that uses a bare key as a reader option, delete it with
+   `bin/uc table delete` and create it again with the same storage location and the `option.`-prefixed key. Deleting
+   an external table does not delete its data files.
 
 Here's an example to create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with storage location `/path/to/storage`:
 
@@ -685,6 +738,7 @@ bin/uc function call \
 
 This is an experimental feature and only supported for Python functions that take in primitive types as input
 parameters. It runs the functions using the Python engine script at `etc/data/function/python_engine.py`.
+If the function raises an error, the command fails with the Python error message.
 
 Here's an example that invokes a Python sum function that takes two integer inputs:
 

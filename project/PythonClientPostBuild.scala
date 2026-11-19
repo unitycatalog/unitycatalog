@@ -1,8 +1,10 @@
 import sbt._
 import sbt.Keys._
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.util.Comparator
 import scala.sys.process._
+import scala.jdk.CollectionConverters._
 import scala.util.{Try, Success, Failure}
 
 /**
@@ -104,13 +106,89 @@ object PythonClientPostBuild {
       }
     }
     moveGeneratedUnityCatalog(log, openApiOutputDir)
+    clientPackageInitProblem(Paths.get(openApiOutputDir, "src", "unitycatalog", "client", "__init__.py"))
+      .foreach(problem => sys.error(problem))
+    relocateDeltaImports(log, openApiOutputDir)
     patchDeltaDataTypeModule(log, baseDir, openApiOutputDir)
   }
 
+  /** Matches an import from the bare `delta` package, which the generator writes for the delta.yaml run. */
+  private val bareDeltaImport = """(?m)^\s*(from|import)\s+delta\.""".r
+
   /**
-   * Copies the hand-written delta_data_type_module.py into the generated delta package's
-   * internal/serde/ subpackage and appends an import to the generated models/__init__.py
-   * so the patch is applied automatically when the package is imported.
+   * Says why the generated unitycatalog/client/__init__.py is not the one from the all.yaml run, or returns
+   * None if it is. The delta.yaml run writes this file too, with imports from the bare delta package, so it
+   * has to run first. Both versions export ApiClient, so the check looks for the UC API imports and for no
+   * bare delta import instead. Called by processGeneratedFiles.
+   */
+  def clientPackageInitProblem(clientInit: Path): Option[String] = {
+    if (!Files.exists(clientInit)) {
+      return Some(s"$clientInit was not generated.")
+    }
+    val content = new String(Files.readAllBytes(clientInit), StandardCharsets.UTF_8)
+    // The trailing dot keeps this from matching the api_client import. These are the generator's exact import
+    // lines, so a change to its import style also fails here, with the run-order message.
+    val fromAllYaml = content.contains("from unitycatalog.client.api.") &&
+      content.contains("from unitycatalog.client.api_client import ApiClient") &&
+      bareDeltaImport.findFirstIn(content).isEmpty
+    if (fromAllYaml) None
+    else
+      Some(
+        s"$clientInit is not the one from the all.yaml run. The all.yaml run in pythonClient/generate must " +
+          "run last, after the delta.yaml run, or the generator's import style changed.")
+  }
+
+  private val unrelocatedDeltaImports = Seq(
+    """(?m)^\s*(from|import)\s+unitycatalog\.client\.models\b""".r,
+    bareDeltaImport
+  )
+
+  /**
+   * Points the imports in the generated unitycatalog.client.delta package at its own modules. The Python
+   * generator writes the delta.yaml models into the configured modelPackage but always imports them from
+   * <packageName>.models, and the api/__init__.py imports from the bare apiPackage. Also writes an empty
+   * unitycatalog/client/delta/__init__.py, which the generator does not emit, so delta is a regular package.
+   * Runs before patchDeltaDataTypeModule copies the serde module in. Fails the build if client/delta is
+   * missing, or if any module under it still imports from unitycatalog.client.models or the bare delta
+   * package after the rewrite, so a change in how the generator spells these imports breaks the build
+   * instead of leaving the Delta APIs on the UC models.
+   */
+  def relocateDeltaImports(
+      log: Logger,
+      openApiOutputDir: String
+  ): Unit = {
+    val deltaDir = Paths.get(openApiOutputDir, "src", "unitycatalog", "client", "delta")
+    if (!Files.exists(deltaDir)) {
+      sys.error(s"Delta package not found at $deltaDir")
+    }
+    val rewrites = Seq(
+      "unitycatalog.client.models." -> "unitycatalog.client.delta.models.",
+      "from delta.api." -> "from unitycatalog.client.delta.api."
+    )
+    val stream = Files.walk(deltaDir)
+    val files = try stream.iterator().asScala.filter(_.toString.endsWith(".py")).toList finally stream.close()
+    val leftovers = files.flatMap { file =>
+      val content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8)
+      val relocated = rewrites.foldLeft(content) { case (text, (from, to)) => text.replace(from, to) }
+      Files.write(file, relocated.getBytes(StandardCharsets.UTF_8))
+      unrelocatedDeltaImports.filter(_.findFirstIn(relocated).isDefined).map(pattern => s"$file matches $pattern")
+    }
+    if (leftovers.nonEmpty) {
+      sys.error(s"Delta imports were not relocated: ${leftovers.mkString("; ")}")
+    }
+    val packageInit = deltaDir.resolve("__init__.py")
+    if (!Files.exists(packageInit)) {
+      Files.write(packageInit, Array.emptyByteArray)
+    }
+    log.info(s"Relocated the imports under $deltaDir to unitycatalog.client.delta")
+  }
+
+  /**
+   * Copies the hand-written delta_data_type_module.py into the generated unitycatalog.client.delta
+   * package's internal/serde/ subpackage and appends an import to the generated delta models/__init__.py
+   * so the patch is applied automatically when the package is imported. Fails the build if the source
+   * module, the generated delta package or its models/__init__.py is missing, so the patch can never be
+   * silently dropped.
    */
   def patchDeltaDataTypeModule(
       log: Logger,
@@ -118,20 +196,18 @@ object PythonClientPostBuild {
       openApiOutputDir: String
   ): Unit = {
     val srcModule = baseDir.toPath.resolve("src")
-      .resolve("unitycatalog").resolve("delta").resolve("internal").resolve("serde")
+      .resolve("unitycatalog").resolve("client").resolve("delta").resolve("internal").resolve("serde")
       .resolve("delta_data_type_module.py")
-    val targetDir = Paths.get(openApiOutputDir, "src", "unitycatalog", "delta")
+    val targetDir = Paths.get(openApiOutputDir, "src", "unitycatalog", "client", "delta")
     val targetInternalDir = targetDir.resolve("internal")
     val targetSerdeDir = targetInternalDir.resolve("serde")
     val targetModule = targetSerdeDir.resolve("delta_data_type_module.py")
 
     if (!Files.exists(srcModule)) {
-      log.warn(s"delta_data_type_module.py not found at $srcModule, skipping patch")
-      return
+      sys.error(s"delta_data_type_module.py not found at $srcModule")
     }
     if (!Files.exists(targetDir)) {
-      log.warn(s"Delta package not found at $targetDir, skipping patch")
-      return
+      sys.error(s"Delta package not found at $targetDir")
     }
 
     // Copy the module into internal/serde/ subdirectory
@@ -151,7 +227,7 @@ object PythonClientPostBuild {
     // Append import to models/__init__.py so the patch activates on any model import
     val modelsInit = targetDir.resolve("models").resolve("__init__.py")
     if (Files.exists(modelsInit)) {
-      val patchLine = "\n# Auto-import DeltaDataType string-or-object patch\nimport unitycatalog.delta.internal.serde.delta_data_type_module  # noqa: F401\n"
+      val patchLine = "\n# Auto-import DeltaDataType string-or-object patch\nimport unitycatalog.client.delta.internal.serde.delta_data_type_module  # noqa: F401\n"
       val content = new String(Files.readAllBytes(modelsInit))
       if (!content.contains("delta_data_type_module")) {
         Files.write(modelsInit, (content + patchLine).getBytes)
@@ -160,7 +236,7 @@ object PythonClientPostBuild {
         log.info(s"$modelsInit already patched, skipping")
       }
     } else {
-      log.warn(s"$modelsInit not found, skipping patch")
+      sys.error(s"$modelsInit not found, so the DeltaDataType patch would not be auto-imported")
     }
   }
 

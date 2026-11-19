@@ -1,16 +1,104 @@
-import { useUcQuery } from "@/lib/ucQuery";
-import { UC_API_PREFIX } from "@/lib/uc";
-import type { ListVolumesResponse, VolumeInfo } from "@/lib/types";
+import { createClient } from "@connectrpc/connect";
+import {
+  createConnectQueryKey,
+  useMutation,
+  useQuery,
+  useTransport,
+} from "@connectrpc/connect-query";
+import { useQuery as useTanstackQuery } from "@tanstack/react-query";
+import { VolumeService } from "@/gen/uc/v1/volume_pb";
+import { objectFullName, splitFullName } from "@/lib/uc";
+import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
+import { useMarkPermissionsStale } from "@/hooks/permissions";
 
-export function useListVolumes(catalogName: string, schemaName: string) {
-  return useUcQuery<ListVolumesResponse>("GET", `${UC_API_PREFIX}/volumes`, {
-    query: { catalog_name: catalogName, schema_name: schemaName },
-    queryOptions: { enabled: !!catalogName && !!schemaName },
+export function useListVolumes(
+  catalogName: string,
+  schemaName: string,
+  enabled = true,
+) {
+  const transport = useTransport();
+  const client = createClient(VolumeService, transport);
+  const input = { schema: { catalogName, name: schemaName } };
+  return useTanstackQuery({
+    queryKey: createConnectQueryKey({
+      schema: VolumeService.method.listVolumes,
+      input,
+      transport,
+      cardinality: "finite",
+    }),
+    enabled: enabled && !!catalogName && !!schemaName,
+    queryFn: ({ signal }) =>
+      collectAllPages(
+        (pageToken, requestSignal) =>
+          client.listVolumes(
+            {
+              ...input,
+              page: pageToken ? { pageToken } : undefined,
+            },
+            { signal: requestSignal },
+          ),
+        "volumes",
+        signal,
+      ),
   });
 }
 
 export function useGetVolume(fullName: string) {
-  return useUcQuery<VolumeInfo>("GET", `${UC_API_PREFIX}/volumes/${encodeURIComponent(fullName)}`, {
-    queryOptions: { enabled: !!fullName },
+  const [catalogName, schemaName, name] = splitFullName(fullName);
+  return useQuery(
+    VolumeService.method.getVolume,
+    { volume: { catalogName, schemaName, name } },
+    {
+      enabled: !!catalogName && !!schemaName && !!name,
+      select: (response) => response.volume,
+    },
+  );
+}
+
+export function useCreateVolume() {
+  const invalidateList = useInvalidateMethod(VolumeService.method.listVolumes);
+  return useMutation(VolumeService.method.createVolume, {
+    onSuccess: invalidateList,
+  });
+}
+
+export function useUpdateVolume() {
+  const invalidateList = useInvalidateMethod(VolumeService.method.listVolumes);
+  const invalidateDetail = useInvalidateMethod(VolumeService.method.getVolume);
+  const markDetailStale = useInvalidateMethod(VolumeService.method.getVolume, {
+    refetch: false,
+  });
+  const markPermissionsStale = useMarkPermissionsStale();
+  return useMutation(VolumeService.method.updateVolume, {
+    onSuccess: (_response, request) => {
+      invalidateList();
+      if (request.newName) {
+        markDetailStale();
+        markPermissionsStale({
+          type: "volume",
+          fullName: objectFullName(request.volume),
+        });
+      } else {
+        invalidateDetail();
+      }
+    },
+  });
+}
+
+export function useDeleteVolume() {
+  const invalidateList = useInvalidateMethod(VolumeService.method.listVolumes);
+  const markDetailStale = useInvalidateMethod(VolumeService.method.getVolume, {
+    refetch: false,
+  });
+  const markPermissionsStale = useMarkPermissionsStale();
+  return useMutation(VolumeService.method.deleteVolume, {
+    onSuccess: (_response, request) => {
+      invalidateList();
+      markDetailStale();
+      markPermissionsStale({
+        type: "volume",
+        fullName: objectFullName(request.volume),
+      });
+    },
   });
 }

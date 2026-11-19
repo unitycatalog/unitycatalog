@@ -9,6 +9,7 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFs;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -131,6 +132,8 @@ public abstract class CredPropsBuilder {
       }
     }
 
+    setS3EndpointKeys(initialCredentials);
+
     // Set the props for initial credential prefixes.
     List<String> credPrefixes =
         initialCredentials.stream()
@@ -151,6 +154,16 @@ public abstract class CredPropsBuilder {
     return this;
   }
 
+  /** The engine's Hadoop configuration the properties are built for. */
+  protected Configuration hadoopConf() {
+    return hadoopConf;
+  }
+
+  /** Drops a key set earlier in this build. */
+  protected void unset(String key) {
+    props.remove(key);
+  }
+
   /**
    * Saves the current value of {@code key} from the Hadoop conf (falling back to {@code
    * defaultOriginal}) under {@code key + ".original"}, then overrides {@code key} with {@code
@@ -162,6 +175,37 @@ public abstract class CredPropsBuilder {
     props.put(key, newValue);
     return this;
   }
+
+  /**
+   * Whether the engine's configuration sets {@code key} itself: a value counts as the engine's own
+   * unless every recorded source is {@code core-default.xml}, which holds Hadoop's own defaults
+   * such as S3A's default provider list and Hadoop 3.5's GCS conflict-check default.
+   */
+  protected boolean engineSets(String key) {
+    if (hadoopConf().get(key) == null) {
+      return false;
+    }
+    // No recorded source means we cannot show the value came from defaults, so respect it.
+    String[] sources = hadoopConf().getPropertySources(key);
+    return sources == null || !Arrays.stream(sources).allMatch("core-default.xml"::equals);
+  }
+
+  protected boolean isCredScopedFsEnabled() {
+    return credScopedFsEnabled;
+  }
+
+  /** Whether credential renewal is enabled, so the vended provider serves the credentials. */
+  protected boolean isRenewCredEnabled() {
+    return renewCredEnabled;
+  }
+
+  /**
+   * Sets the S3 endpoint keys for the initial credentials. No-op unless the cloud supports storage
+   * endpoints other than its own.
+   *
+   * @param credentials the initial credentials
+   */
+  protected void setS3EndpointKeys(List<GenericCredential> credentials) {}
 
   /** Cloud-specific filesystem-impl overrides that install CredScopedFileSystem. */
   protected abstract void setCredScopedFsKeys();

@@ -9,32 +9,35 @@ import io.unitycatalog.server.persist.DependencyRepository;
 import io.unitycatalog.server.persist.PropertyRepository;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
+import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.persist.dao.UuidEntity;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.hibernate.LockMode;
 import org.hibernate.Session;
+import org.hibernate.query.CommonQueryContract;
+import org.hibernate.query.MutationQuery;
 import org.hibernate.query.Query;
+import org.hibernate.query.SelectionQuery;
 
 public class RepositoryUtils {
 
-  private static final Map<String, Class<?>> PROPERTY_TYPE_MAP = new HashMap<>();
-
   /**
-   * Acquires the table row lock shared by the Delta and Iceberg commit paths and by table deletion,
-   * so concurrent commits on the same table serialize, and a deletion waits for them. A lock-wait
-   * timeout or deadlock victim is reported as {@code lockContentionError} (rolling back only this
-   * transaction) rather than leaking the ORM exception; each caller passes the code whose client
-   * reaction is safe for it:
+   * Acquires the table row lock shared by the Delta and Iceberg commit paths, so concurrent commits
+   * on the same table serialize; table deletion waits for them through {@link #lockByKey}. A
+   * lock-wait timeout or deadlock victim is reported as {@code lockContentionError} (rolling back
+   * only this transaction) rather than leaking the ORM exception; each caller passes the code whose
+   * client reaction is safe for it:
    *
    * <ul>
    *   <li><b>Delta</b> passes {@code COMMIT_STATE_UNKNOWN} (500). Failing to acquire the lock does
@@ -49,9 +52,6 @@ public class RepositoryUtils {
    *       therefore safe and lets the Iceberg client retry transparently, whereas a 500 would
    *       surface to the user. Iceberg has no server-side deduplication that a resend could
    *       exploit.
-   *   <li><b>Table deletion</b> passes {@code UNAVAILABLE} (503): the table was not deleted, and
-   *       the request can be retried. The Iceberg REST spec lists 503, not 409, for drop table, and
-   *       the Iceberg client reads a 409 on drop as "already exists".
    * </ul>
    *
    * <p>The row is locked first and read second. Refreshing the entity under the lock would load its
@@ -62,7 +62,7 @@ public class RepositoryUtils {
    * which can be from before the other commit. A table deleted while this waited for the lock is
    * reported as {@link ErrorCode#TABLE_NOT_FOUND}.
    *
-   * @param session the Hibernate session running the commit or deletion transaction
+   * @param session the Hibernate session running the commit transaction
    * @param dao the table row to lock; re-read after the lock is held
    * @param tableId the table id, used as a fallback in the error message
    * @param tableFullNameForLogging the table's full name for the error message, if known
@@ -94,8 +94,153 @@ public class RepositoryUtils {
       }
       throw new BaseException(
           lockContentionError,
-          "Concurrent modification in progress on table " + tableName + "; retry the request.");
+          "Concurrent modification in progress on table " + tableName + "; retry the request.",
+          e);
     }
+  }
+
+  /**
+   * Locks the row of {@code type} identified by {@code id} and every {@code key} attribute (for
+   * example {@code name}), and returns it refreshed. A statement that changes a row must name it by
+   * its id plus the key the request used, so a concurrent rename or delete of the row makes the
+   * statement miss it instead of acting on a different object. Attribute names must be code
+   * constants, never request values. {@code description} (for example {@code "table t"}) names the
+   * row in the lock-contention message.
+   *
+   * @throws BaseException {@code notFound} if no row matches; {@link ErrorCode#UNAVAILABLE} if the
+   *     lock cannot be acquired (timeout or deadlock victim)
+   */
+  public static <T extends UuidEntity> T lockByKey(
+      Session session,
+      Class<T> type,
+      UUID id,
+      Map<String, Object> key,
+      String description,
+      Supplier<BaseException> notFound) {
+    T locked = lockByKeyOrNull(session, type, id, key, description);
+    if (locked == null) {
+      throw notFound.get();
+    }
+    return locked;
+  }
+
+  /**
+   * Reads the entity with a name, with a write lock on its row until the transaction ends. The id
+   * is read first without a lock, then the row is locked by its id and name: names have no index on
+   * MySQL, where a locking read by name locks every row and gap it scans, so it could deadlock with
+   * a concurrent insert. A rename that commits in between makes the locked read miss, and the
+   * database compares the name as for every lookup by name. Call it in a READ COMMITTED
+   * transaction: under MySQL's default REPEATABLE READ, the id read fixes the transaction's
+   * snapshot, so reads after the lock would not see rows committed while it waited.
+   *
+   * @param session the session of the transaction
+   * @param entityClass the entity's class
+   * @param name the entity's name
+   * @return the entity, or null if none has the name
+   * @throws BaseException with UNAVAILABLE, to retry, if the lock is not acquired
+   */
+  public static <T extends IdentifiableDAO> T getForUpdateByName(
+      Session session, Class<T> entityClass, String name) {
+    UUID id =
+        session
+            .createSelectionQuery(
+                "SELECT id FROM " + entityClass.getSimpleName() + " WHERE name = :name", UUID.class)
+            .setParameter("name", name)
+            .setMaxResults(1)
+            .getSingleResultOrNull();
+    if (id == null) {
+      return null;
+    }
+    return lockByKeyOrNull(session, entityClass, id, Map.of("name", name), "'" + name + "'");
+  }
+
+  /**
+   * Reads the entity with an id, with a write lock on its row until the transaction ends.
+   *
+   * @param session the session of the transaction
+   * @param entityClass the entity's class
+   * @param id the entity's id
+   * @return the entity, or null if none has the id
+   * @throws BaseException with UNAVAILABLE, to retry, if the lock is not acquired
+   */
+  public static <T extends IdentifiableDAO> T getForUpdate(
+      Session session, Class<T> entityClass, UUID id) {
+    return lockByKeyOrNull(session, entityClass, id, Map.of(), id.toString());
+  }
+
+  /** As {@link #lockByKey}, but null if no row matches. */
+  private static <T extends UuidEntity> T lockByKeyOrNull(
+      Session session, Class<T> type, UUID id, Map<String, Object> key, String description) {
+    return unavailableOnLockFailure(
+        description,
+        () -> {
+          SelectionQuery<T> query =
+              session.createSelectionQuery(
+                  "from " + type.getSimpleName() + " where " + predicate(key), type);
+          bindKey(query, id, key);
+          T locked = query.setHibernateLockMode(LockMode.PESSIMISTIC_WRITE).getSingleResultOrNull();
+          if (locked != null) {
+            // The locking query returns an entity already in the session as it was first read.
+            session.refresh(locked, LockMode.PESSIMISTIC_WRITE);
+          }
+          return locked;
+        });
+  }
+
+  /**
+   * Deletes the {@code locked} row, identified by its id and {@code key}, and detaches it. This is
+   * a bulk delete, so Hibernate's cascades do not run: delete the row's children first.
+   *
+   * @throws BaseException {@code notFound} if no row matches
+   */
+  public static void deleteByKey(
+      Session session,
+      UuidEntity locked,
+      Map<String, Object> key,
+      Supplier<BaseException> notFound) {
+    MutationQuery delete =
+        session.createMutationQuery(
+            "delete from " + session.getEntityName(locked) + " where " + predicate(key));
+    bindKey(delete, locked.getId(), key);
+    if (delete.executeUpdate() == 0) {
+      throw notFound.get();
+    }
+    session.detach(locked);
+  }
+
+  /**
+   * Runs a locking read; a lock timeout or deadlock victim becomes {@code UNAVAILABLE} (503): the
+   * row was not changed, and the request can be retried. The Iceberg REST spec lists 503, not 409,
+   * for drop table, and the Iceberg client reads a 409 on drop as "already exists".
+   */
+  private static <R> R unavailableOnLockFailure(String description, Supplier<R> lockingRead) {
+    try {
+      return lockingRead.get();
+    } catch (RuntimeException e) {
+      if (!isLockFailure(e) && !isLockFailure(e.getCause())) {
+        throw e;
+      }
+      throw new BaseException(
+          ErrorCode.UNAVAILABLE,
+          "Concurrent modification in progress on " + description + "; retry the request.",
+          e);
+    }
+  }
+
+  private static void bindKey(CommonQueryContract query, UUID id, Map<String, Object> key) {
+    query.setParameter("id", id);
+    key.forEach((attribute, value) -> query.setParameter("key_" + attribute, value));
+  }
+
+  /**
+   * {@code id = :id and a = :key_a ...}: the row's id plus each key attribute. Key parameters are
+   * prefixed so a key attribute can never replace the {@code :id} binding.
+   */
+  private static String predicate(Map<String, Object> key) {
+    return "id = :id"
+        + key.keySet().stream()
+            .map(a -> " and " + a + " = :key_" + a)
+            .collect(Collectors.joining());
   }
 
   /**
@@ -110,10 +255,6 @@ public class RepositoryUtils {
         || failure instanceof org.hibernate.exception.LockAcquisitionException;
   }
 
-  static {
-    PROPERTY_TYPE_MAP.put(Constants.FUNCTION, String.class);
-  }
-
   public static <T> T attachProperties(
       T entityInfo, String uuid, String entityType, Session session) {
     try {
@@ -122,18 +263,8 @@ public class RepositoryUtils {
       if (propertyDAOList.isEmpty()) {
         return entityInfo;
       }
-      Class<?> entityClass = PROPERTY_TYPE_MAP.getOrDefault(entityType, Map.class);
-      Method setPropertiesMethod = entityInfo.getClass().getMethod("setProperties", entityClass);
-      Map<String, String> propertyMap = PropertyDAO.toMap(propertyDAOList);
-      Object propertiesArgument =
-          switch (entityClass.getSimpleName()) {
-            case "Map" -> propertyMap;
-            case "String" -> propertyMap.toString();
-            default ->
-                throw new IllegalArgumentException(
-                    "Unsupported parameter type: " + entityClass.getSimpleName());
-          };
-      setPropertiesMethod.invoke(entityInfo, propertiesArgument);
+      Method setPropertiesMethod = entityInfo.getClass().getMethod("setProperties", Map.class);
+      setPropertiesMethod.invoke(entityInfo, PropertyDAO.toMap(propertyDAOList));
       return entityInfo;
     } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
       throw new RuntimeException(e);

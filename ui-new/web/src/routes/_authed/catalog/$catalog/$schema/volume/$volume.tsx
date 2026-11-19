@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import VolumeDetails from "@/pages/VolumeDetails";
 
-export const Route = createFileRoute("/_authed/catalog/$catalog/$schema/volume/$volume")({
+export const Route = createFileRoute(
+  "/_authed/catalog/$catalog/$schema/volume/$volume",
+)({
   component: RouteComponent,
 });
 

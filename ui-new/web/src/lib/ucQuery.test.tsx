@@ -6,8 +6,18 @@ import { renderHookWithProviders } from "@/test/providers";
 describe("useUcQuery", () => {
   it("parses a 2xx JSON body", async () => {
     const { result } = renderHookWithProviders(
-      () => useUcQuery<{ catalogs: { name: string }[] }>("GET", "/api/2.1/unity-catalog/catalogs"),
-      { handler: () => ({ httpStatus: 200, body: '{"catalogs":[{"name":"main"}]}', ok: true }) },
+      () =>
+        useUcQuery<{ catalogs: { name: string }[] }>(
+          "GET",
+          "/api/2.1/unity-catalog/catalogs",
+        ),
+      {
+        handler: () => ({
+          httpStatus: 200,
+          body: '{"catalogs":[{"name":"main"}]}',
+          ok: true,
+        }),
+      },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.catalogs[0].name).toBe("main");
@@ -19,12 +29,15 @@ describe("useUcQuery", () => {
       { handler: () => ({ httpStatus: 404, body: "not found", ok: false }) },
     );
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toMatchObject({ name: "UCError", status: 404 });
+    expect(result.current.error).toMatchObject({
+      name: "UCError",
+      status: 404,
+    });
   });
 
   it("respects the enabled option", async () => {
-    const { result } = renderHookWithProviders(
-      () => useUcQuery("GET", "/x", { queryOptions: { enabled: false } }),
+    const { result } = renderHookWithProviders(() =>
+      useUcQuery("GET", "/x", { queryOptions: { enabled: false } }),
     );
     // Disabled queries never leave the pending/idle state.
     expect(result.current.fetchStatus).toBe("idle");

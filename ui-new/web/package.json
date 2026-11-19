@@ -8,6 +8,7 @@
     "dev": "vite",
     "routes": "tsr generate",
     "generate": "cd .. && buf generate",
+    "proto:check": "cd .. && buf lint && buf build",
     "build": "tsr generate && tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",

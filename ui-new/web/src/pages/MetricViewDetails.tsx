@@ -1,0 +1,116 @@
+import { ChartNoAxesCombined } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { useDeleteView, useGetView } from "@/hooks/views";
+import { formatTimestamp } from "@/lib/uc";
+import EntityHeader from "@/components/EntityHeader";
+import { QueryState } from "@/components/QueryState";
+import DescriptionCard from "@/components/DescriptionCard";
+import MetaGrid from "@/components/MetaGrid";
+import PermissionsPanel from "@/components/PermissionsPanel";
+import PropertiesCard from "@/components/PropertiesCard";
+import DeleteAction from "@/components/DeleteAction";
+import ColumnsTable from "@/components/ColumnsTable";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+export default function MetricViewDetails({
+  catalog,
+  schema,
+  view,
+}: {
+  catalog: string;
+  schema: string;
+  view: string;
+}) {
+  const navigate = useNavigate();
+  const fullName = `${catalog}.${schema}.${view}`;
+  const { data, isLoading, error } = useGetView(fullName);
+  const deleteView = useDeleteView();
+
+  return (
+    <div>
+      <EntityHeader
+        name={view}
+        Icon={ChartNoAxesCombined}
+        catalog={catalog}
+        schema={schema}
+        badges={["METRIC VIEW"]}
+        actions={
+          <DeleteAction
+            entityName={view}
+            entityType="metric view"
+            onDelete={() =>
+              deleteView.mutateAsync({
+                view: { catalogName: catalog, schemaName: schema, name: view },
+              })
+            }
+            onDeleted={() =>
+              navigate({
+                to: "/catalog/$catalog/$schema",
+                params: { catalog, schema },
+              })
+            }
+          />
+        }
+      />
+      <div className="p-6">
+        <QueryState isLoading={isLoading} error={error}>
+          <Tabs defaultValue="overview">
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="permissions">Permissions</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-4">
+              <DescriptionCard comment={data?.comment} />
+              <ColumnsTable columns={data?.columns ?? []} />
+              {data?.viewDefinition && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">
+                      Metric view definition
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
+                      {data.viewDefinition}
+                    </pre>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="details" className="space-y-4">
+              <Card>
+                <CardContent>
+                  <MetaGrid
+                    items={[
+                      { label: "Name", value: data?.name },
+                      { label: "Full name", value: data?.fullName || fullName },
+                      { label: "Owner", value: data?.audit?.owner || "—" },
+                      {
+                        label: "Created",
+                        value: formatTimestamp(data?.audit?.createdAt),
+                      },
+                      {
+                        label: "Updated",
+                        value: formatTimestamp(data?.audit?.updatedAt),
+                      },
+                      { label: "Metric view ID", value: data?.id || "—" },
+                    ]}
+                  />
+                </CardContent>
+              </Card>
+              <PropertiesCard properties={data?.properties?.values} />
+            </TabsContent>
+
+            <TabsContent value="permissions">
+              <PermissionsPanel securableType="table" fullName={fullName} />
+            </TabsContent>
+          </Tabs>
+        </QueryState>
+      </div>
+    </div>
+  );
+}
