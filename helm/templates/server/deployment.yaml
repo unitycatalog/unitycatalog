@@ -336,7 +336,8 @@ spec:
       {{- with .Values.server.deployment.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
-  {{- with .Values.server.deployment.updateStrategy }}
+  {{- /* An upgrade with --reuse-values from an older release has no updateStrategy value. */}}
+  {{- with .Values.server.deployment.updateStrategy | default (dict "type" "Recreate") }}
   {{- if and .rollingUpdate (ne .type "RollingUpdate") }}
   {{- fail "server.deployment.updateStrategy.rollingUpdate needs server.deployment.updateStrategy.type=RollingUpdate." }}
   {{- end }}
