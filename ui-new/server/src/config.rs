@@ -23,8 +23,9 @@ pub struct Config {
 type Lookup<'a> = &'a dyn Fn(&str) -> Result<String, VarError>;
 
 /// Reads `key`. An unset or exactly empty variable is `None`, since deployment
-/// templates often render an unset value as an empty string; a whitespace-only
-/// value is kept and validated like any other.
+/// templates often render an unset value as an empty string. A whitespace-only
+/// value is kept: `PORT` and the booleans reject it, and the string variables
+/// use it as given.
 fn env_value(env: Lookup<'_>, key: &str) -> Result<Option<String>, String> {
     match env(key) {
         Ok(value) if value.is_empty() => Ok(None),
@@ -64,7 +65,9 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, String> {
 }
 
 impl Config {
-    /// Load configuration from the process environment, applying defaults.
+    /// Load configuration from the process environment. An unset or empty
+    /// variable takes its default. An invalid `PORT` or boolean, or a value
+    /// that is not valid Unicode, is an `Err` naming the variable.
     pub fn from_env() -> Result<Self, String> {
         Self::from_lookup(&|key: &str| std::env::var(key))
     }
