@@ -125,10 +125,10 @@ container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRET
 `UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. With `server.db.type: postgresql` or `mysql`, it also passes
 `UC_HIBERNATE_CONNECTION_PASSWORD` if that database's `passwordSecretName` is set. With any database, if
 `server.credentialEncryptionKeySecret.name` is set, it passes `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY` from that Secret's
-`server.credentialEncryptionKeySecret.key` (by default `encryptionKey`). Only the experimental `s3_compatible`
-credentials need it, and only with `server.s3-compatible-storage.enabled=true` (in the chart, under
-`server.config.extraProperties`): the server then refuses to start with a malformed key, and without one it cannot
-create or use such credentials. See the chart's
+`server.credentialEncryptionKeySecret.key` (by default `encryptionKey`). Only the experimental
+`s3_compatible_access_key` credentials need it, and only with `server.s3-compatible-storage.enabled=true` (in the
+chart, under `server.config.extraProperties`): the server then refuses to start with a malformed key, and without one
+it cannot create or use such credentials. See the chart's
 [README](https://github.com/unitycatalog/unitycatalog/blob/main/helm/README.md#s3-compatible-storage-credentials) for a
 complete example.
 

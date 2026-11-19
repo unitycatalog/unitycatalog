@@ -58,7 +58,8 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
           expiredTimeMillis,
           conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY),
           s3Endpoint,
-          emptyToNull(conf.get(UCHadoopConfConstants.S3A_INIT_S3_REGION)));
+          emptyToNull(conf.get(UCHadoopConfConstants.S3A_INIT_S3_REGION)),
+          conf.getBoolean(UCHadoopConfConstants.S3A_INIT_S3_PATH_STYLE, true));
     } else {
       return null;
     }
@@ -131,18 +132,23 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
       return;
     }
     String region = conf.get(UCHadoopConfConstants.UC_VENDED_S3_REGION_PREFIX + bucket.get(), "");
+    // Path-style, as before the style was recorded, when the record has none.
+    String pathStyle =
+        conf.get(
+            UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX + bucket.get(),
+            endpoint.isEmpty() ? "" : "true");
     String renewedEndpoint = Objects.toString(aws.s3Endpoint(), "");
     String renewedRegion = Objects.toString(aws.s3Region(), "");
-    // The endpoint decides where the keys go. The region only signs requests, and the storage may
-    // report it after the server first used a fallback, so a renewal that changes only the region
-    // is taken.
+    // The endpoint decides where the keys go, and the addressing style how the file system names
+    // the bucket. The region only signs requests, and the storage may report it after the server
+    // first used a fallback, so a renewal that changes only the region is taken.
     Preconditions.checkState(
-        endpoint.equals(renewedEndpoint),
+        endpoint.equals(renewedEndpoint) && pathStyle.equals(aws.s3PathStyleRecord()),
         "The storage of %s changed in Unity Catalog since the table was loaded, from %s to %s;"
             + " load the table again.",
         aws.prefix(),
-        describeStorage(endpoint, region),
-        describeStorage(renewedEndpoint, renewedRegion));
+        describeStorage(endpoint, region, pathStyle),
+        describeStorage(renewedEndpoint, renewedRegion, aws.s3PathStyleRecord()));
   }
 
   private Optional<String> onlyRecordedBucket() {
@@ -155,7 +161,14 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
     return value == null || value.isEmpty() ? null : value;
   }
 
-  private static String describeStorage(String endpoint, String region) {
-    return endpoint.isEmpty() ? "AWS S3" : endpoint + " (region " + region + ")";
+  private static String describeStorage(String endpoint, String region, String pathStyle) {
+    if (endpoint.isEmpty()) {
+      return "AWS S3";
+    }
+    return endpoint
+        + " (region "
+        + region
+        + ("false".equals(pathStyle) ? ", virtual-hosted" : "")
+        + ")";
   }
 }

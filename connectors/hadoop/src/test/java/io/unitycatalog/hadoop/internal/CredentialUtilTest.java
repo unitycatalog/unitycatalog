@@ -9,6 +9,7 @@ import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
+import io.unitycatalog.client.model.S3AddressingStyle;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.AzureCredential;
@@ -283,7 +284,44 @@ class CredentialUtilTest {
       assertThat(gc.s3Endpoint()).isEqualTo(endpoint);
       assertThat(gc.s3Region()).isEqualTo(config.getClientRegion());
       assertThat(gc.hasKeys()).isEqualTo(config.getS3AccessKeyId() != null);
+      // Path-style when a server older than the key leaves it out.
+      assertThat(gc.isS3PathStyle()).isTrue();
     }
+    // The addressing style, from the Delta and the UC API.
+    for (boolean isPathStyle : List.of(true, false)) {
+      AwsCredential fromDelta =
+          (AwsCredential)
+              CredentialUtil.toGenericCredential(
+                  new DeltaStorageCredential()
+                      .prefix("s3://bucket/t")
+                      .operation(DeltaCredentialOperation.READ)
+                      .config(
+                          new DeltaStorageCredentialConfig()
+                              .s3Endpoint(endpoint)
+                              .s3PathStyleAccess(isPathStyle)));
+      assertThat(fromDelta.isS3PathStyle()).isEqualTo(isPathStyle);
+      AwsCredential fromUc =
+          (AwsCredential)
+              CredentialUtil.toGenericCredential(
+                  new TemporaryCredentials()
+                      .url("s3://bucket/t")
+                      .awsTempCredentials(
+                          new AwsCredentials()
+                              .s3Endpoint(endpoint)
+                              .s3AddressingStyle(
+                                  isPathStyle
+                                      ? S3AddressingStyle.PATH
+                                      : S3AddressingStyle.VIRTUAL_HOSTED)));
+      assertThat(fromUc.isS3PathStyle()).isEqualTo(isPathStyle);
+    }
+    assertThat(
+            ((AwsCredential)
+                    CredentialUtil.toGenericCredential(
+                        new TemporaryCredentials()
+                            .url("s3://bucket/t")
+                            .awsTempCredentials(new AwsCredentials().s3Endpoint(endpoint))))
+                .isS3PathStyle())
+        .isTrue();
     // Empty strings are absent, as when the credential is read back from the configuration: an
     // empty endpoint names no S3-compatible storage, and an empty session token none either.
     AwsCredential empty =

@@ -4,6 +4,7 @@ import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.server.delta.model.DeltaStorageCredential;
 import io.unitycatalog.server.delta.model.DeltaStorageCredentialConfig;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import java.util.List;
 
@@ -40,9 +41,9 @@ public final class DeltaCredentialsMapper {
       config.setS3SecretAccessKey(aws.getSecretAccessKey());
       config.setS3SessionToken(aws.getSessionToken());
       if (aws.getS3Endpoint() != null) {
-        // Requests to it always use path-style addressing, which the API implies.
         config.setS3Endpoint(aws.getS3Endpoint());
         config.setClientRegion(aws.getS3Region());
+        config.setS3PathStyleAccess(aws.getS3AddressingStyle() != S3AddressingStyle.VIRTUAL_HOSTED);
       }
     }
     var azure = credentials.getAzureUserDelegationSas();

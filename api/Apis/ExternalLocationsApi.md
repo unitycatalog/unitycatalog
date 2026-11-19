@@ -17,7 +17,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Create an external location
 
-    Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations. EXPERIMENTAL: a location whose credential is &#x60;s3_compatible&#x60; must have an &#x60;s3://&#x60; URL; otherwise the request fails with &#x60;INVALID_ARGUMENT&#x60;. 
+    Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations. EXPERIMENTAL: a location whose credential is &#x60;s3_compatible_access_key&#x60; must have an &#x60;s3://&#x60; URL and an &#x60;endpoint&#x60;; a location with another credential must not have an &#x60;endpoint&#x60;. Otherwise the request fails with &#x60;INVALID_ARGUMENT&#x60;. 
 
 ### Parameters
 
@@ -129,7 +129,7 @@ No authorization required
 
 Update an external location
 
-    Updates an external location in the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location. Unless force is true, changing the url fails if the location is in use (as described for deleting it), unless the new url is the same as, or a parent of, the old one. EXPERIMENTAL: a location whose credential is &#x60;s3_compatible&#x60; must have an &#x60;s3://&#x60; URL; otherwise the request fails with &#x60;INVALID_ARGUMENT&#x60;.
+    Updates an external location in the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location. Unless force is true, changing the url fails if the location is in use (as described for deleting it), unless the new url is the same as, or a parent of, the old one. EXPERIMENTAL: a location whose credential is &#x60;s3_compatible_access_key&#x60; must have an &#x60;s3://&#x60; URL and an &#x60;endpoint&#x60;; a location with another credential must not have an &#x60;endpoint&#x60;. An update without &#x60;endpoint&#x60; keeps the stored one. &#x60;credential_name&#x60; cannot move a location between an &#x60;s3_compatible_access_key&#x60; credential and a credential of another type. Otherwise the request fails with &#x60;INVALID_ARGUMENT&#x60;. Whoever may update a location is trusted with where the data under it lives: changing &#x60;endpoint&#x60; moves data access for every path under the location, including tables and volumes other principals own, to the new host, which the server itself connects to.
 
 ### Parameters
 

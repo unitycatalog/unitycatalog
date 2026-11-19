@@ -352,12 +352,13 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
-    // Experimental: s3_compatible storage credentials for S3-compatible storage.
+    // Experimental: s3_compatible_access_key storage credentials for S3-compatible storage.
     S3_COMPATIBLE_STORAGE_ENABLED(
         "server.s3-compatible-storage.enabled", "false", BOOLEAN_VALIDATOR),
     // Base64-encoded 256-bit key that storage credential values are encrypted with in the database.
     CREDENTIAL_ENCRYPTION_KEY("server.credential-encryption-key"),
-    // What clients receive for an s3_compatible storage credential without assume_role; see
+    // What clients receive for an s3_compatible_access_key storage credential without assume_role;
+    // see
     // S3CompatibleStaticKeyVending. The server's own storage access always uses the key pair.
     S3_COMPATIBLE_STATIC_KEY_VENDING(
         "server.s3-compatible-storage.static-key-vending",
@@ -648,7 +649,10 @@ public class ServerProperties {
     return adlsConfigMap;
   }
 
-  /** What clients receive for an {@code s3_compatible} storage credential without assume_role. */
+  /**
+   * What clients receive for an {@code s3_compatible_access_key} storage credential without
+   * assume_role.
+   */
   public enum S3CompatibleStaticKeyVending {
     /** The S3 endpoint and region, but no keys; engines bring their own. */
     ENDPOINT_ONLY("endpoint-only"),
@@ -903,8 +907,8 @@ public class ServerProperties {
     if (!isS3CompatibleStorageEnabled()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "S3-compatible storage (s3_compatible credentials) is experimental and currently"
-              + " disabled. To enable it, set '"
+          "S3-compatible storage (s3_compatible_access_key credentials) is experimental and"
+              + " currently disabled. To enable it, set '"
               + Property.S3_COMPATIBLE_STORAGE_ENABLED.getKey()
               + "=true' in server.properties");
     }

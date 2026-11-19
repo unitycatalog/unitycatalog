@@ -5,9 +5,9 @@ import java.util.Optional;
 
 /**
  * S3-compatible storage the tests' {@code s3://} paths live on. Unity Catalog reaches it the way a
- * deployment does: through an {@code s3_compatible} storage credential carrying {@link
- * #s3Endpoint()} and the access key of a storage user, which assumes {@link #roleArn()} with STS
- * where the storage's sessions can serve the tests.
+ * deployment does: through external locations at {@link #s3Endpoint()}, whose {@code
+ * s3_compatible_access_key} storage credential holds the access key of a storage user, which
+ * assumes {@link #roleArn()} with STS where the storage's sessions can serve the tests.
  */
 public interface TestStorage {
 

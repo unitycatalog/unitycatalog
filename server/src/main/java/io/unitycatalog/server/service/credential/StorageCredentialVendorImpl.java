@@ -3,10 +3,13 @@ package io.unitycatalog.server.service.credential;
 import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
+import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils.LocationCredential;
 import io.unitycatalog.server.service.credential.aws.S3BucketRegions;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -82,13 +85,18 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
     }
 
     // Permission authorization is already done before calling this function.
-    Optional<CredentialDAO> credentialDAO =
-        externalLocationUtils.getExternalLocationCredentialDaoForPath(path);
-    // A path on S3-compatible storage reaches the storage of its location's credential.
-    Optional<String> s3Endpoint =
-        credentialDAO
-            .filter(dao -> dao.getCredentialType() == CredentialType.S3_COMPATIBLE)
-            .map(dao -> dao.getS3CompatibleResponse().getS3Endpoint());
+    Optional<LocationCredential> locationCredential =
+        externalLocationUtils.getExternalLocationCredentialForPath(path);
+    Optional<CredentialDAO> credentialDAO = locationCredential.map(LocationCredential::credential);
+    // A path on S3-compatible storage reaches the storage at its location's endpoint, addressed as
+    // the location says.
+    Optional<ExternalLocationDAO> s3CompatibleLocation =
+        locationCredential
+            .filter(found -> found.credential().getCredentialType() == CredentialType.S3_COMPATIBLE)
+            .map(LocationCredential::location);
+    Optional<String> s3Endpoint = s3CompatibleLocation.map(StorageCredentialVendorImpl::s3Endpoint);
+    Optional<S3AddressingStyle> s3AddressingStyle =
+        s3CompatibleLocation.map(ExternalLocationDAO::getS3AddressingStyle);
     if (s3Endpoint.isPresent()) {
       // Before the region lookup, so a disabled feature never contacts the stored endpoint.
       serverProperties.checkS3CompatibleStorageEnabled();
@@ -103,9 +111,28 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
             // part of the vend cache key, so a region reported later selects its own entry.
             s3Endpoint.map(
                 endpoint ->
-                    s3BucketRegions.getS3CompatibleRegion(endpoint, path.toUri().getAuthority())),
+                    s3BucketRegions.getS3CompatibleRegion(
+                        endpoint, path.toUri().getAuthority(), s3AddressingStyle.orElseThrow())),
+            s3AddressingStyle,
             /* isServerAccess= */ isServerAccess(use.getPurpose()));
     return cloudCredentialVendor.vendCredential(credentialContext).url(path.toString());
+  }
+
+  /**
+   * @param location an external location whose credential is {@code s3_compatible_access_key}
+   * @return its endpoint, which creating and updating it require
+   * @throws BaseException with INTERNAL if it has none, rather than vend credentials that a client
+   *     would send to AWS S3
+   */
+  private static String s3Endpoint(ExternalLocationDAO location) {
+    if (location.getEndpoint() == null) {
+      throw new BaseException(
+          ErrorCode.INTERNAL,
+          String.format(
+              "External location '%s' has an s3_compatible_access_key credential but no endpoint.",
+              location.getName()));
+    }
+    return location.getEndpoint();
   }
 
   /** Whether the server itself uses the credentials, rather than returning them to the caller. */

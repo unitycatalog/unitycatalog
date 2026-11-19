@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.StorageCredentialCacheMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -135,13 +136,14 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   /**
    * The resolved credential binding. Changing the role or external ID of a location's credential
    * changes the key, so credentials cached under the previous binding are never reused. An {@code
-   * s3_compatible} credential is identified by the fingerprint of its stored payload instead, which
-   * every change of its key pair, endpoint or role changes. Server and client vends of such a
-   * credential can differ: without {@code assume_role}, the server gets the key pair without an
-   * expiration, and clients get only the endpoint ({@code endpoint-only}) or the key pair with a
-   * refetch time ({@code static-key}). So for every {@code s3_compatible} credential they never
-   * share an entry; {@code server.s3-compatible-storage.static-key-vending} is read once at
-   * startup, so entries never span two modes.
+   * s3_compatible_access_key} credential is identified by the fingerprint of its stored payload
+   * instead, which every change of its key pair or role changes, and the key also has the
+   * location's endpoint and addressing style. Server and client vends of such a credential can
+   * differ: without {@code assume_role}, the server gets the key pair without an expiration, and
+   * clients get only the endpoint ({@code endpoint-only}) or the key pair with a refetch time
+   * ({@code static-key}). So for every {@code s3_compatible_access_key} credential they never share
+   * an entry; {@code server.s3-compatible-storage.static-key-vending} is read once at startup, so
+   * entries never span two modes.
    */
   private record Key(
       List<NormalizedURL> locations,
@@ -151,6 +153,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
       Optional<CredentialVersion> s3CompatibleVersion,
       Optional<String> s3Endpoint,
       Optional<String> s3Region,
+      Optional<S3AddressingStyle> s3AddressingStyle,
       boolean isServerAccess) {
     Key {
       // AWS and GCP scope a credential to every location in the context, so the key has them all.
@@ -179,6 +182,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
           s3CompatibleVersion,
           context.getS3Endpoint(),
           context.getS3Region(),
+          context.getS3AddressingStyle(),
           context.isServerAccess() && s3CompatibleVersion.isPresent());
     }
   }

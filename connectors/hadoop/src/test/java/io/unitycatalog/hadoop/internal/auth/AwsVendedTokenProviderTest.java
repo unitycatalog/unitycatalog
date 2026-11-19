@@ -159,20 +159,40 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
   private static final class Renewal {
     final String recordedEndpoint;
     final String recordedRegion;
+    // Null for a record without the path-style flag.
+    final String recordedPathStyle;
     final AwsCredential renewed;
     final boolean isRefused;
 
     Renewal(
         String recordedEndpoint, String recordedRegion, AwsCredential renewed, boolean isRefused) {
+      this(recordedEndpoint, recordedRegion, /* recordedPathStyle= */ null, renewed, isRefused);
+    }
+
+    Renewal(
+        String recordedEndpoint,
+        String recordedRegion,
+        String recordedPathStyle,
+        AwsCredential renewed,
+        boolean isRefused) {
       this.recordedEndpoint = recordedEndpoint;
       this.recordedRegion = recordedRegion;
+      this.recordedPathStyle = recordedPathStyle;
       this.renewed = renewed;
       this.isRefused = isRefused;
     }
 
     @Override
     public String toString() {
-      return recordedEndpoint + " " + recordedRegion + " -> " + renewed.s3Endpoint();
+      return recordedEndpoint
+          + " "
+          + recordedRegion
+          + " "
+          + recordedPathStyle
+          + " -> "
+          + renewed.s3Endpoint()
+          + " "
+          + renewed.isS3PathStyle();
     }
   }
 
@@ -183,6 +203,9 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     String prefix = location("/t");
     AwsCredential onAws = new AwsCredential("id", "v", "t", Long.MAX_VALUE, prefix);
     AwsCredential onA = new AwsCredential("id", "v", null, Long.MAX_VALUE, prefix, a, "r1");
+    AwsCredential onAVirtualHosted =
+        new AwsCredential(
+            "id", "v", null, Long.MAX_VALUE, prefix, a, "r1", /* isS3PathStyle= */ false);
     for (Renewal renewal :
         List.of(
             new Renewal("", "", onAws, false),
@@ -194,6 +217,13 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
             // The same storage reporting another region, as after a fallback: the keys still go
             // to the same endpoint.
             new Renewal(a, "r2", onA, false),
+            // The addressing style decides how the file system names the bucket, so a renewal
+            // that changes it is refused too; a record without the flag is path-style.
+            new Renewal(a, "r1", "true", onA, false),
+            new Renewal(a, "r1", "false", onAVirtualHosted, false),
+            new Renewal(a, "r1", "true", onAVirtualHosted, true),
+            new Renewal(a, "r1", "false", onA, true),
+            new Renewal(a, "r1", null, onAVirtualHosted, true),
             // Set up without a record, which only AWS S3 is.
             new Renewal(null, null, onAws, false),
             new Renewal(null, null, onA, true),
@@ -210,6 +240,11 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
             renewal.recordedEndpoint);
         conf.set(
             UCHadoopConfConstants.UC_VENDED_S3_REGION_PREFIX + "bucket", renewal.recordedRegion);
+      }
+      if (renewal.recordedPathStyle != null) {
+        conf.set(
+            UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX + "bucket",
+            renewal.recordedPathStyle);
       }
       GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
       when(fetcher.createCredentials()).thenReturn(List.of(renewal.renewed));
@@ -302,7 +337,8 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
 
   @Test
   public void testInitialCredentialMatchesTheRecordedStorage() throws Exception {
-    // The table load's own credential, read back from the init keys, carries its region too.
+    // The table load's own credential, read back from the init keys, carries its region and
+    // addressing style too.
     String endpoint = "http://storage.example.com:9000";
     Configuration conf = newTableBasedConf("tid");
     conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location("/t"));
@@ -311,8 +347,10 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     conf.set(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "");
     conf.set(UCHadoopConfConstants.S3A_INIT_S3_ENDPOINT, endpoint);
     conf.set(UCHadoopConfConstants.S3A_INIT_S3_REGION, "r1");
+    conf.set(UCHadoopConfConstants.S3A_INIT_S3_PATH_STYLE, "false");
     conf.set(UCHadoopConfConstants.UC_VENDED_S3_ENDPOINT_PREFIX + "bucket", endpoint);
     conf.set(UCHadoopConfConstants.UC_VENDED_S3_REGION_PREFIX + "bucket", "r1");
+    conf.set(UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX + "bucket", "false");
     GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
 
     assertThat(createTestProvider(conf, fetcher).resolveCredentials().accessKeyId())

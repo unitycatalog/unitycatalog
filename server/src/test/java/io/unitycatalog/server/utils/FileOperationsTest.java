@@ -24,6 +24,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
@@ -64,6 +65,8 @@ import org.apache.iceberg.io.ResolvingFileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
@@ -754,8 +757,10 @@ public class FileOperationsTest {
     verify(supplier, never()).get();
   }
 
-  @Test
-  public void testGetFileIOConfigS3CompatibleEndpointSkipsDiscovery() {
+  @ParameterizedTest
+  @EnumSource(S3AddressingStyle.class)
+  public void testGetFileIOConfigS3CompatibleEndpointSkipsDiscovery(
+      S3AddressingStyle addressingStyle) {
     // The bucket is not on AWS, so asking AWS for its region would be wrong.
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
     when(vendor.vendCredential(any(), any(), any()))
@@ -767,7 +772,8 @@ public class FileOperationsTest {
                         .secretAccessKey("key-value-1")
                         .sessionToken("session-1")
                         .s3Endpoint("http://storage.example.com:9000")
-                        .s3Region("eu-test-1")));
+                        .s3Region("eu-test-1")
+                        .s3AddressingStyle(addressingStyle)));
     @SuppressWarnings("unchecked")
     Supplier<S3ClientBuilder> supplier = mock(Supplier.class);
     FileOperations fileOps =
@@ -776,10 +782,12 @@ public class FileOperationsTest {
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("s3://compat-bucket/table"));
 
-    // The region is vended along with the endpoint.
+    // The region and addressing style are vended along with the endpoint.
     assertThat(config)
         .containsEntry(S3FileIOProperties.ENDPOINT, "http://storage.example.com:9000")
-        .containsEntry(S3FileIOProperties.PATH_STYLE_ACCESS, "true")
+        .containsEntry(
+            S3FileIOProperties.PATH_STYLE_ACCESS,
+            String.valueOf(addressingStyle == S3AddressingStyle.PATH))
         .containsEntry(AwsClientProperties.CLIENT_REGION, "eu-test-1");
     verify(supplier, never()).get();
   }

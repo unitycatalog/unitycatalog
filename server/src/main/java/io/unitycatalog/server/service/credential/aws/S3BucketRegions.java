@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.credential.aws;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Ticker;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
@@ -59,7 +60,8 @@ public class S3BucketRegions {
   private final Map<StorageBucket, CompletableFuture<String>> lookups = new ConcurrentHashMap<>();
   private final LongSupplier currentTimeMillis;
 
-  private record StorageBucket(String s3Endpoint, String bucket) {}
+  private record StorageBucket(
+      String s3Endpoint, String bucket, S3AddressingStyle addressingStyle) {}
 
   /** A region the storage reported, and when, in epoch milliseconds, to ask it again. */
   private record Reported(String region, long recheckAtMs) {}
@@ -142,10 +144,12 @@ public class S3BucketRegions {
    *
    * @param s3Endpoint the storage's S3 endpoint
    * @param bucket the bucket name
+   * @param addressingStyle how requests to {@code s3Endpoint} name the bucket
    * @return the reported region, otherwise {@link #DEFAULT_S3_COMPATIBLE_REGION}
    */
-  public String getS3CompatibleRegion(String s3Endpoint, String bucket) {
-    StorageBucket storageBucket = new StorageBucket(s3Endpoint, bucket);
+  public String getS3CompatibleRegion(
+      String s3Endpoint, String bucket, S3AddressingStyle addressingStyle) {
+    StorageBucket storageBucket = new StorageBucket(s3Endpoint, bucket, addressingStyle);
     Optional<String> known = knownRegion(storageBucket);
     if (known.isPresent()) {
       return known.get();
@@ -211,7 +215,7 @@ public class S3BucketRegions {
             .credentialsProvider(AnonymousCredentialsProvider.create())
             .region(Region.US_EAST_1)
             .endpointOverride(URI.create(s3Endpoint))
-            .forcePathStyle(true)
+            .forcePathStyle(storageBucket.addressingStyle() == S3AddressingStyle.PATH)
             .overrideConfiguration(c -> c.apiCallTimeout(DISCOVERY_TIMEOUT))
             .build()) {
       Optional<String> region = headBucketRegion(s3Client, bucket);

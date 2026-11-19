@@ -10,9 +10,12 @@ import io.unitycatalog.server.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 public class DeltaCredentialsMapperTest {
 
@@ -42,25 +45,30 @@ public class DeltaCredentialsMapperTest {
     assertThat(config.getS3SessionToken()).isEqualTo("token");
     // AWS S3: no endpoint or region.
     assertThat(config.getS3Endpoint()).isNull();
+    assertThat(config.getS3PathStyleAccess()).isNull();
     assertThat(config.getClientRegion()).isNull();
     assertThat(config.getAzureSasToken()).isNull();
     assertThat(config.getGcsOauthToken()).isNull();
   }
 
-  @Test
-  public void testS3CompatibleCredentialsCarryTheEndpointAndRegion() {
+  @ParameterizedTest
+  @EnumSource(S3AddressingStyle.class)
+  public void testS3CompatibleCredentialsCarryTheEndpointRegionAndStyle(
+      S3AddressingStyle addressingStyle) {
     // An endpoint-only vend (endpoint-only) and a key vend both carry the S3 endpoint.
     for (AwsCredentials aws :
         List.of(
             new AwsCredentials()
                 .s3Endpoint("http://storage.example.com:9000")
-                .s3Region("eu-test-1"),
+                .s3Region("eu-test-1")
+                .s3AddressingStyle(addressingStyle),
             new AwsCredentials()
                 .accessKeyId("key-id-1")
                 .secretAccessKey("key-value-1")
                 .sessionToken("session-1")
                 .s3Endpoint("http://storage.example.com:9000")
-                .s3Region("eu-test-1"))) {
+                .s3Region("eu-test-1")
+                .s3AddressingStyle(addressingStyle))) {
       DeltaStorageCredentialConfig config =
           DeltaCredentialsMapper.toCredentialsResponse(
                   new TemporaryCredentials().url("s3://bucket/path").awsTempCredentials(aws),
@@ -71,6 +79,8 @@ public class DeltaCredentialsMapperTest {
 
       assertThat(config.getS3Endpoint()).isEqualTo("http://storage.example.com:9000");
       assertThat(config.getClientRegion()).isEqualTo("eu-test-1");
+      assertThat(config.getS3PathStyleAccess())
+          .isEqualTo(addressingStyle == S3AddressingStyle.PATH);
       assertThat(config.getS3AccessKeyId()).isEqualTo(aws.getAccessKeyId());
     }
   }

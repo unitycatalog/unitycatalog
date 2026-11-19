@@ -346,8 +346,8 @@ public class UnityCatalogServer implements AutoCloseable {
       if (unityCatalogServerBuilder.serverProperties.getS3CompatibleStaticKeyVending()
           == ServerProperties.S3CompatibleStaticKeyVending.STATIC_KEY) {
         LOGGER.warn(
-            "{}=static-key: clients get the key pair of s3_compatible credentials without"
-                + " assume_role, which is not scoped to the requested path or privilege",
+            "{}=static-key: clients get the key pair of s3_compatible_access_key credentials"
+                + " without assume_role, which is not scoped to the requested path or privilege",
             ServerProperties.Property.S3_COMPATIBLE_STATIC_KEY_VENDING.getKey());
       }
     }

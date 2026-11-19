@@ -769,7 +769,7 @@ server:
     # @default -- not set
     # @raw
     #
-    # Only the experimental `s3_compatible` storage credentials need it, and only when
+    # Only the experimental `s3_compatible_access_key` storage credentials need it, and only when
     # `server.s3-compatible-storage.enabled` is `"true"`: setting the Secret alone leaves them
     # disabled. With the flag set, the server refuses to start with a malformed key. Keep the same
     # key for as long as such credentials exist: values stored with a key cannot be read with

@@ -15,6 +15,7 @@ import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.ListExternalLocationsResponse;
 import io.unitycatalog.client.model.UpdateExternalLocation;
+import java.util.Locale;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
@@ -55,11 +56,20 @@ public class ExternalLocationCli {
   private static String createExternalLocation(
       ExternalLocationsApi externalLocationsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
+    upperCaseAddressingStyle(json);
     CreateExternalLocation createExternalLocation =
         objectMapper.readValue(json.toString(), CreateExternalLocation.class);
     ExternalLocationInfo externalLocationInfo =
         externalLocationsApi.createExternalLocation(createExternalLocation);
     return objectWriter.writeValueAsString(externalLocationInfo);
+  }
+
+  /** Takes the addressing style in any case, as the CLI takes other enum values. */
+  private static void upperCaseAddressingStyle(JSONObject json) {
+    String key = CliParams.ADDRESSING_STYLE.getServerParam();
+    if (json.has(key)) {
+      json.put(key, json.getString(key).toUpperCase(Locale.ROOT));
+    }
   }
 
   private static String listExternalLocations(
@@ -90,6 +100,7 @@ public class ExternalLocationCli {
     String name = json.getString(CliParams.NAME.getServerParam());
     json.remove(CliParams.NAME.getServerParam()); // Remove name from JSON as it's a path parameter
     CliUtils.validateUpdateParameters(json, CliUtils.EXTERNAL_LOCATION, CliUtils.UPDATE);
+    upperCaseAddressingStyle(json);
     UpdateExternalLocation updateExternalLocation =
         objectMapper.readValue(json.toString(), UpdateExternalLocation.class);
     ExternalLocationInfo externalLocationInfo =

@@ -24,7 +24,7 @@ import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.GenerateTemporaryVolumeCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.S3AssumeRole;
-import io.unitycatalog.client.model.S3CompatibleRequest;
+import io.unitycatalog.client.model.S3CompatibleAccessKeyRequest;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
@@ -111,11 +111,10 @@ public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
               new CreateCredentialRequest()
                   .name("scope_credential")
                   .purpose(CredentialPurpose.STORAGE)
-                  .s3Compatible(
-                      new S3CompatibleRequest()
+                  .s3CompatibleAccessKey(
+                      new S3CompatibleAccessKeyRequest()
                           .accessKeyId(storage.accessKeyId())
                           .secretAccessKey(storage.secretAccessKey())
-                          .s3Endpoint(storage.s3Endpoint())
                           .assumeRole(
                               new S3AssumeRole().roleArn(storage.roleArn().orElseThrow()))));
       new ExternalLocationsApi(apiClient)
@@ -123,7 +122,8 @@ public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
               new CreateExternalLocation()
                   .name("scope_location")
                   .url("s3://" + BUCKET)
-                  .credentialName("scope_credential"));
+                  .credentialName("scope_credential")
+                  .endpoint(storage.s3Endpoint()));
       catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME));
       new SchemasApi(apiClient)
           .createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));

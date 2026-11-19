@@ -10,6 +10,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 public class CliExternalLocationOperations extends BaseCliOperations
@@ -31,6 +32,15 @@ public class CliExternalLocationOperations extends BaseCliOperations
                 createExternalLocation.getUrl(),
                 "--credential_name",
                 createExternalLocation.getCredentialName()));
+    if (createExternalLocation.getEndpoint() != null) {
+      argsList.add("--endpoint");
+      argsList.add(createExternalLocation.getEndpoint());
+    }
+    if (createExternalLocation.getAddressingStyle() != null) {
+      argsList.add("--addressing_style");
+      // In lower case, which the CLI takes like the upper case of the API.
+      argsList.add(createExternalLocation.getAddressingStyle().getValue().toLowerCase(Locale.ROOT));
+    }
     if (createExternalLocation.getComment() != null) {
       argsList.add("--comment");
       argsList.add(createExternalLocation.getComment());
@@ -69,6 +79,15 @@ public class CliExternalLocationOperations extends BaseCliOperations
     if (updateExternalLocation.getCredentialName() != null) {
       argsList.add("--credential_name");
       argsList.add(updateExternalLocation.getCredentialName());
+    }
+    if (updateExternalLocation.getEndpoint() != null) {
+      argsList.add("--endpoint");
+      argsList.add(updateExternalLocation.getEndpoint());
+    }
+    if (updateExternalLocation.getAddressingStyle() != null) {
+      argsList.add("--addressing_style");
+      // In lower case, which the CLI takes like the upper case of the API.
+      argsList.add(updateExternalLocation.getAddressingStyle().getValue().toLowerCase(Locale.ROOT));
     }
     if (updateExternalLocation.getComment() != null) {
       argsList.add("--comment");

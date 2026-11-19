@@ -615,10 +615,11 @@ components:
               type: string
               description: |
                 EXPERIMENTAL. S3 API endpoint of the S3-compatible storage holding the prefix, for
-                example `https://minio.example.com:9000`: the `s3_endpoint` of the storage credential
-                of the external location covering the prefix. Requests to it always use path-style
-                addressing. Absent for AWS S3. When that credential does not vend keys, this and
-                `client.region` are the only S3 keys set, and the client brings its own. A key pair
+                example `https://minio.example.com:9000`: the `endpoint` of the external location
+                covering the prefix, addressed as `s3.path-style-access` says. Absent for AWS S3.
+                When that credential does not vend keys, this, `client.region` and
+                `s3.path-style-access` are the only S3 keys set, and the client brings its own. A key
+                pair
                 without `s3.session-token`, and the client's own keys, are not narrowed to the
                 requested operation or prefix; only session credentials are. A client that does not
                 support this key must not use the credential, and must not send its requests to AWS
@@ -627,6 +628,13 @@ components:
               type: string
               description: |
                 EXPERIMENTAL. Region to sign S3 requests with, set together with `s3.endpoint`.
+            s3.path-style-access:
+              type: boolean
+              description: |
+                EXPERIMENTAL. Whether requests to `s3.endpoint` name the bucket in the path
+                (`<endpoint>/<bucket>/<key>`), rather than in the host name
+                (`<bucket>.<endpoint host>/<key>`), as the external location covering the prefix
+                says. Set together with `s3.endpoint`.
             azure.sas-token:
               type: string
               description: Azure SAS (Shared Access Signature) token

@@ -16,7 +16,7 @@ import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.ListCredentialsResponse;
 import io.unitycatalog.client.model.S3AssumeRole;
-import io.unitycatalog.client.model.S3CompatibleRequest;
+import io.unitycatalog.client.model.S3CompatibleAccessKeyRequest;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import java.util.List;
 import java.util.Optional;
@@ -66,13 +66,16 @@ public class CredentialCli {
     }
   }
 
-  /** Builds an {@code s3_compatible} credential from the {@code s3_*} options, if any is given. */
-  private static Optional<S3CompatibleRequest> extractS3Compatible(JSONObject json) {
+  /**
+   * Builds an {@code s3_compatible_access_key} credential from the {@code s3_*} options, if any is
+   * given.
+   */
+  private static Optional<S3CompatibleAccessKeyRequest> extractS3CompatibleAccessKey(
+      JSONObject json) {
     List<CliParams> params =
         List.of(
             CliParams.S3_ACCESS_KEY_ID,
             CliParams.S3_SECRET_ACCESS_KEY,
-            CliParams.S3_ENDPOINT,
             CliParams.S3_STS_ENDPOINT,
             CliParams.S3_ROLE_ARN,
             CliParams.S3_STS_REGION);
@@ -83,10 +86,9 @@ public class CredentialCli {
     String roleArn = json.optString(CliParams.S3_ROLE_ARN.getServerParam(), null);
     String stsRegion = json.optString(CliParams.S3_STS_REGION.getServerParam(), null);
     return Optional.of(
-        new S3CompatibleRequest()
+        new S3CompatibleAccessKeyRequest()
             .accessKeyId(json.optString(CliParams.S3_ACCESS_KEY_ID.getServerParam(), null))
             .secretAccessKey(json.optString(CliParams.S3_SECRET_ACCESS_KEY.getServerParam(), null))
-            .s3Endpoint(json.optString(CliParams.S3_ENDPOINT.getServerParam(), null))
             .assumeRole(
                 stsEndpoint == null && roleArn == null && stsRegion == null
                     ? null
@@ -104,7 +106,7 @@ public class CredentialCli {
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
             .purpose(CredentialPurpose.STORAGE)
             .awsIamRole(extractAwsIamRole(json).orElse(null))
-            .s3Compatible(extractS3Compatible(json).orElse(null));
+            .s3CompatibleAccessKey(extractS3CompatibleAccessKey(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.createCredential(createCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }
@@ -136,7 +138,7 @@ public class CredentialCli {
             .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
             .awsIamRole(extractAwsIamRole(json).orElse(null))
-            .s3Compatible(extractS3Compatible(json).orElse(null));
+            .s3CompatibleAccessKey(extractS3CompatibleAccessKey(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.updateCredential(name, updateCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }

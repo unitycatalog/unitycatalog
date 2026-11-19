@@ -49,9 +49,9 @@ server:
 ```
 
 ## S3-compatible storage credentials
-The experimental `s3_compatible` storage credentials need both the server flag and a key that the
-server encrypts their secret values with in its database. Create the key once and keep it for as
-long as such credentials exist:
+The experimental `s3_compatible_access_key` storage credentials need both the server flag and a key
+that the server encrypts their secret values with in its database. Create the key once and keep it
+for as long as such credentials exist:
 
 ```sh
 kubectl create secret generic uc-credential-encryption \

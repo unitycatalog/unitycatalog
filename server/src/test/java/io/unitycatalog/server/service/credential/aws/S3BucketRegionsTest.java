@@ -7,6 +7,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.model.S3AddressingStyle;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -67,9 +68,11 @@ public class S3BucketRegionsTest {
         .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-test-2").build());
 
     for (int i = 0; i < 2; i++) {
-      assertThat(regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+      assertThat(regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+          .isEqualTo("eu-test-1");
     }
-    assertThat(regions.getS3CompatibleRegion(S3_ENDPOINT, "other")).isEqualTo("eu-test-2");
+    assertThat(regions.getS3CompatibleRegion(S3_ENDPOINT, "other", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-2");
     verify(s3, times(2)).headBucket(any(HeadBucketRequest.class));
     verify(builder, times(2)).endpointOverride(URI.create(S3_ENDPOINT));
     verify(builder, times(2)).forcePathStyle(true);
@@ -105,15 +108,15 @@ public class S3BucketRegionsTest {
       S3BucketRegions fresh = new S3BucketRegions(() -> builder, now::get);
 
       for (int i = 0; i < 2; i++) {
-        assertThat(fresh.getS3CompatibleRegion(S3_ENDPOINT, "bucket"))
+        assertThat(fresh.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
             .isEqualTo(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
       }
       verify(client, times(1)).headBucket(any(HeadBucketRequest.class));
       now.addAndGet(failure.retryDelay().toMillis() - 1);
-      fresh.getS3CompatibleRegion(S3_ENDPOINT, "bucket");
+      fresh.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH);
       verify(client, times(1)).headBucket(any(HeadBucketRequest.class));
       now.addAndGet(1);
-      assertThat(fresh.getS3CompatibleRegion(S3_ENDPOINT, "bucket"))
+      assertThat(fresh.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
           .isEqualTo(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
       verify(client, times(2)).headBucket(any(HeadBucketRequest.class));
     }
@@ -134,10 +137,12 @@ public class S3BucketRegionsTest {
     ExecutorService pool = Executors.newFixedThreadPool(2);
     try {
       Future<String> first =
-          pool.submit(() -> regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket"));
+          pool.submit(
+              () -> regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH));
       inLookup.await();
       Future<String> second =
-          pool.submit(() -> regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket"));
+          pool.submit(
+              () -> regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH));
       release.countDown();
       assertThat(first.get(10, TimeUnit.SECONDS)).isEqualTo("eu-test-1");
       assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo("eu-test-1");
@@ -163,14 +168,18 @@ public class S3BucketRegionsTest {
             });
     AtomicLong now = new AtomicLong();
     S3BucketRegions rechecking = new S3BucketRegions(() -> builder, now::get);
-    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-1");
     now.addAndGet(S3BucketRegions.REPORTED_REGION_TTL.toMillis());
     ExecutorService pool = Executors.newSingleThreadExecutor();
     try {
       Future<String> recheck =
-          pool.submit(() -> rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket"));
+          pool.submit(
+              () ->
+                  rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH));
       inRecheck.await();
-      assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+      assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+          .isEqualTo("eu-test-1");
       release.countDown();
       assertThat(recheck.get(10, TimeUnit.SECONDS)).isEqualTo("eu-test-2");
     } finally {
@@ -188,11 +197,14 @@ public class S3BucketRegionsTest {
     AtomicLong now = new AtomicLong();
     S3BucketRegions expiring = new S3BucketRegions(() -> builder, now::get);
 
-    assertThat(expiring.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+    assertThat(expiring.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-1");
     now.addAndGet(S3BucketRegions.REPORTED_REGION_TTL.toMillis() - 1);
-    assertThat(expiring.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+    assertThat(expiring.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-1");
     now.addAndGet(1);
-    assertThat(expiring.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-2");
+    assertThat(expiring.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-2");
     verify(s3, times(2)).headBucket(any(HeadBucketRequest.class));
   }
 
@@ -212,17 +224,21 @@ public class S3BucketRegionsTest {
     AtomicLong now = new AtomicLong();
     S3BucketRegions rechecking = new S3BucketRegions(() -> builder, now::get);
 
-    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-1");
     now.addAndGet(S3BucketRegions.REPORTED_REGION_TTL.toMillis());
-    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-1");
     // Not asked again until the failure delay has passed.
-    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-1");
     for (int i = 0; i < 4; i++) {
       now.addAndGet(S3BucketRegions.FAILURE_RETRY_DELAY.toMillis());
-      assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+      assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+          .isEqualTo("eu-test-1");
     }
     now.addAndGet(S3BucketRegions.FAILURE_RETRY_DELAY.toMillis());
-    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket"))
+    assertThat(rechecking.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
         .isEqualTo(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
     verify(s3, times(7)).headBucket(any(HeadBucketRequest.class));
   }
@@ -235,7 +251,7 @@ public class S3BucketRegionsTest {
     S3BucketRegions retrying = new S3BucketRegions(() -> builder, now::get);
 
     for (int i = 0; i < 2; i++) {
-      assertThat(retrying.getS3CompatibleRegion(S3_ENDPOINT, "bucket"))
+      assertThat(retrying.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
           .isEqualTo(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
     }
     verify(s3, times(1)).headBucket(any(HeadBucketRequest.class));
@@ -249,9 +265,10 @@ public class S3BucketRegionsTest {
     AtomicLong now = new AtomicLong();
     S3BucketRegions retrying = new S3BucketRegions(() -> builder, now::get);
 
-    assertThat(retrying.getS3CompatibleRegion(S3_ENDPOINT, "bucket"))
+    assertThat(retrying.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
         .isEqualTo(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION);
     now.addAndGet(S3BucketRegions.FAILURE_RETRY_DELAY.toMillis());
-    assertThat(retrying.getS3CompatibleRegion(S3_ENDPOINT, "bucket")).isEqualTo("eu-test-1");
+    assertThat(retrying.getS3CompatibleRegion(S3_ENDPOINT, "bucket", S3AddressingStyle.PATH))
+        .isEqualTo("eu-test-1");
   }
 }
