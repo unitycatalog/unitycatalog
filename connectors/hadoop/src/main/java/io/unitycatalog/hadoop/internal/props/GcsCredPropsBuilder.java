@@ -28,7 +28,7 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
     //   - the hierarchical namespace lookup reads the bucket's layout when a folder is deleted or
     //     renamed, which the parquet commit does; the connector turns it on itself, on every Spark
     //     version;
-    //   - the implicit directory repair recreates the parent folder after a directory delete, such
+    //   - the implicit directory repair looks up the parent folder after a directory delete, such
     //     as the partition delete of INSERT OVERWRITE on a parquet table; the connector turns it on
     //     itself.
     // Default all three to false; users with broader credentials can opt back in via Hadoop/Spark

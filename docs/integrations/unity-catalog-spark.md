@@ -464,12 +464,13 @@ needs Google's connector too, with the `fs.gs.impl` settings shown below.
       Delta tables do not.
     - `fs.gs.create.items.conflict.check.enable` reads every folder above a new file or folder. Hadoop 3.5 (Spark 4.2.x)
       turns it on. Creating a table or writing to it fails.
-    - `fs.gs.implicit.dir.repair.enable` recreates the parent folder after a folder is deleted. The connector turns it on
+    - `fs.gs.implicit.dir.repair.enable` looks up the parent folder after a folder is deleted. The connector turns it on
       itself, and it breaks `INSERT OVERWRITE` on parquet tables.
 
     From 0.8.0 Unity Catalog turns all three off itself, so the `--conf` lines for them in the commands above can be
     dropped. If your credentials are broad enough for those calls (for example on a hierarchical-namespace bucket), set
-    one to `true` in your Spark config and the connector keeps your value. With the hierarchical namespace setting off,
+    one to `true` in your Spark config and the connector keeps your value. Hadoop 3.5's own `true` for the conflict check
+    does not count as setting it, so if you relied on that default, set the key to `true` yourself. With the hierarchical namespace setting off,
     folder delete and rename on hierarchical-namespace buckets use the connector's non-native path; setting it to `true`
     needs credentials that cover the bucket.
 
