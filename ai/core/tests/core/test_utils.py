@@ -1,6 +1,7 @@
 import datetime
 import decimal
 import json
+import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import pytest
@@ -10,6 +11,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from pydantic import BaseModel
+from pydantic.json_schema import PydanticJsonSchemaWarning
 
 from unitycatalog.ai.core.utils.function_processing_utils import (
     FullFunctionName,
@@ -500,7 +502,7 @@ def test_param_info_to_pydantic_type_with_sql_null():
     assert "Default: NULL" in result.description
 
 
-def test_param_info_to_pydantic_type_invalid_json():
+def test_param_info_to_pydantic_type_unparseable_default_stays_raw_string():
     param_info = FunctionParameterInfo(
         name="non_json_param",
         type_name="STRING",
@@ -514,6 +516,123 @@ def test_param_info_to_pydantic_type_invalid_json():
 
     assert result.default == "not-json-value"
     assert "Default: not-json-value" in result.description
+
+
+def test_param_info_to_pydantic_type_with_binary_literal_default():
+    param_info = FunctionParameterInfo(
+        name="bytes_param",
+        type_name="BINARY",
+        type_text="binary",
+        position=0,
+        parameter_default="X'0102'",
+        type_json='{"name":"bytes_param","type":"binary","nullable":true,"metadata":{}}',
+    )
+
+    result = param_info_to_pydantic_type(param_info)
+
+    # The schema default must be the bytes value execution would use
+    assert result.default == b"\x01\x02"
+    assert isinstance(result.default, bytes)
+    assert "Default: X'0102'" in result.description
+
+
+def test_param_info_to_pydantic_type_with_quoted_string_default():
+    param_info = FunctionParameterInfo(
+        name="str_param",
+        type_name="STRING",
+        type_text="string",
+        position=0,
+        parameter_default="'default'",
+        type_json='{"name":"str_param","type":"string","nullable":true,"metadata":{}}',
+    )
+
+    result = param_info_to_pydantic_type(param_info)
+
+    # The schema default matches execution: the stored quotes are SQL
+    # literal syntax, not part of the value
+    assert result.default == "default"
+    assert "Default: 'default'" in result.description
+
+
+def test_generate_function_input_params_schema_with_binary_literal_defaults():
+    func_info = generate_function_info(
+        [
+            {
+                "name": "bytes_param",
+                "type_text": "binary",
+                "type_json": '{"name":"bytes_param","type":"binary","nullable":true,"metadata":{}}',
+                "type_name": "BINARY",
+                "type_precision": 0,
+                "type_scale": 0,
+                "position": 0,
+                "parameter_type": "PARAM",
+                "parameter_default": "X'0102'",
+            },
+            {
+                "name": "non_utf8_param",
+                "type_text": "binary",
+                "type_json": '{"name":"non_utf8_param","type":"binary","nullable":true,"metadata":{}}',
+                "type_name": "BINARY",
+                "type_precision": 0,
+                "type_scale": 0,
+                "position": 1,
+                "parameter_type": "PARAM",
+                "parameter_default": "X'ff'",
+            },
+        ]
+    )
+
+    model = generate_function_input_params_schema(func_info).pydantic_model
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        schema = model.model_json_schema()
+
+    # Bytes defaults are serialized as base64 in the JSON schema; the
+    # default UTF-8 serialization corrupts them and drops (or fails on)
+    # defaults that are not valid UTF-8, such as b'\xff'
+    assert schema["properties"]["bytes_param"]["default"] == "AQI="
+    assert schema["properties"]["non_utf8_param"]["default"] == "_w=="
+    assert not [w for w in caught if issubclass(w.category, PydanticJsonSchemaWarning)]
+
+
+def test_parameter_default_with_unhashable_dict_key_stays_raw_string():
+    # ast.literal_eval raises TypeError for a dict literal with an
+    # unhashable key; both paths fall back to the raw stored string
+    # instead of raising
+    param_info = FunctionParameterInfo(
+        name="dict_param",
+        type_name="STRING",
+        type_text="string",
+        position=0,
+        parameter_default="{[1]: 2}",
+        type_json='{"name":"dict_param","type":"string","nullable":true,"metadata":{}}',
+    )
+
+    result = param_info_to_pydantic_type(param_info)
+
+    assert result.default == "{[1]: 2}"
+
+    func_info = FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="test_func",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="dict_param",
+                    type_name="STRING",
+                    type_text="string",
+                    position=0,
+                    parameter_default="{[1]: 2}",
+                ),
+            ]
+        ),
+    )
+
+    defaults = process_function_parameter_defaults(func_info, {})
+
+    assert defaults["dict_param"] == "{[1]: 2}"
 
 
 def test_process_function_parameter_defaults_with_null():

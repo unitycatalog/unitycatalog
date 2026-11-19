@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from typing import Any, Dict, List, Optional
@@ -110,7 +111,14 @@ class UCFunctionToolkit(BaseModel):
             args = TypeAdapter(pydantic_field.pydantic_type).json_schema()
 
             if pydantic_field.default:
-                args["default"] = pydantic_field.default
+                default = pydantic_field.default
+                if isinstance(default, bytes):
+                    # Use the JSON-schema representation of a bytes
+                    # default (base64, as in the core input-params
+                    # schema) so the args stay JSON-serializable for
+                    # to_dict() consumers.
+                    default = base64.b64encode(default).decode("ascii")
+                args["default"] = default
 
             if pydantic_field.description:
                 args_desc[param_info.name] = pydantic_field.description
