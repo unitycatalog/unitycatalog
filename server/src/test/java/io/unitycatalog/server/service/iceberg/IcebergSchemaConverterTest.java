@@ -7,8 +7,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.exceptions.BadRequestException;
+import org.apache.iceberg.types.EdgeAlgorithm;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
@@ -139,17 +144,64 @@ public class IcebergSchemaConverterTest {
     assertThat(scoresJson.get("valueContainsNull").asBoolean()).isFalse();
   }
 
-  /** Geometry and geography are not mapped from Iceberg yet; the error names the type. */
+  /** Geometry and geography keep their CRS and the geography edge algorithm, in Delta's form. */
   @Test
-  public void rejectsGeometryAndGeography() {
-    for (Type geo : List.of(Types.GeometryType.crs84(), Types.GeographyType.crs84())) {
+  public void mapsGeometryAndGeography() throws Exception {
+    Map<Type, String> expectedTypeText = new LinkedHashMap<>();
+    expectedTypeText.put(Types.GeometryType.crs84(), "geometry(OGC:CRS84)");
+    expectedTypeText.put(Types.GeometryType.of("EPSG:3857"), "geometry(EPSG:3857)");
+    expectedTypeText.put(Types.GeographyType.crs84(), "geography(OGC:CRS84, spherical)");
+    expectedTypeText.put(
+        Types.GeographyType.of("EPSG:4326", EdgeAlgorithm.KARNEY), "geography(EPSG:4326, karney)");
+    List<Types.NestedField> fields = new ArrayList<>();
+    for (Type type : expectedTypeText.keySet()) {
+      fields.add(Types.NestedField.optional(fields.size() + 1, "c" + fields.size(), type));
+    }
+
+    List<ColumnInfo> columns = IcebergSchemaConverter.toColumnInfos(new Schema(fields));
+
+    int i = 0;
+    for (String typeText : expectedTypeText.values()) {
+      ColumnInfo column = columns.get(i++);
+      assertThat(column.getTypeName())
+          .isEqualTo(
+              typeText.startsWith("geometry") ? ColumnTypeName.GEOMETRY : ColumnTypeName.GEOGRAPHY);
+      assertThat(column.getTypeText()).isEqualTo(typeText);
+      assertThat(MAPPER.readTree(column.getTypeJson()).get("type").asText()).isEqualTo(typeText);
+    }
+  }
+
+  @Test
+  public void mapsGeoTypesNestedInStructListAndMap() {
+    Schema schema =
+        new Schema(
+            Types.NestedField.required(
+                1,
+                "s",
+                Types.StructType.of(
+                    Types.NestedField.optional(2, "g", Types.GeometryType.crs84()))),
+            Types.NestedField.required(
+                3, "l", Types.ListType.ofOptional(4, Types.GeographyType.crs84())));
+
+    List<ColumnInfo> columns = IcebergSchemaConverter.toColumnInfos(schema);
+
+    assertThat(columns.get(0).getTypeText()).isEqualTo("struct<g:geometry(OGC:CRS84)>");
+    assertThat(columns.get(1).getTypeText()).isEqualTo("array<geography(OGC:CRS84, spherical)>");
+  }
+
+  /** A CRS that is not <authority>:<code>, such as PROJJSON, can't go in a Delta type string. */
+  @Test
+  public void rejectsGeoTypesWithACrsThatIsNotAuthorityAndCode() {
+    for (Type geo :
+        List.of(
+            Types.GeometryType.of("{\"type\":\"ProjectedCRS\"}"),
+            Types.GeographyType.of("srid 4326", EdgeAlgorithm.SPHERICAL))) {
       Schema schema = new Schema(Types.NestedField.required(1, "g", geo));
       assertThatThrownBy(() -> IcebergSchemaConverter.toColumnInfos(schema))
           .as("Iceberg type %s", geo)
-          .hasMessageContaining(
-              "Iceberg type "
-                  + geo.toString().toUpperCase()
-                  + " is not supported by Unity Catalog");
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Iceberg type " + geo.toString().toUpperCase())
+          .hasMessageContaining("is not supported by Unity Catalog");
     }
   }
 }
