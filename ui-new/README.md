@@ -127,8 +127,10 @@ client-side routes load on refresh or from a link.
 | `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated, each must exactly match the browser's serialized `Origin`—no trailing slash or explicit default port; other entries are logged and skipped); empty = same-origin only |
 
 The `*_ENABLED` variables accept `true`/`false`, `1`/`0`, `yes`/`no`, or
-`on`/`off`, ignoring case. An invalid or empty boolean or `PORT` stops the
-bridge at startup with an error naming the variable.
+`on`/`off`, ignoring case. An unset or empty variable takes its default. A
+non-empty invalid boolean or `PORT` (including whitespace only), or a value
+that is not valid Unicode, stops the bridge at startup with an error naming the
+variable.
 
 ## Test
 

@@ -97,8 +97,11 @@ impl TableKind {
     }
 }
 
-/// Describes how a single table resource differs from `expected`. A resource
-/// of no known kind is an error, so it is never read or deleted as a table.
+/// Compares a single table resource's kind with `expected`:
+/// - `Ok(None)`: the kinds match.
+/// - `Ok(Some(message))`: they differ; the message names both kinds.
+/// - `Err`: the resource has no known kind (`internal`), so it is never read
+///   or deleted as a table.
 fn kind_mismatch(
     table: &Value,
     full_name: &str,

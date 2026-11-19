@@ -22,8 +22,9 @@ pub struct Config {
 /// Reads one variable the way `std::env::var` does, so tests can supply their own.
 type Lookup<'a> = &'a dyn Fn(&str) -> Result<String, VarError>;
 
-/// Reads `key`, treating an unset or empty variable as `None`: deployment
-/// templates often render an unset value as an empty string.
+/// Reads `key`. An unset or exactly empty variable is `None`, since deployment
+/// templates often render an unset value as an empty string; a whitespace-only
+/// value is kept and validated like any other.
 fn env_value(env: Lookup<'_>, key: &str) -> Result<Option<String>, String> {
     match env(key) {
         Ok(value) if value.is_empty() => Ok(None),
