@@ -83,7 +83,9 @@ output of `openssl rand -base64 32`); without it the request fails. Use the same
 instance and keep it as long as the credentials exist. The `private_key` is never returned: `get`
 and `list` show only the `email` and `private_key_id`.
 
-An external location that uses a Google Cloud Storage credential must be a `gs://` path.
+An external location that uses a Google Cloud Storage credential must be a `gs://` path. For these
+locations the stored key takes precedence over the `gcs.*` server settings. To replace a key, create
+a new credential and update each affected external location's `credential_name` to use it.
 
 When a client asks for access to a path under such a location, the server signs in with the stored key and returns a short-lived access token limited to that path. The service account needs `roles/storage.objectViewer` on the bucket to read, and `roles/storage.objectAdmin` to read and write.
 

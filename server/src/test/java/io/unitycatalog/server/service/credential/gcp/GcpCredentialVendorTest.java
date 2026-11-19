@@ -211,9 +211,16 @@ public class GcpCredentialVendorTest {
   static Stream<Arguments> storedKeyFailures() {
     String signature = "{\"error\": \"invalid_grant\", \"error_description\": \"Invalid JWT\"}";
     String client = "{\"error\": \"invalid_client\", \"error_description\": \"deleted\"}";
+    String unauthorized =
+        "{\"error\": \"unauthorized_client\", \"error_description\": \"not allowed\"}";
+    String clockSkew =
+        "{\"error\": \"invalid_grant\", \"error_description\": \"Invalid JWT: Token must be a"
+            + " short-lived token (60 minutes) and in a reasonable timeframe.\"}";
     return Stream.of(
         Arguments.of(400, signature, ErrorCode.FAILED_PRECONDITION),
         Arguments.of(400, client, ErrorCode.FAILED_PRECONDITION),
+        Arguments.of(400, unauthorized, ErrorCode.FAILED_PRECONDITION),
+        Arguments.of(400, clockSkew, ErrorCode.INTERNAL),
         Arguments.of(503, "{\"error\": \"backend_error\"}", ErrorCode.UNAVAILABLE),
         Arguments.of(500, "upstream failure", ErrorCode.UNAVAILABLE));
   }
@@ -237,6 +244,9 @@ public class GcpCredentialVendorTest {
     assertThat(error.getMessage()).doesNotContain(STORED_KEY_EMAIL).doesNotContain("key-id-1");
     if (expected == ErrorCode.FAILED_PRECONDITION) {
       assertThat(error.getMessage()).contains("Replace the storage credential");
+    } else if (expected == ErrorCode.INTERNAL) {
+      // A clock problem is not fixed by replacing the key.
+      assertThat(error.getMessage()).doesNotContain("Replace the storage credential");
     }
   }
 
@@ -268,6 +278,7 @@ public class GcpCredentialVendorTest {
             .setPrivateKeyId("key-id-1")
             .setScopes(GcpCredentialVendor.INITIAL_SCOPES)
             .setHttpTransportFactory(() -> tokenService)
+            .setDefaultRetriesEnabled(false)
             .build();
     // Through the downscoping step, as the vendor does: it wraps what the key's refresh throws.
     DownscopedCredentials downscoped =
