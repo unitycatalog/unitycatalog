@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
@@ -151,6 +152,29 @@ public class SchemaGateTest {
         statement.execute("DROP DATABASE `team``blue`");
       }
     }
+  }
+
+  @Test
+  void hibernateModeRefusesANewerSchemaInALaterSchemaOnTheSearchPath() throws Exception {
+    assumeTrue(DatabaseKind.of(db.dataSource()) == DatabaseKind.POSTGRESQL);
+    try (Connection connection = db.dataSource().getConnection();
+        Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SCHEMA empty_s");
+      statement.execute("CREATE SCHEMA live");
+    }
+    Properties live = db.hibernateProperties();
+    live.setProperty("hibernate.connection.url", db.jdbcUrl() + "?currentSchema=live");
+    // A newer release (here one with step 1000) upgraded the schema "live".
+    try (HikariDataSource pool = new HikariDataSource(HibernateConfigurator.hikariConfig(live))) {
+      new SchemaMigrator(pool, List.of("classpath:db/test-steps/ahead")).upgradeSchema();
+    }
+    Properties both = db.hibernateProperties();
+    both.setProperty("hibernate.connection.url", db.jdbcUrl() + "?currentSchema=empty_s,live");
+
+    // The first schema is empty, but the search path reaches the newer schema behind it.
+    assertThatThrownBy(() -> db.openHibernateConfigurator(both, true).close())
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Unity Catalog tables are in schema live");
   }
 
   @Test

@@ -154,7 +154,7 @@ public final class SchemaMigrator implements AutoCloseable {
     config.setPoolName("schema-migrator");
     HikariDataSource pool = new HikariDataSource(config);
     try {
-      return new SchemaMigrator(pool, DatabaseKind.of(pool), List.of(), pool, true);
+      return new SchemaMigrator(pool, DatabaseKind.of(pool), List.of(), pool);
     } catch (RuntimeException e) {
       pool.close();
       throw e;
@@ -416,18 +416,15 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Also applies the steps in {@code extraLocations} (tests' own steps). */
   SchemaMigrator(DataSource dataSource, List<String> extraLocations) {
-    this(dataSource, DatabaseKind.of(dataSource), extraLocations, null, true);
+    this(dataSource, DatabaseKind.of(dataSource), extraLocations, null);
   }
 
   private SchemaMigrator(
       DataSource dataSource,
       DatabaseKind kind,
       List<String> extraLocations,
-      HikariDataSource ownedPool,
-      boolean requireCurrentSchema) {
-    if (requireCurrentSchema) {
-      requireCurrentSchema(dataSource, kind);
-    }
+      HikariDataSource ownedPool) {
+    requireCurrentSchema(dataSource, kind);
     this.dataSource = dataSource;
     this.kind = kind;
     List<String> locations = new ArrayList<>();
@@ -1309,7 +1306,7 @@ public final class SchemaMigrator implements AutoCloseable {
           "Hibernate updates the schema without checking for a newer one: {}", e.getMessage());
       return;
     }
-    SchemaMigrator migrator = new SchemaMigrator(dataSource, kind, List.of(), null, false);
+    SchemaMigrator migrator = new SchemaMigrator(dataSource, kind, List.of(), null);
     String newest = migrator.newestRecordedVersion();
     String latest = migrator.latestVersion();
     if (newest != null
