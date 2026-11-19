@@ -506,52 +506,68 @@ async fn list_views_returns_filtered_empty_page_with_next_token() {
 }
 
 #[tokio::test]
-async fn list_tables_omits_metric_views() {
-    let uc = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/api/2.1/unity-catalog/tables"))
-        .and(query_param("catalog_name", "main"))
-        .and(query_param("schema_name", "default"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "tables": [
-                {
-                    "name": "events",
-                    "catalog_name": "main",
-                    "schema_name": "default",
-                    "table_type": "MANAGED"
-                },
-                {
-                    "name": "metrics",
-                    "catalog_name": "main",
-                    "schema_name": "default",
-                    "table_type": "METRIC_VIEW"
-                }
-            ]
-        })))
-        .expect(1)
-        .mount(&uc)
-        .await;
-
-    let response = build_app(uc.uri())
-        .oneshot(rpc_request(
+async fn table_and_view_lists_keep_only_their_own_kind() {
+    // A row of no known table_type, such as a type added by a newer UC server,
+    // is skipped rather than failing the page.
+    let row = |name: &str, table_type: Option<&str>| {
+        let mut row = serde_json::json!({
+            "name": name,
+            "catalog_name": "main",
+            "schema_name": "default"
+        });
+        if let Some(table_type) = table_type {
+            row["table_type"] = table_type.into();
+        }
+        row
+    };
+    let reply = serde_json::json!({"tables": [
+        row("events", Some("MANAGED")),
+        row("metrics", Some("METRIC_VIEW")),
+        row("future", Some("SOME_NEW_TYPE")),
+        row("untyped", None),
+    ]});
+    // (service, rpc, response field, expected full name)
+    let cases = [
+        (
             "TableService",
             "ListTables",
-            serde_json::json!({
-                "schema": {"catalogName": "main", "name": "default"}
-            }),
-        ))
-        .await
-        .unwrap();
+            "tables",
+            "main.default.events",
+        ),
+        ("ViewService", "ListViews", "views", "main.default.metrics"),
+    ];
+    for (service, rpc, field, expected) in cases {
+        let uc = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/2.1/unity-catalog/tables"))
+            .and(query_param("catalog_name", "main"))
+            .and(query_param("schema_name", "default"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(reply.clone()))
+            .expect(1)
+            .mount(&uc)
+            .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let json = body_json(response).await;
-    let names: Vec<_> = json["tables"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|table| table["fullName"].as_str().unwrap())
-        .collect();
-    assert_eq!(names, ["main.default.events"]);
+        let response = build_app(uc.uri())
+            .oneshot(rpc_request(
+                service,
+                rpc,
+                serde_json::json!({
+                    "schema": {"catalogName": "main", "name": "default"}
+                }),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK, "{rpc}");
+        let json = body_json(response).await;
+        let names: Vec<_> = json[field]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["fullName"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, [expected], "{rpc}");
+    }
 }
 
 #[tokio::test]
@@ -739,15 +755,6 @@ async fn malformed_uc_replies_map_to_internal() {
                 "table_type": "MANAGED"
             }]}),
             "Invalid response from Unity Catalog server: missing or invalid name",
-        ),
-        (
-            list_tables.clone(),
-            serde_json::json!({"tables": [{
-                "name": "t",
-                "catalog_name": "main",
-                "schema_name": "default"
-            }]}),
-            "Invalid response from Unity Catalog server: missing or unknown table_type",
         ),
         (
             list_tables,

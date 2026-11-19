@@ -80,15 +80,12 @@ enum TableKind {
 }
 
 impl TableKind {
-    /// Classifies a UC table resource. A reply with no known `table_type` is
-    /// an error, so an unclassified resource is never treated as a table.
-    fn of(table: &Value) -> Result<Self, ConnectError> {
+    /// Classifies a UC table resource; `None` when it has no known `table_type`.
+    fn of(table: &Value) -> Option<Self> {
         match mapping::table_type(table.get("table_type").and_then(Value::as_str)).as_known() {
-            Some(TableType::MetricView) => Ok(Self::MetricView),
-            Some(TableType::Unspecified) | None => {
-                Err(mapping::invalid_response("missing or unknown table_type"))
-            }
-            Some(_) => Ok(Self::Table),
+            Some(TableType::MetricView) => Some(Self::MetricView),
+            Some(TableType::Unspecified) | None => None,
+            Some(_) => Some(Self::Table),
         }
     }
 
@@ -100,26 +97,38 @@ impl TableKind {
     }
 }
 
+/// Describes how a single table resource differs from `expected`. A resource
+/// of no known kind is an error, so it is never read or deleted as a table.
 fn kind_mismatch(
     table: &Value,
     full_name: &str,
     expected: TableKind,
 ) -> Result<Option<String>, ConnectError> {
-    let actual = TableKind::of(table)?;
+    let actual = TableKind::of(table)
+        .ok_or_else(|| mapping::invalid_response("missing or unknown table_type"))?;
     Ok((actual != expected)
         .then(|| format!("{full_name} is {}, not {}", actual.noun(), expected.noun())))
 }
 
-/// Keeps the rows of one kind from a UC table list; a row of unknown kind
-/// fails the whole list.
-fn rows_of_kind(rows: &[Value], kind: TableKind) -> Result<Vec<&Value>, ConnectError> {
-    let mut kept = Vec::new();
-    for row in rows {
-        if TableKind::of(row)? == kind {
-            kept.push(row);
-        }
-    }
-    Ok(kept)
+/// Keeps the rows of one kind from a UC table list. A row of no known kind is
+/// skipped and logged rather than failing the page, so a table type added by a
+/// newer UC server does not break the list.
+fn rows_of_kind(rows: &[Value], kind: TableKind) -> Vec<&Value> {
+    rows.iter()
+        .filter(|row| match TableKind::of(row) {
+            Some(actual) => actual == kind,
+            None => {
+                let name = row.get("name").and_then(Value::as_str);
+                let table_type = row.get("table_type").and_then(Value::as_str);
+                tracing::warn!(
+                    name,
+                    table_type,
+                    "skipping a listed table with no known table_type"
+                );
+                false
+            }
+        })
+        .collect()
 }
 
 fn table_path(full_name: &str) -> String {
