@@ -306,7 +306,8 @@ class S3CredPropsTest extends CredPropsBaseTest {
     }
 
     // Hadoop's own defaults, such as S3A's default provider list, read the keys set here, so the
-    // vended keys sign: the id is the same for every user, and for the next load's keys too.
+    // vended keys sign: the id is the same for every user. Nothing renews these keys, so the next
+    // load's keys get their own id.
     Map<String, String> firstLoad =
         tableCredProps(false, /* credScopedFs= */ true, new Configuration(), awsA);
     assertThat(firstLoad)
@@ -324,7 +325,7 @@ class S3CredPropsTest extends CredPropsBaseTest {
     URI table = URI.create("s3://bucket/a");
     assertThat(idAs("alice", first, table))
         .isEqualTo(idAs("bob", first, table))
-        .isEqualTo(idAs("alice", next, table));
+        .isNotEqualTo(idAs("alice", next, table));
     // The vended keys sign: one credential without renewal, or several with it.
     assertThat(tableCredProps(false, awsA))
         .containsEntry(UCHadoopConfConstants.UC_VENDED_S3_KEYS_PREFIX + "bucket", "true");

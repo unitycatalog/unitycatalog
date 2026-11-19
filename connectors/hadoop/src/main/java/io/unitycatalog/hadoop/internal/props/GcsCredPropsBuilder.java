@@ -4,6 +4,7 @@ import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 
 /** Builds GCS credential properties. */
@@ -78,7 +79,7 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setInitFixedCredKeys(GenericCredential cred) {
+  protected Map<String, String> initFixedCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof GcsCredential,
         "Expected GcsCredential, but got %s",
@@ -86,7 +87,10 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
     GcsCredential gcs = (GcsCredential) cred;
     Long expirationTime =
         gcs.expirationTimeMillis() == null ? Long.MAX_VALUE : gcs.expirationTimeMillis();
-    set(GCS_ACCESS_TOKEN_KEY, gcs.oauthToken());
-    set(GCS_ACCESS_TOKEN_EXPIRATION_KEY, String.valueOf(expirationTime));
+    return Map.of(
+        GCS_ACCESS_TOKEN_KEY,
+        gcs.oauthToken(),
+        GCS_ACCESS_TOKEN_EXPIRATION_KEY,
+        String.valueOf(expirationTime));
   }
 }

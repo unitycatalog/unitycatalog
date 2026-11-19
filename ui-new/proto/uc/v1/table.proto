@@ -55,8 +55,6 @@ message TableInfo {
   Properties properties = 10;
   AuditInfo audit = 11;
   string id = 12;
-  string view_definition = 13;
-  repeated Dependency dependencies = 14;
 }
 
 // ListTablesRequest lists non-metric-view tables in a schema.
@@ -79,7 +77,8 @@ message ListTablesResponse {
   PageResponse page = 2;
 }
 
-// GetTableRequest selects a non-metric-view table.
+// GetTableRequest selects a non-metric-view table. A metric view at this name
+// is NOT_FOUND.
 message GetTableRequest {
   SchemaObjectRef table = 1 [(buf.validate.field).required = true];
 }
@@ -125,7 +124,11 @@ message CreateTableResponse {
   TableInfo table = 1 [(buf.validate.field).required = true];
 }
 
-// DeleteTableRequest deletes a non-metric-view table.
+// DeleteTableRequest deletes a non-metric-view table. Metric views share UC's
+// table resource, so the bridge reads the kind first; a metric view at this
+// name is FAILED_PRECONDITION and nothing is deleted. The read and the delete
+// are separate UC calls, so the check is best effort against a concurrent
+// drop-and-recreate.
 message DeleteTableRequest {
   SchemaObjectRef table = 1 [(buf.validate.field).required = true];
 }

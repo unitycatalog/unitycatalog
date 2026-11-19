@@ -129,18 +129,13 @@ message ColumnInfo {
     max_len: 255
   }];
   optional string type_text = 2 [(buf.validate.field).string.max_len = 65536];
-  optional string type_json = 3 [(buf.validate.field).string.max_len = 1048576];
   ColumnTypeName type_name = 4 [(buf.validate.field).enum = {
     defined_only: true
     not_in: 0
   }];
-  optional int32 type_precision = 5 [(buf.validate.field).int32.gte = 0];
-  optional int32 type_scale = 6 [(buf.validate.field).int32.gte = 0];
-  optional string type_interval_type = 7 [(buf.validate.field).string.max_len = 255];
   optional int32 position = 8 [(buf.validate.field).int32.gte = 0];
   optional string comment = 9 [(buf.validate.field).string.max_len = 65536];
   optional bool nullable = 10;
-  optional int32 partition_index = 11 [(buf.validate.field).int32.gte = 0];
 }
 
 // ColumnInput contains the scalar column fields supplied by the UI.

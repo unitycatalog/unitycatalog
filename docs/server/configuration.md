@@ -74,6 +74,9 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.iceberg-table.enabled`: Turns on the write endpoints of the [Iceberg REST catalog](../usage/api/iceberg.md),
+    such as creating, committing to, renaming and dropping tables. Defaults to `true`. Set it to `false` to reject
+    namespace and table changes through the Iceberg REST catalog. Tables that were already created stay readable.
 - `server.schema-management`: `flyway` (the default): the schema steps manage the schema, and
     `bin/start-uc-server --upgrade-schema` applies them; in this mode the server doesn't change the schema at start (see
     [Upgrading the database schema](upgrades.md)). `hibernate`: a temporary fallback where Hibernate updates the

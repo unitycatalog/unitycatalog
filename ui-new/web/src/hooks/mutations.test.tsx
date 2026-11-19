@@ -47,7 +47,7 @@ import {
   makeQueryClient,
   makeTransport,
   renderHookWithProviders,
-  type UcHandler,
+  type RpcHandlers,
 } from "@/test/providers";
 
 type CatalogHooks = {
@@ -208,16 +208,15 @@ describe("domain mutation hooks", () => {
   // refetch apart from a stale mark.
   function catalogDetail(name: string) {
     const requests = { count: 0 };
-    const handler: UcHandler = ({ method, path }) => {
-      if (
-        method === "GET" &&
-        path === `/api/2.1/unity-catalog/catalogs/${name}`
-      ) {
-        requests.count += 1;
-      }
-      return { httpStatus: 200, ok: true, body: JSON.stringify({ name }) };
+    const rpc: RpcHandlers = {
+      catalogs: {
+        getCatalog(request) {
+          if (request.catalog?.name === name) requests.count += 1;
+          return { catalog: { name: request.catalog?.name ?? "" } };
+        },
+      },
     };
-    return { requests, handler };
+    return { requests, rpc };
   }
 
   function cachedCatalogDetail(client: QueryClient) {
@@ -231,10 +230,10 @@ describe("domain mutation hooks", () => {
   }
 
   it("refetches the detail of an edited catalog", async () => {
-    const { requests, handler } = catalogDetail("main");
+    const { requests, rpc } = catalogDetail("main");
     const { result } = renderHookWithProviders(
       () => ({ detail: useGetCatalog("main"), update: useUpdateCatalog() }),
-      { handler },
+      { rpc },
     );
     await waitFor(() => expect(result.current.detail.isSuccess).toBe(true));
 
@@ -346,14 +345,14 @@ describe("domain mutation hooks", () => {
     "marks a $change catalog's detail stale without refetching it",
     async ({ mutate }) => {
       const client = makeQueryClient();
-      const { requests, handler } = catalogDetail("old");
+      const { requests, rpc } = catalogDetail("old");
       const { result } = renderHookWithProviders(
         (): CatalogHooks => ({
           detail: useGetCatalog("old"),
           update: useUpdateCatalog(),
           remove: useDeleteCatalog(),
         }),
-        { client, handler },
+        { client, rpc },
       );
       await waitFor(() => expect(result.current.detail.isSuccess).toBe(true));
 

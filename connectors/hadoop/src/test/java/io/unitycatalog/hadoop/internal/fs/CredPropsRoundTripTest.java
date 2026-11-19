@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +57,7 @@ class CredPropsRoundTripTest {
     AWS(
         "s3",
         "s3://bucket",
+        "fs.s3a.access.key",
         UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME,
         UCHadoopConfConstants.S3A_INIT_ACCESS_KEY,
         UCHadoopConfConstants.S3A_INIT_SECRET_KEY,
@@ -63,22 +65,32 @@ class CredPropsRoundTripTest {
     AZURE(
         "abfss",
         "abfss://container@account.dfs.core.windows.net",
+        "fs.azure.sas.fixed.token",
         UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
         UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN),
     GCS(
         "gs",
         "gs://bucket",
+        "fs.gs.auth.access.token.credential",
         UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
         UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN);
 
     final String scheme;
     final String root;
+    // The key that carries the credential when it is not renewed.
+    final String fixedCredentialKey;
     final String expirationKey;
     final List<String> initialCredentialKeys;
 
-    Cloud(String scheme, String root, String expirationKey, String... initialCredentialKeys) {
+    Cloud(
+        String scheme,
+        String root,
+        String fixedCredentialKey,
+        String expirationKey,
+        String... initialCredentialKeys) {
       this.scheme = scheme;
       this.root = root;
+      this.fixedCredentialKey = fixedCredentialKey;
       this.expirationKey = expirationKey;
       this.initialCredentialKeys = Arrays.asList(initialCredentialKeys);
     }
@@ -267,6 +279,38 @@ class CredPropsRoundTripTest {
     }
   }
 
+  @ParameterizedTest
+  @EnumSource(Cloud.class)
+  void reloadWithoutRenewalUsesFreshlyVendedCredential(Cloud cloud) throws Exception {
+    URI uri = new URI(cloud.location() + "/part-0.parquet");
+    mockFetcher(cloud.credential("first", cloud.location()));
+    Configuration firstLoad = createTableCredProps(cloud, /* renewCredEnabled= */ false);
+    FileSystem firstDelegate = getDelegateFileSystem(uri, firstLoad);
+    assertThat(firstDelegate.getConf().get(cloud.fixedCredentialKey)).startsWith("first");
+
+    // Nothing renews the credential of the first load's delegate, so a later load of the table
+    // that vends a new credential must not be served by it.
+    mockFetcher(cloud.credential("second", cloud.location()));
+    FileSystem secondDelegate =
+        getDelegateFileSystem(uri, createTableCredProps(cloud, /* renewCredEnabled= */ false));
+    assertThat(secondDelegate).isNotSameAs(firstDelegate);
+    assertThat(secondDelegate.getConf().get(cloud.fixedCredentialKey)).startsWith("second");
+    // The first load's own requests keep their delegate.
+    assertThat(getDelegateFileSystem(uri, firstLoad)).isSameAs(firstDelegate);
+  }
+
+  @ParameterizedTest
+  @EnumSource(Cloud.class)
+  void reloadWithoutRenewalOfTheSameCredentialReusesDelegate(Cloud cloud) throws Exception {
+    URI uri = new URI(cloud.location() + "/part-0.parquet");
+    mockFetcher(cloud.credential("same", cloud.location()));
+    FileSystem firstDelegate =
+        getDelegateFileSystem(uri, createTableCredProps(cloud, /* renewCredEnabled= */ false));
+    assertThat(
+            getDelegateFileSystem(uri, createTableCredProps(cloud, /* renewCredEnabled= */ false)))
+        .isSameAs(firstDelegate);
+  }
+
   private static Stream<Arguments> cloudsAndPrefixes() {
     return Arrays.stream(Cloud.values())
         .flatMap(
@@ -343,13 +387,19 @@ class CredPropsRoundTripTest {
 
   /** Runs the real encoder for a renewable table request against the current fetcher. */
   private static Configuration createTableCredProps(Cloud cloud) throws Exception {
+    return createTableCredProps(cloud, /* renewCredEnabled= */ true);
+  }
+
+  /** Runs the real encoder for a table request against the current fetcher. */
+  private static Configuration createTableCredProps(Cloud cloud, boolean renewCredEnabled)
+      throws Exception {
     Configuration encoderConf = new Configuration(false);
     // Disable the credential cache so each test uses a fresh fetcher.
     encoderConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
     encoderConf.set("fs." + cloud.scheme + ".impl", RawLocalFileSystem.class.getName());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
-            /* renewCredEnabled= */ true,
+            renewCredEnabled,
             /* credScopedFsEnabled= */ true,
             encoderConf,
             cloud.scheme,
@@ -368,12 +418,17 @@ class CredPropsRoundTripTest {
   /** Runs the real decoder and returns the selected delegate's effective configuration. */
   private static Configuration getDelegateFileSystemConf(URI uri, Configuration conf)
       throws Exception {
-    CredScopedFileSystem fs = new CredScopedFileSystem();
-    fs.initialize(uri, conf);
-    Configuration delegateConf = fs.getRawFileSystem().getConf();
+    Configuration delegateConf = getDelegateFileSystem(uri, conf).getConf();
     // The encoder cache setting is not propagated to the decoded provider configuration.
     delegateConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
     return delegateConf;
+  }
+
+  /** Runs the real decoder and returns the selected delegate. */
+  private static FileSystem getDelegateFileSystem(URI uri, Configuration conf) throws Exception {
+    CredScopedFileSystem fs = new CredScopedFileSystem();
+    fs.initialize(uri, conf);
+    return fs.getRawFileSystem();
   }
 
   private static void mockFetcher(GenericCredential... credentials) {

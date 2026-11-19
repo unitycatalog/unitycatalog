@@ -1,217 +1,71 @@
-use axum::body::Bytes;
-use axum::extract::State;
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::http::header;
+use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
 use percent_encoding::percent_decode_str;
-use serde::{Deserialize, Serialize};
 
-use crate::{AppState, FORWARDED_HEADERS};
+use crate::proto::uc::v1::{CallRequest, CallResponse, UnityProxyService};
+use crate::services::UiRpc;
 
+// Auth, SCIM, and permission replies are small, so the proxy reads less than
+// the typed services do.
 const MAX_RESPONSE_SIZE: usize = 4 * 1024 * 1024;
 
-#[derive(Debug, Default, Deserialize)]
-pub struct KeyValue {
-    #[serde(default)]
-    pub key: String,
-    #[serde(default)]
-    pub value: String,
-}
-
-/// Connect JSON body of uc.v1.UnityProxyService/Call. Field names follow the
-/// proto3 JSON mapping (lowerCamelCase), matching what connect-web sends.
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CallRequest {
-    #[serde(default)]
-    pub server_url: String,
-    #[serde(default)]
-    pub token: String,
-    #[serde(default)]
-    pub method: String,
-    #[serde(default)]
-    pub path: String,
-    #[serde(default)]
-    pub query: Vec<KeyValue>,
-    #[serde(default)]
-    pub json_body: String,
-    #[serde(default)]
-    pub content_type: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CallResponse {
-    pub http_status: i32,
-    pub body: String,
-    pub ok: bool,
-}
-
-/// A Connect protocol error: the mapped HTTP status plus a `{code, message}`
-/// JSON body, which connect-web decodes into a ConnectError on the client.
-fn connect_error(status: StatusCode, code: &str, message: &str) -> Response {
-    (
-        status,
-        Json(serde_json::json!({ "code": code, "message": message })),
-    )
-        .into_response()
-}
-
-/// Handles uc.v1.UnityProxyService/Call: forwards the described REST call to the
-/// Unity Catalog server and returns its status + body. Auth is cookie-based, so
-/// the incoming `Cookie` header is forwarded to UC and any `Set-Cookie` from UC
-/// is propagated back onto this (same-origin) response — the auth realm now sits
-/// on the bridge's origin, since the browser talks to the bridge, not UC.
-pub async fn call_handler(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    let req: CallRequest = match serde_json::from_slice(&body) {
-        Ok(r) => r,
-        Err(e) => {
-            return connect_error(
-                StatusCode::BAD_REQUEST,
-                "invalid_argument",
-                &format!("invalid request body: {e}"),
-            )
+#[protovalidate_buffa::connect_impl]
+impl UnityProxyService for UiRpc {
+    async fn call(
+        &self,
+        ctx: RequestContext,
+        request: ServiceRequest<'_, CallRequest>,
+    ) -> ServiceResult<CallResponse> {
+        if request.path.is_empty() {
+            return Err(ConnectError::invalid_argument("path is required"));
         }
-    };
 
-    if req.path.is_empty() {
-        return connect_error(
-            StatusCode::BAD_REQUEST,
-            "invalid_argument",
-            "path is required",
-        );
-    }
-    if !req.server_url.is_empty() {
-        return connect_error(
-            StatusCode::BAD_REQUEST,
-            "invalid_argument",
-            "serverUrl is not supported",
-        );
-    }
-    // The browser's Authorization header is the one source of a bearer token.
-    if !req.token.is_empty() {
-        return connect_error(
-            StatusCode::BAD_REQUEST,
-            "invalid_argument",
-            "token is not supported; send an Authorization header",
-        );
-    }
-
-    let method = if req.method.is_empty() {
-        reqwest::Method::GET
-    } else {
-        match reqwest::Method::from_bytes(req.method.to_uppercase().as_bytes()) {
-            Ok(method) => method,
-            Err(_) => {
-                return connect_error(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_argument",
-                    "method is invalid",
-                )
-            }
-        }
-    };
-    if !is_allowed_call(&method, &req.path) {
-        return connect_error(
-            StatusCode::FORBIDDEN,
-            "permission_denied",
-            "proxy call is not allowed",
-        );
-    }
-    let url = format!(
-        "{}{}",
-        state.config.uc_server.trim_end_matches('/'),
-        req.path
-    );
-
-    let mut rb = state.http.request(method, &url);
-
-    let query: Vec<(&str, &str)> = req
-        .query
-        .iter()
-        .filter(|kv| !kv.key.is_empty())
-        .map(|kv| (kv.key.as_str(), kv.value.as_str()))
-        .collect();
-    if !query.is_empty() {
-        rb = rb.query(&query);
-    }
-
-    for name in FORWARDED_HEADERS {
-        if let Some(value) = headers.get(&name) {
-            rb = rb.header(name, value);
-        }
-    }
-    if !req.json_body.is_empty() {
-        let content_type = if req.content_type.is_empty() {
-            "application/json"
+        let method = if request.method.is_empty() {
+            reqwest::Method::GET
         } else {
-            req.content_type.as_str()
+            reqwest::Method::from_bytes(request.method.to_uppercase().as_bytes())
+                .map_err(|_| ConnectError::invalid_argument("method is invalid"))?
         };
-        rb = rb
-            .header(header::CONTENT_TYPE, content_type)
-            .body(req.json_body.clone());
-    }
-
-    let mut upstream = match rb.send().await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(%e, "Unity Catalog proxy request failed");
-            return connect_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "unavailable",
-                "Unity Catalog server is unavailable",
-            );
+        if !is_allowed_call(&method, request.path) {
+            return Err(ConnectError::permission_denied("proxy call is not allowed"));
         }
-    };
 
-    let status = upstream.status();
-    let set_cookies: Vec<HeaderValue> = upstream
-        .headers()
-        .get_all(header::SET_COOKIE)
-        .iter()
-        .cloned()
-        .collect();
-    let mut bytes = Vec::new();
-    loop {
-        match upstream.chunk().await {
-            Ok(Some(chunk)) if bytes.len() + chunk.len() <= MAX_RESPONSE_SIZE => {
-                bytes.extend_from_slice(&chunk);
-            }
-            Ok(Some(_)) => {
-                return connect_error(
-                    StatusCode::BAD_GATEWAY,
-                    "internal",
-                    "Unity Catalog response exceeded the proxy limit",
-                )
-            }
-            Ok(None) => break,
-            Err(error) => {
-                tracing::warn!(%error, "failed to read Unity Catalog proxy response");
-                return connect_error(
-                    StatusCode::BAD_GATEWAY,
-                    "internal",
-                    "Invalid response from Unity Catalog server",
-                );
-            }
+        let mut upstream = self.upstream.builder(method, request.path);
+        let query: Vec<_> = request
+            .query
+            .iter()
+            .filter(|item| !item.key.is_empty())
+            .map(|item| (item.key, item.value))
+            .collect();
+        if !query.is_empty() {
+            upstream = upstream.query(&query);
         }
-    }
-    let text = String::from_utf8_lossy(&bytes).into_owned();
+        if !request.json_body.is_empty() {
+            let content_type = if request.content_type.is_empty() {
+                "application/json"
+            } else {
+                request.content_type
+            };
+            upstream = upstream
+                .header(header::CONTENT_TYPE, content_type)
+                .body(request.json_body.to_string());
+        }
 
-    let payload = CallResponse {
-        http_status: status.as_u16() as i32,
-        ok: status.is_success(),
-        body: text,
-    };
-
-    let mut response = (StatusCode::OK, Json(payload)).into_response();
-    for cookie in set_cookies {
-        response.headers_mut().append(header::SET_COOKIE, cookie);
+        let upstream = self
+            .upstream
+            .send(&ctx, upstream, MAX_RESPONSE_SIZE)
+            .await?;
+        let mut response = Response::new(CallResponse {
+            http_status: upstream.status.as_u16().into(),
+            body: String::from_utf8_lossy(&upstream.bytes).into_owned(),
+            ok: upstream.status.is_success(),
+            ..Default::default()
+        });
+        for cookie in upstream.headers.get_all(header::SET_COOKIE) {
+            response.headers.append(header::SET_COOKIE, cookie.clone());
+        }
+        Ok(response)
     }
-    response
 }
 
 fn is_allowed_call(method: &reqwest::Method, path: &str) -> bool {

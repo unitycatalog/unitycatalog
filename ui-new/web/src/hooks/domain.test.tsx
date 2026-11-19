@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { waitFor } from "@testing-library/react";
-import { renderHookWithProviders, type UcHandler } from "@/test/providers";
+import { renderHookWithProviders, type RpcHandlers } from "@/test/providers";
+import { TableType } from "@/gen/uc/v1/table_pb";
 import { useGetCatalog, useListCatalogs } from "@/hooks/catalog";
 import { useGetSchema, useListSchemas } from "@/hooks/schemas";
 import { useGetTable, useListTables } from "@/hooks/tables";
@@ -15,64 +16,52 @@ import {
 } from "@/hooks/models";
 import { useGetView, useListViews } from "@/hooks/views";
 
-// One handler that answers every UC read the domain hooks issue, keyed by path.
-const handler: UcHandler = ({ path, query }) => {
-  const body = (obj: unknown) => ({
-    httpStatus: 200,
-    body: JSON.stringify(obj),
-    ok: true,
-  });
-  if (path === "/api/2.1/unity-catalog/catalogs")
-    return body({ catalogs: [{ name: "main" }] });
-  if (path === "/api/2.1/unity-catalog/catalogs/main")
-    return body({ name: "main", owner: "me" });
-  if (path === "/api/2.1/unity-catalog/schemas")
-    return body({
-      schemas: [
-        {
-          name: "default",
-          catalog_name: query.find((q) => q.key === "catalog_name")?.value,
-        },
-      ],
-    });
-  if (path === "/api/2.1/unity-catalog/schemas/main.default")
-    return body({ name: "default", catalog_name: "main" });
-  if (path === "/api/2.1/unity-catalog/tables")
-    return body({
-      tables: [
-        { name: "t1", table_type: "MANAGED" },
-        { name: "mv1", table_type: "METRIC_VIEW" },
-      ],
-    });
-  if (path === "/api/2.1/unity-catalog/tables/main.default.t1")
-    return body({ name: "t1", table_type: "MANAGED" });
-  if (path === "/api/2.1/unity-catalog/tables/main.default.mv1")
-    return body({
-      name: "mv1",
-      table_type: "METRIC_VIEW",
-      view_definition: "version: 1.1",
-    });
-  if (path === "/api/2.1/unity-catalog/volumes")
-    return body({ volumes: [{ name: "v1" }] });
-  if (path === "/api/2.1/unity-catalog/volumes/main.default.v1")
-    return body({ name: "v1" });
-  if (path === "/api/2.1/unity-catalog/functions")
-    return body({ functions: [{ name: "f1" }] });
-  if (path === "/api/2.1/unity-catalog/functions/main.default.f1")
-    return body({ name: "f1" });
-  if (path === "/api/2.1/unity-catalog/models")
-    return body({ registered_models: [{ name: "m1" }] });
-  if (path === "/api/2.1/unity-catalog/models/main.default.m1")
-    return body({ name: "m1" });
-  if (path === "/api/2.1/unity-catalog/models/main.default.m1/versions")
-    return body({ model_versions: [{ version: 1 }] });
-  if (path === "/api/2.1/unity-catalog/models/main.default.m1/versions/1")
-    return body({ model_name: "m1", version: 1 });
-  return { httpStatus: 404, body: "{}", ok: false };
+const identity = { catalogName: "main", schemaName: "default" };
+const rpc: RpcHandlers = {
+  catalogs: {
+    listCatalogs: () => ({ catalogs: [{ name: "main" }] }),
+    getCatalog: () => ({ catalog: { name: "main", audit: { owner: "me" } } }),
+  },
+  schemas: {
+    listSchemas: () => ({ schemas: [{ ...identity, name: "default" }] }),
+    getSchema: () => ({ schema: { ...identity, name: "default" } }),
+  },
+  tables: {
+    listTables: () => ({
+      tables: [{ ...identity, name: "t1", tableType: TableType.MANAGED }],
+    }),
+    getTable: () => ({
+      table: { ...identity, name: "t1", tableType: TableType.MANAGED },
+    }),
+  },
+  views: {
+    listViews: () => ({ views: [{ ...identity, name: "mv1" }] }),
+    getView: () => ({
+      view: { ...identity, name: "mv1", viewDefinition: "version: 1.1" },
+    }),
+  },
+  volumes: {
+    listVolumes: () => ({ volumes: [{ ...identity, name: "v1" }] }),
+    getVolume: () => ({ volume: { ...identity, name: "v1" } }),
+  },
+  functions: {
+    listFunctions: () => ({ functions: [{ ...identity, name: "f1" }] }),
+    getFunction: () => ({ function: { ...identity, name: "f1" } }),
+  },
+  models: {
+    listRegisteredModels: () => ({ models: [{ ...identity, name: "m1" }] }),
+    getRegisteredModel: () => ({ model: { ...identity, name: "m1" } }),
+    listModelVersions: () => ({
+      versions: [{ ...identity, modelName: "m1", version: 1n }],
+    }),
+    getModelVersion: () => ({
+      modelVersion: { ...identity, modelName: "m1", version: 1n },
+    }),
+  },
 };
 
 async function expectData<T>(hook: () => { data?: T; isSuccess: boolean }) {
-  const { result } = renderHookWithProviders(hook, { handler });
+  const { result } = renderHookWithProviders(hook, { rpc });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   return result.current.data;
 }
@@ -106,26 +95,19 @@ describe("domain read hooks", () => {
   });
 
   it("follows list page tokens and combines every page", async () => {
-    const pagedHandler: UcHandler = ({ path, query }) => {
-      if (path !== "/api/2.1/unity-catalog/catalogs") {
-        return { httpStatus: 404, body: "{}", ok: false };
-      }
-      const pageToken = query.find((item) => item.key === "page_token")?.value;
-      return {
-        httpStatus: 200,
-        ok: true,
-        body: JSON.stringify(
-          pageToken === "next"
+    const pagedRpc: RpcHandlers = {
+      catalogs: {
+        listCatalogs: ({ page }) =>
+          page?.pageToken === "next"
             ? { catalogs: [{ name: "second" }] }
             : {
                 catalogs: [{ name: "first" }],
-                next_page_token: "next",
+                page: { nextPageToken: "next" },
               },
-        ),
-      };
+      },
     };
     const { result } = renderHookWithProviders(() => useListCatalogs(), {
-      handler: pagedHandler,
+      rpc: pagedRpc,
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -133,6 +115,28 @@ describe("domain read hooks", () => {
       "first",
       "second",
     ]);
+  });
+
+  it("rejects pagination token cycles", async () => {
+    const cyclicRpc: RpcHandlers = {
+      catalogs: {
+        listCatalogs: ({ page }) => {
+          const token = page?.pageToken ?? "";
+          return {
+            catalogs: [{ name: token || "first" }],
+            page: { nextPageToken: token === "A" ? "B" : "A" },
+          };
+        },
+      },
+    };
+    const { result } = renderHookWithProviders(() => useListCatalogs(), {
+      rpc: cyclicRpc,
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toMatchObject({
+      message: "Unity Catalog returned a repeated page token",
+    });
   });
 
   it("useListSchemas / useGetSchema", async () => {
@@ -201,7 +205,7 @@ describe("domain read hooks", () => {
 
   it("disables list hooks when args are missing", () => {
     const { result } = renderHookWithProviders(() => useListSchemas(""), {
-      handler,
+      rpc,
     });
     expect(result.current.fetchStatus).toBe("idle");
   });

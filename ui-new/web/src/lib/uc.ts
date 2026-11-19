@@ -19,7 +19,7 @@ export type CallOpts = {
   contentType?: string;
 };
 
-function toKV(query?: Record<string, string | undefined>) {
+export function toKeyValues(query?: Record<string, string | undefined>) {
   const out: { key: string; value: string }[] = [];
   if (!query) return out;
   for (const [key, value] of Object.entries(query)) {
@@ -38,7 +38,7 @@ export async function ucCall(
   const res = await proxyClient.call({
     method,
     path,
-    query: toKV(opts.query),
+    query: toKeyValues(opts.query),
     jsonBody:
       opts.body === undefined || opts.body === null || opts.body === ""
         ? ""

@@ -16,6 +16,7 @@ const PROTO_FILES: &[&str] = &[
     "uc/v1/function.proto",
     "uc/v1/model.proto",
     "uc/v1/view.proto",
+    "uc/v1/proxy.proto",
 ];
 
 fn main() -> Result<()> {
