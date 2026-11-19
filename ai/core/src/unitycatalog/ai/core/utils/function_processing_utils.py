@@ -225,7 +225,7 @@ def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> Pydant
     nullable = type_json.get("nullable")
     pydantic_type = uc_type_json_to_pydantic_type(type_json["type"], strict=strict)
     pydantic_field_type = pydantic_type.pydantic_type
-    if type_json["type"] == "binary":
+    if str(type_json["type"]).lower() == "binary":
         pydantic_field_type = Annotated[pydantic_field_type, BeforeValidator(_decode_base64_text)]
     default = None
     description = param_info.comment or ""

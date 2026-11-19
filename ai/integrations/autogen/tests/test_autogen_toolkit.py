@@ -408,7 +408,7 @@ async def test_tool_keeps_native_binary_arguments(data):
 @pytest.mark.asyncio
 async def test_tool_sends_nested_binary_text_as_its_bytes():
     # Only top-level BINARY values are decoded. Nested ones are still the bytes of their base64
-    # text, as before this change.
+    # text, tracked in https://github.com/unitycatalog/unitycatalog/issues/2298.
     function_info = generate_function_info_with_params_oss(
         {
             "blobs": (
