@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import typing
@@ -26,10 +27,16 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
+    JSON_ARGUMENT_PARAMS,
+    JSON_ARGUMENTS,
+    NATIVE_ARGUMENTS,
     create_function_and_cleanup,
     create_table_function_and_cleanup,
+    generate_function_info_with_params,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 from unitycatalog.client import FunctionInfo as OSSFunctionInfo
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
@@ -643,3 +650,55 @@ async def test_toolkit_with_function_without_params(
         function_name="catalog.schema.get_weather", parameters={}, enable_retriever_tracing=False
     )
     assert json.loads(result) == {"format": "SCALAR", "value": "sunny"}
+
+
+@pytest.mark.parametrize("native", [False, True], ids=["json", "native"])
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+@pytest.mark.asyncio
+async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_async, native):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+    arguments = {**JSON_ARGUMENTS, "data": encoded}
+    tool_call_arguments = {
+        **json.loads(json.dumps(arguments)),
+        **(NATIVE_ARGUMENTS if native else {}),
+    }
+
+    if use_async:
+        await tool.acall(**tool_call_arguments)
+    else:
+        tool(**tool_call_arguments)
+
+    # A native Decimal is sent as its text, as before this change.
+    expected = {**arguments, "amount": "12.5"} if native else arguments
+    assert client.execute_function.call_args.kwargs["parameters"] == expected
+
+
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+def test_tool_function_sends_native_bytes_as_base64_text(encoded):
+    # DSPy rejects bytes passed to the tool against the JSON schema, so this calls the function.
+    function_info = generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS)
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+
+    tool.func(**JSON_ARGUMENTS, data=base64.b64decode(encoded))
+
+    assert client.execute_function.call_args.kwargs["parameters"] == {
+        **JSON_ARGUMENTS,
+        "data": encoded,
+    }
