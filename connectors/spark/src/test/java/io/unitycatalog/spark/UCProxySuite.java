@@ -50,8 +50,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import scala.Option;
 import scala.jdk.javaapi.CollectionConverters;
 
@@ -573,17 +573,25 @@ public class UCProxySuite {
    * Spark caches the relation it resolves for a non-Delta table under the table's name, so DROP and
    * CREATE in this session, and REFRESH TABLE after another client moved the table, must clear that
    * entry, or the session keeps reading the files at the table's previous location. UC is faked by
-   * a map that the test edits directly to stand for another client.
+   * a map that the test edits directly to stand for another client. The mixed-case name checks the
+   * entry is found under the name as UC spells it, not a lowercased one.
    */
   @ParameterizedTest
-  @ValueSource(strings = {"spark_catalog", CATALOG_NAME})
-  public void testReadFollowsTableRecreatedAtAnotherLocation(String catalogName, @TempDir Path dir)
-      throws Exception {
+  @CsvSource({
+    "spark_catalog, t",
+    "spark_catalog, MixedCase_T",
+    CATALOG_NAME + ", t",
+    CATALOG_NAME + ", MixedCase_T"
+  })
+  public void testReadFollowsTableRecreatedAtAnotherLocation(
+      String catalogName, String table, @TempDir Path dir) throws Exception {
     UCProxyTestFixture fixture = new UCProxyTestFixture().build(catalogName);
     Map<String, TableInfo> tables = new HashMap<>();
     fakeTableStore(fixture.mockTablesApi, tables);
-    String tableName = catalogName + "." + SCHEMA_NAME + ".t";
+    String tableName = String.join(".", catalogName, SCHEMA_NAME, table);
     String catalogConf = "spark.sql.catalog." + catalogName;
+    SparkSession.clearActiveSession();
+    SparkSession.clearDefaultSession();
     SparkSession spark =
         SparkSession.builder()
             .master("local[1]")
@@ -601,14 +609,14 @@ public class UCProxySuite {
       assertThat(readId(spark, tableName)).isEqualTo(0);
 
       spark.sql("DROP TABLE " + tableName);
-      tables.put(tableName, parquetTable(catalogName, writeId(spark, dir, 1)));
+      tables.put(tableName, parquetTable(catalogName, table, writeId(spark, dir, 1)));
       assertThat(readId(spark, tableName)).isEqualTo(1);
 
       tables.remove(tableName);
       spark.sql(String.format(createSql, writeId(spark, dir, 2)));
       assertThat(readId(spark, tableName)).isEqualTo(2);
 
-      tables.put(tableName, parquetTable(catalogName, writeId(spark, dir, 3)));
+      tables.put(tableName, parquetTable(catalogName, table, writeId(spark, dir, 3)));
       spark.sql("REFRESH TABLE " + tableName);
       assertThat(readId(spark, tableName)).isEqualTo(3);
     } finally {
@@ -631,7 +639,9 @@ public class UCProxySuite {
         .thenAnswer(
             invocation -> {
               CreateTable create = invocation.getArgument(0);
-              TableInfo table = parquetTable(create.getCatalogName(), create.getStorageLocation());
+              TableInfo table =
+                  parquetTable(
+                      create.getCatalogName(), create.getName(), create.getStorageLocation());
               tables.put(
                   String.join(
                       ".", create.getCatalogName(), create.getSchemaName(), create.getName()),
@@ -650,12 +660,12 @@ public class UCProxySuite {
     ((DelegatingCatalogExtension) catalog.delegate()).setDelegateCatalog(proxy);
   }
 
-  private static TableInfo parquetTable(String catalogName, String location) {
+  private static TableInfo parquetTable(String catalogName, String table, String location) {
     return new TableInfo()
         .catalogName(catalogName)
         .schemaName(SCHEMA_NAME)
-        .name("t")
-        .tableId("table-id-t")
+        .name(table)
+        .tableId("table-id-" + table)
         .tableType(TableType.EXTERNAL)
         .dataSourceFormat(DataSourceFormat.PARQUET)
         .storageLocation(location)

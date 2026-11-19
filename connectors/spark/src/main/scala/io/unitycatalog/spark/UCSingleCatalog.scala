@@ -1340,8 +1340,15 @@ private[spark] class UCProxy(
    */
   override def invalidateTable(ident: Identifier): Unit = {
     if (UCSingleCatalog.isAddressableTableName(ident)) {
-      SparkSession.getActiveSession.foreach(_.sessionState.catalog.invalidateCachedTable(
-        QualifiedTableName(name(), ident.namespace().head, ident.name())))
+      SparkSession.getActiveSession match {
+        case Some(spark) =>
+          // Must match the identifier `loadV1Table` builds, which Spark keys the relation by.
+          spark.sessionState.catalog.invalidateCachedTable(
+            QualifiedTableName(name(), ident.namespace().head, ident.name()))
+        case None =>
+          logWarning(
+            s"No active SparkSession, so the cached relation of table $ident was not invalidated.")
+      }
     }
   }
 
