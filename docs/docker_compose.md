@@ -36,6 +36,26 @@ docker compose down --volumes --remove-orphans
 Refer to the main [Quickstart](quickstart.md) for more examples of how to
 interact with the catalog.
 
+## Server image contents
+
+The server image contains the server, the `bin/uc` CLI, their runtime dependencies,
+configuration, and sample data. It is not a development image: it does not contain
+complete source trees, API specifications, sbt and the build scripts, or the full
+dependency cache. Some paths under `clients/` and `target/` are present because the
+generated classpath files reference them; do not rely on other build artifacts
+being present.
+
+Java 17 is a linked runtime with all JDK modules and their tools, including `javac`
+and `keytool`, but without `jmods`, development headers, or JDK sources. To build
+applications or create another runtime with `jlink`, use a full JDK in a separate
+build stage rather than building on this image.
+
+The server runs as uid 100 and gid 101. Its home is `/home/unitycatalog`. The build
+artifacts are read-only by default, and the server has write access under `etc/`
+for configuration, logs, the database, and sample data. The container starts the
+server with `bin/start-uc-server`, and the server reads its configuration from
+`etc/conf/`.
+
 ## Configurations
 
 Docker Compose is configured in the `./compose.yaml` file.

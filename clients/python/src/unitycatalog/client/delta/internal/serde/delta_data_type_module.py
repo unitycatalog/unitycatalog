@@ -48,8 +48,10 @@ def _parse_type(obj):
                 value_type=_parse_type(obj.get("value-type")),
                 value_contains_null=obj.get("value-contains-null", True))
         if t == "struct":
-            fields = [_parse_field(f) for f in obj.get("fields", [])]
-            return DeltaStructType(type=t, fields=fields)
+            fields = obj.get("fields", [])
+            if not isinstance(fields, list):
+                raise ValueError("Expected a list for struct 'fields', got: {}".format(obj))
+            return DeltaStructType(type=t, fields=[_parse_field(f) for f in fields])
         if t:
             return DeltaPrimitiveType(type=t)
         raise ValueError("dict type value missing 'type' field: {}".format(obj))
@@ -108,8 +110,12 @@ def _patched_dt_from_dict(cls, obj):
 def _patched_struct_from_dict(cls, obj):
     if obj is None:
         return None
+    # Rejects malformed input before parsing it.
+    if not isinstance(obj, dict) or not isinstance(obj.get("fields"), list):
+        raise ValueError("Expected a struct type with 'fields', got: {}".format(obj))
     parsed = _parse_type(obj)
-    if not isinstance(obj, dict) or "fields" not in obj or not isinstance(parsed, DeltaStructType):
+    # Rejects input that parses to another type, such as an array that also has "fields".
+    if not isinstance(parsed, DeltaStructType):
         raise ValueError("Expected a struct type with 'fields', got: {}".format(obj))
     return parsed
 
