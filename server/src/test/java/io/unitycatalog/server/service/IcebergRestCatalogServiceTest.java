@@ -201,7 +201,7 @@ public class IcebergRestCatalogServiceTest {
   }
 
   @Test
-  public void loadCredentialsRejectsMissingReadAccess() {
+  public void loadCredentialsRejectsDeniedOrUnavailableReadAccess() {
     UUID tableId = UUID.randomUUID();
     UUID principalId = UUID.randomUUID();
     UUID catalogId = UUID.randomUUID();
@@ -239,6 +239,13 @@ public class IcebergRestCatalogServiceTest {
     verify(authorizer)
         .authorizeAny(
             principalId, SecurableType.TABLE, tableId, Privileges.OWNER, Privileges.SELECT);
+
+    BaseException unavailable =
+        new BaseException(ErrorCode.UNAVAILABLE, "Authorization service is unavailable");
+    when(authorizer.authorizeAny(any(), any(), any(), any(Privileges[].class)))
+        .thenThrow(unavailable);
+    assertThatThrownBy(() -> service.loadCredentials("cat", "ns", "tbl")).isSameAs(unavailable);
+
     verifyNoInteractions(tableConfigService);
     verify(authorizer, never()).refreshAuthorizations(anyLong());
   }

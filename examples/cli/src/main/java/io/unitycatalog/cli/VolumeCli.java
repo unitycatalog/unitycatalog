@@ -7,12 +7,14 @@ import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.GenerateTemporaryVolumeCredential;
+import io.unitycatalog.client.model.ListVolumesResponseContent;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeOperation;
@@ -89,29 +91,28 @@ public class VolumeCli {
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
     String schemaName = json.getString(CliParams.SCHEMA_NAME.getServerParam());
-    int maxResults = 100;
-    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
-      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
-    }
-    String pageToken = null;
-    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
-      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
-    }
     return objectWriter.writeValueAsString(
-        volumesApi.listVolumes(catalogName, schemaName, maxResults, pageToken).getVolumes());
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) ->
+                volumesApi.listVolumes(
+                    catalogName, schemaName, maxResults, pageToken, /* includeBrowse= */ false),
+            ListVolumesResponseContent::getVolumes,
+            ListVolumesResponseContent::getNextPageToken));
   }
 
   private static String getVolume(VolumesApi volumesApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    return objectWriter.writeValueAsString(volumesApi.getVolume(volumeFullName));
+    return objectWriter.writeValueAsString(
+        volumesApi.getVolume(volumeFullName, /* includeBrowse= */ false));
   }
 
   private static String writeRandomFileInVolume(
       VolumesApi volumesApi, TemporaryCredentialsApi tempCredApi, JSONObject json)
       throws ApiException {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName);
+    VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName, /* includeBrowse= */ false);
     String volumeLocation = volumeInfo.getStorageLocation();
     URI baseURI = URI.create(volumeLocation);
     Configuration conf =
@@ -162,7 +163,7 @@ public class VolumeCli {
       VolumesApi volumesApi, TemporaryCredentialsApi tempCredApi, JSONObject json)
       throws ApiException {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName);
+    VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName, /* includeBrowse= */ false);
     String volumeLocation = volumeInfo.getStorageLocation();
     String relativePath =
         json.has(CliParams.PATH.getServerParam())

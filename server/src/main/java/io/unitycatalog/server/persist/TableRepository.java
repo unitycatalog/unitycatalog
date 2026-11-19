@@ -23,6 +23,7 @@ import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.observability.TableMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
@@ -46,7 +47,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -365,19 +365,22 @@ public class TableRepository {
           DeltaUpdateTableMapper.checkTableUuidRequirement(dao, collected);
           String preApplyEtag = DeltaUpdateTableMapper.computeEtag(dao);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
-          // A set-columns request is checked against the table's current state, which would
-          // wrongly reject a replay. Settle a taken add-commit version first, so the replay or
-          // conflict is reported as the commit path would. Other requests need no extra read.
-          if (collected.updates().hasSetSchema()) {
-            collected
-                .updates()
-                .addCommitInfo()
-                .ifPresent(
-                    ci ->
-                        repositories
-                            .getDeltaCommitRepository()
-                            .throwIfCommitVersionTaken(session, dao, ci));
-          }
+          boolean hadUniformMetadata = dao.getIcebergMetadataLocation() != null;
+          // The request is validated against the table's current state, which would wrongly
+          // reject a replay of an add-commit whose changes a later commit superseded. Settle a
+          // taken add-commit version first, so the replay or conflict is reported as the commit
+          // path would. The commit log head read here is reused by the commit below. Only
+          // MANAGED tables take commits; others reach the mapper's MANAGED check unchanged.
+          Optional<List<DeltaCommitDAO>> newestCommits =
+              collected
+                  .updates()
+                  .addCommitInfo()
+                  .filter(ci -> TableType.MANAGED.toString().equals(dao.getType()))
+                  .map(
+                      ci ->
+                          repositories
+                              .getDeltaCommitRepository()
+                              .readNewestCommitsOrThrowIfTaken(session, dao, ci));
           // The commit path throws CommitAlreadyAcceptedException on an idempotent replay (caught
           // in updateTableForDelta); everything applied above is rolled back with it.
           DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
@@ -391,6 +394,7 @@ public class TableRepository {
                               d.commit(),
                               d.uniformFields(),
                               d.latestBackfilledVersion(),
+                              newestCommits,
                               filesChecked));
           // Non-replay only (a replay already threw out): enforce assert-etag against pre-apply
           // state, rolling back the applied changes on mismatch.
@@ -398,8 +402,10 @@ public class TableRepository {
           properties.flush(session, dao.getId());
           // updatedAt/updatedBy track the last change to the table's catalog-visible metadata.
           // Data-only add-commit and backfill-only requests change no metadata, so they must
-          // not advance these fields.
-          if (collected.updates().changesTableMetadata()) {
+          // not advance these fields unless they cleared stale UniForm metadata.
+          boolean clearedUniformMetadata =
+              hadUniformMetadata && dao.getIcebergMetadataLocation() == null;
+          if (collected.updates().changesTableMetadata() || clearedUniformMetadata) {
             dao.setUpdatedAt(new Date());
             dao.setUpdatedBy(callerId);
           }
@@ -821,17 +827,11 @@ public class TableRepository {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     DataSourceFormat format = createTable.getDataSourceFormat();
     // `columns` arrives as null (not an empty list) when a client omits the field entirely, so
-    // normalize before streaming. Whether an empty column list is acceptable is a per-table-type
+    // normalize before validating. Whether an empty column list is acceptable is a per-table-type
     // rule decided in the create branches below, and those checks must be the ones that reject the
     // request so the caller gets INVALID_ARGUMENT instead of an NPE here.
-    List<ColumnInfo> columnInfos =
-        Optional.ofNullable(createTable.getColumns()).orElse(List.of()).stream()
-            .map(
-                c -> {
-                  ColumnUtils.validateTypeJson(c, format);
-                  return c.typeText(c.getTypeText().toLowerCase(Locale.ROOT));
-                })
-            .toList();
+    List<ColumnInfo> columnInfos = Optional.ofNullable(createTable.getColumns()).orElse(List.of());
+    columnInfos.forEach(c -> ColumnUtils.validateTypeJson(c, format));
     Long createTime = System.currentTimeMillis();
     String fullName = getTableFullName(createTable);
     LOGGER.debug("Creating table: {}", fullName);
@@ -1259,15 +1259,22 @@ public class TableRepository {
 
   private TableInfoDAO deleteTable(
       Session session, UUID schemaId, String tableName, Consumer<TableInfoDAO> check) {
-    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
-    if (tableInfoDAO == null) {
-      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
+    TableInfoDAO found = findBySchemaIdAndName(session, schemaId, tableName);
+    if (found == null) {
+      throw tableNotFound(tableName);
     }
+    Map<String, Object> key = Map.of("name", tableName);
+    // A commit rewrites the table's columns under this lock; waiting for it lets the column delete
+    // below see the rows the commit wrote.
+    TableInfoDAO tableInfoDAO =
+        RepositoryUtils.lockByKey(
+            session,
+            TableInfoDAO.class,
+            found.getId(),
+            key,
+            "table " + tableName,
+            () -> tableNotFound(tableName));
     check.accept(tableInfoDAO);
-    // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
-    // from deleting column rows the commit is replacing.
-    RepositoryUtils.lockTableForCommit(
-        session, tableInfoDAO, tableInfoDAO.getId(), Optional.of(tableName), ErrorCode.UNAVAILABLE);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()
@@ -1288,8 +1295,20 @@ public class TableRepository {
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
-    session.remove(tableInfoDAO);
+    // Delete the columns with one statement, not through the session's cascade. A commit can
+    // replace the column rows while this drop waits for the lock; a DELETE reads the latest rows,
+    // while the cascade first loads the columns with a plain read, which on MySQL REPEATABLE READ
+    // returns the snapshot from before the wait and fails the drop on rows already gone.
+    session
+        .createMutationQuery("delete from ColumnInfoDAO where table.id = :id")
+        .setParameter("id", tableInfoDAO.getId())
+        .executeUpdate();
+    RepositoryUtils.deleteByKey(session, tableInfoDAO, key, () -> tableNotFound(tableName));
     return tableInfoDAO;
+  }
+
+  private static BaseException tableNotFound(String tableName) {
+    return new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
   }
 
   /**

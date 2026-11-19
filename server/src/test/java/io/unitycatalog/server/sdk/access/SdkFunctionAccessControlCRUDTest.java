@@ -81,10 +81,14 @@ public class SdkFunctionAccessControlCRUDTest extends SdkAccessControlBaseCRUDTe
     assertThat(principal1Functions.get(0).getName()).isEqualTo("fun_pr1");
 
     // get function -> no privileges -> denied
-    assertPermissionDenied(() -> principal2FunctionsApi.getFunction("cat_pr1.sch_pr1.fun_pr1"));
+    assertPermissionDenied(
+        () ->
+            principal2FunctionsApi.getFunction(
+                "cat_pr1.sch_pr1.fun_pr1", /* includeBrowse= */ false));
 
     // get function -> owner -> allow
-    FunctionInfo functionInfo = principal1FunctionsApi.getFunction("cat_pr1.sch_pr1.fun_pr1");
+    FunctionInfo functionInfo =
+        principal1FunctionsApi.getFunction("cat_pr1.sch_pr1.fun_pr1", /* includeBrowse= */ false);
     assertThat(functionInfo).isNotNull();
     assertThat(functionInfo.getName()).isEqualTo("fun_pr1");
 

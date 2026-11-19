@@ -24,12 +24,14 @@ public class SdkCatalogOperations implements CatalogOperations {
 
   @Override
   public List<CatalogInfo> listCatalogs(Optional<String> pageToken) throws ApiException {
-    return catalogsApi.listCatalogs(pageToken.orElse(null), 100).getCatalogs();
+    return catalogsApi
+        .listCatalogs(pageToken.orElse(null), 100, /* includeBrowse= */ false)
+        .getCatalogs();
   }
 
   @Override
   public CatalogInfo getCatalog(String name) throws ApiException {
-    return catalogsApi.getCatalog(name);
+    return catalogsApi.getCatalog(name, /* includeBrowse= */ false);
   }
 
   @Override

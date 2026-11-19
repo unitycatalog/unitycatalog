@@ -1,5 +1,4 @@
 import importlib
-import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
@@ -11,6 +10,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,
+    to_tool_call_parameters,
 )
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
@@ -163,10 +163,9 @@ class UCFunctionToolkit(BaseModel):
             raise e
 
         def func(**kwargs: Any) -> str:
-            args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,
-                parameters=args_json,
+                parameters=to_tool_call_parameters(kwargs),
                 enable_retriever_tracing=mlflow_tracing_enabled("crewai"),
             )
 

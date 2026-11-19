@@ -19,7 +19,6 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -149,8 +148,6 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
   @Override
   public void setUp() {
     super.setUp();
-
-    Path configurationFolder = Path.of("etc", "conf");
 
     securityConfiguration = new SecurityConfiguration(configurationFolder);
     securityContext =

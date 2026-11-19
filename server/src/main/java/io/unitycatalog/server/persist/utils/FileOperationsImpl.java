@@ -9,6 +9,7 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.aws.S3BucketRegions;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -33,20 +34,16 @@ import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
-import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
-import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /** Default {@link FileOperations}: builds credential-vended Iceberg {@link FileIO}s. */
 public class FileOperationsImpl implements FileOperations {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FileOperationsImpl.class);
-  // S3 returns the bucket's region in this response header, including on 301/403 error responses.
-  private static final String BUCKET_REGION_HEADER = "x-amz-bucket-region";
 
   private final StorageCredentialVendor storageCredentialVendor;
   // Per-bucket S3 region: seeded from the configured s3.region.N, then filled by HeadBucket
@@ -209,29 +206,54 @@ public class FileOperationsImpl implements FileOperations {
       AwsCredentials awsCredentials,
       Long expirationTime,
       Optional<String> credentialsEndpoint) {
-    // Use the configured region if present, otherwise discover it and cache it per bucket.
+    Map<String, String> config = new HashMap<>();
+    // Keys are absent when the path's credential vends only the S3 endpoint, and the session token
+    // is absent for a static key pair.
+    Optional.ofNullable(awsCredentials.getAccessKeyId())
+        .ifPresent(v -> config.put(S3FileIOProperties.ACCESS_KEY_ID, v));
+    Optional.ofNullable(awsCredentials.getSecretAccessKey())
+        .ifPresent(v -> config.put(S3FileIOProperties.SECRET_ACCESS_KEY, v));
+    Optional.ofNullable(awsCredentials.getSessionToken())
+        .ifPresent(v -> config.put(S3FileIOProperties.SESSION_TOKEN, v));
+    if (awsCredentials.getS3Endpoint() != null) {
+      // S3-compatible storage: the bucket is not on AWS, so its region is vended with the endpoint
+      // rather than discovered here. These stores commonly cannot serve virtual-hosted bucket
+      // names, so use path-style access.
+      config.put(S3FileIOProperties.ENDPOINT, awsCredentials.getS3Endpoint());
+      config.put(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
+      config.put(
+          AwsClientProperties.CLIENT_REGION,
+          Optional.ofNullable(awsCredentials.getS3Region())
+              .orElse(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION));
+    } else {
+      config.put(AwsClientProperties.CLIENT_REGION, getRegion(path.getStorageBase()));
+    }
+    // Iceberg's refreshing credentials provider requires a session token, so a vended key pair goes
+    // without its lifetime and the refresh endpoint, and an Iceberg client keeps it until the table
+    // is loaded again.
+    if (awsCredentials.getSessionToken() != null) {
+      if (expirationTime != null) {
+        // Without this, an Iceberg client cannot tell when the session it was handed dies, so it
+        // neither renews ahead of the expiry nor treats the credential as expiring at all.
+        config.put(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS, Long.toString(expirationTime));
+      }
+      credentialsEndpoint.ifPresent(
+          endpoint -> config.put(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT, endpoint));
+    }
+    return Map.copyOf(config);
+  }
+
+  /** The configured region of an AWS bucket, otherwise its discovered region cached per bucket. */
+  private String getRegion(NormalizedURL storageBase) {
     // Discovery runs outside any map lock (get + putIfAbsent rather than computeIfAbsent): a bucket
     // whose discovery fails is never cached and so is re-probed on every request, and holding the
     // bin lock across HeadBucket would serialize those probes and pile request threads up on it.
-    NormalizedURL storageBase = path.getStorageBase();
     String s3Region = s3BucketRegionMap.get(storageBase);
     if (s3Region == null) {
       s3Region = discoverRegion(storageBase);
       s3BucketRegionMap.putIfAbsent(storageBase, s3Region);
     }
-    Map<String, String> config = new HashMap<>();
-    config.put(S3FileIOProperties.ACCESS_KEY_ID, awsCredentials.getAccessKeyId());
-    config.put(S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey());
-    config.put(S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken());
-    config.put(AwsClientProperties.CLIENT_REGION, s3Region);
-    if (expirationTime != null) {
-      // Without this, an Iceberg client cannot tell when the session it was handed dies, so it
-      // neither renews ahead of the expiry nor treats the credential as expiring at all.
-      config.put(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS, Long.toString(expirationTime));
-    }
-    credentialsEndpoint.ifPresent(
-        endpoint -> config.put(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT, endpoint));
-    return Map.copyOf(config);
+    return s3Region;
   }
 
   /**
@@ -252,20 +274,12 @@ public class FileOperationsImpl implements FileOperations {
             .credentialsProvider(AnonymousCredentialsProvider.create())
             .region(Region.US_EAST_1)
             .build()) {
-      String region =
-          s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build()).bucketRegion();
-      if (region != null) {
-        return region;
-      }
-      throw permanentRegionError(storageBase, null);
+      return S3BucketRegions.headBucketRegion(s3Client, bucket)
+          .orElseThrow(() -> permanentRegionError(storageBase, null));
     } catch (S3Exception e) {
-      String region = bucketRegionHeader(e);
-      if (region != null) {
-        return region;
-      }
       // A 5xx, throttling, or 408 request-timeout response is transient; any other definitive 4xx
       // without the region header (e.g. no such bucket) means the region cannot be determined.
-      if (e.statusCode() >= 500 || e.statusCode() == 408 || e.isThrottlingException()) {
+      if (S3BucketRegions.isTransient(e)) {
         throw transientRegionError(storageBase, e);
       }
       throw permanentRegionError(storageBase, e);
@@ -273,15 +287,6 @@ public class FileOperationsImpl implements FileOperations {
       // Network, timeout, or other SDK failures leave the region undetermined; retriable.
       throw transientRegionError(storageBase, e);
     }
-  }
-
-  /** The {@code x-amz-bucket-region} header from an error response, or null if it is absent. */
-  private static String bucketRegionHeader(S3Exception e) {
-    AwsErrorDetails details = e.awsErrorDetails();
-    if (details == null || details.sdkHttpResponse() == null) {
-      return null;
-    }
-    return details.sdkHttpResponse().firstMatchingHeader(BUCKET_REGION_HEADER).orElse(null);
   }
 
   private static BaseException permanentRegionError(NormalizedURL storageBase, Throwable cause) {

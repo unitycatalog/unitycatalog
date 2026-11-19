@@ -9,6 +9,8 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFs;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -127,9 +129,19 @@ public abstract class CredPropsBuilder {
       if (renewCredEnabled) {
         setInitRenewableCredKeys(credential);
       } else {
-        setInitFixedCredKeys(credential);
+        Map<String, String> fixedCredKeys = initFixedCredKeys(credential);
+        fixedCredKeys.forEach(this::set);
+        // Nothing renews a fixed credential, so each one needs its own credential-scoped file
+        // system: a cached one keeps the credential of the table load that created it.
+        if (credScopedFsEnabled) {
+          set(
+              UCHadoopConfConstants.UC_FIXED_CREDENTIAL_ID_KEY,
+              MapIdGenerator.generateId(fixedCredKeys));
+        }
       }
     }
+
+    setS3EndpointKeys(initialCredentials);
 
     // Set the props for initial credential prefixes.
     List<String> credPrefixes =
@@ -151,6 +163,16 @@ public abstract class CredPropsBuilder {
     return this;
   }
 
+  /** The engine's Hadoop configuration the properties are built for. */
+  protected Configuration hadoopConf() {
+    return hadoopConf;
+  }
+
+  /** Drops a key set earlier in this build. */
+  protected void unset(String key) {
+    props.remove(key);
+  }
+
   /**
    * Saves the current value of {@code key} from the Hadoop conf (falling back to {@code
    * defaultOriginal}) under {@code key + ".original"}, then overrides {@code key} with {@code
@@ -163,6 +185,37 @@ public abstract class CredPropsBuilder {
     return this;
   }
 
+  /**
+   * Whether the engine's configuration sets {@code key} itself: a value counts as the engine's own
+   * unless every recorded source is {@code core-default.xml}, which holds Hadoop's own defaults
+   * such as S3A's default provider list and Hadoop 3.5's GCS conflict-check default.
+   */
+  protected boolean engineSets(String key) {
+    if (hadoopConf().get(key) == null) {
+      return false;
+    }
+    // No recorded source means we cannot show the value came from defaults, so respect it.
+    String[] sources = hadoopConf().getPropertySources(key);
+    return sources == null || !Arrays.stream(sources).allMatch("core-default.xml"::equals);
+  }
+
+  protected boolean isCredScopedFsEnabled() {
+    return credScopedFsEnabled;
+  }
+
+  /** Whether credential renewal is enabled, so the vended provider serves the credentials. */
+  protected boolean isRenewCredEnabled() {
+    return renewCredEnabled;
+  }
+
+  /**
+   * Sets the S3 endpoint keys for the initial credentials. No-op unless the cloud supports storage
+   * endpoints other than its own.
+   *
+   * @param credentials the initial credentials
+   */
+  protected void setS3EndpointKeys(List<GenericCredential> credentials) {}
+
   /** Cloud-specific filesystem-impl overrides that install CredScopedFileSystem. */
   protected abstract void setCredScopedFsKeys();
 
@@ -172,6 +225,9 @@ public abstract class CredPropsBuilder {
   /** Writes the renewable-path credential secrets (the {@code init.*} keys) for this cloud. */
   protected abstract void setInitRenewableCredKeys(GenericCredential cred);
 
-  /** Writes the fixed-path credential secrets for this cloud. */
-  protected abstract void setInitFixedCredKeys(GenericCredential cred);
+  /**
+   * Returns the fixed-path credential secrets for this cloud, which {@link #build()} sets, or an
+   * empty map when the credential is not served through them.
+   */
+  protected abstract Map<String, String> initFixedCredKeys(GenericCredential cred);
 }

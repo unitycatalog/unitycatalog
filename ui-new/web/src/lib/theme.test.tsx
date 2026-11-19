@@ -1,9 +1,16 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { applyColorMode, readColorMode, ThemeProvider, useTheme } from "@/lib/theme";
+import {
+  applyColorMode,
+  readColorMode,
+  ThemeProvider,
+  useTheme,
+} from "@/lib/theme";
 
-const wrapper = ({ children }: { children: ReactNode }) => <ThemeProvider>{children}</ThemeProvider>;
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <ThemeProvider>{children}</ThemeProvider>
+);
 
 describe("theme", () => {
   beforeEach(() => {

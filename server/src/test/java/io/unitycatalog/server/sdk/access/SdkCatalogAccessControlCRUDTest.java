@@ -98,14 +98,15 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
         1.0);
 
     // list catalogs (admin) -> metastore admin -> allowed - list all
-    List<CatalogInfo> adminCatalogs = adminCatalogsApi.listCatalogs(null, null).getCatalogs();
+    List<CatalogInfo> adminCatalogs =
+        adminCatalogsApi.listCatalogs(null, null, /* includeBrowse= */ false).getCatalogs();
     assertThat(adminCatalogs).hasSizeGreaterThanOrEqualTo(2);
     assertThat(adminCatalogs.stream().map(CatalogInfo::getName))
         .contains("admincatalog1", "catalog1");
 
     // list catalogs (principal-1) -> owner -> allowed - list owning
     List<CatalogInfo> principal1Catalogs =
-        principal1CatalogsApi.listCatalogs(null, null).getCatalogs();
+        principal1CatalogsApi.listCatalogs(null, null, /* includeBrowse= */ false).getCatalogs();
     assertThat(principal1Catalogs).hasSize(1);
     assertThat(principal1Catalogs.get(0).getName()).isEqualTo("catalog1");
 
@@ -113,17 +114,19 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     grantPermissions(REGULAR_1, SecurableType.CATALOG, "catalog1", Privileges.USE_CATALOG);
 
     // list catalogs (regular-1) -> USE CATALOG -> allowed - list filtered
-    List<CatalogInfo> regular1Catalogs = regular1CatalogsApi.listCatalogs(null, null).getCatalogs();
+    List<CatalogInfo> regular1Catalogs =
+        regular1CatalogsApi.listCatalogs(null, null, /* includeBrowse= */ false).getCatalogs();
     assertThat(regular1Catalogs).hasSize(1);
     assertThat(regular1Catalogs.get(0).getName()).isEqualTo("catalog1");
 
     // get catalog (admin) should be able to get any catalog
-    CatalogInfo getCatalog1 = adminCatalogsApi.getCatalog("catalog1");
+    CatalogInfo getCatalog1 = adminCatalogsApi.getCatalog("catalog1", /* includeBrowse= */ false);
     assertThat(getCatalog1).isNotNull();
     assertThat(getCatalog1.getName()).isEqualTo("catalog1");
 
     // get catalog (principal-1) -> denied
-    assertPermissionDenied(() -> principal1CatalogsApi.getCatalog("admincatalog1"));
+    assertPermissionDenied(
+        () -> principal1CatalogsApi.getCatalog("admincatalog1", /* includeBrowse= */ false));
 
     // Cross-channel probe 1: the same GET, but with a JSON body that tries to override the `name`
     // path parameter. getCatalog's authorization key is the URL path segment, so the body must not
@@ -167,16 +170,19 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     assertThat(rawPatch.statusCode())
         .as("mutation on a non-owned catalog must be denied regardless of request body")
         .isEqualTo(403);
-    assertThat(adminCatalogsApi.getCatalog("admincatalog1").getComment())
+    assertThat(
+            adminCatalogsApi.getCatalog("admincatalog1", /* includeBrowse= */ false).getComment())
         .as("a denied PATCH must not have modified the catalog")
         .isEqualTo("(created from scratch)");
 
     // get catalog (regular-1) -> USE CATALOG -> allowed
-    CatalogInfo getCatalog1AsRegular1 = regular1CatalogsApi.getCatalog("catalog1");
+    CatalogInfo getCatalog1AsRegular1 =
+        regular1CatalogsApi.getCatalog("catalog1", /* includeBrowse= */ false);
     assertThat(getCatalog1AsRegular1).isNotNull();
 
     // get catalog (principal-1) -> denied
-    assertPermissionDenied(() -> regular1CatalogsApi.getCatalog("admincatalog1"));
+    assertPermissionDenied(
+        () -> regular1CatalogsApi.getCatalog("admincatalog1", /* includeBrowse= */ false));
 
     // update catalog (admin) -> metastore admin -> denied
     UpdateCatalog updateCatalog1Admin = new UpdateCatalog().comment("(admin update)");
@@ -211,8 +217,13 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     // force delete a catalog -> USE CATALOG -> denied
     grantPermissions(REGULAR_1, SecurableType.CATALOG, "admincatalog1", Privileges.USE_CATALOG);
     assertPermissionDenied(() -> regular1CatalogsApi.deleteCatalog("admincatalog1", true));
-    assertThat(adminCatalogsApi.getCatalog("admincatalog1").getName()).isEqualTo("admincatalog1");
-    assertThat(adminSchemasApi.getSchema("admincatalog1.default").getName()).isEqualTo("default");
+    assertThat(adminCatalogsApi.getCatalog("admincatalog1", /* includeBrowse= */ false).getName())
+        .isEqualTo("admincatalog1");
+    assertThat(
+            adminSchemasApi
+                .getSchema("admincatalog1.default", /* includeBrowse= */ false)
+                .getName())
+        .isEqualTo("default");
 
     // delete a catalog -> metastore admin -> allowed
     adminCatalogsApi.deleteCatalog("admincatalog2", null);
@@ -360,7 +371,8 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     CatalogInfo catalogInfo = adminCatalogsApi.createCatalog(catalog);
     adminSchemasApi.createSchema(
         new CreateSchema().name("default").catalogName("force_delete_catalog"));
-    SchemaInfo schemaInfo = adminSchemasApi.getSchema("force_delete_catalog.default");
+    SchemaInfo schemaInfo =
+        adminSchemasApi.getSchema("force_delete_catalog.default", /* includeBrowse= */ false);
     TableInfo tableInfo =
         createExternalTable(
             adminTablesApi,

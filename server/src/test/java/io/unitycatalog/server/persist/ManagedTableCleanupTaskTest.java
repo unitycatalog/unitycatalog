@@ -31,6 +31,7 @@ import java.util.function.Function;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,9 +52,10 @@ class ManagedTableCleanupTaskTest {
   void setUp() {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
+    StorageCleanupTestSupport.captureAuditRecords(properties);
     serverProperties = new ServerProperties(properties);
     sessionFactory = testDatabase.sessionFactory();
-    repositories = new Repositories(sessionFactory, serverProperties);
+    repositories = StorageCleanupTestSupport.auditedRepositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
     schemaId = UUID.randomUUID();
@@ -73,6 +75,12 @@ class ManagedTableCleanupTaskTest {
         },
         "Failed to create test namespace",
         /* readOnly= */ false);
+  }
+
+  @AfterEach
+  void tearDown() {
+    // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
+    StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
   }
 
   @Test
@@ -275,7 +283,7 @@ class ManagedTableCleanupTaskTest {
               case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
               case MYSQL_8 -> "?sessionVariables=innodb_lock_wait_timeout=1";
             });
-    return new Repositories(
+    return StorageCleanupTestSupport.auditedRepositories(
         testDatabase.openHibernateConfigurator(impatient).getSessionFactory(), serverProperties);
   }
 

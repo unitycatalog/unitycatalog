@@ -47,8 +47,8 @@ example.
 ## Use PostgreSQL
 
 The H2 database supports a single server. To run more than one server replica, use PostgreSQL or
-[MySQL](#use-mysql). The server then starts with an empty database; the chart leaves H2 data on its volume. Store the
-password in a Secret:
+[MySQL](#use-mysql). The chart then sets up the schema in the empty database before the server starts, and leaves H2
+data on its volume. Store the password in a Secret:
 
 ```sh
 kubectl create secret generic db-password --namespace unitycatalog --from-literal=password='<password>'
@@ -72,8 +72,8 @@ server:
 ```
 
 With authentication on (`auth.enabled: true`), PostgreSQL also needs `server.authorization.policy-refresh: "true"` under
-`server.config.extraProperties`. Replicas share the database, and even a single replica runs next to its replacement
-during an upgrade, so a grant or revoke made through one server must reach the others. See
+`server.config.extraProperties`. Replicas share the database, so a grant or revoke made through one server must reach
+the others. See
 [Multiple server instances](auth.md#multiple-server-instances).
 
 ```yaml
@@ -164,9 +164,30 @@ server:
 
 ## Upgrade and uninstall
 
-To upgrade, read the release notes, then run `helm upgrade` with the new `--version` and the same `--values` file.
-If you pass any `--values` or `--set`, Helm doesn't keep the values from your earlier install, so pass the full file
-each time.
+To upgrade, read the release notes, scale the server to 0 replicas (`kubectl scale deployment` with the chart's
+deployment name and `--replicas=0`) and back up the database (see
+[Backing up the database](upgrades.md#backing-up-the-database)), then run `helm upgrade` with the new `--version` and
+the same `--values` file. If you pass any `--values` or `--set`, Helm doesn't keep the values from your earlier
+install, so pass the full file each time.
+
+By default, an upgrade stops all server pods before it starts the new ones (`server.deployment.updateStrategy.type:
+Recreate`), so the server is unavailable until the new pods are ready. An upgrade with schema steps needs this: the old
+pods must not run on the new schema, and the new release's servers refuse an old schema. Setting the type to
+`RollingUpdate` keeps the old pods serving during the upgrade, so use it only for an upgrade without schema steps, at
+your own risk. In each new pod, the `upgrade-schema` init container runs `bin/start-uc-server --upgrade-schema`, which brings
+the database schema up to date before the server starts. If it fails, Kubernetes runs it again; read its log with
+`kubectl logs <pod> --namespace unitycatalog -c upgrade-schema` and fix the cause it names. With `--wait`, set a
+`--timeout` longer than the schema upgrade takes. See [Upgrading the database schema](upgrades.md).
+
+If the server reaches the database through a proxy in the pod (for example the Cloud SQL Auth Proxy), run the proxy as
+a native sidecar in `server.deployment.extraInitContainers`, with `restartPolicy: Always` (Kubernetes 1.29 or later).
+A proxy in `server.deployment.extraContainers` starts only after the init containers, so the schema upgrade can't reach
+the database.
+
+`helm rollback` after an upgrade starts the old release on the upgraded schema, which the old release must not run on.
+To go back, scale the server deployment to 0 and wait for every server pod to stop (an H2 file database is held
+open by a running pod). Restore the backup you took before the upgrade, then roll back. For the same reason, don't
+use `helm upgrade --atomic`, which rolls back by itself when the upgrade fails.
 
 `helm uninstall unitycatalog --namespace unitycatalog` removes the release. It keeps the chart-created H2 database
 PersistentVolumeClaim and token signing key Secret, and a later install with the same release name and
@@ -194,9 +215,9 @@ server:
     terminationGracePeriodSeconds: 30
 ```
 
-This avoids downtime only with a rolling update, which the chart uses with PostgreSQL, MySQL or more than one replica
-unless you set `server.deployment.updateStrategy`. The default single replica on the file database is recreated, so
-it is briefly unavailable during an upgrade.
+This avoids downtime only when other server pods keep serving, for example on a scale-down. With the default
+`Recreate` update strategy, an upgrade stops all server pods first, so the server is unavailable until the new pods are
+ready.
 
 ## Configuration
 

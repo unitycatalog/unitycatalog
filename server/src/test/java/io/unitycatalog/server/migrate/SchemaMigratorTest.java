@@ -4,34 +4,53 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
 import org.assertj.core.api.AbstractThrowableAssert;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -96,14 +115,690 @@ public class SchemaMigratorTest {
   }
 
   @Test
-  void refusesADatabaseWithoutSchemaHistory() {
+  void adoptsABaselineDatabase() {
     UpgradeTestUtils.createBaselineSchema(db);
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    List<String> sent = new CopyOnWriteArrayList<>();
+    SchemaMigrator migrator = new SchemaMigrator(sending(sent));
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
 
+    // Step 1 is recorded without running; the steps after it run.
+    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+    assertThat(sent).noneMatch(SchemaMigratorTest::isStep1);
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    assertThat(SchemaSnapshot.of(db.dataSource()))
+        .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+  }
+
+  @Test
+  void refusesABaselineDatabaseWhoseSchemaDiffers() {
+    UpgradeTestUtils.createBaselineSchema(db);
+    UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+
     assertThatThrownBy(migrator::upgradeSchema)
-        .hasMessageContaining("adopting a database without schema history is not supported yet");
+        .hasMessageContaining("differs from version 1 in:\nunexpected column uc_catalogs.extra ")
+        .hasMessageContaining("must be started once on a 0.7.0 server first");
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
+  }
+
+  @Test
+  void adoptsADatabaseWithThisReleasesSchemaWithoutHistory() {
+    // What a server that let Hibernate set up a new database leaves: this release's schema, and no
+    // schema history. The steps build that schema here; BaselineMatchesEntitiesTest checks that
+    // Hibernate builds the same one.
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
+    List<String> sent = new CopyOnWriteArrayList<>();
+    SchemaMigrator migrator = new SchemaMigrator(sending(sent));
+    assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
+
+    // Every step is recorded without running.
+    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+    assertThat(sent).noneMatch(sql -> isStep1(sql) || isStep2(sql));
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
+  @Test
+  void adoptsADatabaseAtAnEarlierStepsSchemaWithoutHistory() {
+    // What Hibernate leaves when it updates a database but makes only some steps' changes: the
+    // schema of a step before the last, and no schema history. Here, this release's schema, under
+    // a build with one more step.
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
+    List<String> sent = new CopyOnWriteArrayList<>();
+    SchemaMigrator migrator = new SchemaMigrator(sending(sent), NEXT_RELEASE);
+
+    // This release's steps are recorded without running, and the step after them runs.
+    assertThat(migrator.upgradeSchema()).isEqualTo(migrator.steps().size());
+    assertThat(sent)
+        .filteredOn(sql -> sql.matches("(?is)\\s*(create|alter|drop)\\b.*"))
+        .allMatch(sql -> sql.contains("uc_test_only_step") || sql.contains("uc_schema_history"))
+        .anyMatch(sql -> sql.contains("uc_test_only_step"));
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
+  /** What makes a run with a failed step in the schema history refuse. */
+  enum RefusalWithAFailedStep {
+    /** A step that was edited after it ran. */
+    EDITED_STEP,
+    /** The failed step is a newer release's, which this build doesn't have. */
+    NEWER_RELEASES_STEP,
+    /** The schema is neither the one before the failed step nor the one after it. */
+    SCHEMA_NEITHER_BEFORE_NOR_AFTER,
+    /** The failed step is below the recorded version, so it is not one that the run retries. */
+    FAILED_BELOW_THE_RECORDED_VERSION,
+    /** The failed step's script was edited after it failed. */
+    EDITED_FAILED_STEP
+  }
+
+  @ParameterizedTest
+  @EnumSource(RefusalWithAFailedStep.class)
+  void keepsTheRecordOfAFailedStepWhenTheRunRefuses(RefusalWithAFailedStep refusal) {
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE"));
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    String message = "schema history does not match";
+    // A history failure is not one that --upgrade-schema gets past: it refuses the same way.
+    String advice = "Run the release that applied the steps, or restore the backup";
+    switch (refusal) {
+      case EDITED_STEP ->
+          UpgradeTestUtils.execute(
+              db,
+              ("UPDATE %1$suc_schema_history%1$s SET %1$schecksum%1$s = %1$schecksum%1$s + 1"
+                      + " WHERE %1$sversion%1$s = '1'")
+                  .formatted(identifierQuote(db.dataSource())));
+      case NEWER_RELEASES_STEP -> {
+        // Step 1000 failed on the newer release, and this release runs again.
+        UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+        migrator = new SchemaMigrator(db.dataSource());
+        message = "Detected failed migration to version 1000";
+        // A server of this release refuses to start on it too.
+        assertThatThrownBy(migrator::requireCurrentSchema).hasMessageContaining(message);
+      }
+      case SCHEMA_NEITHER_BEFORE_NOR_AFTER -> {
+        UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+        UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+        message = "so schema step 1000 can't run";
+        advice = "then run bin/start-uc-server --upgrade-schema again";
+      }
+      case FAILED_BELOW_THE_RECORDED_VERSION -> {
+        UpgradeTestUtils.execute(
+            db, historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = true WHERE"));
+        UpgradeTestUtils.execute(
+            db,
+            ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
+                    + " WHERE %1$sversion%1$s = '2'")
+                .formatted(identifierQuote(db.dataSource())));
+        message = "Detected failed migration to version 2";
+      }
+      case EDITED_FAILED_STEP -> {
+        UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+        UpgradeTestUtils.execute(
+            db,
+            ("UPDATE %1$suc_schema_history%1$s SET %1$schecksum%1$s = %1$schecksum%1$s + 1"
+                    + " WHERE %1$sversion%1$s = '1000'")
+                .formatted(identifierQuote(db.dataSource())));
+        message = "Its script differs from the one that failed";
+      }
+    }
+
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains(message).contains(advice);
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining(message)
+        .hasMessageContaining(advice);
+    assertThat(failedRecords()).isOne();
+  }
+
+  @Test
+  void runsAgainAFailedStepOnTheConfiguredPool() {
+    // The pool that the server's configuration sets does not commit by itself.
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+    UpgradeTestUtils.execute(
+        db,
+        ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
+                + " WHERE %1$sversion%1$s = '1000'")
+            .formatted(identifierQuote(db.dataSource())));
+
+    try (HikariDataSource pool =
+        new HikariDataSource(HibernateConfigurator.hikariConfig(db.hibernateProperties()))) {
+      assertThat(new SchemaMigrator(pool, NEXT_RELEASE).upgradeSchema()).isOne();
+    }
+    assertThat(failedRecords()).isZero();
+    assertThat(new SchemaMigrator(db.dataSource(), NEXT_RELEASE).state())
+        .isEqualTo(SchemaState.CURRENT);
+  }
+
+  /** What goes wrong with the connection that deletes a failed step's record. */
+  enum ConnectionState {
+    /** The restore of the auto-commit setting fails; the connection stays open in a Hikari pool. */
+    HEALTHY,
+    /** The restore fails because the connection is already lost, which Hikari notices itself. */
+    BROKEN,
+    /** The restore fails on a pool that keeps its connections as they are. */
+    UNPOOLED,
+    /**
+     * The restore fails on a Hikari pool's connection that the caller's DataSource wraps; the
+     * wrapper unwraps to Hikari's connection, so the pool evicts it.
+     */
+    WRAPPED_POOL,
+    /** The delete fails, and the restore fails too. */
+    DELETE_FAILS,
+    /** The delete and the restore succeed, and closing the connection throws. */
+    CLOSE_FAILS,
+    /** The restore fails on the run lock's connection, which only PostgreSQL and MySQL have. */
+    LOCK_CONNECTION
+  }
+
+  /**
+   * A connection of the schema migration can't get its auto-commit setting back, or fails to close
+   * (see {@link ConnectionState} for each case): the run goes on, and the connection is closed
+   * rather than handed out again with auto-commit on. When the delete of the failed step's record
+   * fails as well (DELETE_FAILS), its error is the one reported and the record stays. When the
+   * delete and the restore succeed and only the close throws (CLOSE_FAILS), the step still runs
+   * again and the run succeeds.
+   */
+  @ParameterizedTest
+  @EnumSource(ConnectionState.class)
+  void cleansUpTheConnectionWhenItCannotBeRestored(ConnectionState state) throws SQLException {
+    assumeFalse(state == ConnectionState.LOCK_CONNECTION && isH2(), "H2 has no run lock");
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+    UpgradeTestUtils.execute(
+        db,
+        ("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false"
+                + " WHERE %1$sversion%1$s = '1000'")
+            .formatted(identifierQuote(db.dataSource())));
+    boolean unpooled =
+        state == ConnectionState.UNPOOLED
+            || state == ConnectionState.DELETE_FAILS
+            || state == ConnectionState.CLOSE_FAILS;
+    boolean restoreFails =
+        state != ConnectionState.CLOSE_FAILS && state != ConnectionState.LOCK_CONNECTION;
+    AtomicBoolean armed = new AtomicBoolean();
+    AtomicReference<Connection> migrators = new AtomicReference<>();
+    AtomicReference<Connection> deleters = new AtomicReference<>();
+    List<Connection> failed = new CopyOnWriteArrayList<>();
+    List<Connection> physical = new CopyOnWriteArrayList<>(); // the database connections of failed
+    List<Connection> aborted = new CopyOnWriteArrayList<>();
+    AtomicReference<Connection> lockers = new AtomicReference<>();
+    DataSource real = db.dataSource();
+    Function<Connection, Connection> failing =
+        c ->
+            (Connection)
+                Proxy.newProxyInstance(
+                    getClass().getClassLoader(),
+                    new Class<?>[] {Connection.class},
+                    (pp, mm, aa) -> {
+                      // A wrapping pool unwraps the standard way.
+                      if (state == ConnectionState.WRAPPED_POOL && mm.getName().equals("unwrap")) {
+                        Class<?> iface = (Class<?>) aa[0];
+                        return iface.isInstance(c) ? c : c.unwrap(iface);
+                      }
+                      if (state == ConnectionState.WRAPPED_POOL
+                          && mm.getName().equals("isWrapperFor")) {
+                        Class<?> iface = (Class<?>) aa[0];
+                        return iface.isInstance(c) || c.isWrapperFor(iface);
+                      }
+                      if (mm.getName().equals("abort")) {
+                        aborted.add(c);
+                      }
+                      if (mm.getName().equals("close")
+                          && unpooled
+                          && (migrators.get() == c || failed.contains(c))) {
+                        return null; // a pool that keeps the connection as it is
+                      }
+                      if (mm.getName().equals("close")
+                          && state == ConnectionState.CLOSE_FAILS
+                          && deleters.get() == c) {
+                        c.close();
+                        throw new SQLException("Test: the close fails");
+                      }
+                      // The connection that deletes the failed record fails its restore, the next
+                      // setAutoCommit(false).
+                      if (mm.getName().equals("prepareStatement")
+                          && aa[0].toString().contains("DELETE FROM")
+                          && armed.get()) {
+                        deleters.compareAndSet(null, c);
+                        if (restoreFails) {
+                          migrators.compareAndSet(null, c);
+                        }
+                        if (state == ConnectionState.DELETE_FAILS) {
+                          throw new SQLException("Test: the delete fails");
+                        }
+                      }
+                      // The run lock's connection is the first to turn auto-commit on.
+                      if (mm.getName().equals("setAutoCommit")
+                          && (Boolean) aa[0]
+                          && state == ConnectionState.LOCK_CONNECTION
+                          && armed.get()) {
+                        migrators.compareAndSet(null, c);
+                      }
+                      if (mm.getName().equals("setAutoCommit")
+                          && !(Boolean) aa[0]
+                          && migrators.compareAndSet(c, null)) {
+                        failed.add(c);
+                        physical.add(c.unwrap(Connection.class));
+                        if (state == ConnectionState.BROKEN) {
+                          c.close();
+                          throw new SQLException("Test: connection lost", "08003");
+                        }
+                        throw new SQLException("Test: the restore fails");
+                      }
+                      Object result = invoke(mm, c, aa);
+                      if (mm.getName().equals("createStatement")) {
+                        // The connection that runs the lock SQL is the run lock's.
+                        Statement statement = (Statement) result;
+                        return Proxy.newProxyInstance(
+                            getClass().getClassLoader(),
+                            new Class<?>[] {Statement.class},
+                            (ppp, mmm, aaa) -> {
+                              if (mmm.getName().equals("executeQuery")
+                                  && (aaa[0].toString().contains("advisory_lock")
+                                      || aaa[0].toString().contains("GET_LOCK"))) {
+                                lockers.set(c);
+                              }
+                              return invoke(mmm, statement, aaa);
+                            });
+                      }
+                      return result;
+                    });
+    DataSource unpooledSource =
+        (DataSource)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {DataSource.class},
+                (p, m, a) -> {
+                  if (m.getName().equals("isWrapperFor")) {
+                    return false; // not a Hikari pool
+                  }
+                  Object result = invoke(m, real, a);
+                  if (!m.getName().equals("getConnection")) {
+                    return result;
+                  }
+                  Connection c = (Connection) result;
+                  c.setAutoCommit(false); // the setting that the restore puts back
+                  return failing.apply(c);
+                });
+
+    if (unpooled) {
+      armed.set(true);
+      SchemaMigrator migrator = new SchemaMigrator(unpooledSource, NEXT_RELEASE);
+      if (state == ConnectionState.DELETE_FAILS) {
+        assertThatThrownBy(migrator::upgradeSchema).hasMessageContaining("Test: the delete fails");
+        assertThat(failedRecords()).isOne();
+      } else {
+        assertThat(migrator.upgradeSchema()).isOne();
+        assertThat(failedRecords()).isZero();
+      }
+      if (state != ConnectionState.CLOSE_FAILS) {
+        assertThat(failed).hasSize(1);
+      }
+      Connection closed = state == ConnectionState.CLOSE_FAILS ? deleters.get() : failed.get(0);
+      assertThat(closed.unwrap(Connection.class).isClosed()).isTrue();
+      return;
+    }
+    HikariConfig config = HibernateConfigurator.hikariConfig(db.hibernateProperties());
+    if (state != ConnectionState.WRAPPED_POOL) {
+      DataSource inner =
+          (DataSource)
+              Proxy.newProxyInstance(
+                  getClass().getClassLoader(),
+                  new Class<?>[] {DataSource.class},
+                  (p, m, a) -> {
+                    Object result = invoke(m, real, a);
+                    return m.getName().equals("getConnection")
+                        ? failing.apply((Connection) result)
+                        : result;
+                  });
+      config.setDataSource(inner);
+      config.setJdbcUrl(null);
+      config.setDriverClassName(null);
+      config.setUsername(null);
+      config.setPassword(null);
+    }
+    try (HikariDataSource pool = new HikariDataSource(config)) {
+      DataSource migrated =
+          state != ConnectionState.WRAPPED_POOL
+              ? pool
+              : (DataSource)
+                  Proxy.newProxyInstance(
+                      getClass().getClassLoader(),
+                      new Class<?>[] {DataSource.class},
+                      (p, m, a) -> {
+                        Object result = invoke(m, pool, a);
+                        return m.getName().equals("getConnection")
+                            ? failing.apply((Connection) result)
+                            : result;
+                      });
+      // The pool has set up its first connection: the next restore is the migrator's.
+      pool.getConnection().close();
+      armed.set(true);
+      assertThat(new SchemaMigrator(migrated, NEXT_RELEASE).upgradeSchema()).isOne();
+      assertThat(failed).hasSize(1);
+      assertThat(failed.get(0).isClosed()).isTrue();
+      if (state == ConnectionState.HEALTHY || state == ConnectionState.BROKEN) {
+        // The pool evicted the connection; the abort fallback did not run.
+        assertThat(aborted).isEmpty();
+      }
+      if (state == ConnectionState.LOCK_CONNECTION) {
+        // The restore failure was injected on the connection that ran the lock SQL.
+        assertThat(failed.get(0)).isSameAs(lockers.get());
+      }
+      if (state == ConnectionState.WRAPPED_POOL) {
+        // The pool evicted the connection through the wrapper; the abort fallback did not run.
+        assertThat(aborted).isEmpty();
+      }
+      try (Connection next = pool.getConnection();
+          Statement select = next.createStatement()) {
+        assertThat(select.execute("SELECT 1")).isTrue();
+        if (state == ConnectionState.WRAPPED_POOL) {
+          // The connection that failed is not handed out again.
+          assertThat(next.unwrap(Connection.class)).isNotSameAs(physical.get(0));
+        }
+      }
+    }
+    assertThat(failedRecords()).isZero();
+  }
+
+  private static Object invoke(Method method, Object target, Object[] args) throws Throwable {
+    try {
+      return method.invoke(target, args);
+    } catch (InvocationTargetException e) {
+      throw e.getCause();
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false", "true"})
+  void runsAgainAfterARunThatStoppedInAStep(boolean beforeItsRecord) {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    DataSource stopping =
+        UpgradeTestUtils.failingAt(db, "CREATE TABLE uc_test_only_step (id INT)", beforeItsRecord);
+    assertThatThrownBy(new SchemaMigrator(stopping, NEXT_RELEASE)::upgradeSchema)
+        .hasStackTraceContaining("Test: the run stops here");
+
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    assertThat(migrator.upgradeSchema()).isOne();
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
+  /**
+   * Every step of this build runs again after a run that stopped at any of its statements, or
+   * between its last statement and its history record: {@code --upgrade-schema} then ends with a
+   * new install's schema. Runs with {@code UC_TEST_MIGRATION_CHECKS=true}.
+   */
+  @Test
+  @EnabledIfEnvironmentVariable(named = "UC_TEST_MIGRATION_CHECKS", matches = "true")
+  void everyStepRunsAgainAfterARunThatStoppedInIt() {
+    SchemaSnapshot newInstall = UpgradeTestUtils.freshInstallSnapshot();
+    List<String> problems = new ArrayList<>();
+    String previous = null;
+    for (Map.Entry<String, List<String>> step : UpgradeTestUtils.sentStatements(db).entrySet()) {
+      List<String> statements = step.getValue();
+      for (int k = 0; k < 2 * statements.size(); k++) {
+        // Stop at statement k / 2, or after it, before the next one or the history record.
+        String statement = statements.get(k / 2);
+        boolean after = k % 2 == 1;
+        if (after && k / 2 + 1 < statements.size()) {
+          continue; // the same as stopping at the next statement
+        }
+        String where =
+            "step "
+                + step.getKey()
+                + (after ? " before its record" : " at statement " + (k / 2 + 1));
+        try (TestDatabase stopped = TestDatabases.newEmptyDatabase()) {
+          if (previous != null) {
+            UpgradeTestUtils.migrateTo(stopped, previous);
+          }
+          DataSource stopping = UpgradeTestUtils.failingAt(stopped, statement, after);
+          assertThatThrownBy(new SchemaMigrator(stopping)::upgradeSchema)
+              .as(where)
+              .hasStackTraceContaining("Test: the run stops here");
+          SchemaMigrator migrator = new SchemaMigrator(stopped.dataSource());
+          migrator.upgradeSchema();
+          if (!SchemaSnapshot.of(stopped.dataSource()).equals(newInstall)) {
+            problems.add(where + ": the schema is not a new install's");
+          }
+        } catch (RuntimeException e) {
+          problems.add(where + ": " + e.getMessage());
+        }
+      }
+      previous = step.getKey();
+    }
+    assertThat(problems).isEmpty();
+  }
+
+  /**
+   * A first install that stopped in step 1 leaves some of its tables on H2 and MySQL, and on H2 and
+   * PostgreSQL may lack an index that the step creates in a statement of its own: the rerun
+   * completes it. A table without one of its parts is not what a stopped run leaves, and step 1
+   * can't add it, so the run refuses and keeps the failed record.
+   */
+  @ParameterizedTest
+  @CsvSource({
+    "DROP TABLE uc_volumes, true",
+    "ALTER TABLE uc_catalogs DROP COLUMN comment, false",
+    "ALTER TABLE uc_columns DROP CONSTRAINT FK1xslfe25li3uopodup6mylm3l, false",
+    "SEPARATE_INDEX, true",
+    "PRIMARY_KEY, false"
+  })
+  void rerunsTheFirstStepWhenItsRunStoppedPartWay(String change, boolean completes) {
+    UpgradeTestUtils.migrateTo(db, "1");
+    DatabaseKind kind = DatabaseKind.of(db.dataSource());
+    UpgradeTestUtils.execute(
+        db,
+        switch (change) {
+          case "SEPARATE_INDEX" ->
+              kind == DatabaseKind.MYSQL
+                  ? "DROP INDEX idx_name ON uc_tables"
+                  : "DROP INDEX idx_name";
+          case "PRIMARY_KEY" ->
+              kind == DatabaseKind.POSTGRESQL
+                  ? "ALTER TABLE uc_catalogs DROP CONSTRAINT uc_catalogs_pkey"
+                  : "ALTER TABLE uc_catalogs DROP PRIMARY KEY";
+          default ->
+              kind == DatabaseKind.MYSQL
+                  ? change.replace("DROP CONSTRAINT", "DROP FOREIGN KEY")
+                  : change;
+        });
+    UpgradeTestUtils.execute(
+        db,
+        "UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE %1$sversion%1$s = '1'"
+            .formatted(identifierQuote(db.dataSource())));
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+
+    // On MySQL, step 1 creates every index inside its table's statement.
+    if (completes && !(change.equals("SEPARATE_INDEX") && kind == DatabaseKind.MYSQL)) {
+      assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+      assertThat(SchemaSnapshot.of(db.dataSource()))
+          .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+    } else {
+      assertThatThrownBy(migrator::upgradeSchema)
+          .hasMessageContaining("neither the schema of version 0 nor that of version 1");
+      assertThat(failedRecords()).isOne();
+    }
+  }
+
+  /**
+   * Adopting a database at the last step's schema stopped at the history record of the build's
+   * first, second or third step: after Flyway created the history table, with the steps before that
+   * one recorded. The rerun records the remaining steps. {@code stoppedRecord} counts the inserts
+   * into the history table that the watched pool sees, and each is a step's record: the rerun
+   * records {@code stoppedRecord - 1} steps fewer than the build has.
+   */
+  @ParameterizedTest
+  @CsvSource({"1", "2", "3"})
+  void adoptsAgainAfterAnAdoptionStoppedAtAStepsRecord(int stoppedRecord) {
+    SchemaMigrator built = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    int steps = built.upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
+    AtomicInteger inserts = new AtomicInteger();
+    DataSource stopping =
+        UpgradeTestUtils.watched(
+            db.dataSource(),
+            (sql, prepared) -> {
+              if (sql.toLowerCase(Locale.ROOT).matches("(?s)\\s*insert into .*uc_schema_history.*")
+                  && inserts.incrementAndGet() == stoppedRecord) {
+                throw new SQLException("Test: the run stops here");
+              }
+              return sql;
+            });
+    assertThatThrownBy(new SchemaMigrator(stopping, NEXT_RELEASE)::upgradeSchema)
+        .hasStackTraceContaining("Test: the run stops here");
+
+    List<String> sent = new CopyOnWriteArrayList<>();
+    SchemaMigrator migrator = new SchemaMigrator(sending(sent), NEXT_RELEASE);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).doesNotContain(": runs");
+    assertThat(migrator.upgradeSchema()).isEqualTo(steps - (stoppedRecord - 1));
+    assertThat(sent)
+        .noneMatch(sql -> isStep1(sql) || isStep2(sql) || sql.contains("uc_test_only_step"));
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
+  @Test
+  void checksAnEmptyDatabaseWithoutChangingIt() {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("  1 baseline 0 7: runs")
+        .endsWith("The schema allows the upgrade: --upgrade-schema would run the steps above.\n");
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void checksAFailedStepAsOneToRunAgain() {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    migrator.upgradeSchema();
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+    String failed =
+        historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE");
+    UpgradeTestUtils.execute(db, failed);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains("  1000 test only step: runs");
+    // The failed record is still there: the check changes nothing.
+    assertThat(failedRecords()).isOne();
+  }
+
+  @Test
+  void checksAVersionedDatabaseWithAPendingStep() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    String recorded = migrator.recordedVersion();
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains("  1000 test only step: runs");
+    assertThat(migrator.recordedVersion()).isEqualTo(recorded);
+  }
+
+  @Test
+  void checksADatabaseWhoseSchemaDiffers() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(
+            new SchemaMigrator(db.dataSource())
+                .checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8)))
+        .isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("unexpected column uc_catalogs.extra ")
+        .endsWith("The schema does not allow the upgrade.\n");
+  }
+
+  @ParameterizedTest
+  @EnumSource(NotCurrent.class)
+  void serverRefusesToStartOnADatabaseNotAtThisReleasesSchema(NotCurrent database) {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    String q = identifierQuote(db.dataSource());
+    String history = "UPDATE %1$suc_schema_history%1$s SET ".formatted(q);
+    switch (database) {
+      case PENDING -> new SchemaMigrator(db.dataSource()).upgradeSchema();
+      case FAILED_STEP -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(db, historyUpdate(history + "%1$ssuccess%1$s = false WHERE"));
+      }
+      case EDITED_STEP -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(
+            db,
+            (history + "%1$schecksum%1$s = %1$schecksum%1$s + 1 WHERE %1$sversion%1$s = '2'")
+                .formatted(q));
+      }
+      case STEP_MISSING_BELOW -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(
+            db, "DELETE FROM %1$suc_schema_history%1$s WHERE %1$sversion%1$s = '2'".formatted(q));
+      }
+      case AHEAD -> {
+        migrator.upgradeSchema();
+        migrator = new SchemaMigrator(db.dataSource());
+      }
+      case SCHEMA_DIFFERS -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+      }
+    }
+
+    assertThatThrownBy(migrator::requireCurrentSchema)
+        .hasMessageContaining(
+            switch (database) {
+              case AHEAD -> "newer than this release";
+              case SCHEMA_DIFFERS -> "unexpected column uc_catalogs.extra ";
+              case EDITED_STEP, STEP_MISSING_BELOW ->
+                  "Run the release that applied the steps, or restore the backup";
+              default -> "bin/start-uc-server --upgrade-schema";
+            });
+    if (database == NotCurrent.EDITED_STEP || database == NotCurrent.STEP_MISSING_BELOW) {
+      // --upgrade-schema refuses a history that fails Flyway's validation, so it is no advice.
+      assertThatThrownBy(migrator::requireCurrentSchema)
+          .hasMessageNotContaining("--upgrade-schema")
+          .hasMessageNotContaining("--check-schema");
+    }
+  }
+
+  /** Databases the server refuses to start on, for a release that ends at step 1000. */
+  private enum NotCurrent {
+    /** Step 1000 is not applied. */
+    PENDING,
+    /** Step 1000 failed (H2, MySQL). */
+    FAILED_STEP,
+    /** Step 2 was edited after it ran. */
+    EDITED_STEP,
+    /** Step 2 is not recorded, below the recorded step 1000. */
+    STEP_MISSING_BELOW,
+    /** The database is at step 1000, after this release's last step. */
+    AHEAD,
+    /** The history records step 1000, but the schema has a column no step adds. */
+    SCHEMA_DIFFERS
+  }
+
+  @Test
+  void refusesAStepWhenTheSchemaIsNeitherBeforeNorAfterIt() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("so schema step 1000 can't run")
+        .hasMessageContaining("unexpected column uc_catalogs.extra ")
+        .hasMessageContaining("bin/start-uc-server --upgrade-schema")
+        .hasMessageNotContaining("must be started once on a 0.7.0 server first");
+    assertThat(migrator.recordedVersion())
+        .isEqualTo(new SchemaMigrator(db.dataSource()).latestVersion());
   }
 
   @Test
@@ -128,21 +823,157 @@ public class SchemaMigratorTest {
     UpgradeTestUtils.execute(db, "SELECT id FROM orders");
   }
 
-  @Test
-  void refusesWhenAnotherTablesIndexTookAStepsIndexName() {
-    assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL names indexes per table");
+  /**
+   * Another application's object holds a name that step 1 gives a table, an index or a constraint,
+   * in a namespace that the database shares between tables. {@code clashesOn} names the databases
+   * where it does, and {@code name} the name; on the others the upgrade goes through.
+   */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "CREATE INDEX idx_name ON other_app (x) | H2 POSTGRESQL | idx_name",
+        "CREATE TABLE idx_name (x INT) | POSTGRESQL | idx_name",
+        "CREATE VIEW idx_name AS SELECT x FROM other_app | POSTGRESQL | idx_name",
+        "ALTER TABLE other_app ADD CONSTRAINT idx_name UNIQUE (x) | POSTGRESQL | idx_name",
+        "CREATE INDEX uc_tables_pkey ON other_app (x) | POSTGRESQL | uc_tables_pkey",
+        "CREATE INDEX UKknh5y40jwdrv7qixutbl6c96r ON other_app (x)"
+            + " | POSTGRESQL | ukknh5y40jwdrv7qixutbl6c96r",
+        "ALTER TABLE other_app ADD CONSTRAINT uc_users_external_id_key UNIQUE (x)"
+            + " | H2 POSTGRESQL | uc_users_external_id_key",
+        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t CHECK (x > 0)"
+            + " | H2 | fkegal88myrpa6m0jle9iv4p37t",
+        "ALTER TABLE other_app ADD CONSTRAINT FKegal88myrpa6m0jle9iv4p37t"
+            + " FOREIGN KEY (x) REFERENCES other_parent (id)"
+            + " | H2 MYSQL | fkegal88myrpa6m0jle9iv4p37t",
+        "CREATE INDEX FKegal88myrpa6m0jle9iv4p37t ON other_app (x)"
+            + " | '' | fkegal88myrpa6m0jle9iv4p37t",
+        "CREATE VIEW uc_catalogs AS SELECT x FROM other_app | H2 POSTGRESQL MYSQL | uc_catalogs",
+        "CREATE SEQUENCE uc_catalogs | POSTGRESQL | uc_catalogs",
+        "CREATE INDEX uc_catalogs ON other_app (x) | POSTGRESQL | uc_catalogs",
+        "CREATE VIEW uc_catalogs_pkey AS SELECT x FROM other_app | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE SEQUENCE uc_catalogs_pkey | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE VIEW uc_users_external_id_key AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_users_external_id_key",
+        "CREATE SYNONYM uc_catalogs FOR other_app | H2 | uc_catalogs",
+        "CREATE TABLE uc_catalogs (x INT) PARTITION BY RANGE (x) | POSTGRESQL | uc_catalogs",
+        "CREATE TYPE uc_catalogs AS ENUM ('a') | POSTGRESQL | uc_catalogs",
+        "CREATE DOMAIN uc_catalogs AS INT | POSTGRESQL | uc_catalogs",
+        "CREATE DOMAIN uc_catalogs AS INT | '' | uc_catalogs",
+        "CREATE TYPE uc_catalogs_pkey AS ENUM ('a') | '' | uc_catalogs_pkey",
+        "CREATE TYPE uc_catalogs AS (a INT) | POSTGRESQL | uc_catalogs",
+        "CREATE MATERIALIZED VIEW uc_catalogs AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_catalogs",
+        "CREATE MATERIALIZED VIEW uc_catalogs_pkey AS SELECT x FROM other_app"
+            + " | POSTGRESQL | uc_catalogs_pkey",
+        "CREATE VIEW unrelated_view AS SELECT x FROM other_app | '' | unrelated_view",
+      })
+  void refusesWhenAnotherApplicationsObjectTookAStepsName(
+      String object, String clashesOn, String name) {
+    assumeFalse(
+        object.startsWith("CREATE SEQUENCE") && db.jdbcUrl().startsWith("jdbc:mysql:"),
+        "MySQL has no sequences");
+    // Each statement is only supported by the databases that can clash on it or that accept it.
+    String upper = object.toUpperCase(java.util.Locale.ROOT);
+    boolean h2 = db.jdbcUrl().startsWith("jdbc:h2:");
+    boolean postgres = db.jdbcUrl().startsWith("jdbc:postgresql:");
+    assumeFalse(upper.startsWith("CREATE SYNONYM") && !h2, "SYNONYM is H2 only");
+    assumeFalse(
+        (upper.startsWith("CREATE TYPE")
+                || upper.contains("PARTITION BY")
+                || upper.startsWith("CREATE MATERIALIZED VIEW"))
+            && !postgres,
+        "PostgreSQL only");
+    assumeFalse(
+        upper.startsWith("CREATE DOMAIN") && !clashesOn.isEmpty() && !postgres,
+        "PostgreSQL's DOMAIN row");
+    assumeFalse(upper.startsWith("CREATE DOMAIN") && clashesOn.isEmpty() && !h2, "H2's DOMAIN row");
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_parent (id INT PRIMARY KEY)");
     UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
-    UpgradeTestUtils.execute(db, "CREATE INDEX idx_name ON other_app (x)");
+    UpgradeTestUtils.execute(db, object);
+    String database =
+        db.jdbcUrl().startsWith("jdbc:h2:")
+            ? "H2"
+            : db.jdbcUrl().startsWith("jdbc:postgresql:") ? "POSTGRESQL" : "MYSQL";
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    int check = migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8));
 
-    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
-        .hasMessageMatching("(?is).*index idx_name is used by table other_app.*")
-        .hasMessageContaining("restore the backup")
-        .hasMessageContaining("rename that index");
+    if (!List.of(clashesOn.split(" ")).contains(database)) {
+      assertThat(check).isZero();
+      assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+      return;
+    }
+    assertThat(check).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 1 creates a table, index or constraint named " + name)
+        .contains("which is not Unity Catalog's");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 1 creates a table, index or constraint named");
+    // Refused before the step ran: nothing to restore.
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
 
-    // Renaming the other index does not create ours: a rerun still refuses.
-    UpgradeTestUtils.execute(db, "ALTER INDEX idx_name RENAME TO other_app_x");
-    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
-        .hasMessageContaining("index idx_name missing on uc_tables");
+  /**
+   * {@code fromBaseline}: a 0.7.0 database without schema history, so that steps 2 and 3 are both
+   * pending and step 2 is simulated first; otherwise only step 3 is pending. {@code onOtherTable}:
+   * another application's table has a constraint of the dropped name; PostgreSQL's constraint names
+   * are per table, so that is not the constraint that the step drops.
+   */
+  @ParameterizedTest
+  @CsvSource({"false, false", "true, false", "false, true", "true, true"})
+  void refusesAStepThatDropsAConstraintTheDatabaseNoLongerHasByThatName(
+      boolean fromBaseline, boolean onOtherTable) {
+    assumeTrue(db.jdbcUrl().startsWith("jdbc:postgresql:"), "Step 3 drops a CHECK by name there");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    if (fromBaseline) {
+      UpgradeTestUtils.createBaselineSchema(db);
+    } else {
+      migrator.upgradeSchema();
+    }
+    UpgradeTestUtils.execute(
+        db,
+        "ALTER TABLE uc_credentials DROP CONSTRAINT uc_credentials_credential_type_check,"
+            + " ADD CONSTRAINT renamed_type_check CHECK (credential_type IN ('AWS_IAM_ROLE'))");
+    if (onOtherTable) {
+      UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+      UpgradeTestUtils.execute(
+          db,
+          "ALTER TABLE other_app ADD CONSTRAINT uc_credentials_credential_type_check"
+              + " CHECK (x > 0)");
+    }
+    if (!fromBaseline) {
+      UpgradeTestUtils.execute(db, "DELETE FROM uc_schema_history WHERE version = '3'");
+    }
+    String recorded = migrator.recordedVersion();
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 3 drops the constraint uc_credentials_credential_type_check");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 3 drops the constraint")
+        .hasMessageContaining("uc_credentials_credential_type_check");
+    // Refused before any step ran.
+    assertThat(migrator.recordedVersion()).isEqualTo(recorded);
+    assertThat(recorded).isEqualTo(fromBaseline ? null : "2");
+  }
+
+  /** A clash on a later step is refused by the upgrade as the check reports it: before any step. */
+  @Test
+  void refusesBeforeAnyStepWhenALaterStepsNameIsTaken() {
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+    UpgradeTestUtils.execute(db, "CREATE VIEW uc_test_only_step AS SELECT x FROM other_app");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Schema step 1000 creates a table, index or constraint named uc_test_only_step");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("Schema step 1000 creates a table, index or constraint named");
+    // Nothing ran, not even the steps before the one that clashes.
+    assertThat(migrator.recordedVersion()).isNull();
   }
 
   @Test
@@ -158,6 +989,34 @@ public class SchemaMigratorTest {
     try (HikariDataSource onUcA = new HikariDataSource(config)) {
       assertThat(new SchemaMigrator(onUcA).state()).isEqualTo(SchemaState.EMPTY);
     }
+  }
+
+  @Test
+  void refusesARepeatableStepBeforeChangingTheDatabase() {
+    SchemaMigrator migrator =
+        new SchemaMigrator(db.dataSource(), List.of("classpath:db/test-steps/repeatable"));
+
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("This build has a repeatable schema step")
+        .hasMessageContaining("R__test_only_step.sql");
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void refusesAHistoryRepeatableStepAsAnUnknownStep() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    // What another build that had a repeatable step leaves in the history.
+    UpgradeTestUtils.execute(
+        db,
+        ("INSERT INTO %1$suc_schema_history%1$s (%1$sinstalled_rank%1$s, %1$sversion%1$s,"
+                + " %1$sdescription%1$s, %1$stype%1$s, %1$sscript%1$s, %1$schecksum%1$s,"
+                + " %1$sinstalled_by%1$s, %1$sexecution_time%1$s, %1$ssuccess%1$s)"
+                + " VALUES (100, NULL, 'other', 'SQL', 'R__other.sql', 1, 'uc', 0, true)")
+            .formatted(identifierQuote(db.dataSource())));
+
+    assertThatThrownBy(new SchemaMigrator(db.dataSource())::upgradeSchema)
+        .hasMessageContaining("schema history does not match")
+        .hasMessageNotContaining("This build has a repeatable schema step");
   }
 
   @Test
@@ -205,6 +1064,83 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> SchemaMigrator.fromHibernateProperties(properties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("H2 in server mode is not supported");
+  }
+
+  /**
+   * The URL as {@code hibernate.connection.url}, with {@code IFEXISTS=FALSE}, or as the URL of a
+   * pool set up by data source class.
+   */
+  @ParameterizedTest
+  @CsvSource({"PLAIN", "IFEXISTS_FALSE", "DATA_SOURCE_URL", "WRAPPED"})
+  void serverRefusesToStartOnAMissingH2FileWithoutCreatingIt(String form, @TempDir Path dir) {
+    Properties properties = db.hibernateProperties();
+    java.util.function.Consumer<String> setUrl =
+        url -> {
+          switch (form) {
+            case "PLAIN" -> {
+              properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+              properties.setProperty("hibernate.connection.url", url);
+            }
+            case "IFEXISTS_FALSE" -> {
+              properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+              properties.setProperty("hibernate.connection.url", url + ";IFEXISTS=FALSE");
+            }
+            case "WRAPPED" -> {
+              properties.setProperty(
+                  "hibernate.connection.driver_class", WrappingDriver.class.getName());
+              properties.setProperty(
+                  "hibernate.connection.url",
+                  WrappingDriver.PREFIX + url.substring("jdbc:".length()));
+            }
+            default -> {
+              properties.remove("hibernate.connection.url");
+              properties.remove("hibernate.connection.driver_class");
+              properties.setProperty(
+                  "hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+              properties.setProperty("hibernate.hikari.dataSource.URL", url);
+            }
+          }
+        };
+    setUrl.accept("jdbc:h2:file:" + dir + "/typo");
+
+    assertThatThrownBy(() -> SchemaMigrator.requireH2DatabaseExists(properties))
+        .hasMessageContaining("H2 database file that hibernate.connection.url names is not found");
+    assertThat(dir).isEmptyDirectory();
+
+    // An existing file passes.
+    setUrl.accept("jdbc:h2:file:" + dir + "/uc");
+    try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(properties)) {
+      migrator.upgradeSchema();
+    }
+    SchemaMigrator.requireH2DatabaseExists(properties);
+  }
+
+  @Test
+  void runsStartingAtOnceInOneProcessTakeTurns() throws Exception {
+    // As two servers on one in-memory database starting together; on H2 no lock call exists.
+    CountDownLatch go = new CountDownLatch(1);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      List<Future<Integer>> runs = new ArrayList<>();
+      for (int i = 0; i < 2; i++) {
+        runs.add(
+            executor.submit(
+                () -> {
+                  go.await();
+                  return new SchemaMigrator(db.dataSource()).upgradeSchema();
+                }));
+      }
+      go.countDown();
+      int applied = 0;
+      for (Future<Integer> run : runs) {
+        applied += run.get(1, TimeUnit.MINUTES);
+      }
+      SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+      assertThat(applied).isEqualTo(releaseSteps(migrator));
+      assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test
@@ -304,20 +1240,6 @@ public class SchemaMigratorTest {
     }
   }
 
-  @Test
-  void refusesADatabaseWithAFailedStep() {
-    new SchemaMigrator(db.dataSource()).upgradeSchema();
-    // What a run that failed in step 2 leaves behind on H2 and MySQL.
-    UpgradeTestUtils.execute(
-        db,
-        "UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE %1$sversion%1$s = '2'"
-            .formatted(identifierQuote(db.dataSource())));
-
-    assertThatThrownBy(new SchemaMigrator(db.dataSource())::upgradeSchema)
-        .hasMessageContaining("schema history does not match")
-        .hasMessageContaining("Detected failed migration to version 2");
-  }
-
   @ParameterizedTest
   @EnumSource(RefusedLock.class)
   void stopsWhenTheRunLockIsRefused(RefusedLock refused) {
@@ -356,8 +1278,34 @@ public class SchemaMigratorTest {
             sql -> sql.contains("pg_advisory_unlock(") || sql.contains("RELEASE_LOCK("),
             sql -> null);
 
-    assertThatThrownBy(new SchemaMigrator(failing)::upgradeSchema)
+    // The connection that was discarded is not used again.
+    AtomicBoolean discarded = new AtomicBoolean();
+    AtomicInteger usedAfterwards = new AtomicInteger();
+    DataSource watching =
+        UpgradeTestUtils.proxy(
+            DataSource.class,
+            (p, m, a) -> {
+              Object result = m.invoke(failing, a);
+              if (!m.getName().equals("getConnection")) {
+                return result;
+              }
+              Connection connection = (Connection) result;
+              return UpgradeTestUtils.proxy(
+                  Connection.class,
+                  (pp, mm, aa) -> {
+                    if (mm.getName().equals("abort")) {
+                      discarded.set(true);
+                    } else if (mm.getName().equals("setAutoCommit") && discarded.get()) {
+                      usedAfterwards.incrementAndGet();
+                    }
+                    return mm.invoke(connection, aa);
+                  });
+            });
+
+    assertThatThrownBy(new SchemaMigrator(watching)::upgradeSchema)
         .hasMessageContaining("Could not release the schema migration lock");
+    assertThat(discarded).isTrue();
+    assertThat(usedAfterwards).hasValue(0);
     // The lock's database session was closed, so a run on other connections takes it at once.
     try (HikariDataSource other = new HikariDataSource()) {
       Properties properties = db.hibernateProperties();
@@ -416,6 +1364,48 @@ public class SchemaMigratorTest {
           }
           return rewritten;
         });
+  }
+
+  /** The number of records of failed steps in {@code db}'s schema history. */
+  private int failedRecords() {
+    String sql =
+        "SELECT COUNT(*) FROM %1$suc_schema_history%1$s WHERE %1$ssuccess%1$s = false"
+            .formatted(identifierQuote(db.dataSource()));
+    try (Connection connection = db.dataSource().getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
+      rs.next();
+      return rs.getInt(1);
+    } catch (SQLException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  /**
+   * {@code sql} with {@code %1$s} the identifier quote, then the condition on step 1000's record.
+   */
+  private String historyUpdate(String sql) {
+    return (sql + " %1$sversion%1$s = '1000'").formatted(identifierQuote(db.dataSource()));
+  }
+
+  /** {@code db}'s data source, adding each SQL statement it sends to {@code sent}. */
+  private DataSource sending(List<String> sent) {
+    return UpgradeTestUtils.watched(
+        db.dataSource(),
+        (sql, prepared) -> {
+          sent.add(sql);
+          return sql;
+        });
+  }
+
+  /** Whether {@code sql} is a statement of step 1, which creates every table "if not exists". */
+  private static boolean isStep1(String sql) {
+    return sql.toLowerCase(Locale.ROOT).contains("create table if not exists uc_");
+  }
+
+  /** Whether {@code sql} is the statement of step 2, which widens uc_function_params.type_json. */
+  private static boolean isStep2(String sql) {
+    return sql.toLowerCase(Locale.ROOT).startsWith("alter table uc_function_params");
   }
 
   /** The quote for identifiers: Flyway's history table has quoted lower-case column names. */

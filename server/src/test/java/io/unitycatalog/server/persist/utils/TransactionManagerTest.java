@@ -22,6 +22,8 @@ import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Date;
@@ -51,6 +53,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import software.amazon.awssdk.core.exception.SdkClientException;
 
 public class TransactionManagerTest {
 
@@ -143,6 +146,31 @@ public class TransactionManagerTest {
 
       verify(transaction).rollback();
       verify(transaction, never()).commit();
+    }
+
+    @Test
+    public void testStorageFailureReportsGeneralError() {
+      // Storage messages name the storage endpoint, so only the general error is reported.
+      RuntimeException storageFailure =
+          new UncheckedIOException(
+              new IOException(
+                  SdkClientException.create("Connect to storage.example.com:9000 failed")));
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory,
+                      session -> {
+                        throw storageFailure;
+                      },
+                      "Error executing operation",
+                      false))
+          .isInstanceOf(BaseException.class)
+          .hasMessage("Failed to access storage.")
+          .hasCause(storageFailure)
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.INTERNAL);
+      verify(transaction).rollback();
     }
 
     @Test

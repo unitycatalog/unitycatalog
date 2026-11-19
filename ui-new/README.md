@@ -1,17 +1,30 @@
 # Unity Catalog UI (ui-new)
 
 A rebuild of the Unity Catalog web UI as a same-origin SPA backed by a small Rust
-bridge. It browses catalogs, schemas, tables, volumes, functions, and models, and
-supports the existing cookie-based auth (or an auth-disabled mode).
+bridge. It browses catalogs, schemas, tables, volumes, functions, registered
+models, and metric views, and supports the existing cookie-based auth (or an
+auth-disabled mode).
+
+It can also create, edit, and delete them. Every object type has a create
+dialog, metadata can be edited wherever UC supports updates, and delete asks
+the user to type the object's name. The UI offers these actions to everyone and
+leaves authorization to UC, which reports a refusal as an error toast. When the
+bridge's `/config` reports auth enabled, the UI offers Finalize only when the
+current SCIM username matches the version's creator; with auth disabled, it
+offers the action. This is a UI hint: UC remains authoritative, and a mismatch
+between bridge and server auth settings can still result in an authorization
+error toast.
 
 - `web/` — the SPA: [Bun](https://bun.com/) + Vite + React 19, [shadcn/ui](https://ui.shadcn.com/)
   on [Tailwind CSS](https://tailwindcss.com/) v4, [TanStack Router](https://tanstack.com/router)
   (file-based) + [TanStack Query](https://tanstack.com/query), talking [Connect](https://connectrpc.com/docs/web/getting-started/)
   to the bridge via [connect-query](https://connectrpc.com/docs/web/query/).
-- `server/` — the bridge: a Rust [axum](https://docs.rs/axum) service exposing one
-  Connect RPC (`uc.v1.UnityProxyService/Call`, a generic UC REST passthrough), a
-  runtime `/config`, `/healthz`, and (in prod) the built SPA.
-- `proto/` — the Connect service definition; `buf.gen.yaml` generates the TS client.
+- `server/` — the bridge: a Rust [axum](https://docs.rs/axum) service exposing
+  typed Connect services for each catalog domain, the allowlisted
+  `UnityProxyService/Call` used by control-plane and permissions calls,
+  `/config`, and `/healthz`. Vite or a separate web server serves the SPA.
+- `proto/` — the typed domain services plus the generic control/permissions proxy;
+  `buf.gen.yaml` generates the TypeScript clients.
 
 ## Architecture
 
@@ -20,35 +33,63 @@ Browser SPA  --Connect (same-origin)-->  Rust bridge  --REST-->  UC Java server
              <--Set-Cookie propagated--               <--------
 ```
 
-The bridge being same-origin removes CORS. Auth stays cookie-based (the current
-ui's model): the SPA calls `POST /auth/tokens` (token-exchange, `ext=cookie`) and
-`GET /scim2/Me` through the passthrough; the bridge forwards the browser's cookie
-to UC and copies UC's `Set-Cookie` back onto the (same-origin) response, so the
-session lands in the browser. `GET /config` tells the SPA whether auth is enabled
+The browser reaches the SPA and the bridge through one origin (Vite in
+development, or a web server that proxies to the bridge in production), so no
+CORS is needed by default; `ALLOWED_ORIGINS` enables it for a SPA served from
+another origin. Auth stays cookie-based
+(the current ui's model): the SPA calls `POST /auth/tokens` (token-exchange,
+`ext=cookie`) and `GET /scim2/Me` through the passthrough. The bridge forwards
+the browser's cookie, `Authorization` header, and `X-Requested-With` header to UC,
+and copies UC's `Set-Cookie` back onto the (same-origin) response, so the session
+lands in the browser. UC's CSRF check requires `X-Requested-With:
+XMLHttpRequest` on cookie-authenticated writes, so the SPA sends it on every
+request. `GET /config` tells the SPA whether auth is enabled
 and which providers to show — the runtime replacement for the old build-time
 `REACT_APP_*_AUTH_ENABLED` flags.
+
+## Typed domain RPC contract
+
+The protobuf package defines typed services for catalogs, schemas, tables,
+volumes, functions, registered models and model versions, and metric views.
+The bridge generates the Rust Connect services from these contracts, enforces
+their `buf.validate` rules with
+[protovalidate-buffa](https://docs.rs/protovalidate-buffa/latest/protovalidate_buffa/)
+before calling UC, and translates each typed request to the UC REST API. The SPA
+calls the services through typed connect-query hooks under `web/src/hooks/`.
+See [issue #1888](https://github.com/unitycatalog/unitycatalog/issues/1888) for
+the design.
+
+`UnityProxyService/Call` remains for auth, SCIM, and permissions endpoints that
+are outside these domain contracts. Generated files under `web/src/gen/` and
+Cargo's `OUT_DIR` are reproducible and must not be edited by hand.
 
 ## Prerequisites
 
 - Bun 1.3+
 - Rust (stable) / cargo
+- Buf (or `bun install` in `web/`, which installs the local Buf CLI used by the
+  Rust build script)
 - A running Unity Catalog server (default `http://localhost:8080` — see the repo
   root `README.md` and `bin/start-uc-server`).
 
 ## Develop
 
-Two processes. The bridge proxies to UC; Vite serves the SPA and proxies
+Install and generate once, then run two processes. The bridge proxies to UC;
+Vite serves the SPA and proxies
 `/uc.v1.*`, `/config`, and `/healthz` to the bridge.
 
 ```bash
+# One-time setup
+cd ui-new/web
+bun install
+bun run generate
+
 # Terminal 1 — the Rust bridge (listens on :8081, proxies to UC on :8080)
 cd ui-new/server
 UC_SERVER=http://localhost:8080 cargo run
 
 # Terminal 2 — the SPA dev server (listens on :5173, proxies RPCs to :8081)
 cd ui-new/web
-bun install
-bun run generate   # buf: proto -> src/gen (also runs in build)
 bun run dev
 ```
 
@@ -61,29 +102,33 @@ To exercise the login flow, start the bridge with auth enabled:
 UI_AUTH_ENABLED=true GOOGLE_CLIENT_ID=<client-id> UC_SERVER=http://localhost:8080 cargo run
 ```
 
-## Build (production, single origin)
+## Build artifacts
 
 ```bash
 cd ui-new/web && bun run build          # -> web/dist
 cd ../server && cargo build --release    # -> target/release/uc-ui-bridge
-WEB_DIST=../web/dist UC_SERVER=http://localhost:8080 ./target/release/uc-ui-bridge
+UC_SERVER=http://localhost:8080 ./target/release/uc-ui-bridge
 ```
 
-The bridge then serves the SPA and the RPCs from one origin on `PORT` (default
-8081), with an `index.html` fallback for client-side routes.
+Serve `web/dist` from a web server that proxies `/uc.v1.*`, `/config`, and
+`/healthz` to the bridge, and falls back to `index.html` for any other path so
+client-side routes load on refresh or from a link.
 
 ## Bridge configuration (env)
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `8081` | Bridge listen port |
+| `PORT` | `8081` | Bridge listen port (1–65535) |
 | `UC_SERVER` | `http://localhost:8080` | Unity Catalog server base URL |
 | `UI_AUTH_ENABLED` | `false` | Gate the SPA behind login |
 | `GOOGLE_CLIENT_ID` | _(empty)_ | Enables the Google sign-in button |
 | `OKTA_AUTH_ENABLED` | `false` | Advertise Okta as enabled |
 | `KEYCLOAK_AUTH_ENABLED` | `false` | Advertise Keycloak as enabled |
-| `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated); empty = same-origin only |
-| `WEB_DIST` | `../web/dist` | Built SPA directory to serve |
+| `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated, each must exactly match the browser's serialized `Origin`—no trailing slash or explicit default port; other entries are logged and skipped); empty = same-origin only |
+
+The `*_ENABLED` variables accept `true`/`false`, `1`/`0`, `yes`/`no`, or
+`on`/`off`, ignoring case. An invalid or empty boolean or `PORT` stops the
+bridge at startup with an error naming the variable.
 
 ## Test
 
@@ -93,6 +138,7 @@ gated at 80% (statements/branches/functions/lines).
 
 ```bash
 cd ui-new/web
+bun run proto:check      # protobuf lint + build
 bun run typecheck        # tsr generate + tsc
 bun run test             # vitest run
 bun run test:watch       # vitest (watch mode)

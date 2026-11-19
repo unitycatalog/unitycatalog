@@ -23,7 +23,8 @@ Unity Catalog is a JVM project, and mostly Java: the server, the Java client, th
 ```bash
 build/sbt clean compile                 # compile everything, no tests
 build/sbt clean package publishLocal    # build and publish artifacts locally
-build/sbt -J-Xmx2G clean test           # full test suite (give it heap)
+dev/run-tests.py                        # full test suite, preferred: same tests as `build/sbt test`, in parallel JVMs sized to the CPUs and memory (see --help)
+build/sbt -J-Xmx2G clean test           # full test suite, serially: for a weak machine, where the script picks only 1-2 JVMs (-J-Xmx is sbt's own heap, needed for serverShaded/assembly; forked test JVMs are unaffected)
 build/sbt "server/test"                 # one module's tests
 build/sbt "server/testOnly io.unitycatalog.server.service.PermissionServiceTest"  # one class (fast loop)
 build/sbt -J-Xmx2G jacoco               # coverage report
@@ -85,6 +86,7 @@ Key points: HTTP verb annotations (`@Post`, `@Get`, `@Patch`, `@Delete`) with `@
 | `connectors/spark/` | The Apache Spark connector (Scala). |
 | `connectors/hadoop/` | The Hadoop connector. |
 | `examples/cli/` | The `uc` command-line client. |
+| `examples/sample-database/` | Builds the sample H2 database (`etc/db/h2db.mv.db`) that the quickstart examples use. |
 | `integration-tests/` | Cross-module and end-to-end tests. |
 | `ui/` | The web UI (React, built with Yarn / Node). |
 | `docs/` | User documentation, published with MkDocs (`mkdocs.yml`). |
@@ -93,7 +95,7 @@ Key points: HTTP verb annotations (`@Post`, `@Get`, `@Patch`, `@Delete`) with `@
 
 Server internal packages (`server/src/main/java/io/unitycatalog/server/`): `service/` (request handlers), `persist/` (repositories, DAOs, transactions), `auth/` (authorization), `security/` (authentication: JWT and security context), `delta/` (Delta integration), `exception/` (error types and handlers), `utils/` (config and shared helpers). Tests mirror this under `server/src/test/...`, with `base/` holding the shared test base classes (`BaseServerTest`, `BaseCRUDTest`) and per-domain extensions.
 
-sbt projects: `server`, `serverShaded`, `client`, `pythonClient`, `controlApi`, generated model projects (`serverModels`, `controlModels`), `apiDocs`, `cli`, `spark`, `hadoop`, `integrationTests`, and the aggregate `root`.
+sbt projects: `server`, `serverShaded`, `client`, `pythonClient`, `controlApi`, generated model projects (`serverModels`, `controlModels`), `apiDocs`, `cli`, `sampleDatabase`, `spark`, `hadoop`, `integrationTests`, and the aggregate `root`.
 
 ## Domain and authorization model
 
@@ -146,7 +148,12 @@ Conventions:
 
 - **Read paths pass `readOnly = true`; write paths pass `false`.** A path that needs a specific isolation level passes it explicitly; it applies to that transaction only, and Hikari resets it when the connection returns to the pool.
 - **DAOs extend `IdentifiableDAO`** (UUID id plus name), are annotated `@Entity @Table(name = "uc_...")`, use Lombok (`@Getter @Setter @SuperBuilder @NoArgsConstructor @AllArgsConstructor`), and expose static `from(XInfo)` and instance `toXInfo()` converters. Keep business logic out of DAOs.
-- **Backends:** H2 by default (embedded, file-based). MySQL and PostgreSQL are supported for a persistent deployment, configured in `etc/conf/hibernate.properties` (point at your database and add the JDBC driver); see `docs/server/deployment.md`. Hibernate is configured in `persist/utils/HibernateConfigurator`. Tests run on H2 by default; `build/sbt -J-Xmx6G testPostgres18` or `testMySQL8` (or `UC_TEST_DATABASE=POSTGRES_18` / `MYSQL_8`) runs them on PostgreSQL 18 or MySQL 8.4 in Docker, each test on its own database, and fails rather than skips when Docker is not available. When adding schema, keep any index or column change safe across a server restart on an existing database, and portable across all three backends.
+- **Backends:** H2 by default (embedded, file-based). MySQL and PostgreSQL are supported for a persistent deployment, configured in `etc/conf/hibernate.properties` (point at your database and add the JDBC driver); see `docs/server/deployment.md`. Hibernate is configured in `persist/utils/HibernateConfigurator`. Tests run on H2 by default; `build/sbt -J-Xmx6G testPostgres18` or `testMySQL8` (or `UC_TEST_DATABASE=POSTGRES_18` / `MYSQL_8`) runs them on PostgreSQL 18 or MySQL 8.4 in Docker, each test on its own database, and fails rather than skips when Docker is not available. When adding schema, keep any index or column change safe across a server restart on an existing database, and portable across H2, MySQL and PostgreSQL. A schema change:
+  - is a new Flyway step for each database under `server/src/main/resources/db/migration/{h2,postgresql,mysql}/`, numbered after the last one; never edit a merged step or its effect file;
+  - is checked for step order against the PR's base by `dev/check-migration-steps.sh`, so two open PRs can each pass with steps out of order: just before a PR that adds a step merges, rebase it or merge main into it so its step is numbered above every merged one (or turn on the branch protection "Require branches to be up to date before merging"); a release branch (`branch-*`) takes no new steps, so add them on main;
+  - holds one SQL statement per step; `MigrationStepRulesTest` (run with `UC_TEST_MIGRATION_CHECKS=true`) holds the rules for what a step may change (adding a Java enum constant on PostgreSQL replaces the column's CHECK constraint, in one `ALTER TABLE ... DROP CONSTRAINT k, ADD CONSTRAINT k CHECK (c IN (...))` that keeps every value);
+  - comes with an effect file per database, `server/src/main/resources/schema-effects/{h2,postgresql,mysql}/V<n>.txt`, written by `build/sbt updateSchemaDumps` (PostgreSQL and MySQL need Docker), which only writes them: run the tests with `UC_TEST_MIGRATION_CHECKS=true` afterwards to check them; check it in with the step;
+  - matches the entities: `BaselineMatchesEntitiesTest` (also run with `UC_TEST_MIGRATION_CHECKS=true`) compares the schema the steps build with the one Hibernate builds from the entities.
 - **Enforce invariants at the database level** (unique constraints) rather than only in code, where duplicate creation or races are possible.
 
 ## Error handling
@@ -208,6 +215,7 @@ Concrete review expectations for this repository:
 - **Cover the branches.** Every new branch, error path, and boundary (empty, zero, negative, invalid, concurrent) needs a case. For combinations of boolean conditions, cover the combinations, not just one. Test both the enabled and disabled paths of any flag or capability that guards behavior.
 - **Do not generate test bloat; reuse setup.** Do not add heavy tests for trivial data-holder classes with no logic. Do not repeat identical setup in every method: hoist shared setup into `@BeforeEach` and extend the shared base test classes (`BaseServerTest`, `BaseCRUDTest`) rather than re-creating their scaffolding, and reserve `@BeforeAll` for a genuinely immutable, expensive fixture. Collapse several near-identical cases that do not mutate state into one parameterized test, or one method that walks a list of input/expected pairs, instead of copy-pasting a method per input. Object, client, and server setup is expensive, and slow or bloated suites get flagged in review.
 - **Stack:** JUnit 5 (`@BeforeEach`/`@AfterEach`/`@TempDir`), servers bound to a random port per test, schema reset between tests. Integration tests spanning server plus a client or connector go in `integration-tests/`.
+- **S3-compatible storage:** `s3://` paths in tests use emulated storage by default. `build/sbt testMinIO` (also `testSeaweedFS`, `testRustFS`, `testCeph`, `testGarage`, `testCephStaticKey` and `testGarageStaticKey`, or `UC_TEST_STORAGE=<storage>`, one of `SupportedStorage`) runs every project's tests on that storage in Docker; tests that need real storage skip without it, and `S3CompatibleCredentialScopeTest` also skips on storage without STS, whose keys carry no session policy.
 
 ## Contribution workflow
 

@@ -103,11 +103,7 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
         .usingRecursiveComparison()
         .ignoringFields("columns")
         .isEqualTo(created);
-    // The server lowercases typeText on create.
-    assertThat(fetched.getColumns())
-        .usingRecursiveComparison()
-        .withComparatorForFields(String.CASE_INSENSITIVE_ORDER, "typeText")
-        .isEqualTo(COLUMNS);
+    assertThat(fetched.getColumns()).usingRecursiveComparison().isEqualTo(COLUMNS);
 
     List<TableInfo> tables =
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty());

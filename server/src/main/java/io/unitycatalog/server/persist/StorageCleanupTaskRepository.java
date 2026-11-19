@@ -14,29 +14,14 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
 /** Persists cleanup tasks using the database clock for all task timestamps. */
-public class StorageCleanupTaskRepository {
+public class StorageCleanupTaskRepository implements CleanupTaskRepository {
   private final SessionFactory sessionFactory;
-
-  public record Claim(
-      ManagedResourceType resourceType, UUID resourceId, String storageLocation, UUID leaseToken) {}
-
-  public record CleanupFailureReport(String sanitizedError, Duration retryBackoff) {
-    public CleanupFailureReport {
-      Objects.requireNonNull(sanitizedError, "sanitizedError");
-      Objects.requireNonNull(retryBackoff, "retryBackoff");
-      ValidationUtils.checkArgument(!retryBackoff.isNegative(), "Retry backoff cannot be negative");
-    }
-  }
 
   public StorageCleanupTaskRepository(SessionFactory sessionFactory) {
     this.sessionFactory = sessionFactory;
   }
 
-  /**
-   * Creates a cleanup task in the caller's current database transaction. If the resource deletion
-   * or task creation fails, both changes are rolled back. The task keeps the deleted resource's ID
-   * and name.
-   */
+  @Override
   public StorageCleanupTaskDAO create(
       Session session,
       ManagedResourceType resourceType,
@@ -55,10 +40,7 @@ public class StorageCleanupTaskRepository {
     return task;
   }
 
-  /**
-   * Claims one retention-eligible task with no live lease. An empty result means no task was ready
-   * or another worker won the conditional claim.
-   */
+  @Override
   public Optional<Claim> claim(Duration leaseDuration, Duration initialDelay) {
     ValidationUtils.checkArgument(
         leaseDuration.compareTo(Duration.ofMillis(1)) >= 0,
@@ -115,10 +97,7 @@ public class StorageCleanupTaskRepository {
         /* readOnly= */ false);
   }
 
-  /**
-   * Releases a matching live lease and waits for its retry delay. Returns false when the worker no
-   * longer owns a live lease.
-   */
+  @Override
   public boolean reportFailure(UUID resourceId, UUID leaseToken, CleanupFailureReport report) {
     Objects.requireNonNull(report, "report");
     String error =
@@ -146,10 +125,7 @@ public class StorageCleanupTaskRepository {
         /* readOnly= */ false);
   }
 
-  /**
-   * Deletes a task only while the matching lease is live. Returns false when ownership expired or
-   * changed.
-   */
+  @Override
   public boolean finish(UUID resourceId, UUID leaseToken) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,

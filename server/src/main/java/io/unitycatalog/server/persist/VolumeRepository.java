@@ -169,15 +169,13 @@ public class VolumeRepository {
    * @param schemaName
    * @param maxResults
    * @param pageToken
-   * @param includeBrowse
    * @return
    */
   public ListVolumesResponseContent listVolumes(
       String catalogName,
       String schemaName,
       Optional<Integer> maxResults,
-      Optional<String> pageToken,
-      Optional<Boolean> includeBrowse) {
+      Optional<String> pageToken) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {

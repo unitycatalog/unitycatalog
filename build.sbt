@@ -155,7 +155,7 @@ lazy val commonSettings = Seq(
   },
   
   assembly / test := {}
-)
+) ++ TestParallelization.settings
 
 lazy val log4jProcessSettings = Seq(
   libraryDependencies ++= Seq(
@@ -328,19 +328,25 @@ lazy val pythonClient = (project in file("clients/python"))
           outputDir = outputDir,
           generatorName = "python",
           specs = Seq(
+            // The delta.yaml run goes first because its "__init__.py" filter matches by file name: besides the
+            // delta api/ and models/ inits (patchDeltaDataTypeModule needs the models one), it also writes
+            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite (checked in
+            // processGeneratedFiles by PythonClientPostBuild.clientPackageInitProblem).
+            OpenApiSpec(
+              inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
+              packageName = s"$artifactNamePrefix.client",
+              apiPackage = "delta.api",
+              modelPackage = "delta.models",
+              additionalProperties = commonProps,
+              globalProperties = Map("apis" -> "", "models" -> "", "supportingFiles" -> "__init__.py")
+            ),
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
               additionalProperties = commonProps,
-              // Overrides python/asyncio/rest.mustache with the v7.11.0 version. See the header of
-              // build/templates/asyncio/rest.mustache for when to remove it.
+              // Overrides python/asyncio/rest.mustache with the v7.11.0 version (see its header for when to
+              // remove it) and python/api_client.mustache so the shared ApiClient also resolves Delta models.
               templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath
-            ),
-            OpenApiSpec(
-              inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
-              packageName = s"$artifactNamePrefix.delta",
-              additionalProperties = commonProps,
-              globalProperties = Map("apis" -> "", "models" -> "")
             )
           )
         )
@@ -384,8 +390,9 @@ lazy val apiDocs = (project in file("api"))
     }
   )
 
-// Define the custom task key
-lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class from the test folder")
+// Builds the quickstart's sample database etc/db/h2db.mv.db (SampleDatabase, in the sampleDatabase
+// project), keeping a file that exists.
+lazy val buildSampleDatabase = taskKey[Unit]("Build the sample database etc/db/h2db.mv.db")
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
@@ -499,6 +506,10 @@ lazy val server = (project in file("server"))
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+      // The upgrade tests run older releases, whose servers read Vert.x's version file at start.
+      "io.vertx" % "vertx-core" % "4.5.34" % Test,
+      // Reads the schema steps' SQL in MigrationStepRulesTest (Apache-2.0 or LGPL-2.1; tests only).
+      "com.github.jsqlparser" % "jsqlparser" % "5.4" % Test,
 
       // Integration testing
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
@@ -547,10 +558,6 @@ lazy val server = (project in file("server"))
            |}
            |""".stripMargin)
       Seq(file)
-    },
-    populateTestDB := {
-      val log = streams.value.log
-      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
     // Include server and control models in the bin package for server
@@ -679,7 +686,38 @@ lazy val cli = (project in file("examples") / "cli")
       "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     ),
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    Test / forkOptions := (Test / forkOptions).value.withWorkingDirectory((ThisBuild / baseDirectory).value),
+  )
+
+// Builds the quickstart's sample database with the server's schema steps and repositories. A
+// project of its own, so that neither the server jar nor the server's test classes hold it.
+lazy val sampleDatabase = (project in file("examples") / "sample-database")
+  .dependsOn(server)
+  .dependsOn(serverModels)
+  .dependsOn(controlModels)
+  .enablePlugins(CheckstylePlugin)
+  .settings(
+    name := s"$artifactNamePrefix-sample-database",
+    commonSettings,
+    log4jProcessSettings,
+    skipReleaseSettings,
+    javafmtCheckSettings(),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= javacRelease17,
+    libraryDependencies ++= Seq(
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+    ),
+    buildSampleDatabase := Def.taskDyn {
+      val file = (ThisBuild / baseDirectory).value / "etc" / "db" / "h2db.mv.db"
+      if (file.exists) {
+        Def.task { streams.value.log.info(s"$file already exists; keeping it") }
+      } else {
+        (Compile / runMain).toTask(" io.unitycatalog.server.utils.SampleDatabase \"" + file + "\"")
+      }
+    }.value,
   )
 
 // What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
@@ -745,6 +783,16 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     // Arrow-backed vectorized reads need java.nio opened for off-heap memory access.
     Test / javaOptions += "--add-opens=java.base/java.nio=ALL-UNNAMED",
+    // Test-only Spark/Delta settings.
+    Test / javaOptions ++= Seq(
+      // No web UI, which would bind a port for every Spark session.
+      "-Dspark.ui.enabled=false",
+      // No progress bars in the test output.
+      "-Dspark.ui.showConsoleProgress=false",
+      // Delta rebuilds table snapshots with 50 partitions by default, sized for real tables; for
+      // tiny test tables that overhead dominates the Delta read/write suites.
+      "-Dspark.databricks.delta.snapshotPartitions=2",
+    ),
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
@@ -904,13 +952,17 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, pythonClient, server, cli, spark, hadoop, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, sampleDatabase, spark, hadoop, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
     commonSettings,
-    rootReleaseSettings
+    rootReleaseSettings,
+    // dev/run-tests.py keeps its log and suite durations here, also across a `clean` in the run.
+    cleanKeepFiles ++= Seq(target.value / "test-logs", target.value / "test-durations.csv"),
   )
+
+TestParallelization.globalSettings
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
@@ -928,3 +980,25 @@ def testOnDatabase(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
 addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))
+
+// Rewrites the schema effect files (server/src/main/resources/schema-effects) from the steps, on
+// every database. PostgreSQL and MySQL need Docker.
+addCommandAlias(
+  "updateSchemaDumps",
+  Seq("H2", "POSTGRES_18", "MYSQL_8").map { database =>
+    s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database", "UC_TEST_MIGRATION_CHECKS" -> "true", "UC_UPDATE_SCHEMA_EFFECTS" -> "true")""" +
+      " ; server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest"
+  }.mkString)
+
+// Runs every project's tests with s3:// paths on one S3-compatible storage. One alias per
+// SupportedStorage constant except EMULATED (the default). Forked tests also inherit the shell's
+// environment, so UC_TEST_DATABASE set there selects the database as well.
+def testOnStorage(storage: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_STORAGE" -> "$storage") ; test"""
+addCommandAlias("testMinIO", testOnStorage("MINIO"))
+addCommandAlias("testCeph", testOnStorage("CEPH"))
+addCommandAlias("testCephStaticKey", testOnStorage("CEPH_STATIC_KEY"))
+addCommandAlias("testRustFS", testOnStorage("RUSTFS"))
+addCommandAlias("testSeaweedFS", testOnStorage("SEAWEEDFS"))
+addCommandAlias("testGarage", testOnStorage("GARAGE"))
+addCommandAlias("testGarageStaticKey", testOnStorage("GARAGE_STATIC_KEY"))

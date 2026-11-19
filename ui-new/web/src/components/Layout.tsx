@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { PanelLeftClose, PanelLeftOpen, LogOut, User } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/context/auth-context";
 import Logo from "@/components/Logo";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
@@ -23,6 +24,12 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   const email = currentUser?.emails?.[0]?.value ?? currentUser?.userName ?? "";
   const displayName = currentUser?.displayName || email || "anonymous";
+  const signOut = () =>
+    logout().catch((error: unknown) =>
+      toast.error(
+        `Sign out failed: ${error instanceof Error ? error.message : "Unity Catalog did not end the session."}`,
+      ),
+    );
 
   return (
     <div className="flex h-full flex-col">
@@ -38,7 +45,11 @@ export default function Layout({ children }: { children: ReactNode }) {
               title={navOpen ? "Collapse navigation" : "Expand navigation"}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md text-white/90 transition hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             >
-              {navOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
+              {navOpen ? (
+                <PanelLeftClose className="h-5 w-5" />
+              ) : (
+                <PanelLeftOpen className="h-5 w-5" />
+              )}
             </button>
             <Logo className="h-7 w-auto" title="Unity Catalog" />
           </div>
@@ -58,12 +69,18 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
-                      <span className="truncate text-sm font-medium">{displayName}</span>
-                      {email && <span className="truncate text-xs text-muted-foreground">{email}</span>}
+                      <span className="truncate text-sm font-medium">
+                        {displayName}
+                      </span>
+                      {email && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {email}
+                        </span>
+                      )}
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => void logout()}>
+                  <DropdownMenuItem onClick={signOut}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Log out
                   </DropdownMenuItem>
@@ -99,7 +116,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             </div>
             {authEnabled && (
               <div className="border-t p-3">
-                <Button variant="outline" className="w-full" onClick={() => void logout()}>
+                <Button variant="outline" className="w-full" onClick={signOut}>
                   <LogOut className="mr-2 h-4 w-4" /> Log out
                 </Button>
               </div>

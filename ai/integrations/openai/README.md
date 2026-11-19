@@ -231,4 +231,4 @@ If the response contains multiple choices, you could pass `choice_index` (starti
 
 #### Configurations for UC functions execution within Databricks
 
-We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
+We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../core/README.md#function-execution-arguments-configuration).

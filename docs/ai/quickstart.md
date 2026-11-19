@@ -103,6 +103,7 @@ use of this API:
 
 - **type hints**: The function signature must define valid Python type hints. Both the named arguments and the return value must have their types defined.
 - **no variable arguments**: All arguments must be defined. `*args` and `**kwargs` are not permitted.
+- **no async functions**: The function must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around an `async def`, is not supported.
 - **type compatibility**: Not all python types are supported in SQL. Ensure that your function is using compatible types according to the
  [compatibility matrix](usage.md#python-to-sql-compatiblity-matrix).
 - **docstring verbosity and formatting**: The UC functions toolkit will read, parse, and extract important information from your docstring.
