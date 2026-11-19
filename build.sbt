@@ -330,7 +330,8 @@ lazy val pythonClient = (project in file("clients/python"))
           specs = Seq(
             // The delta.yaml run goes first because its "__init__.py" filter matches by file name: besides the
             // delta api/ and models/ inits (patchDeltaDataTypeModule needs the models one), it also writes
-            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite.
+            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite (checked in
+            // processGeneratedFiles by PythonClientPostBuild.clientPackageInitProblem).
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
@@ -389,8 +390,9 @@ lazy val apiDocs = (project in file("api"))
     }
   )
 
-// Define the custom task key
-lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class from the test folder")
+// Builds the quickstart's sample database etc/db/h2db.mv.db (SampleDatabase, in the sampleDatabase
+// project), keeping a file that exists.
+lazy val buildSampleDatabase = taskKey[Unit]("Build the sample database etc/db/h2db.mv.db")
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
@@ -557,10 +559,6 @@ lazy val server = (project in file("server"))
            |""".stripMargin)
       Seq(file)
     },
-    populateTestDB := {
-      val log = streams.value.log
-      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
-    },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
     // Include server and control models in the bin package for server
     // This will allow us to have a single maven artifact and not multiple (server, server models, control models)
@@ -689,6 +687,37 @@ lazy val cli = (project in file("examples") / "cli")
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     ),
     Test / forkOptions := (Test / forkOptions).value.withWorkingDirectory((ThisBuild / baseDirectory).value),
+  )
+
+// Builds the quickstart's sample database with the server's schema steps and repositories. A
+// project of its own, so that neither the server jar nor the server's test classes hold it.
+lazy val sampleDatabase = (project in file("examples") / "sample-database")
+  .dependsOn(server)
+  .dependsOn(serverModels)
+  .dependsOn(controlModels)
+  .enablePlugins(CheckstylePlugin)
+  .settings(
+    name := s"$artifactNamePrefix-sample-database",
+    commonSettings,
+    log4jProcessSettings,
+    skipReleaseSettings,
+    javafmtCheckSettings(),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= javacRelease17,
+    libraryDependencies ++= Seq(
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+    ),
+    buildSampleDatabase := Def.taskDyn {
+      val file = (ThisBuild / baseDirectory).value / "etc" / "db" / "h2db.mv.db"
+      if (file.exists) {
+        Def.task { streams.value.log.info(s"$file already exists; keeping it") }
+      } else {
+        (Compile / runMain).toTask(" io.unitycatalog.server.utils.SampleDatabase \"" + file + "\"")
+      }
+    }.value,
   )
 
 // What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
@@ -923,7 +952,7 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, pythonClient, server, cli, spark, hadoop, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, sampleDatabase, spark, hadoop, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
@@ -960,3 +989,16 @@ addCommandAlias(
     s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database", "UC_TEST_MIGRATION_CHECKS" -> "true", "UC_UPDATE_SCHEMA_EFFECTS" -> "true")""" +
       " ; server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest"
   }.mkString)
+
+// Runs every project's tests with s3:// paths on one S3-compatible storage. One alias per
+// SupportedStorage constant except EMULATED (the default). Forked tests also inherit the shell's
+// environment, so UC_TEST_DATABASE set there selects the database as well.
+def testOnStorage(storage: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_STORAGE" -> "$storage") ; test"""
+addCommandAlias("testMinIO", testOnStorage("MINIO"))
+addCommandAlias("testCeph", testOnStorage("CEPH"))
+addCommandAlias("testCephStaticKey", testOnStorage("CEPH_STATIC_KEY"))
+addCommandAlias("testRustFS", testOnStorage("RUSTFS"))
+addCommandAlias("testSeaweedFS", testOnStorage("SEAWEEDFS"))
+addCommandAlias("testGarage", testOnStorage("GARAGE"))
+addCommandAlias("testGarageStaticKey", testOnStorage("GARAGE_STATIC_KEY"))

@@ -73,12 +73,22 @@ class OptionParserTest {
     assertThat(out.toString()).contains("Missing argument for option: obs-port");
   }
 
-  @Test
-  void testParseUpgradeSchema() {
+  @ParameterizedTest
+  @ValueSource(strings = {"--check-schema", "--upgrade-schema"})
+  void testParseSchemaCommand(String command) {
     NoExitOptionsParser optionParser = new NoExitOptionsParser();
-    optionParser.parse(new String[] {"--upgrade-schema"});
+    optionParser.parse(new String[] {command});
     assertThat(optionParser.getExitCode()).isEqualTo(-128);
-    assertThat(optionParser.isUpgradeSchema()).isTrue();
+    assertThat(optionParser.isCheckSchema()).isEqualTo(command.equals("--check-schema"));
+    assertThat(optionParser.isUpgradeSchema()).isEqualTo(command.equals("--upgrade-schema"));
+  }
+
+  @Test
+  void testSchemaCommandsAreExclusive() {
+    NoExitOptionsParser optionParser = new NoExitOptionsParser();
+    optionParser.parse(new String[] {"--check-schema", "--upgrade-schema"});
+    assertThat(optionParser.getExitCode()).isEqualTo(-1);
+    assertThat(out.toString()).contains("Parsing Failed");
   }
 
   @Test

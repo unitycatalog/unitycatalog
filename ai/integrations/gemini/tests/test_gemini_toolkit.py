@@ -475,9 +475,10 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
     client.execute_function.assert_called_once_with(
         function_name="catalog.schema.get_weather", parameters={}, enable_retriever_tracing=False
     )
-    assert type(response).to_dict(response)["response"]["result"] == (
-        '{"format": "SCALAR", "value": "sunny"}'
-    )
+    assert json.loads(type(response).to_dict(response)["response"]["result"]) == {
+        "format": "SCALAR",
+        "value": "sunny",
+    }
 
 
 # Unlike JSON_ARGUMENT_PARAMS, these have no DATE, TIMESTAMP or DECIMAL parameter and no nullable

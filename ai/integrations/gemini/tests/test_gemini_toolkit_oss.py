@@ -236,6 +236,14 @@ def generate_function_info(
     )
 
 
+def test_convert_to_gemini_schema_none_parameters():
+    function_info = generate_function_info()
+    function_info.input_params.parameters = None
+
+    with pytest.raises(ValueError, match="Function input parameters are None"):
+        UCFunctionToolkit.convert_to_gemini_schema(function_info)
+
+
 def test_convert_to_gemini_schema_with_valid_function_info():
     """
     Test convert_to_gemini_schema with valid FunctionInfo input.

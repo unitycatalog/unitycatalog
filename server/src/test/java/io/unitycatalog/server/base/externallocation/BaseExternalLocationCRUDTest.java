@@ -6,8 +6,10 @@ import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static io.unitycatalog.server.utils.TestUtils.VOLUME_NAME;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -15,14 +17,19 @@ import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.S3CompatibleRequest;
+import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.client.model.UpdateExternalLocation;
+import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
@@ -34,6 +41,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -53,7 +61,11 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   private static final String NEW_EXTERNAL_LOCATION_NAME = EXTERNAL_LOCATION_NAME + "_new";
   private static final String CREDENTIAL_NAME = "uc_testcredential";
   private static final String ANOTHER_CREDENTIAL_NAME = "uc_testcredential_another";
+  protected static final String COMPAT_CREDENTIAL_NAME = "uc_testcredential_compat";
+  protected static final String ANOTHER_COMPAT_CREDENTIAL_NAME = "uc_testcredential_compat_another";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
+  private static final String ROOTED_CATALOG_NAME = "uc_testrootedcatalog";
+  private static final String ROOTED_SCHEMA_NAME = "uc_testrootedschema";
   protected ExternalLocationOperations externalLocationOperations;
   protected SchemaOperations schemaOperations;
   protected VolumeOperations volumeOperations;
@@ -73,6 +85,12 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   protected CredentialOperations credentialOperations;
 
   protected abstract CredentialOperations createCredentialOperations(ServerConfig config);
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    enableS3CompatibleStorage();
+  }
 
   protected CredentialInfo credentialInfo = null;
   protected CredentialInfo anotherCredentialInfo = null;
@@ -234,6 +252,227 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testS3CompatibleLocations() throws ApiException {
+    String endpointA = "http://storage-a.invalid:9000";
+    String endpointB = "http://storage-b.invalid:9000";
+    createCompatCredential(COMPAT_CREDENTIAL_NAME, endpointA);
+    createCompatCredential(ANOTHER_COMPAT_CREDENTIAL_NAME, endpointB);
+
+    // Such a credential reaches storage only through the S3 API, at an s3:// path with a bucket.
+    for (String url :
+        List.of(
+            "gs://shared-bucket/data",
+            "s3:/shared-bucket/data",
+            "s3:///shared-bucket/data",
+            "s3://?shared-bucket",
+            "s3://#shared-bucket",
+            "s3://:9000/data",
+            "s3://:/data",
+            "s3://@/data",
+            "s3://user@shared-bucket/data",
+            "s3://shared-bucket:9000/data")) {
+      assertApiException(
+          () -> createLocation("el_other", url, COMPAT_CREDENTIAL_NAME),
+          ErrorCode.INVALID_ARGUMENT,
+          "its external locations must be s3:// paths");
+    }
+
+    // A bucket name S3 allows that a URI host does not, such as one with an underscore.
+    createLocation("el_underscore", "s3://my_bucket/data", COMPAT_CREDENTIAL_NAME);
+    delete("el_underscore", Optional.empty());
+
+    // One bucket name on two storage systems, under locations that do not overlap.
+    createLocation("el_a", "s3://shared-bucket/a", COMPAT_CREDENTIAL_NAME);
+    createLocation("el_b", "s3://shared-bucket/b", ANOTHER_COMPAT_CREDENTIAL_NAME);
+    assertApiException(
+        () -> createLocation("el_bucket", "s3://shared-bucket", COMPAT_CREDENTIAL_NAME),
+        ErrorCode.INVALID_ARGUMENT,
+        "overlaps with existing external location");
+    // Updates keep the same rule: a new URL, or a new credential.
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                "el_a", new UpdateExternalLocation().url("gs://shared-bucket/a")),
+        ErrorCode.INVALID_ARGUMENT,
+        "its external locations must be s3:// paths");
+
+    // A credential can change type while locations use it, as long as an s3_compatible credential
+    // keeps only s3:// locations.
+    for (UpdateCredentialRequest update :
+        List.of(
+            new UpdateCredentialRequest()
+                .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)),
+            new UpdateCredentialRequest().s3Compatible(keyPair(endpointA)))) {
+      credentialOperations.updateCredential(COMPAT_CREDENTIAL_NAME, update);
+    }
+    create(EXTERNAL_LOCATION_NAME, testUrl());
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().credentialName(COMPAT_CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        "its external locations must be s3:// paths");
+    assertApiException(
+        () ->
+            credentialOperations.updateCredential(
+                CREDENTIAL_NAME, new UpdateCredentialRequest().s3Compatible(keyPair(endpointA))),
+        ErrorCode.INVALID_ARGUMENT,
+        "Cannot make credential '" + CREDENTIAL_NAME + "' an s3_compatible");
+
+    for (String name : List.of("el_a", "el_b")) {
+      delete(name, Optional.empty());
+    }
+    for (String name : List.of(COMPAT_CREDENTIAL_NAME, ANOTHER_COMPAT_CREDENTIAL_NAME)) {
+      credentialOperations.deleteCredential(name, Optional.empty());
+    }
+  }
+
+  @Test
+  public void testLocationWithAUrlFromAnEarlierReleaseCanStillChange() throws ApiException {
+    // An earlier release stored URLs that no longer parse, such as one with a query. Changing
+    // anything but the URL still works, as does moving it to a credential other than
+    // s3_compatible.
+    String legacyUrl = "file:///tmp/legacy?x=1";
+    create(EXTERNAL_LOCATION_NAME, testUrl());
+    setStoredUrl(EXTERNAL_LOCATION_NAME, legacyUrl);
+
+    ExternalLocationInfo renamed =
+        externalLocationOperations.updateExternalLocation(
+            EXTERNAL_LOCATION_NAME,
+            new UpdateExternalLocation().newName(NEW_EXTERNAL_LOCATION_NAME));
+    externalLocationsToDelete.remove(EXTERNAL_LOCATION_NAME);
+    externalLocationsToDelete.add(NEW_EXTERNAL_LOCATION_NAME);
+    assertThat(renamed.getUrl()).isEqualTo(legacyUrl);
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    NEW_EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().comment("comment"))
+                .getComment())
+        .isEqualTo("comment");
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    NEW_EXTERNAL_LOCATION_NAME,
+                    new UpdateExternalLocation().credentialName(ANOTHER_CREDENTIAL_NAME))
+                .getCredentialName())
+        .isEqualTo(ANOTHER_CREDENTIAL_NAME);
+    // It is still not an s3:// path, so its credential cannot become s3_compatible.
+    assertApiException(
+        () ->
+            credentialOperations.updateCredential(
+                ANOTHER_CREDENTIAL_NAME,
+                new UpdateCredentialRequest().s3Compatible(keyPair("http://s3:9000"))),
+        ErrorCode.INVALID_ARGUMENT,
+        "Cannot make credential '" + ANOTHER_CREDENTIAL_NAME + "' an s3_compatible");
+
+    // Nor is a stored s3:// URL that no longer parses. The credential's error leaves it out, as
+    // managing a credential does not grant reading its locations, and moving the location to an
+    // s3_compatible credential is refused rather than failing in the parser.
+    createCompatCredential(COMPAT_CREDENTIAL_NAME, "http://s3:9000");
+    for (String storedUrl : List.of("s3://secret-bucket/a b", "S3://secret-bucket/x", "s3:///")) {
+      setStoredUrl(NEW_EXTERNAL_LOCATION_NAME, storedUrl);
+      ApiException credentialChange =
+          assertThrows(
+              ApiException.class,
+              () ->
+                  credentialOperations.updateCredential(
+                      ANOTHER_CREDENTIAL_NAME,
+                      new UpdateCredentialRequest().s3Compatible(keyPair("http://s3:9000"))));
+      assertThat(credentialChange.getCode()).as(storedUrl).isEqualTo(400);
+      assertThat(credentialChange.getResponseBody())
+          .as(storedUrl)
+          .contains("Cannot make credential '" + ANOTHER_CREDENTIAL_NAME + "' an s3_compatible")
+          .doesNotContain("secret-bucket");
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  NEW_EXTERNAL_LOCATION_NAME,
+                  new UpdateExternalLocation().credentialName(COMPAT_CREDENTIAL_NAME)),
+          ErrorCode.INVALID_ARGUMENT,
+          "its external locations must be s3:// paths");
+    }
+    credentialOperations.deleteCredential(COMPAT_CREDENTIAL_NAME, Optional.empty());
+  }
+
+  /**
+   * A URL change or delete without force is refused, as the location can't be checked for use. A
+   * forced one only logs, so it still works.
+   */
+  @Test
+  public void testForcedChangesWorkWhenTheStoredUrlDoesNotParse() throws ApiException {
+    create(EXTERNAL_LOCATION_NAME, testUrl());
+    String notChecked =
+        "The stored URL of external location '"
+            + EXTERNAL_LOCATION_NAME
+            + "' cannot be checked for use, as it does not parse. Set force to true to skip this"
+            + " check.";
+    for (String storedUrl : List.of("s3:///", "s3://secret-bucket/a b")) {
+      setStoredUrl(EXTERNAL_LOCATION_NAME, storedUrl);
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(anotherTestUrl())),
+          ErrorCode.INVALID_ARGUMENT,
+          notChecked);
+      assertApiException(
+          () ->
+              externalLocationOperations.deleteExternalLocation(
+                  EXTERNAL_LOCATION_NAME, Optional.of(false)),
+          ErrorCode.INVALID_ARGUMENT,
+          notChecked);
+    }
+
+    setStoredUrl(EXTERNAL_LOCATION_NAME, "s3:///");
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME,
+                    new UpdateExternalLocation().url(anotherTestUrl()).force(true))
+                .getUrl())
+        .isEqualTo(anotherTestUrl());
+
+    setStoredUrl(EXTERNAL_LOCATION_NAME, "s3:///");
+    delete(EXTERNAL_LOCATION_NAME, Optional.of(true));
+  }
+
+  /** Stores {@code url} for a location as an earlier release might have, without validating it. */
+  private void setStoredUrl(String locationName, String url) {
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session ->
+            session
+                .createMutationQuery("UPDATE ExternalLocationDAO SET url = :url WHERE name = :name")
+                .setParameter("url", url)
+                .setParameter("name", locationName)
+                .executeUpdate(),
+        "Failed to store a URL",
+        /* readOnly= */ false);
+  }
+
+  protected void createCompatCredential(String name, String s3Endpoint) throws ApiException {
+    credentialOperations.createCredential(
+        new CreateCredentialRequest()
+            .name(name)
+            .purpose(CredentialPurpose.STORAGE)
+            .s3Compatible(keyPair(s3Endpoint)));
+  }
+
+  protected void createLocation(String name, String url, String credentialName)
+      throws ApiException {
+    externalLocationOperations.createExternalLocation(
+        new CreateExternalLocation().name(name).url(url).credentialName(credentialName));
+    externalLocationsToDelete.add(name);
+  }
+
+  protected static S3CompatibleRequest keyPair(String s3Endpoint) {
+    return new S3CompatibleRequest()
+        .accessKeyId("key-id-1")
+        .secretAccessKey("key-value-1")
+        .s3Endpoint(s3Endpoint);
+  }
+
+  @Test
   public void testExternalLocationUrlOverlapPrevention() throws ApiException {
     final String errorMessageCreateWithOverlap =
         "Cannot accept an external location that duplicates"
@@ -358,6 +597,158 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testUrlChangeWhileInUse() throws ApiException {
+    String root = testUrl() + "/in-use";
+    create(EXTERNAL_LOCATION_NAME, root);
+    VolumeInfo volume =
+        volumeOperations.createVolume(
+            new CreateVolumeRequestContent()
+                .name(VOLUME_NAME)
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .volumeType(VolumeType.EXTERNAL)
+                .storageLocation(root + "/volume"));
+    String usedByVolume =
+        "External location still used by volume '"
+            + volume.getVolumeId()
+            + "'. Set force to true to skip this check.";
+
+    // A new URL that does not cover the old one would leave the volume without credentials.
+    for (String url : List.of(anotherTestUrl(), root + "/other", testUrl() + "/in")) {
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(url).force(false)),
+          ErrorCode.INVALID_ARGUMENT,
+          usedByVolume);
+    }
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(root);
+
+    // A refused URL change also rolls back a rename sent with it.
+    String newName = EXTERNAL_LOCATION_NAME + "_renamed";
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().newName(newName).url(anotherTestUrl())),
+        ErrorCode.INVALID_ARGUMENT,
+        usedByVolume);
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(root);
+    assertApiException(
+        () -> externalLocationOperations.getExternalLocation(newName),
+        ErrorCode.NOT_FOUND,
+        "External location not found: " + newName);
+
+    // Resending the current URL is not a change.
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(root).force(false))
+                .getUrl())
+        .isEqualTo(root);
+
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().comment("in use"))
+                .getComment())
+        .isEqualTo("in use");
+
+    // A parent URL still covers the volume.
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(testUrl()))
+                .getUrl())
+        .isEqualTo(testUrl());
+
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME,
+                    new UpdateExternalLocation().url(anotherTestUrl()).force(true))
+                .getUrl())
+        .isEqualTo(anotherTestUrl());
+  }
+
+  @Test
+  public void testCatalogAndSchemaManagedStorageKeepLocationInUse() throws ApiException {
+    String catalogLocationName = EXTERNAL_LOCATION_NAME + "_catalog";
+    String catalogRoot = testUrl() + "/catalog-root";
+    create(catalogLocationName, catalogRoot);
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(ROOTED_CATALOG_NAME).storageRoot(catalogRoot));
+
+    String schemaLocationName = EXTERNAL_LOCATION_NAME + "_schema";
+    String schemaRoot = testUrl() + "/schema-root";
+    create(schemaLocationName, schemaRoot);
+    schemaOperations.createSchema(
+        new CreateSchema()
+            .catalogName(CATALOG_NAME)
+            .name(ROOTED_SCHEMA_NAME)
+            .storageRoot(schemaRoot));
+
+    for (List<String> locationAndUser :
+        List.of(
+            List.of(catalogLocationName, "a catalog"), List.of(schemaLocationName, "a schema"))) {
+      String locationName = locationAndUser.get(0);
+      String usedBy =
+          "External location still used by "
+              + locationAndUser.get(1)
+              + ". Set force to true to skip this check.";
+      assertApiException(
+          () -> delete(locationName, Optional.of(false)), ErrorCode.INVALID_ARGUMENT, usedBy);
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  locationName, new UpdateExternalLocation().url(anotherTestUrl())),
+          ErrorCode.INVALID_ARGUMENT,
+          usedBy);
+    }
+
+    schemaOperations.deleteSchema(CATALOG_NAME + "." + ROOTED_SCHEMA_NAME, Optional.of(true));
+    catalogOperations.deleteCatalog(ROOTED_CATALOG_NAME, Optional.of(true));
+    for (String locationName : List.of(catalogLocationName, schemaLocationName)) {
+      String newUrl = anotherTestUrl() + "/" + locationName;
+      assertThat(
+              externalLocationOperations
+                  .updateExternalLocation(locationName, new UpdateExternalLocation().url(newUrl))
+                  .getUrl())
+          .isEqualTo(newUrl);
+      delete(locationName, Optional.of(false));
+    }
+  }
+
+  /**
+   * An uncommitted staging table left behind by a dropped schema doesn't keep the location in use,
+   * since orphaned staging rows are never removed.
+   */
+  @Test
+  public void testOrphanedStagingTableDoesNotKeepLocationInUse() throws ApiException {
+    String locationName = EXTERNAL_LOCATION_NAME + "_staging";
+    String schemaRoot = testUrl() + "/staging-root";
+    create(locationName, schemaRoot);
+    schemaOperations.createSchema(
+        new CreateSchema()
+            .catalogName(CATALOG_NAME)
+            .name(ROOTED_SCHEMA_NAME)
+            .storageRoot(schemaRoot));
+    StagingTableInfo staging =
+        new TablesApi(TestUtils.createApiClient(serverConfig))
+            .createStagingTable(
+                new CreateStagingTable()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(ROOTED_SCHEMA_NAME)
+                    .name("orphaned"));
+    assertThat(staging.getStagingLocation()).startsWith(schemaRoot + "/");
+    schemaOperations.deleteSchema(CATALOG_NAME + "." + ROOTED_SCHEMA_NAME, Optional.of(true));
+
+    delete(locationName, Optional.of(false));
+  }
+
+  @Test
   public void testExternalLocationSurvivesForceDeletedCredential() throws ApiException {
     String doomedCredentialName = CREDENTIAL_NAME + "_doomed";
     CredentialInfo doomedCredential =
@@ -390,6 +781,12 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().comment("after"));
     assertThat(commented.getComment()).isEqualTo("after");
     assertThat(commented.getCredentialName()).isNull();
+    // Its URL can change too: with no credential, no credential type restricts the URL.
+    ExternalLocationInfo moved =
+        externalLocationOperations.updateExternalLocation(
+            EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(testUrl() + "/moved"));
+    assertThat(moved.getUrl()).isEqualTo(testUrl() + "/moved");
+    assertThat(moved.getCredentialName()).isNull();
 
     ExternalLocationInfo repaired =
         externalLocationOperations.updateExternalLocation(
@@ -416,6 +813,10 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
           () ->
               externalLocationOperations.deleteExternalLocation(
                   externalLocationName, Optional.of(false)));
+      assertPendingCleanupDenied(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  externalLocationName, new UpdateExternalLocation().url(anotherTestUrl())));
       int deleted =
           TransactionManager.executeWithTransaction(
               hibernateConfigurator.getSessionFactory(),
@@ -430,15 +831,52 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     }
     delete(externalLocationName, Optional.of(false));
 
-    // Force deletion remains allowed while cleanup is pending.
+    // Forced changes remain allowed while cleanup is pending.
     create(externalLocationName, externalLocationRoot);
     createCleanupTask(externalLocationRoot + "/third");
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    externalLocationName,
+                    new UpdateExternalLocation().url(anotherTestUrl()).force(true))
+                .getUrl())
+        .isEqualTo(anotherTestUrl());
+    createCleanupTask(anotherTestUrl() + "/fourth");
+    assertPendingCleanupDenied(
+        () ->
+            externalLocationOperations.deleteExternalLocation(
+                externalLocationName, Optional.of(false)));
     delete(externalLocationName, Optional.of(true));
+  }
+
+  @Test
+  public void testPendingCleanupIsReportedBeforeAStorageUser() throws ApiException {
+    String root = testUrl() + "/cleanup-and-volume";
+    create(EXTERNAL_LOCATION_NAME, root);
+    volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(VOLUME_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(root + "/volume"));
+    createCleanupTask(root + "/cleanup");
+
+    assertPendingCleanupDenied(
+        () ->
+            externalLocationOperations.deleteExternalLocation(
+                EXTERNAL_LOCATION_NAME, Optional.of(false)));
+    assertPendingCleanupDenied(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(anotherTestUrl())));
   }
 
   private void assertPendingCleanupDenied(Executable action) {
     assertApiException(
-        action, ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup");
+        action,
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup. Set force to true to skip this check.");
   }
 
   private UUID createCleanupTask(String storageLocation) {

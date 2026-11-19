@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import ModelDetails from "@/pages/ModelDetails";
 
-export const Route = createFileRoute("/_authed/catalog/$catalog/$schema/model/$model/")({
+export const Route = createFileRoute(
+  "/_authed/catalog/$catalog/$schema/model/$model/",
+)({
   component: RouteComponent,
 });
 

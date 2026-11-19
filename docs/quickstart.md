@@ -24,12 +24,20 @@ OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
 OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 ```
 
-From the repository root, build the server artifacts. The startup script can trigger this automatically on first run,
-but building explicitly is recommended:
+From the repository root, build the server artifacts and the sample database (`etc/db/h2db.mv.db`) that the examples
+below use. The startup script builds whichever is missing on first run, but building explicitly is recommended:
 
 ```sh
-build/sbt package
+build/sbt package buildSampleDatabase
 ```
+
+The sample database is a local file that the server changes as you use it. Building it keeps an existing
+`etc/db/h2db.mv.db`, and the folder it is in must be on a file system that supports hard links. To reset it to the
+sample data, stop the server, move `etc/db/h2db.mv.db` aside and run `build/sbt buildSampleDatabase` again (starting
+the server with `bin/start-uc-server` builds it too). In a source checkout (where `build/sbt` is present and executable) the launcher builds `etc/db/h2db.mv.db` when it is missing and the command line starts the server, whatever database the configuration uses, and starts the server even when that build fails. The file is no longer part of the repository, so `git checkout`
+does not restore it. If you changed the sample database in a checkout from before it was built, copy
+`etc/db/h2db.mv.db` somewhere safe before you update the checkout: git deletes the file, or refuses to update while
+it has local changes.
 
 From the repository root, run `bin/start-uc-server` to instantiate the server. Here is what you
 should see:
@@ -401,5 +409,5 @@ in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalo
 
 ## APIs and Compatibility
 
-- Open API specification: See the [Unity Catalog Rest API](https://docs.unitycatalog.io/swagger-docs/).
+- Open API specification: See the [Unity Catalog Rest API](https://unitycatalog.io/docs/api/).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.

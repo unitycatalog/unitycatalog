@@ -106,13 +106,41 @@ object PythonClientPostBuild {
       }
     }
     moveGeneratedUnityCatalog(log, openApiOutputDir)
+    clientPackageInitProblem(Paths.get(openApiOutputDir, "src", "unitycatalog", "client", "__init__.py"))
+      .foreach(problem => sys.error(problem))
     relocateDeltaImports(log, openApiOutputDir)
     patchDeltaDataTypeModule(log, baseDir, openApiOutputDir)
   }
 
+  /** Matches an import from the bare `delta` package, which the generator writes for the delta.yaml run. */
+  private val bareDeltaImport = """(?m)^\s*(from|import)\s+delta\.""".r
+
+  /**
+   * Says why the generated unitycatalog/client/__init__.py is not the one from the all.yaml run, or returns
+   * None if it is. The delta.yaml run writes this file too, with imports from the bare delta package, so it
+   * has to run first. Both versions export ApiClient, so the check looks for the UC API imports and for no
+   * bare delta import instead. Called by processGeneratedFiles.
+   */
+  def clientPackageInitProblem(clientInit: Path): Option[String] = {
+    if (!Files.exists(clientInit)) {
+      return Some(s"$clientInit was not generated.")
+    }
+    val content = new String(Files.readAllBytes(clientInit), StandardCharsets.UTF_8)
+    // The trailing dot keeps this from matching the api_client import. These are the generator's exact import
+    // lines, so a change to its import style also fails here, with the run-order message.
+    val fromAllYaml = content.contains("from unitycatalog.client.api.") &&
+      content.contains("from unitycatalog.client.api_client import ApiClient") &&
+      bareDeltaImport.findFirstIn(content).isEmpty
+    if (fromAllYaml) None
+    else
+      Some(
+        s"$clientInit is not the one from the all.yaml run. The all.yaml run in pythonClient/generate must " +
+          "run last, after the delta.yaml run, or the generator's import style changed.")
+  }
+
   private val unrelocatedDeltaImports = Seq(
     """(?m)^\s*(from|import)\s+unitycatalog\.client\.models\b""".r,
-    """(?m)^\s*(from|import)\s+delta\.""".r
+    bareDeltaImport
   )
 
   /**

@@ -49,7 +49,10 @@ export default function CatalogCrumbs({
             <BreadcrumbItem>
               {leaf ? (
                 <BreadcrumbLink asChild>
-                  <Link to="/catalog/$catalog/$schema" params={{ catalog, schema }}>
+                  <Link
+                    to="/catalog/$catalog/$schema"
+                    params={{ catalog, schema }}
+                  >
                     {schema}
                   </Link>
                 </BreadcrumbLink>

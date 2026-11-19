@@ -35,6 +35,7 @@
 
 # Integration tests.
 /integration-tests/ @tdas @openinx @yili-db @TimothyW553
+/tests/ @tdas @openinx @yili-db @TimothyW553
 
 # UC Server
 /server/ @tdas @openinx @yili-db @TimothyW553
@@ -58,6 +59,10 @@
 
 # Helm
 /helm/ @tdas @yili-db @TimothyW553
+
+# Docker
+/Dockerfile @tdas @yili-db @TimothyW553
+/.dockerignore @tdas @yili-db @TimothyW553
 
 # Helper scripts
 /bin/ @tdas @openinx @yili-db @TimothyW553

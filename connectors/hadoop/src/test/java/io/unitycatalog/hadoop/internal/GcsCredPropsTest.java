@@ -1,10 +1,12 @@
 package io.unitycatalog.hadoop.internal;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -13,6 +15,8 @@ import org.junit.jupiter.api.Test;
 class GcsCredPropsTest extends CredPropsBaseTest {
 
   private static final String CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
+  private static final String HNS_FOLDERS_KEY = "fs.gs.hierarchical.namespace.folders.enable";
+  private static final String IMPLICIT_DIR_REPAIR_KEY = "fs.gs.implicit.dir.repair.enable";
   private static final String STATIC_EXPIRATION_KEY = "fs.gs.auth.access.token.expiration";
   private static final String CUSTOM_IMPL = "com.example.CustomGcsFileSystem";
   private static final String GHFS = "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem";
@@ -37,7 +41,15 @@ class GcsCredPropsTest extends CredPropsBaseTest {
 
   @Override
   Map<String, String> defaultKeys() {
-    return props(CONFLICT_CHECK_KEY, "false", "fs.gs.impl.disable.cache", "true");
+    return props(
+        CONFLICT_CHECK_KEY,
+        "false",
+        HNS_FOLDERS_KEY,
+        "false",
+        IMPLICIT_DIR_REPAIR_KEY,
+        "false",
+        "fs.gs.impl.disable.cache",
+        "true");
   }
 
   /**
@@ -128,8 +140,114 @@ class GcsCredPropsTest extends CredPropsBaseTest {
     assertThat(props).containsEntry(CONFLICT_CHECK_KEY, "true");
   }
 
+  /**
+   * Hadoop 3.5 ships {@code fs.gs.create.items.conflict.check.enable=true} in its built-in {@code
+   * core-default.xml}. That is not the user's choice, so it must not keep the check on. (Hadoop has
+   * no default for the other GCS keys; the connector's own {@code true} default for the
+   * hierarchical namespace key is not in the Hadoop configuration at all.)
+   */
   @Test
-  void conflictCheckDefaultsFalseAcrossPathAndDeltaCredProps() throws Exception {
+  void hadoopBuiltInDefaultDoesNotKeepTheGcsChecksOn() throws Exception {
+    Configuration conf = new Configuration(false);
+    String defaults =
+        "<configuration><property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property></configuration>";
+    conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
+    assertThat(conf.get(CONFLICT_CHECK_KEY)).isEqualTo("true");
+    assertThat(conf.get(HNS_FOLDERS_KEY)).isNull();
+
+    assertThat(tableProps(conf))
+        .containsEntry(CONFLICT_CHECK_KEY, "false")
+        .containsEntry(HNS_FOLDERS_KEY, "false")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "false");
+  }
+
+  /** Values from {@code core-site.xml}, which loads after the defaults, are the user's own. */
+  @Test
+  void coreSiteValuesOnTopOfHadoopDefaultsAreRespected() throws Exception {
+    Configuration conf = new Configuration(false);
+    String defaults =
+        "<configuration><property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property></configuration>";
+    String site =
+        "<configuration>"
+            + "<property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property>"
+            + "<property><name>"
+            + HNS_FOLDERS_KEY
+            + "</name><value>true</value></property>"
+            + "<property><name>"
+            + IMPLICIT_DIR_REPAIR_KEY
+            + "</name><value>true</value></property>"
+            + "</configuration>";
+    conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
+    conf.addResource(new ByteArrayInputStream(site.getBytes(UTF_8)), "core-site.xml");
+
+    assertThat(tableProps(conf))
+        .containsEntry(CONFLICT_CHECK_KEY, "true")
+        .containsEntry(HNS_FOLDERS_KEY, "true")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "true");
+  }
+
+  /** Each key is decided on its own: setting one does not change the other two. */
+  @Test
+  void eachKeyIsDecidedIndependently() throws Exception {
+    Map<String, String> expected =
+        Map.of(
+            CONFLICT_CHECK_KEY,
+            "false",
+            HNS_FOLDERS_KEY,
+            "false",
+            IMPLICIT_DIR_REPAIR_KEY,
+            "false");
+    for (String key : expected.keySet()) {
+      Configuration conf = new Configuration(false);
+      conf.set(key, "true");
+
+      Map<String, String> props = tableProps(conf);
+
+      expected.forEach((k, v) -> assertThat(props).containsEntry(k, k.equals(key) ? "true" : v));
+    }
+  }
+
+  @Test
+  void userValuesWinOverHadoopDefaults() throws Exception {
+    Configuration conf = new Configuration(false);
+    String defaults =
+        "<configuration><property><name>"
+            + CONFLICT_CHECK_KEY
+            + "</name><value>true</value></property></configuration>";
+    conf.addResource(new ByteArrayInputStream(defaults.getBytes(UTF_8)), "core-default.xml");
+    // A user setting, even one that equals Hadoop's default, is respected.
+    conf.set(CONFLICT_CHECK_KEY, "true");
+    conf.set(HNS_FOLDERS_KEY, "true");
+    conf.set(IMPLICIT_DIR_REPAIR_KEY, "true");
+
+    assertThat(tableProps(conf))
+        .containsEntry(CONFLICT_CHECK_KEY, "true")
+        .containsEntry(HNS_FOLDERS_KEY, "true")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "true");
+  }
+
+  private Map<String, String> tableProps(Configuration conf) throws Exception {
+    return CredPropsUtil.createTableCredProps(
+        false,
+        false,
+        conf,
+        scheme(),
+        null,
+        CATALOG_URI,
+        tokenProvider(),
+        TABLE_ID,
+        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+        Map.of());
+  }
+
+  @Test
+  void gcsChecksDefaultFalseAcrossPathAndDeltaCredProps() throws Exception {
     Map<String, String> pathProps =
         CredPropsUtil.createPathCredProps(
             false,
@@ -142,7 +260,10 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             location(),
             UCCredentialHadoopConfs.PathOperation.PATH_READ,
             Map.of());
-    assertThat(pathProps).containsEntry(CONFLICT_CHECK_KEY, "false");
+    assertThat(pathProps)
+        .containsEntry(CONFLICT_CHECK_KEY, "false")
+        .containsEntry(HNS_FOLDERS_KEY, "false")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "false");
 
     Map<String, String> deltaProps =
         CredPropsUtil.createDeltaTableCredProps(
@@ -157,6 +278,9 @@ class GcsCredPropsTest extends CredPropsBaseTest {
             location(),
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
-    assertThat(deltaProps).containsEntry(CONFLICT_CHECK_KEY, "false");
+    assertThat(deltaProps)
+        .containsEntry(CONFLICT_CHECK_KEY, "false")
+        .containsEntry(HNS_FOLDERS_KEY, "false")
+        .containsEntry(IMPLICIT_DIR_REPAIR_KEY, "false");
   }
 }
