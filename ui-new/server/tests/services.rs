@@ -468,6 +468,61 @@ async fn list_tables_omits_metric_views() {
 }
 
 #[tokio::test]
+async fn list_tables_maps_geo_column_types() {
+    let uc = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/2.1/unity-catalog/tables"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "tables": [{
+                "name": "places",
+                "catalog_name": "main",
+                "schema_name": "default",
+                "table_type": "MANAGED",
+                "columns": [
+                    {
+                        "name": "geom",
+                        "type_name": "GEOMETRY",
+                        "type_text": "geometry(OGC:CRS84)",
+                        "position": 0
+                    },
+                    {
+                        "name": "geog",
+                        "type_name": "GEOGRAPHY",
+                        "type_text": "geography(OGC:CRS84, SPHERICAL)",
+                        "position": 1
+                    }
+                ]
+            }]
+        })))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let response = build_app(uc.uri())
+        .oneshot(rpc_request(
+            "TableService",
+            "ListTables",
+            serde_json::json!({
+                "schema": {"catalogName": "main", "name": "default"}
+            }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    let columns = json["tables"][0]["columns"].as_array().unwrap();
+    let types: Vec<_> = columns
+        .iter()
+        .map(|column| column["typeName"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        types,
+        ["COLUMN_TYPE_NAME_GEOMETRY", "COLUMN_TYPE_NAME_GEOGRAPHY"]
+    );
+}
+
+#[tokio::test]
 async fn delete_services_refuse_the_other_table_type() {
     let uc = MockServer::start().await;
     Mock::given(method("GET"))

@@ -120,6 +120,8 @@ enum ColumnTypeName {
   COLUMN_TYPE_NAME_NULL = 20;
   COLUMN_TYPE_NAME_USER_DEFINED_TYPE = 21;
   COLUMN_TYPE_NAME_TABLE_TYPE = 22;
+  COLUMN_TYPE_NAME_GEOMETRY = 23;
+  COLUMN_TYPE_NAME_GEOGRAPHY = 24;
 }
 
 // ColumnInfo is the UI-facing shape of a UC table column.

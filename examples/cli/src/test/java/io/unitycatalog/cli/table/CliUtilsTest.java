@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import io.delta.kernel.data.ColumnVector;
 import io.delta.kernel.types.DecimalType;
+import io.delta.kernel.types.GeographyType;
+import io.delta.kernel.types.GeometryType;
 import io.delta.kernel.types.StructType;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.delta.DeltaKernelWriteUtils;
@@ -109,7 +111,9 @@ public class CliUtilsTest {
     "day, DATE",
     "ts, TIMESTAMP",
     "ts_ntz, TIMESTAMP_NTZ",
-    "payload, BINARY"
+    "payload, BINARY",
+    "place, GEOMETRY",
+    "region, GEOGRAPHY"
   })
   public void testWriteRejectsUnsupportedColumnType(String column, String type) {
     StructType schema =
@@ -121,6 +125,33 @@ public class CliUtilsTest {
                 + column
                 + " of type "
                 + schema.get(column).getDataType());
+  }
+
+  /** Geo columns keep their CRS and algorithm from the type JSON, and default without it. */
+  @Test
+  public void testGeoColumnTypes() {
+    assertThat(DeltaKernelUtils.getDataType(geoColumn(ColumnTypeName.GEOMETRY, "geometry", null)))
+        .isEqualTo(GeometryType.ofDefault());
+    assertThat(DeltaKernelUtils.getDataType(geoColumn(ColumnTypeName.GEOGRAPHY, "geography", null)))
+        .isEqualTo(GeographyType.ofDefault());
+    assertThat(
+            DeltaKernelUtils.getDataType(
+                geoColumn(ColumnTypeName.GEOMETRY, "geometry(EPSG:3857)", "geometry(EPSG:3857)")))
+        .isEqualTo(GeometryType.ofCRS("EPSG:3857"));
+    String geography = "geography(OGC:CRS84, vincenty)";
+    assertThat(
+            DeltaKernelUtils.getDataType(geoColumn(ColumnTypeName.GEOGRAPHY, geography, geography)))
+        .isEqualTo(new GeographyType("OGC:CRS84", "vincenty"));
+  }
+
+  /** A column as UC returns it; {@code jsonType} is null for the CLI's own bare columns. */
+  private static ColumnInfo geoColumn(ColumnTypeName typeName, String typeText, String jsonType) {
+    ColumnInfo column = new ColumnInfo().name("g").typeName(typeName).typeText(typeText);
+    if (jsonType != null) {
+      column.typeJson(
+          "{\"name\":\"g\",\"type\":\"" + jsonType + "\",\"nullable\":true,\"metadata\":{}}");
+    }
+    return column;
   }
 
   @Test

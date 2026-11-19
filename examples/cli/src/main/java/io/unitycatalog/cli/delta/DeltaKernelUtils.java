@@ -10,9 +10,12 @@ import io.delta.kernel.data.Row;
 import io.delta.kernel.defaults.engine.DefaultEngine;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.internal.SnapshotImpl;
+import io.delta.kernel.internal.types.DataTypeJsonSerDe;
 import io.delta.kernel.types.BasePrimitiveType;
 import io.delta.kernel.types.DataType;
 import io.delta.kernel.types.DecimalType;
+import io.delta.kernel.types.GeographyType;
+import io.delta.kernel.types.GeometryType;
 import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.types.VariantType;
@@ -287,7 +290,22 @@ public class DeltaKernelUtils {
       }
       return new DecimalType(column.getTypePrecision(), column.getTypeScale());
     }
+    if (isGeoType(column.getTypeName()) && column.getTypeJson() != null) {
+      return getGeoDataType(column);
+    }
     return findBasicTypeFromString(column.getTypeName().toString());
+  }
+
+  private static boolean isGeoType(ColumnTypeName typeName) {
+    return typeName == ColumnTypeName.GEOMETRY || typeName == ColumnTypeName.GEOGRAPHY;
+  }
+
+  /**
+   * The CRS and algorithm are only in the type JSON, e.g. {@code geography(OGC:CRS84, spherical)}.
+   */
+  private static DataType getGeoDataType(ColumnInfo column) {
+    String schemaJson = "{\"type\":\"struct\",\"fields\":[" + column.getTypeJson() + "]}";
+    return DataTypeJsonSerDe.deserializeStructType(schemaJson).at(0).getDataType();
   }
 
   public static DataType findBasicTypeFromString(String typeText) {
@@ -311,6 +329,12 @@ public class DeltaKernelUtils {
         break;
       case "VARIANT":
         dataType = VariantType.VARIANT;
+        break;
+      case "GEOMETRY":
+        dataType = GeometryType.ofDefault();
+        break;
+      case "GEOGRAPHY":
+        dataType = GeographyType.ofDefault();
         break;
       default:
         throw new IllegalArgumentException("Unsupported basic data type: " + typeText);

@@ -115,7 +115,7 @@ This command has multiple parameters:
 | Parameter | Description |
 | --------- | ----------- |
 | `full_name` | The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`). |
-| `columns` | The columns of the table in SQL-like format "column_name column_data_type". Supported data types include `BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL(p,s)`. A bare `DECIMAL` means `DECIMAL(10,0)`. Separate multiple columns with a comma (e.g., "`id INT, price DECIMAL(10,2)`"). |
+| `columns` | The columns of the table in SQL-like format "column_name column_data_type". Supported data types include `BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, GEOMETRY, GEOGRAPHY, DECIMAL(p,s)`. A bare `DECIMAL` means `DECIMAL(10,0)`. Separate multiple columns with a comma (e.g., "`id INT, price DECIMAL(10,2)`"). |
 | `format`| [Optional] The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO, and TEXT. If not specified the default format is DELTA. |
 | `storage_location` | The storage location associated with the table. It is a mandatory field for EXTERNAL tables. |
 | `properties` | [Optional] The properties of the entity in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(") inside the properties string or just use single quotes(`''`) around the same. |
@@ -197,6 +197,24 @@ bin/uc table write --full_name <catalog>.<schema>.<table>
 
 This is an experimental feature. Currently, this will only write sample data, and only `BYTE`, `SHORT`, `INT`, `LONG`,
 `FLOAT`, `DOUBLE` and `STRING` columns are supported. Writing to a table with any other column type fails.
+
+## Geometry and Geography Columns
+
+Unity Catalog stores `GEOMETRY` and `GEOGRAPHY` columns as the column types `GEOMETRY` and `GEOGRAPHY`. The `type_text`
+and `type_json` of the column keep the coordinate reference system and, for geography, the edge algorithm the table was
+created with, for example `geometry(OGC:CRS84)` or `geography(OGC:CRS84, spherical)`. A bare `GEOMETRY` or `GEOGRAPHY`
+in `bin/uc table create` uses the defaults, `OGC:CRS84` and `spherical`.
+
+To use them from Spark you need:
+
+- Spark 4.1 or later. Spark 4.0 has no geometry or geography types.
+- A Delta Lake version with the `geospatial` table feature. It is still behind the preview setting
+  `spark.databricks.delta.geo.preview.enabled=true`, and Spark's own `spark.sql.geospatial.enabled=true` is needed for
+  the `ST_*` functions.
+- Spark 4.2 or later to write rows. Spark 4.1 can create a table with these columns, but its Parquet writer cannot
+  write them.
+
+Older clients that don't know the new column types see them as an unknown type.
 
 ## How to Delete a Delta Table
 
