@@ -12,7 +12,9 @@ export default function DescriptionCard({ comment }: { comment?: string }) {
         {comment ? (
           <p className="text-sm text-foreground">{comment}</p>
         ) : (
-          <p className="text-sm text-muted-foreground">No description provided.</p>
+          <p className="text-sm text-muted-foreground">
+            No description provided.
+          </p>
         )}
       </CardContent>
     </Card>

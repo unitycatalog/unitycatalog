@@ -10,7 +10,11 @@ import {
 
 // PropertiesCard renders an object's arbitrary key/value properties map, or a
 // muted placeholder when empty.
-export default function PropertiesCard({ properties }: { properties?: Record<string, string> }) {
+export default function PropertiesCard({
+  properties,
+}: {
+  properties?: Record<string, string>;
+}) {
   const entries = Object.entries(properties ?? {});
   return (
     <Card>

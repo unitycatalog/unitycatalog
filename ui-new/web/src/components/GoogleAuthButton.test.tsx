@@ -10,7 +10,9 @@ beforeEach(() => {
 
 describe("GoogleAuthButton", () => {
   it("does nothing without a client id", () => {
-    const { container } = render(<GoogleAuthButton clientId="" onCredential={() => {}} />);
+    const { container } = render(
+      <GoogleAuthButton clientId="" onCredential={() => {}} />,
+    );
     // Renders the placeholder container but injects no GSI script.
     expect(container.querySelector("#google-client-button")).toBeTruthy();
     expect(document.getElementById("google-client-script")).toBeNull();
@@ -26,13 +28,17 @@ describe("GoogleAuthButton", () => {
 
     render(<GoogleAuthButton clientId="client-123" onCredential={() => {}} />);
 
-    const script = document.getElementById("google-client-script") as HTMLScriptElement;
+    const script = document.getElementById(
+      "google-client-script",
+    ) as HTMLScriptElement;
     expect(script).toBeTruthy();
     // Fire the script onload to trigger initialize/renderButton.
     script.onload?.(new Event("load"));
 
     await waitFor(() => expect(initialize).toHaveBeenCalled());
-    expect(initialize.mock.calls[0][0]).toMatchObject({ client_id: "client-123" });
+    expect(initialize.mock.calls[0][0]).toMatchObject({
+      client_id: "client-123",
+    });
     expect(renderButton).toHaveBeenCalled();
   });
 
@@ -42,7 +48,9 @@ describe("GoogleAuthButton", () => {
     (window as unknown as { google: unknown }).google = {
       accounts: {
         id: {
-          initialize: (opts: { callback: (r: { credential?: string }) => void }) => {
+          initialize: (opts: {
+            callback: (r: { credential?: string }) => void;
+          }) => {
             captured = opts.callback;
           },
           renderButton: vi.fn(),
@@ -51,8 +59,12 @@ describe("GoogleAuthButton", () => {
       },
     };
 
-    render(<GoogleAuthButton clientId="client-123" onCredential={onCredential} />);
-    const script = document.getElementById("google-client-script") as HTMLScriptElement;
+    render(
+      <GoogleAuthButton clientId="client-123" onCredential={onCredential} />,
+    );
+    const script = document.getElementById(
+      "google-client-script",
+    ) as HTMLScriptElement;
     script.onload?.(new Event("load"));
     await waitFor(() => expect(captured).toBeTypeOf("function"));
 

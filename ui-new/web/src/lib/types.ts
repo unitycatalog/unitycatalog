@@ -42,14 +42,7 @@ export interface ColumnInfo {
 
 export type TableType = "MANAGED" | "EXTERNAL";
 export type DataSourceFormat =
-  | "DELTA"
-  | "CSV"
-  | "JSON"
-  | "AVRO"
-  | "PARQUET"
-  | "ORC"
-  | "TEXT"
-  | string;
+  "DELTA" | "CSV" | "JSON" | "AVRO" | "PARQUET" | "ORC" | "TEXT" | string;
 
 export interface TableInfo {
   name: string;

@@ -10,8 +10,13 @@ export default function MetaGrid({ items }: { items: MetaItem[] }) {
     <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
       {items.map((it) => (
         <div key={it.label} className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{it.label}</dt>
-          <dd className="mt-0.5 truncate text-sm text-foreground" title={typeof it.value === "string" ? it.value : undefined}>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {it.label}
+          </dt>
+          <dd
+            className="mt-0.5 truncate text-sm text-foreground"
+            title={typeof it.value === "string" ? it.value : undefined}
+          >
             {it.value ?? "—"}
           </dd>
         </div>
