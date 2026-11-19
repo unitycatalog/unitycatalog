@@ -385,26 +385,44 @@ public class ColumnUtilsTest {
     assertThat(ColumnUtils.toColumnInfo(noMeta, 0).getComment()).isNull();
   }
 
+  /** "void" is Spark's NullType: stored as NULL, with the same text and JSON as Spark. */
+  @Test
+  public void testToColumnInfoVoid() {
+    ColumnInfo info = ColumnUtils.toColumnInfo(primitiveField("void"), 0);
+    assertThat(info.getTypeName()).isEqualTo(ColumnTypeName.NULL);
+    assertThat(info.getTypeText()).isEqualTo("void");
+    assertThat(info.getTypeJson()).contains("\"type\":\"void\"");
+
+    DeltaStructType nested =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    primitiveField("void").name("n").type(new DeltaPrimitiveType().type("void"))));
+    assertThat(ColumnUtils.toCatalogString(nested)).isEqualTo("struct<n:void>");
+  }
+
   /**
-   * Both "void" (Spark's NullType wire form, which Spark Delta drops before persisting and Kernel
-   * rejects on read) and any other non-spec primitive must be rejected with a clean 400. The
-   * server-side {@code ColumnTypeName} enum has no {@code UNKNOWN_DEFAULT_OPEN_API} sentinel
-   * (OpenAPI generator adds it client-only), so the only safe answer is to reject.
+   * A non-spec primitive must be rejected with a clean 400. The server-side {@code ColumnTypeName}
+   * enum has no {@code UNKNOWN_DEFAULT_OPEN_API} sentinel (OpenAPI generator adds it client-only),
+   * so the only safe answer is to reject.
    */
   @Test
   public void testToColumnInfoRejectsUnsupportedPrimitives() {
-    for (String unsupported : List.of("void", "hyperdecimal")) {
-      DeltaStructField field =
-          new DeltaStructField()
-              .name("x")
-              .type(new DeltaPrimitiveType().type(unsupported))
-              .nullable(true)
-              .metadata(new DeltaStructFieldMetadata());
-      assertThatThrownBy(() -> ColumnUtils.toColumnInfo(field, 0))
+    for (String unsupported : List.of("hyperdecimal", "voided")) {
+      assertThatThrownBy(() -> ColumnUtils.toColumnInfo(primitiveField(unsupported), 0))
           .as("unsupported primitive: %s", unsupported)
           .isInstanceOf(BaseException.class)
           .hasMessageContaining("Unsupported Delta primitive type: " + unsupported);
     }
+  }
+
+  private static DeltaStructField primitiveField(String type) {
+    return new DeltaStructField()
+        .name("x")
+        .type(new DeltaPrimitiveType().type(type))
+        .nullable(true)
+        .metadata(new DeltaStructFieldMetadata());
   }
 
   // ---------- applyPartitionColumns ----------
@@ -546,12 +564,13 @@ public class ColumnUtilsTest {
                 List.of(
                     new DeltaStructField()
                         .name("x")
-                        .type(new DeltaPrimitiveType().type("void"))
+                        .type(new DeltaPrimitiveType().type("hyperdecimal"))
                         .nullable(true)
                         .metadata(new DeltaStructFieldMetadata())));
     assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
         .isInstanceOf(BaseException.class)
-        .hasMessageContaining("columns.fields[0].type: Unsupported Delta primitive type: void");
+        .hasMessageContaining(
+            "columns.fields[0].type: Unsupported Delta primitive type: hyperdecimal");
   }
 
   private static DeltaStructType decimalColumn(int precision, int scale) {

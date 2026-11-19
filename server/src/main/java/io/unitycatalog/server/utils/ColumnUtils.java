@@ -37,6 +37,7 @@ public class ColumnUtils {
           put("LONG", "bigint");
           put("SHORT", "smallint");
           put("BYTE", "tinyint");
+          put("NULL", "void");
         }
       };
 
@@ -44,6 +45,7 @@ public class ColumnUtils {
       new HashMap<String, String>() {
         {
           put("INT", "integer");
+          put("NULL", "void");
         }
       };
 
@@ -444,12 +446,9 @@ public class ColumnUtils {
     //
     // Not handled, and why:
     //   - INTERVAL: not a Delta primitive.
-    //   - NULL ("void" in Spark JSON): UCSingleCatalog has a NullType branch because it runs
-    //     upstream of Delta's NullType-drop -- a user's CREATE TABLE can carry NullType and UC
-    //     stores it before Delta strips it on write (SchemaUtils.dropNullTypeColumns). Delta runs
-    //     downstream: Spark-Delta clients have already dropped NullType before sending, and
-    //     Kernel rejects "void" on read (DataTypeJsonSerDe.voidTypeEncountered). No conforming
-    //     Delta wire payload contains it.
+    //   - NULL: stored for "void" (Spark's NullType, spec'd in PROTOCOL.md "Void Type"). Writers
+    //     omit void columns from the data files and readers reconstruct them as nulls, so the
+    //     column is only metadata here.
     //   - CHAR / UDT: Spark's Delta writer normalizes CHAR/VARCHAR to STRING (via
     //     CharVarcharUtils) and unwraps UDTs to their underlying sqlType before persisting, so
     //     Delta clients never send "char(n)" or {"type":"udt",...}.
@@ -469,6 +468,7 @@ public class ColumnUtils {
       case "string" -> ColumnTypeName.STRING;
       case "binary" -> ColumnTypeName.BINARY;
       case "variant" -> ColumnTypeName.VARIANT;
+      case "void" -> ColumnTypeName.NULL;
       default ->
           throw new BaseException(
               ErrorCode.INVALID_ARGUMENT, "Unsupported Delta primitive type: " + primitive);
