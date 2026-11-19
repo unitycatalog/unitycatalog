@@ -1,42 +1,28 @@
 use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{object_full_name, page_query, volume_type};
+use super::{object_full_name, page_query, volume_type, UiRpc};
 use crate::mapping;
 use crate::proto::uc::v1::*;
-use crate::upstream::{path_segment, Upstream};
-use crate::AppState;
-
-pub(crate) struct VolumeRpc {
-    upstream: Upstream,
-}
-
-impl VolumeRpc {
-    pub(crate) fn new(state: AppState) -> Self {
-        Self {
-            upstream: Upstream::new(state),
-        }
-    }
-}
+use crate::upstream::path_segment;
 
 #[protovalidate_buffa::connect_impl]
-impl VolumeService for VolumeRpc {
+impl VolumeService for UiRpc {
     async fn list_volumes(
         &self,
         ctx: RequestContext,
         request: ServiceRequest<'_, ListVolumesRequest>,
     ) -> ServiceResult<ListVolumesResponse> {
-        let request = request.to_owned_message();
         let mut query = page_query(&request.page);
         query.extend([
-            ("catalog_name", request.schema.catalog_name.clone()),
-            ("schema_name", request.schema.name.clone()),
+            ("catalog_name", request.schema.catalog_name.to_string()),
+            ("schema_name", request.schema.name.to_string()),
         ]);
         let value = self.upstream.get(&ctx, "/volumes", query).await?;
         let volumes = mapping::required_array(&value, "volumes")?
             .iter()
             .map(mapping::volume_summary)
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListVolumesResponse {
             volumes,
             page: mapping::page(&value).into(),
@@ -49,7 +35,6 @@ impl VolumeService for VolumeRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, GetVolumeRequest>,
     ) -> ServiceResult<GetVolumeResponse> {
-        let request = request.to_owned_message();
         let value = self
             .upstream
             .get(
@@ -62,7 +47,7 @@ impl VolumeService for VolumeRpc {
             )
             .await?;
         Ok(Response::new(GetVolumeResponse {
-            volume: mapping::volume_info(&value).into(),
+            volume: mapping::volume_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -72,7 +57,6 @@ impl VolumeService for VolumeRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, CreateVolumeRequest>,
     ) -> ServiceResult<CreateVolumeResponse> {
-        let request = request.to_owned_message();
         let mut body = Map::new();
         body.insert("name".to_string(), json!(request.volume.name));
         body.insert(
@@ -98,7 +82,7 @@ impl VolumeService for VolumeRpc {
             .post(&ctx, "/volumes", Value::Object(body))
             .await?;
         Ok(Response::new(CreateVolumeResponse {
-            volume: mapping::volume_info(&value).into(),
+            volume: mapping::volume_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -108,7 +92,6 @@ impl VolumeService for VolumeRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, UpdateVolumeRequest>,
     ) -> ServiceResult<UpdateVolumeResponse> {
-        let request = request.to_owned_message();
         let name = object_full_name(&request.volume);
         let mut body = Map::new();
         if let Some(comment) = request.comment {
@@ -126,7 +109,7 @@ impl VolumeService for VolumeRpc {
             )
             .await?;
         Ok(Response::new(UpdateVolumeResponse {
-            volume: mapping::volume_info(&value).into(),
+            volume: mapping::volume_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -136,7 +119,6 @@ impl VolumeService for VolumeRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, DeleteVolumeRequest>,
     ) -> ServiceResult<DeleteVolumeResponse> {
-        let request = request.to_owned_message();
         self.upstream
             .delete(
                 &ctx,

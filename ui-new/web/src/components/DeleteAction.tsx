@@ -17,7 +17,8 @@ import { Input } from "@/components/ui/input";
 // DeleteAction asks the user to type the entity name before deleting it. Like
 // Edit and Create, it is shown to everyone: UC decides who may delete, through
 // ownership, MANAGE, or a parent's ownership, which the UI cannot work out
-// itself. A refusal shows in the error toast.
+// itself. A refusal shows in the error toast. Every label names the entity
+// type, because the typed delete RPC refuses an object of any other type.
 export default function DeleteAction({
   entityName,
   entityType,
@@ -42,7 +43,7 @@ export default function DeleteAction({
     setDeleting(true);
     try {
       await onDelete();
-      toast.success(`${entityType} deleted`);
+      toast.success(`${capitalize(entityType)} deleted`);
       setDialogOpen(false);
       onDeleted?.();
     } catch (error) {
@@ -61,12 +62,14 @@ export default function DeleteAction({
       <DialogTrigger asChild>
         <Button variant="destructive" size="sm">
           <Trash2 className="h-4 w-4" />
-          Delete
+          Delete {entityType}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Delete {entityType}?</DialogTitle>
+          <DialogTitle>
+            Delete {entityType} {entityName}?
+          </DialogTitle>
           <DialogDescription>
             This cannot be undone. Enter <strong>{entityName}</strong> to
             confirm.
@@ -93,4 +96,8 @@ export default function DeleteAction({
       </DialogContent>
     </Dialog>
   );
+}
+
+function capitalize(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

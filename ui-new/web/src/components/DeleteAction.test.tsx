@@ -17,7 +17,7 @@ describe("DeleteAction", () => {
   });
 
   async function confirmDelete() {
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete table" }));
     await userEvent.type(
       screen.getByLabelText("Enter events to confirm"),
       "events",
@@ -37,7 +37,7 @@ describe("DeleteAction", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete table" }));
     const confirm = screen.getByRole("button", { name: "Delete permanently" });
     expect(confirm).toBeDisabled();
 
@@ -52,23 +52,42 @@ describe("DeleteAction", () => {
     await waitFor(() => expect(onDelete).toHaveBeenCalledOnce());
   });
 
-  it("closes, reports success, and calls onDeleted after deleting", async () => {
-    const onDeleted = vi.fn();
-    render(
-      <DeleteAction
-        entityName="events"
-        entityType="table"
-        onDelete={vi.fn().mockResolvedValue(undefined)}
-        onDeleted={onDeleted}
-      />,
-    );
+  it.each([
+    { entityType: "table", toastText: "Table deleted" },
+    { entityType: "metric view", toastText: "Metric view deleted" },
+    { entityType: "registered model", toastText: "Registered model deleted" },
+  ])(
+    "names the $entityType in its controls and reports success",
+    async ({ entityType, toastText }) => {
+      const onDeleted = vi.fn();
+      render(
+        <DeleteAction
+          entityName="events"
+          entityType={entityType}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          onDeleted={onDeleted}
+        />,
+      );
 
-    await confirmDelete();
+      await userEvent.click(
+        screen.getByRole("button", { name: `Delete ${entityType}` }),
+      );
+      expect(
+        screen.getByRole("dialog", { name: `Delete ${entityType} events?` }),
+      ).toBeInTheDocument();
+      await userEvent.type(
+        screen.getByLabelText("Enter events to confirm"),
+        "events",
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: "Delete permanently" }),
+      );
 
-    await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce());
-    expect(toast.success).toHaveBeenCalledWith("table deleted");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
+      await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce());
+      expect(toast.success).toHaveBeenCalledWith(toastText);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    },
+  );
 
   it("keeps the dialog open and shows the error when delete fails", async () => {
     const onDeleted = vi.fn();
@@ -100,13 +119,13 @@ describe("DeleteAction", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete table" }));
     await userEvent.type(
       screen.getByLabelText("Enter events to confirm"),
       "events",
     );
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete table" }));
 
     expect(screen.getByLabelText("Enter events to confirm")).toHaveValue("");
     expect(
@@ -122,10 +141,10 @@ describe("DeleteAction", () => {
         onDelete={vi.fn()}
       />,
     );
-    const trigger = screen.getByRole("button", { name: "Delete" });
+    const trigger = screen.getByRole("button", { name: "Delete table" });
 
     await userEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Delete table?" });
+    const dialog = screen.getByRole("dialog", { name: "Delete table events?" });
     expect(screen.getByLabelText("Enter events to confirm")).toHaveFocus();
     for (let step = 0; step < 4; step += 1) {
       await userEvent.tab();
