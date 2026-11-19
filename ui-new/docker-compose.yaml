@@ -1,0 +1,186 @@
+name: unitycatalog-ui-new
+
+services:
+  unitycatalog:
+    image: unitycatalog-ui-new-local-uc
+    # Built from this checkout, never pulled: `up` builds it when it's missing.
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MAVEN_PROXY_URL: "${MAVEN_PROXY_URL:-}"
+    command: ["sh", "/docker/start-server.sh"]
+    restart: unless-stopped
+    # The server can need 15 seconds to stop with its default settings; see
+    # server.shutdown-timeout in docs/server/configuration.md.
+    stop_grace_period: 20s
+    environment:
+      # Set it to use your own key, as the Helm chart's
+      # server.credentialEncryptionKeySecret does; empty uses the key
+      # config-init generated into the uc_conf volume.
+      UC_SERVER_CREDENTIAL_ENCRYPTION_KEY: "${UC_SERVER_CREDENTIAL_ENCRYPTION_KEY:-}"
+      UC_HIBERNATE_CONNECTION_PASSWORD: "${POSTGRES_PASSWORD:-uc_default_password}"
+    depends_on:
+      upgrade-schema:
+        condition: service_completed_successfully
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${UC_PORT:-8080}:8080"
+    volumes:
+      - uc_conf:/home/unitycatalog/etc/conf
+      - ./docker/unitycatalog:/docker:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 24
+    init: true
+
+  # Sets up or upgrades the PostgreSQL schema before the server starts, as the
+  # Helm chart's upgrade-schema init container does; the server refuses to
+  # start on a database without it.
+  upgrade-schema:
+    # The unitycatalog service builds this image; never pull it.
+    image: unitycatalog-ui-new-local-uc
+    pull_policy: never
+    command: ["./bin/start-uc-server", "--upgrade-schema"]
+    environment:
+      UC_HIBERNATE_CONNECTION_PASSWORD: "${POSTGRES_PASSWORD:-uc_default_password}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-init:
+        condition: service_completed_successfully
+    volumes:
+      - uc_conf:/home/unitycatalog/etc/conf
+    init: true
+
+  # Registers RustFS as an s3_compatible storage credential and an external
+  # location for the bucket once the server is up.
+  storage-init:
+    image: unitycatalog-ui-new-local-uc
+    pull_policy: never
+    command: ["sh", "/docker/storage-init.sh"]
+    environment:
+      UC_SERVER: http://unitycatalog:8080
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: "${RUSTFS_ACCESS_KEY:-rustfsadmin}"
+      RUSTFS_SECRET_KEY: "${RUSTFS_SECRET_KEY:-rustfsadmin}"
+    depends_on:
+      unitycatalog:
+        condition: service_healthy
+    volumes:
+      - ./docker/unitycatalog:/docker:ro
+    init: true
+
+  rustfs:
+    # RustFS 1.0.4, the image the server's RustFS tests pin.
+    image: rustfs/rustfs@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    restart: unless-stopped
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: "${RUSTFS_ACCESS_KEY:-rustfsadmin}"
+      RUSTFS_SECRET_KEY: "${RUSTFS_SECRET_KEY:-rustfsadmin}"
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${RUSTFS_API_PORT:-9000}:9000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs_data:/data
+
+  # Creates the bucket and writes the server's configuration volume; see
+  # docker/unitycatalog/config-init.sh.
+  config-init:
+    image: amazon/aws-cli:2.38.0
+    depends_on:
+      rustfs:
+        condition: service_started
+    entrypoint: ["/bin/sh", "/config-init.sh"]
+    environment:
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: "${RUSTFS_ACCESS_KEY:-rustfsadmin}"
+      RUSTFS_SECRET_KEY: "${RUSTFS_SECRET_KEY:-rustfsadmin}"
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ucdb
+      POSTGRES_USER: uc_default_user
+    volumes:
+      - ./docker/unitycatalog/config-init.sh:/config-init.sh:ro
+      - ../etc/conf:/templates:ro
+      - uc_conf:/conf
+
+  postgres:
+    image: postgres:16.3
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ucdb
+      POSTGRES_USER: uc_default_user
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-uc_default_password}"
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - uc_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Over TCP, as the server connects: on a new volume the image first runs a
+      # setup server that listens only on the Unix socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  bridge:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      args:
+        CARGO_REGISTRY_URL: "${CARGO_REGISTRY_URL:-}"
+      secrets:
+        - cargo_config
+    restart: unless-stopped
+    # Lets an in-flight RPC reach the bridge's 30-second Unity Catalog timeout.
+    stop_grace_period: 35s
+    environment:
+      UC_SERVER: http://unitycatalog:8080
+      UI_AUTH_ENABLED: "${UI_AUTH_ENABLED:-false}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      OKTA_AUTH_ENABLED: "${OKTA_AUTH_ENABLED:-false}"
+      KEYCLOAK_AUTH_ENABLED: "${KEYCLOAK_AUTH_ENABLED:-false}"
+      RUST_LOG: "${RUST_LOG:-info}"
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+    expose:
+      - "8081"
+    init: true
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        NPM_REGISTRY_URL: "${NPM_REGISTRY_URL:-}"
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${UI_PORT:-3000}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 5s
+      retries: 12
+    init: true
+
+volumes:
+  rustfs_data:
+  uc_conf:
+  uc_postgres_data:
+
+secrets:
+  cargo_config:
+    file: "${CARGO_CONFIG_FILE:-./docker/empty-registry-config}"
