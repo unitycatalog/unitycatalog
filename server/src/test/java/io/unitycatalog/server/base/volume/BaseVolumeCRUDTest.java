@@ -147,6 +147,16 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
     assertThat(updatedVolumeInfo2.getComment()).isEqualTo(LONG_COMMENT);
     assertThat(volumeOperations.getVolume(VOLUME_NEW_FULL_NAME).getComment())
         .isEqualTo(LONG_COMMENT);
+    // The API allows 65536 characters. Multi-byte ones need more than 65535 bytes on MySQL.
+    String longestComment = String.valueOf((char) 0xE9).repeat(65536);
+    assertThat(
+            volumeOperations
+                .updateVolume(
+                    VOLUME_NEW_FULL_NAME, new UpdateVolumeRequestContent().comment(longestComment))
+                .getComment())
+        .isEqualTo(longestComment);
+    assertThat(volumeOperations.getVolume(VOLUME_NEW_FULL_NAME).getComment())
+        .isEqualTo(longestComment);
     assertThat(updatedVolumeInfo2.getFullName()).isEqualTo(VOLUME_NEW_FULL_NAME);
     assertThat(updatedVolumeInfo2.getUpdatedAt()).isNotNull();
 

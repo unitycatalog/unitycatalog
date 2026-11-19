@@ -28,7 +28,7 @@ public class VolumeInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
 
-  @Column(name = "comment", length = 65535)
+  @Column(name = "comment", length = 65536)
   private String comment;
 
   @Column(name = "storage_location")
