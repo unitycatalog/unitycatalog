@@ -15,7 +15,7 @@ import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
 import io.unitycatalog.server.model.ExternalLocationInfo;
-import io.unitycatalog.server.model.S3CompatibleRequest;
+import io.unitycatalog.server.model.S3CompatibleAccessKeyRequest;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -117,10 +117,11 @@ class CredentialRepositoryTest {
                     new CreateCredentialRequest()
                         .name("credential")
                         .purpose(CredentialPurpose.STORAGE)
-                        .s3Compatible(s3Compatible("value"))),
+                        .s3CompatibleAccessKey(s3Compatible("value"))),
             () ->
                 disabled.updateCredential(
-                    "role", new UpdateCredentialRequest().s3Compatible(s3Compatible("value"))))) {
+                    "role",
+                    new UpdateCredentialRequest().s3CompatibleAccessKey(s3Compatible("value"))))) {
       assertThatThrownBy(change)
           .isInstanceOf(BaseException.class)
           .hasMessageContaining("server.s3-compatible-storage.enabled=true")
@@ -141,7 +142,7 @@ class CredentialRepositoryTest {
         new CreateCredentialRequest()
             .name("compat")
             .purpose(CredentialPurpose.STORAGE)
-            .s3Compatible(s3Compatible("value")));
+            .s3CompatibleAccessKey(s3Compatible("value")));
     ServerProperties flagOff = serverProperties(/* isS3CompatibleStorageEnabled= */ false);
     CredentialRepository disabled =
         new CredentialRepository(
@@ -150,7 +151,7 @@ class CredentialRepositoryTest {
             flagOff,
             EncryptedCredentialSecretStore.from(flagOff));
 
-    assertThat(disabled.getCredential("compat").getS3Compatible().getAccessKeyId())
+    assertThat(disabled.getCredential("compat").getS3CompatibleAccessKey().getAccessKeyId())
         .isEqualTo("key-id");
     assertThat(disabled.listCredentials(Optional.empty(), Optional.empty()).getCredentials())
         .extracting(CredentialInfo::getName)
@@ -159,12 +160,13 @@ class CredentialRepositoryTest {
         disabled.updateCredential(
             "compat", new UpdateCredentialRequest().newName("renamed").comment("comment"));
     assertThat(renamed.getComment()).isEqualTo("comment");
-    assertThat(renamed.getS3Compatible().getAccessKeyId()).isEqualTo("key-id");
-    // New s3_compatible data still needs the flag.
+    assertThat(renamed.getS3CompatibleAccessKey().getAccessKeyId()).isEqualTo("key-id");
+    // New s3_compatible_access_key data still needs the flag.
     assertThatThrownBy(
             () ->
                 disabled.updateCredential(
-                    "renamed", new UpdateCredentialRequest().s3Compatible(s3Compatible("other"))))
+                    "renamed",
+                    new UpdateCredentialRequest().s3CompatibleAccessKey(s3Compatible("other"))))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("server.s3-compatible-storage.enabled=true");
     disabled.deleteCredential("renamed", /* force= */ false);
@@ -174,11 +176,8 @@ class CredentialRepositoryTest {
         .isEqualTo(ErrorCode.NOT_FOUND);
   }
 
-  private static S3CompatibleRequest s3Compatible(String secret) {
-    return new S3CompatibleRequest()
-        .accessKeyId("key-id")
-        .secretAccessKey(secret)
-        .s3Endpoint("http://storage.example.com:9000");
+  private static S3CompatibleAccessKeyRequest s3Compatible(String secret) {
+    return new S3CompatibleAccessKeyRequest().accessKeyId("key-id").secretAccessKey(secret);
   }
 
   private void createS3Compatible(String name, String secret) {
@@ -186,7 +185,7 @@ class CredentialRepositoryTest {
         new CreateCredentialRequest()
             .name(name)
             .purpose(CredentialPurpose.STORAGE)
-            .s3Compatible(s3Compatible(secret)));
+            .s3CompatibleAccessKey(s3Compatible(secret)));
   }
 
   private String loadSecret(String name) {
@@ -202,7 +201,7 @@ class CredentialRepositoryTest {
 
     // A new key pair replaces the stored value.
     credentialRepository.updateCredential(
-        "credential", new UpdateCredentialRequest().s3Compatible(s3Compatible("value-1")));
+        "credential", new UpdateCredentialRequest().s3CompatibleAccessKey(s3Compatible("value-1")));
     assertThat(loadSecret("credential")).isEqualTo("value-1");
 
     // A change that keeps the key pair keeps its value.
@@ -229,7 +228,7 @@ class CredentialRepositoryTest {
               new CreateCredentialRequest()
                   .name(name)
                   .purpose(CredentialPurpose.STORAGE)
-                  .s3Compatible(s3Compatible("value")));
+                  .s3CompatibleAccessKey(s3Compatible("value")));
     }
     // An IAM role holds no secret, so it is never reported.
     repositoryWithKey(key)
@@ -256,7 +255,7 @@ class CredentialRepositoryTest {
   @Test
   void testTypeChangeWaitsForALocationChangeOnTheCredential() throws Exception {
     // A location change holds the credential's lock while it adds a gs:// location. A concurrent
-    // change to s3_compatible waits for it, then sees the location and is refused.
+    // change to s3_compatible_access_key waits for it, then sees the location and is refused.
     credentialRepository.addCredential(
         new CreateCredentialRequest()
             .name("role")
@@ -281,18 +280,21 @@ class CredentialRepositoryTest {
                           ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/")).push()) {
                         return credentialRepository.updateCredential(
                             "role",
-                            new UpdateCredentialRequest().s3Compatible(s3Compatible("value")));
+                            new UpdateCredentialRequest()
+                                .s3CompatibleAccessKey(s3Compatible("value")));
                       }
                     }))
         .isInstanceOf(BaseException.class)
-        .hasMessageContaining("Cannot make credential 'role' an s3_compatible credential")
+        .hasMessageContaining(
+            "Cannot change the type of credential 'role' while an external location uses it.")
         .hasMessageNotContaining("gs://bucket/path");
   }
 
   @Test
   void testLocationUpdateWaitsForATypeChangeOnItsCredential() throws Exception {
-    // A type change to s3_compatible holds the credential's lock. A concurrent URL change of a
-    // location on that credential waits for it, then sees the new type and is refused.
+    // A type change to s3_compatible_access_key holds the credential's lock. A concurrent URL
+    // change
+    // of a location on that credential waits for it, then sees the new type and is refused.
     Repositories repositories =
         new Repositories(
             testDatabase.sessionFactory(),
@@ -325,14 +327,14 @@ class CredentialRepositoryTest {
                       }
                     }))
         .isInstanceOf(BaseException.class)
-        .hasMessageContaining("is an s3_compatible credential");
+        .hasMessageContaining("is an s3_compatible_access_key credential");
   }
 
-  /** Changes a credential to s3_compatible in {@code session}, holding its lock. */
+  /** Changes a credential to s3_compatible_access_key in {@code session}, holding its lock. */
   private static void makeS3Compatible(Session session, Repositories repositories, String name) {
     CredentialDAO credential =
         repositories.getCredentialRepository().getCredentialDAOForUpdate(session, name);
-    credential.setS3Compatible(
+    credential.setS3CompatibleAccessKey(
         s3Compatible("value"),
         new EncryptedCredentialSecretStore(Optional.of(TestUtils.CREDENTIAL_ENCRYPTION_KEY)));
     session.merge(credential);
@@ -346,7 +348,7 @@ class CredentialRepositoryTest {
     assertThatThrownBy(() -> createS3Compatible("credential", "value-1"))
         .isInstanceOf(BaseException.class);
 
-    // An IAM role credential used by a location outside s3:// cannot become an s3_compatible.
+    // An IAM role credential used by a location cannot become an s3_compatible_access_key.
     credentialRepository.addCredential(
         new CreateCredentialRequest()
             .name("role")
@@ -367,7 +369,8 @@ class CredentialRepositoryTest {
     assertThatThrownBy(
             () ->
                 credentialRepository.updateCredential(
-                    "role", new UpdateCredentialRequest().s3Compatible(s3Compatible("value-2"))))
+                    "role",
+                    new UpdateCredentialRequest().s3CompatibleAccessKey(s3Compatible("value-2"))))
         .isInstanceOf(BaseException.class);
     // The refused change left the role as it was.
     try (Session session = testDatabase.sessionFactory().openSession()) {
@@ -602,8 +605,8 @@ class CredentialRepositoryTest {
 
   @Test
   void testLocationCreateWaitsForATypeChangeOnItsCredential() throws Exception {
-    // A type change to s3_compatible holds the credential's lock. A concurrent create of a gs://
-    // location on that credential waits for it, then sees the new type and is refused.
+    // A type change to s3_compatible_access_key holds the credential's lock. A concurrent create of
+    // a gs:// location on that credential waits for it, then sees the new type and is refused.
     Repositories repositories =
         new Repositories(
             testDatabase.sessionFactory(),
@@ -632,6 +635,6 @@ class CredentialRepositoryTest {
                       }
                     }))
         .isInstanceOf(BaseException.class)
-        .hasMessageContaining("is an s3_compatible credential");
+        .hasMessageContaining("is an s3_compatible_access_key credential");
   }
 }

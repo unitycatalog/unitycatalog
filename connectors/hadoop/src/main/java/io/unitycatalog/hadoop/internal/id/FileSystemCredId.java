@@ -82,6 +82,8 @@ public final class FileSystemCredId {
         .forEach((bucket, endpoint) -> storage.put("endpoint." + bucket, endpoint));
     conf.getPropsWithPrefix(UCHadoopConfConstants.UC_VENDED_S3_REGION_PREFIX)
         .forEach((bucket, region) -> storage.put("region." + bucket, region));
+    conf.getPropsWithPrefix(UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX)
+        .forEach((bucket, pathStyle) -> storage.put("pathStyle." + bucket, pathStyle));
     // A hash, as for the S3A settings, so the id holds no settings and its text form stays short.
     return storage.isEmpty() ? "" : MapIdGenerator.generateId(storage);
   }

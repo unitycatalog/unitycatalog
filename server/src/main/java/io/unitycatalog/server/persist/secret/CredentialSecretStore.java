@@ -5,8 +5,8 @@ import java.util.UUID;
 
 /**
  * Keeps the secret values of storage credentials, such as the {@code secret_access_key} of an
- * {@code s3_compatible} credential. The database holds only the stored value that {@link #store}
- * returns: the secret encrypted, or, for a store outside Unity Catalog, a pointer to it.
+ * {@code s3_compatible_access_key} credential. The database holds only the stored value that {@link
+ * #store} returns: the secret encrypted, or, for a store outside Unity Catalog, a pointer to it.
  *
  * <p>The only store keeps the value in the credential's row, so a value goes with its row. A store
  * outside the database would also need to release values the database no longer holds; add that

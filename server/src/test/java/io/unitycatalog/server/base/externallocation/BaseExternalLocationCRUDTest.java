@@ -1,5 +1,6 @@
 package io.unitycatalog.server.base.externallocation;
 
+import static io.unitycatalog.server.base.credential.BaseCredentialCRUDTest.NOT_AN_HTTP_URL;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
@@ -24,7 +25,8 @@ import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
-import io.unitycatalog.client.model.S3CompatibleRequest;
+import io.unitycatalog.client.model.S3AddressingStyle;
+import io.unitycatalog.client.model.S3CompatibleAccessKeyRequest;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
@@ -255,8 +257,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   public void testS3CompatibleLocations() throws ApiException {
     String endpointA = "http://storage-a.invalid:9000";
     String endpointB = "http://storage-b.invalid:9000";
-    createCompatCredential(COMPAT_CREDENTIAL_NAME, endpointA);
-    createCompatCredential(ANOTHER_COMPAT_CREDENTIAL_NAME, endpointB);
+    createCompatCredential(COMPAT_CREDENTIAL_NAME);
+    createCompatCredential(ANOTHER_COMPAT_CREDENTIAL_NAME);
 
     // Such a credential reaches storage only through the S3 API, at an s3:// path with a bucket.
     for (String url :
@@ -272,67 +274,263 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             "s3://user@shared-bucket/data",
             "s3://shared-bucket:9000/data")) {
       assertApiException(
-          () -> createLocation("el_other", url, COMPAT_CREDENTIAL_NAME),
+          () -> createLocation("el_other", url, COMPAT_CREDENTIAL_NAME, endpointA),
           ErrorCode.INVALID_ARGUMENT,
           "its external locations must be s3:// paths");
     }
+    // A location has an endpoint exactly when its credential is s3_compatible_access_key.
+    assertApiException(
+        () -> createLocation("el_other", "s3://shared-bucket/a", COMPAT_CREDENTIAL_NAME, null),
+        ErrorCode.INVALID_ARGUMENT,
+        "its external locations need the endpoint of their storage");
+    assertApiException(
+        () -> createLocation("el_other", "s3://shared-bucket/a", CREDENTIAL_NAME, endpointA),
+        ErrorCode.INVALID_ARGUMENT,
+        "is not an s3_compatible_access_key credential, so its external locations have no"
+            + " endpoint");
+    for (InvalidEndpoint invalid : INVALID_ENDPOINTS) {
+      assertApiException(
+          () ->
+              createLocation(
+                  "el_other", "s3://shared-bucket/a", COMPAT_CREDENTIAL_NAME, invalid.endpoint()),
+          ErrorCode.INVALID_ARGUMENT,
+          "Invalid endpoint:" + invalid.error());
+    }
+    // A rejected value is left out of the message, since it may carry something secret.
+    for (String endpoint :
+        List.of("https://user:value@storage.example.com/%ZZ", "user:value@storage.example.com")) {
+      ApiException e =
+          assertThrows(
+              ApiException.class,
+              () ->
+                  createLocation(
+                      "el_other", "s3://shared-bucket/a", COMPAT_CREDENTIAL_NAME, endpoint));
+      assertThat(e.getResponseBody()).doesNotContain("user:value");
+    }
+    assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
+        .noneMatch(location -> location.getName().equals("el_other"));
 
     // A bucket name S3 allows that a URI host does not, such as one with an underscore.
-    createLocation("el_underscore", "s3://my_bucket/data", COMPAT_CREDENTIAL_NAME);
+    createLocation("el_underscore", "s3://my_bucket/data", COMPAT_CREDENTIAL_NAME, endpointA);
     delete("el_underscore", Optional.empty());
 
-    // One bucket name on two storage systems, under locations that do not overlap.
-    createLocation("el_a", "s3://shared-bucket/a", COMPAT_CREDENTIAL_NAME);
-    createLocation("el_b", "s3://shared-bucket/b", ANOTHER_COMPAT_CREDENTIAL_NAME);
+    // One credential, and one bucket name, on two storage systems, under locations that do not
+    // overlap.
+    ExternalLocationInfo locationA =
+        createLocation("el_a", "s3://shared-bucket/a", COMPAT_CREDENTIAL_NAME, endpointA);
+    assertThat(locationA.getEndpoint()).isEqualTo(endpointA);
+    createLocation("el_b", "s3://shared-bucket/b", COMPAT_CREDENTIAL_NAME, endpointB);
+    assertThat(externalLocationOperations.getExternalLocation("el_b").getEndpoint())
+        .isEqualTo(endpointB);
     assertApiException(
-        () -> createLocation("el_bucket", "s3://shared-bucket", COMPAT_CREDENTIAL_NAME),
+        () -> createLocation("el_bucket", "s3://shared-bucket", COMPAT_CREDENTIAL_NAME, endpointA),
         ErrorCode.INVALID_ARGUMENT,
         "overlaps with existing external location");
-    // Updates keep the same rule: a new URL, or a new credential.
+
+    // Updates keep the same rules: a new URL, a new endpoint, or a new credential. An update
+    // without an endpoint keeps the stored one.
     assertApiException(
         () ->
             externalLocationOperations.updateExternalLocation(
                 "el_a", new UpdateExternalLocation().url("gs://shared-bucket/a")),
         ErrorCode.INVALID_ARGUMENT,
         "its external locations must be s3:// paths");
-
-    // A credential can change type while locations use it, as long as an s3_compatible credential
-    // keeps only s3:// locations.
-    for (UpdateCredentialRequest update :
-        List.of(
-            new UpdateCredentialRequest()
-                .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)),
-            new UpdateCredentialRequest().s3Compatible(keyPair(endpointA)))) {
-      credentialOperations.updateCredential(COMPAT_CREDENTIAL_NAME, update);
-    }
-    create(EXTERNAL_LOCATION_NAME, testUrl());
     assertApiException(
         () ->
             externalLocationOperations.updateExternalLocation(
-                EXTERNAL_LOCATION_NAME,
-                new UpdateExternalLocation().credentialName(COMPAT_CREDENTIAL_NAME)),
+                "el_a", new UpdateExternalLocation().endpoint("http://storage-a.invalid:9000/s3")),
         ErrorCode.INVALID_ARGUMENT,
-        "its external locations must be s3:// paths");
+        "Invalid endpoint: must be http[s]://host[:port], without a path.");
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation("el_a", new UpdateExternalLocation().comment("moved"))
+                .getEndpoint())
+        .isEqualTo(endpointA);
+    String movedEndpoint = "http://storage-a-moved.invalid:9000";
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    "el_a", new UpdateExternalLocation().endpoint(movedEndpoint))
+                .getEndpoint())
+        .isEqualTo(movedEndpoint);
+    // To another s3_compatible_access_key credential, keeping the endpoint, but not to a
+    // credential of another type, nor from one.
+    ExternalLocationInfo moved =
+        externalLocationOperations.updateExternalLocation(
+            "el_a", new UpdateExternalLocation().credentialName(ANOTHER_COMPAT_CREDENTIAL_NAME));
+    assertThat(moved.getCredentialName()).isEqualTo(ANOTHER_COMPAT_CREDENTIAL_NAME);
+    assertThat(moved.getEndpoint()).isEqualTo(movedEndpoint);
+    create(EXTERNAL_LOCATION_NAME, testUrl());
+    for (UpdateExternalLocationCase c :
+        List.of(
+            new UpdateExternalLocationCase("el_a", CREDENTIAL_NAME),
+            new UpdateExternalLocationCase(EXTERNAL_LOCATION_NAME, COMPAT_CREDENTIAL_NAME))) {
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  c.location(), new UpdateExternalLocation().credentialName(c.credential())),
+          ErrorCode.INVALID_ARGUMENT,
+          "An external location cannot move between an s3_compatible_access_key credential and a"
+              + " credential of another type: "
+              + c.credential());
+    }
     assertApiException(
         () ->
-            credentialOperations.updateCredential(
-                CREDENTIAL_NAME, new UpdateCredentialRequest().s3Compatible(keyPair(endpointA))),
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().endpoint(endpointA)),
         ErrorCode.INVALID_ARGUMENT,
-        "Cannot make credential '" + CREDENTIAL_NAME + "' an s3_compatible");
+        "so its external locations have no endpoint");
 
+    // Nor does a credential change type while a location uses it; unused, it may.
+    for (UpdateCredentialCase c :
+        List.of(
+            new UpdateCredentialCase(
+                ANOTHER_COMPAT_CREDENTIAL_NAME,
+                new UpdateCredentialRequest()
+                    .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN))),
+            new UpdateCredentialCase(
+                CREDENTIAL_NAME, new UpdateCredentialRequest().s3CompatibleAccessKey(keyPair())))) {
+      assertApiException(
+          () -> credentialOperations.updateCredential(c.credential(), c.update()),
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot change the type of credential '"
+              + c.credential()
+              + "' while an external location uses it.");
+    }
     for (String name : List.of("el_a", "el_b")) {
       delete(name, Optional.empty());
     }
+    credentialOperations.updateCredential(
+        COMPAT_CREDENTIAL_NAME,
+        new UpdateCredentialRequest().awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)));
     for (String name : List.of(COMPAT_CREDENTIAL_NAME, ANOTHER_COMPAT_CREDENTIAL_NAME)) {
       credentialOperations.deleteCredential(name, Optional.empty());
     }
   }
 
   @Test
+  public void testS3CompatibleAddressingStyle() throws ApiException {
+    String endpoint = "http://storage.invalid:9000";
+    createCompatCredential(COMPAT_CREDENTIAL_NAME);
+
+    // Path-style unless the location says otherwise, and only with an endpoint.
+    assertThat(
+            createLocation("el_path", "s3://path-bucket/a", COMPAT_CREDENTIAL_NAME, endpoint)
+                .getAddressingStyle())
+        .isEqualTo(S3AddressingStyle.PATH);
+    assertThat(externalLocationOperations.getExternalLocation("el_path").getAddressingStyle())
+        .isEqualTo(S3AddressingStyle.PATH);
+    assertThat(create(EXTERNAL_LOCATION_NAME, testUrl()).getAddressingStyle()).isNull();
+    String noStyle = "so its external locations have no endpoint or addressing style";
+    assertApiException(
+        () ->
+            createLocation(
+                "el_other", anotherTestUrl(), CREDENTIAL_NAME, null, S3AddressingStyle.PATH),
+        ErrorCode.INVALID_ARGUMENT,
+        noStyle);
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().addressingStyle(S3AddressingStyle.PATH)),
+        ErrorCode.INVALID_ARGUMENT,
+        noStyle);
+
+    // Virtual-hosted puts the bucket in the host name, so its name must be a host name label.
+    for (String bucket :
+        List.of("my_bucket", "data.2024", "ab", "-bucket", "bucket-", "b".repeat(64))) {
+      assertApiException(
+          () ->
+              createLocation(
+                  "el_other",
+                  "s3://" + bucket + "/a",
+                  COMPAT_CREDENTIAL_NAME,
+                  endpoint,
+                  S3AddressingStyle.VIRTUAL_HOSTED),
+          ErrorCode.INVALID_ARGUMENT,
+          "Bucket '" + bucket + "' cannot be addressed VIRTUAL_HOSTED");
+    }
+    ExternalLocationInfo hosted =
+        createLocation(
+            "el_hosted",
+            "s3://hosted-bucket-1/a",
+            COMPAT_CREDENTIAL_NAME,
+            endpoint,
+            S3AddressingStyle.VIRTUAL_HOSTED);
+    assertThat(hosted.getAddressingStyle()).isEqualTo(S3AddressingStyle.VIRTUAL_HOSTED);
+    // An update without a style keeps it, so a new URL must qualify too.
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation("el_hosted", new UpdateExternalLocation().comment("c"))
+                .getAddressingStyle())
+        .isEqualTo(S3AddressingStyle.VIRTUAL_HOSTED);
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                "el_hosted", new UpdateExternalLocation().url("s3://hosted.bucket/a")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Bucket 'hosted.bucket' cannot be addressed VIRTUAL_HOSTED");
+    // Path-style takes any bucket name S3 allows; switching it needs one that qualifies.
+    createLocation("el_dotted", "s3://data.2024/a", COMPAT_CREDENTIAL_NAME, endpoint);
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                "el_dotted",
+                new UpdateExternalLocation().addressingStyle(S3AddressingStyle.VIRTUAL_HOSTED)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Bucket 'data.2024' cannot be addressed VIRTUAL_HOSTED");
+    for (S3AddressingStyle style :
+        List.of(S3AddressingStyle.VIRTUAL_HOSTED, S3AddressingStyle.PATH)) {
+      assertThat(
+              externalLocationOperations
+                  .updateExternalLocation(
+                      "el_path", new UpdateExternalLocation().addressingStyle(style))
+                  .getAddressingStyle())
+          .isEqualTo(style);
+    }
+    for (String name : List.of("el_path", "el_hosted", "el_dotted")) {
+      delete(name, Optional.empty());
+    }
+    credentialOperations.deleteCredential(COMPAT_CREDENTIAL_NAME, Optional.empty());
+  }
+
+  private record InvalidEndpoint(String endpoint, String error) {}
+
+  private record UpdateExternalLocationCase(String location, String credential) {}
+
+  private record UpdateCredentialCase(String credential, UpdateCredentialRequest update) {}
+
+  private static final List<InvalidEndpoint> INVALID_ENDPOINTS =
+      List.of(
+          new InvalidEndpoint("storage.example.com:9000", NOT_AN_HTTP_URL),
+          // java.net.URI finds no host in a name with an underscore, and neither would a client.
+          new InvalidEndpoint("http://minio_1:9000", NOT_AN_HTTP_URL),
+          new InvalidEndpoint("http://storage.example.com:0", NOT_AN_HTTP_URL),
+          new InvalidEndpoint("http://storage.example.com:65536", NOT_AN_HTTP_URL),
+          // The S3 API is at the root of the host, named exactly.
+          new InvalidEndpoint(
+              "https://storage.example.com:9000/s3",
+              " must be http[s]://host[:port], without a path."),
+          new InvalidEndpoint(
+              "https://storage.example.com:9000/",
+              " must be http[s]://host[:port], without a path."),
+          new InvalidEndpoint(
+              "https://storage.example.com:", " must be http[s]://host[:port], without a path."),
+          new InvalidEndpoint("https://user:value@storage.example.com/%ZZ", " not a URL."),
+          new InvalidEndpoint("user:value@storage.example.com", NOT_AN_HTTP_URL),
+          // Endpoints are readable by everyone who can read the location.
+          new InvalidEndpoint(
+              "https://user:value@storage.example.com",
+              " must not contain user info, a query or a fragment."),
+          new InvalidEndpoint(
+              "https://storage.example.com/#value",
+              " must not contain user info, a query or a fragment."));
+
+  @Test
   public void testLocationWithAUrlFromAnEarlierReleaseCanStillChange() throws ApiException {
     // An earlier release stored URLs that no longer parse, such as one with a query. Changing
-    // anything but the URL still works, as does moving it to a credential other than
-    // s3_compatible.
+    // anything but the URL still works, as does moving it to another credential that is not
+    // s3_compatible_access_key.
     String legacyUrl = "file:///tmp/legacy?x=1";
     create(EXTERNAL_LOCATION_NAME, testUrl());
     setStoredUrl(EXTERNAL_LOCATION_NAME, legacyUrl);
@@ -357,19 +555,11 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
                     new UpdateExternalLocation().credentialName(ANOTHER_CREDENTIAL_NAME))
                 .getCredentialName())
         .isEqualTo(ANOTHER_CREDENTIAL_NAME);
-    // It is still not an s3:// path, so its credential cannot become s3_compatible.
-    assertApiException(
-        () ->
-            credentialOperations.updateCredential(
-                ANOTHER_CREDENTIAL_NAME,
-                new UpdateCredentialRequest().s3Compatible(keyPair("http://s3:9000"))),
-        ErrorCode.INVALID_ARGUMENT,
-        "Cannot make credential '" + ANOTHER_CREDENTIAL_NAME + "' an s3_compatible");
 
     // Nor is a stored s3:// URL that no longer parses. The credential's error leaves it out, as
     // managing a credential does not grant reading its locations, and moving the location to an
-    // s3_compatible credential is refused rather than failing in the parser.
-    createCompatCredential(COMPAT_CREDENTIAL_NAME, "http://s3:9000");
+    // s3_compatible_access_key credential is refused rather than failing in the parser.
+    createCompatCredential(COMPAT_CREDENTIAL_NAME);
     for (String storedUrl : List.of("s3://secret-bucket/a b", "S3://secret-bucket/x", "s3:///")) {
       setStoredUrl(NEW_EXTERNAL_LOCATION_NAME, storedUrl);
       ApiException credentialChange =
@@ -378,19 +568,21 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
               () ->
                   credentialOperations.updateCredential(
                       ANOTHER_CREDENTIAL_NAME,
-                      new UpdateCredentialRequest().s3Compatible(keyPair("http://s3:9000"))));
+                      new UpdateCredentialRequest().s3CompatibleAccessKey(keyPair())));
       assertThat(credentialChange.getCode()).as(storedUrl).isEqualTo(400);
       assertThat(credentialChange.getResponseBody())
           .as(storedUrl)
-          .contains("Cannot make credential '" + ANOTHER_CREDENTIAL_NAME + "' an s3_compatible")
+          .contains("Cannot change the type of credential '" + ANOTHER_CREDENTIAL_NAME + "'")
           .doesNotContain("secret-bucket");
       assertApiException(
           () ->
               externalLocationOperations.updateExternalLocation(
                   NEW_EXTERNAL_LOCATION_NAME,
-                  new UpdateExternalLocation().credentialName(COMPAT_CREDENTIAL_NAME)),
+                  new UpdateExternalLocation()
+                      .credentialName(COMPAT_CREDENTIAL_NAME)
+                      .endpoint("http://s3:9000")),
           ErrorCode.INVALID_ARGUMENT,
-          "its external locations must be s3:// paths");
+          "An external location cannot move between an s3_compatible_access_key credential");
     }
     credentialOperations.deleteCredential(COMPAT_CREDENTIAL_NAME, Optional.empty());
   }
@@ -450,26 +642,48 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         /* readOnly= */ false);
   }
 
-  protected void createCompatCredential(String name, String s3Endpoint) throws ApiException {
+  protected void createCompatCredential(String name) throws ApiException {
     credentialOperations.createCredential(
         new CreateCredentialRequest()
             .name(name)
             .purpose(CredentialPurpose.STORAGE)
-            .s3Compatible(keyPair(s3Endpoint)));
+            .s3CompatibleAccessKey(keyPair()));
   }
 
-  protected void createLocation(String name, String url, String credentialName)
+  /**
+   * @param endpoint the location's S3 endpoint, or null for none
+   */
+  protected ExternalLocationInfo createLocation(
+      String name, String url, String credentialName, String endpoint) throws ApiException {
+    return createLocation(name, url, credentialName, endpoint, /* addressingStyle= */ null);
+  }
+
+  /**
+   * @param addressingStyle the location's addressing style, or null to leave it out
+   */
+  protected ExternalLocationInfo createLocation(
+      String name,
+      String url,
+      String credentialName,
+      String endpoint,
+      S3AddressingStyle addressingStyle)
       throws ApiException {
-    externalLocationOperations.createExternalLocation(
-        new CreateExternalLocation().name(name).url(url).credentialName(credentialName));
+    ExternalLocationInfo created =
+        externalLocationOperations.createExternalLocation(
+            new CreateExternalLocation()
+                .name(name)
+                .url(url)
+                .credentialName(credentialName)
+                .endpoint(endpoint)
+                .addressingStyle(addressingStyle));
     externalLocationsToDelete.add(name);
+    return created;
   }
 
-  protected static S3CompatibleRequest keyPair(String s3Endpoint) {
-    return new S3CompatibleRequest()
+  protected static S3CompatibleAccessKeyRequest keyPair() {
+    return new S3CompatibleAccessKeyRequest()
         .accessKeyId("key-id-1")
-        .secretAccessKey("key-value-1")
-        .s3Endpoint(s3Endpoint);
+        .secretAccessKey("key-value-1");
   }
 
   @Test

@@ -5,6 +5,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
@@ -216,11 +217,13 @@ public class FileOperationsImpl implements FileOperations {
     Optional.ofNullable(awsCredentials.getSessionToken())
         .ifPresent(v -> config.put(S3FileIOProperties.SESSION_TOKEN, v));
     if (awsCredentials.getS3Endpoint() != null) {
-      // S3-compatible storage: the bucket is not on AWS, so its region is vended with the endpoint
-      // rather than discovered here. These stores commonly cannot serve virtual-hosted bucket
-      // names, so use path-style access.
+      // S3-compatible storage: the bucket is not on AWS, so its region and addressing style are
+      // vended with the endpoint rather than discovered here.
       config.put(S3FileIOProperties.ENDPOINT, awsCredentials.getS3Endpoint());
-      config.put(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
+      config.put(
+          S3FileIOProperties.PATH_STYLE_ACCESS,
+          String.valueOf(
+              awsCredentials.getS3AddressingStyle() != S3AddressingStyle.VIRTUAL_HOSTED));
       config.put(
           AwsClientProperties.CLIENT_REGION,
           Optional.ofNullable(awsCredentials.getS3Region())

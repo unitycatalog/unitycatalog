@@ -291,27 +291,32 @@ public class ExternalLocationUtils {
         /* readOnly= */ true);
   }
 
+  /** The external location covering a path, and its storage credential. */
+  public record LocationCredential(ExternalLocationDAO location, CredentialDAO credential) {}
+
   /**
-   * Finds the storage credential associated with the external location that covers the given path.
+   * Finds the external location that covers the given path, and its storage credential.
    *
    * <p>This method looks up external locations whose URL is a parent of or equals the given path,
-   * then returns the storage credential associated with that external location. The credential can
-   * be used to vend a temporary credential for data access.
+   * then returns that external location with its storage credential. The credential can be used to
+   * vend a temporary credential for data access; the location holds the storage's S3 endpoint for
+   * S3-compatible storage.
    *
    * @param url the storage path to find credentials for (e.g., s3://bucket/path/to/data)
-   * @return the storage credential if an external location covers this path, empty otherwise
+   * @return the location and its credential if an external location covers this path, empty
+   *     otherwise
    * @throws BaseException with INTERNAL if multiple external locations cover the path (invalid
    *     state), or if the credential referenced by the external location was deleted
    */
-  public Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(NormalizedURL url) {
+  public Optional<LocationCredential> getExternalLocationCredentialForPath(NormalizedURL url) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> getExternalLocationCredentialDaoForPath(session, url),
+        session -> getExternalLocationCredentialForPath(session, url),
         "Failed to get storage credential by URL",
         /* readOnly= */ true);
   }
 
-  private Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(
+  private Optional<LocationCredential> getExternalLocationCredentialForPath(
       Session session, NormalizedURL url) {
     // Get the external location
     // Find out the external location that covers the input URL. Either the external location is
@@ -340,8 +345,8 @@ public class ExternalLocationUtils {
     }
 
     // Get the credential that is assigned to the external location
-    UUID credentialId = externalLocationDAOs.get(0).getCredentialId();
-    CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
+    ExternalLocationDAO location = externalLocationDAOs.get(0);
+    CredentialDAO credentialDAO = session.get(CredentialDAO.class, location.getCredentialId());
     if (credentialDAO == null) {
       throw new BaseException(
           ErrorCode.INTERNAL,
@@ -350,7 +355,7 @@ public class ExternalLocationUtils {
                   + "that covers this path with a new credential.",
               url));
     }
-    return Optional.of(credentialDAO);
+    return Optional.of(new LocationCredential(location, credentialDAO));
   }
 
   /**

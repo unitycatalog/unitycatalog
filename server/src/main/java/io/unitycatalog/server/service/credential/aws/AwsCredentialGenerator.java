@@ -129,7 +129,8 @@ public interface AwsCredentialGenerator {
 
     @Override
     public Credentials generate(CredentialContext ctx) {
-      // Only an aws_iam_role credential names the role; an s3_compatible one configures it.
+      // Only an aws_iam_role credential names the role; an s3_compatible_access_key one configures
+      // it.
       Optional<AwsIamRoleResponse> awsIamRole =
           ctx.getCredentialDAO()
               .filter(dao -> dao.getCredentialType() == CredentialDAO.CredentialType.AWS_IAM_ROLE)

@@ -71,7 +71,8 @@ public class CloudCredentialVendor implements AutoCloseable {
     AwsCredentials awsCredentials =
         new AwsCredentials()
             .s3Endpoint(context.getS3Endpoint().orElse(null))
-            .s3Region(context.getS3Region().orElse(null));
+            .s3Region(context.getS3Region().orElse(null))
+            .s3AddressingStyle(context.getS3AddressingStyle().orElse(null));
     TemporaryCredentials temporaryCredentials =
         new TemporaryCredentials().awsTempCredentials(awsCredentials);
     Optional<Credentials> vended = awsCredentialVendor.vendAwsCredentials(context);

@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.ExternalLocationInfo;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
@@ -42,6 +43,17 @@ public class ExternalLocationDAO extends IdentifiableDAO {
   @Column(name = "credential_id", nullable = false)
   private UUID credentialId;
 
+  // The S3 endpoint of S3-compatible storage, set exactly when the credential is
+  // s3_compatible_access_key (ExternalLocationRepository#validateForCredential). The length has
+  // room for any host name with its scheme and port.
+  @Column(name = "endpoint", length = 512)
+  private String endpoint;
+
+  // An S3AddressingStyle value, set with the endpoint; text rather than an enum column, so that a
+  // value added later needs no schema step.
+  @Column(name = "addressing_style", length = 32)
+  private String addressingStyle;
+
   @Column(name = "created_at")
   private Date createdAt;
 
@@ -54,6 +66,19 @@ public class ExternalLocationDAO extends IdentifiableDAO {
   @Column(name = "updated_by")
   private String updatedBy;
 
+  /**
+   * @return how requests to the endpoint name the bucket, {@code PATH} if not stored, or null
+   *     without an endpoint
+   */
+  public S3AddressingStyle getS3AddressingStyle() {
+    if (endpoint == null) {
+      return null;
+    }
+    return addressingStyle == null
+        ? S3AddressingStyle.PATH
+        : S3AddressingStyle.fromValue(addressingStyle);
+  }
+
   public ExternalLocationInfo toExternalLocationInfo(String credentialName) {
     return new ExternalLocationInfo()
         .name(getName())
@@ -63,6 +88,8 @@ public class ExternalLocationDAO extends IdentifiableDAO {
         .id(getId() != null ? getId().toString() : null)
         .credentialId(getCredentialId() != null ? getCredentialId().toString() : null)
         .credentialName(credentialName)
+        .endpoint(getEndpoint())
+        .addressingStyle(getS3AddressingStyle())
         .createdAt(getCreatedAt().getTime())
         .createdBy(getCreatedBy())
         .updatedAt(getUpdatedAt() != null ? getUpdatedAt().getTime() : null)

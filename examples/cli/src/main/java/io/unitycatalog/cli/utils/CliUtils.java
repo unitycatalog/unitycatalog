@@ -373,7 +373,6 @@ public class CliUtils {
                               CliParams.COMMENT,
                               CliParams.AWS_IAM_ROLE_ARN,
                               CliParams.S3_ACCESS_KEY_ID,
-                              CliParams.S3_ENDPOINT,
                               CliParams.S3_SECRET_ACCESS_KEY,
                               CliParams.S3_STS_ENDPOINT,
                               CliParams.S3_ROLE_ARN,
@@ -392,7 +391,6 @@ public class CliUtils {
                               CliParams.COMMENT,
                               CliParams.AWS_IAM_ROLE_ARN,
                               CliParams.S3_ACCESS_KEY_ID,
-                              CliParams.S3_ENDPOINT,
                               CliParams.S3_SECRET_ACCESS_KEY,
                               CliParams.S3_STS_ENDPOINT,
                               CliParams.S3_ROLE_ARN,
@@ -408,7 +406,8 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.NAME, CliParams.URL, CliParams.CREDENTIAL_NAME),
-                          List.of(CliParams.COMMENT)));
+                          List.of(
+                              CliParams.ENDPOINT, CliParams.ADDRESSING_STYLE, CliParams.COMMENT)));
                   put(
                       LIST,
                       new CliOptions(
@@ -422,6 +421,8 @@ public class CliUtils {
                               CliParams.NEW_NAME,
                               CliParams.URL,
                               CliParams.CREDENTIAL_NAME,
+                              CliParams.ENDPOINT,
+                              CliParams.ADDRESSING_STYLE,
                               CliParams.COMMENT,
                               CliParams.FORCE)));
                   put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));

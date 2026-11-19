@@ -1,0 +1,1 @@
++ column uc_external_locations.endpoint type=character varying size=512 nullable=YES default=null

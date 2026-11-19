@@ -11,6 +11,8 @@ public final class AwsCredential extends GenericCredential {
   private final String s3Endpoint;
   // Region to sign requests to s3Endpoint with; null if not known.
   private final String s3Region;
+  // Whether requests to s3Endpoint name the bucket in the path rather than in the host name.
+  private final boolean isS3PathStyle;
 
   public AwsCredential(
       String accessKeyId,
@@ -64,6 +66,33 @@ public final class AwsCredential extends GenericCredential {
       String prefix,
       String s3Endpoint,
       String s3Region) {
+    this(
+        accessKeyId,
+        secretAccessKey,
+        sessionToken,
+        expirationTimeMillis,
+        prefix,
+        s3Endpoint,
+        s3Region,
+        /* isS3PathStyle= */ true);
+  }
+
+  /**
+   * Like {@link #AwsCredential(String, String, String, Long, String, String, String)}, with how
+   * requests to the S3-compatible storage name the bucket.
+   *
+   * @param isS3PathStyle whether requests to {@code s3Endpoint} name the bucket in the path rather
+   *     than in the host name
+   */
+  public AwsCredential(
+      String accessKeyId,
+      String secretAccessKey,
+      String sessionToken,
+      Long expirationTimeMillis,
+      String prefix,
+      String s3Endpoint,
+      String s3Region,
+      boolean isS3PathStyle) {
     super(expirationTimeMillis, prefix);
     // Empty is absent, as for a credential read back from the configuration: the API declares these
     // as plain strings, and an empty endpoint would otherwise name S3-compatible storage.
@@ -92,6 +121,7 @@ public final class AwsCredential extends GenericCredential {
     this.sessionToken = sessionToken;
     this.s3Endpoint = s3Endpoint;
     this.s3Region = s3Region;
+    this.isS3PathStyle = isS3PathStyle;
   }
 
   private static String emptyToNull(String value) {
@@ -118,6 +148,22 @@ public final class AwsCredential extends GenericCredential {
   /** The region to sign requests to {@link #s3Endpoint()} with, or null if not known. */
   public String s3Region() {
     return s3Region;
+  }
+
+  /**
+   * Whether requests to {@link #s3Endpoint()} name the bucket in the path rather than in the host
+   * name.
+   */
+  public boolean isS3PathStyle() {
+    return isS3PathStyle;
+  }
+
+  /**
+   * @return {@link #isS3PathStyle()} as a table load records it for the bucket and renewal reads it
+   *     back, empty for AWS S3
+   */
+  public String s3PathStyleRecord() {
+    return s3Endpoint == null ? "" : String.valueOf(isS3PathStyle);
   }
 
   /**
@@ -151,12 +197,19 @@ public final class AwsCredential extends GenericCredential {
         && Objects.equals(secretAccessKey, that.secretAccessKey)
         && Objects.equals(sessionToken, that.sessionToken)
         && Objects.equals(s3Endpoint, that.s3Endpoint)
-        && Objects.equals(s3Region, that.s3Region);
+        && Objects.equals(s3Region, that.s3Region)
+        && isS3PathStyle == that.isS3PathStyle;
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(
-        super.hashCode(), accessKeyId, secretAccessKey, sessionToken, s3Endpoint, s3Region);
+        super.hashCode(),
+        accessKeyId,
+        secretAccessKey,
+        sessionToken,
+        s3Endpoint,
+        s3Region,
+        isS3PathStyle);
   }
 }

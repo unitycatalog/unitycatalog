@@ -86,7 +86,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
       // At bucket scope too, since a bucket option in the engine's configuration overrides the
       // global one; the engine's own keys stay in use when no keys are vended.
       String bucketScope = "fs.s3a.bucket." + bucket;
-      set(bucketScope + ".path.style.access", "true");
+      set(bucketScope + ".path.style.access", String.valueOf(aws.isS3PathStyle()));
       // As the global keys: the vended provider with renewal, otherwise a single credential's keys.
       if (aws.hasKeys()) {
         if (isRenewCredEnabled()) {
@@ -126,7 +126,8 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
     Preconditions.checkArgument(
         other == null
             || (Objects.equals(other.s3Endpoint(), aws.s3Endpoint())
-                && Objects.equals(other.s3Region(), aws.s3Region())),
+                && Objects.equals(other.s3Region(), aws.s3Region())
+                && other.isS3PathStyle() == aws.isS3PathStyle()),
         "Paths %s and %s of bucket %s are on different storage (%s and %s); one session can"
             + " reach a bucket name on only one storage",
         other == null ? null : other.prefix(),
@@ -147,6 +148,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
     set(
         UCHadoopConfConstants.UC_VENDED_S3_REGION_PREFIX + bucket,
         Objects.toString(aws.s3Region(), ""));
+    set(UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX + bucket, aws.s3PathStyleRecord());
     set(
         UCHadoopConfConstants.UC_VENDED_S3_KEYS_PREFIX + bucket,
         String.valueOf(vendedKeysSign(bucket, aws, credentialCount)));
@@ -211,7 +213,9 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
     if (aws.s3Endpoint() == null) {
       return "AWS S3";
     }
-    return aws.s3Region() == null ? aws.s3Endpoint() : aws.s3Endpoint() + " in " + aws.s3Region();
+    String name =
+        aws.s3Region() == null ? aws.s3Endpoint() : aws.s3Endpoint() + " in " + aws.s3Region();
+    return aws.isS3PathStyle() ? name : name + ", virtual-hosted";
   }
 
   @Override
@@ -237,6 +241,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
     // Empty when absent, so that a value already configured is not used.
     set(UCHadoopConfConstants.S3A_INIT_S3_ENDPOINT, Objects.toString(aws.s3Endpoint(), ""));
     set(UCHadoopConfConstants.S3A_INIT_S3_REGION, Objects.toString(aws.s3Region(), ""));
+    set(UCHadoopConfConstants.S3A_INIT_S3_PATH_STYLE, aws.s3PathStyleRecord());
     // Expiration may be absent (e.g. a static token provider), so write the key only when set.
     if (aws.expirationTimeMillis() != null) {
       set(

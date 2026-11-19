@@ -20,11 +20,17 @@ public class UCHadoopConfConstants {
   public static final String S3A_INIT_S3_ENDPOINT = "fs.s3a.init.s3.endpoint";
   // The region vended with that endpoint, so the initial credential matches later renewals.
   public static final String S3A_INIT_S3_REGION = "fs.s3a.init.s3.region";
-  // The S3 endpoint and region Unity Catalog vended for a bucket when the table was loaded, each
-  // followed by the bucket name; empty for AWS S3. AwsVendedTokenProvider refuses a renewal for
-  // other storage, since the file system keeps sending requests where it was set up to.
+  // Whether requests to that endpoint are path-style, also so the initial credential matches;
+  // empty for AWS S3.
+  public static final String S3A_INIT_S3_PATH_STYLE = "fs.s3a.init.s3.path.style";
+  // The S3 endpoint, region and path-style flag Unity Catalog vended for a bucket when the table
+  // was loaded, each followed by the bucket name; empty for AWS S3. AwsVendedTokenProvider refuses
+  // a renewal for other storage, or another addressing style, since the file system keeps sending
+  // requests where and how it was set up to.
   public static final String UC_VENDED_S3_ENDPOINT_PREFIX = "fs.unitycatalog.vended.s3.endpoint.";
   public static final String UC_VENDED_S3_REGION_PREFIX = "fs.unitycatalog.vended.s3.region.";
+  public static final String UC_VENDED_S3_PATH_STYLE_PREFIX =
+      "fs.unitycatalog.vended.s3.path.style.";
   // Whether Unity Catalog vended keys for the bucket, followed by the bucket name: without them the
   // engine's own S3 credentials sign, which may be per Hadoop user.
   public static final String UC_VENDED_S3_KEYS_PREFIX = "fs.unitycatalog.vended.s3.keys.";

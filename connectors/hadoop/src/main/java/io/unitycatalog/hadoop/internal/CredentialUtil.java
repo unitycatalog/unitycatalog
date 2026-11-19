@@ -4,6 +4,7 @@ import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.AwsCredentials;
+import io.unitycatalog.client.model.S3AddressingStyle;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.AzureCredential;
@@ -50,7 +51,9 @@ public final class CredentialUtil {
           expiry,
           tempCred.getUrl(),
           aws.getS3Endpoint(),
-          aws.getS3Region());
+          aws.getS3Region(),
+          // Path-style when a server older than the field leaves it out.
+          aws.getS3AddressingStyle() != S3AddressingStyle.VIRTUAL_HOSTED);
     } else if (tempCred.getAzureUserDelegationSas() != null) {
       return new AzureCredential(
           tempCred.getAzureUserDelegationSas().getSasToken(), expiry, tempCred.getUrl());
@@ -74,7 +77,8 @@ public final class CredentialUtil {
           expiry,
           cred.getPrefix(),
           config.getS3Endpoint(),
-          config.getClientRegion());
+          config.getClientRegion(),
+          !Boolean.FALSE.equals(config.getS3PathStyleAccess()));
     } else if (isAzureConfig(config)) {
       return new AzureCredential(config.getAzureSasToken(), expiry, cred.getPrefix());
     } else {

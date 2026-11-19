@@ -7,13 +7,13 @@ import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ListCredentialsResponse;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
-import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.sql.Connection;
@@ -64,7 +64,7 @@ public class CredentialRepository {
 
   public CredentialInfo addCredential(CreateCredentialRequest createCredentialRequest) {
     ValidationUtils.validateSqlObjectName(createCredentialRequest.getName());
-    if (createCredentialRequest.getS3Compatible() != null) {
+    if (createCredentialRequest.getS3CompatibleAccessKey() != null) {
       serverProperties.checkS3CompatibleStorageEnabled();
     }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -116,9 +116,9 @@ public class CredentialRepository {
 
   /**
    * Reads the credential with a write lock on its row until the transaction ends. A credential
-   * update and an external location change on the same credential both take it before checking that
-   * an {@code s3_compatible} credential has only {@code s3://} locations, so one waits for the
-   * other and checks its committed result.
+   * update and an external location change on the same credential both take it before checking the
+   * credential's type against its locations, so one waits for the other and checks its committed
+   * result.
    *
    * @return the credential, or null if none has the name
    */
@@ -151,9 +151,10 @@ public class CredentialRepository {
 
   public CredentialInfo updateCredential(String name, UpdateCredentialRequest updateCredential) {
     ValidationUtils.checkArgument(
-        updateCredential.getAwsIamRole() == null || updateCredential.getS3Compatible() == null,
-        "Specify only one of aws_iam_role and s3_compatible.");
-    if (updateCredential.getS3Compatible() != null) {
+        updateCredential.getAwsIamRole() == null
+            || updateCredential.getS3CompatibleAccessKey() == null,
+        "Specify only one of aws_iam_role and s3_compatible_access_key.");
+    if (updateCredential.getS3CompatibleAccessKey() != null) {
       serverProperties.checkS3CompatibleStorageEnabled();
     }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -175,14 +176,16 @@ public class CredentialRepository {
             }
             existingCredential.setName(updateCredential.getNewName());
           }
-          // Every part of a credential can change while external locations use it, including its
-          // type and S3 endpoint, as long as each location stays reachable with it (s3:// only for
-          // s3_compatible); the paths under those locations then reach storage the new way.
+          // Every part of a credential can change while external locations use it, but not its
+          // type: an s3_compatible_access_key credential's locations carry the storage's endpoint,
+          // and other credentials' locations must not.
           if (updateCredential.getAwsIamRole() != null) {
+            validateTypeKeptWhileUsed(session, existingCredential, CredentialType.AWS_IAM_ROLE);
             existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
-          } else if (updateCredential.getS3Compatible() != null) {
-            existingCredential.setS3Compatible(updateCredential.getS3Compatible(), secretStore);
-            validateLocationsAreS3Paths(session, existingCredential);
+          } else if (updateCredential.getS3CompatibleAccessKey() != null) {
+            validateTypeKeptWhileUsed(session, existingCredential, CredentialType.S3_COMPATIBLE);
+            existingCredential.setS3CompatibleAccessKey(
+                updateCredential.getS3CompatibleAccessKey(), secretStore);
           }
           if (updateCredential.getComment() != null) {
             existingCredential.setComment(updateCredential.getComment());
@@ -235,8 +238,9 @@ public class CredentialRepository {
   }
 
   /**
-   * Reads the stored secret of every {@code s3_compatible} credential, so that a missing or changed
-   * {@code server.credential-encryption-key} shows at startup rather than on the first request.
+   * Reads the stored secret of every {@code s3_compatible_access_key} credential, so that a missing
+   * or changed {@code server.credential-encryption-key} shows at startup rather than on the first
+   * request.
    *
    * @return the name of each credential whose secret cannot be read, with the failure
    */
@@ -273,23 +277,17 @@ public class CredentialRepository {
   }
 
   /**
-   * Rejects making a credential an {@code s3_compatible} credential while an external location
-   * outside {@code s3://} uses it, since such a credential reaches storage only through the S3 API.
+   * Rejects changing the type of a credential that an external location uses, since a location has
+   * an endpoint exactly when its credential is {@code s3_compatible_access_key}.
    */
-  private void validateLocationsAreS3Paths(Session session, CredentialDAO credentialDAO) {
-    // A credential has few locations, so each URL is checked with the rule location changes use.
-    List<String> urls =
-        session
-            .createSelectionQuery(
-                "SELECT url FROM ExternalLocationDAO WHERE credentialId = :value", String.class)
-            .setParameter("value", credentialDAO.getId())
-            .list();
+  private void validateTypeKeptWhileUsed(
+      Session session, CredentialDAO credentialDAO, CredentialType newType) {
     // The message leaves the location out: managing a credential does not grant reading the
     // locations that use it.
     ValidationUtils.checkArgument(
-        urls.stream().allMatch(NormalizedURL::isS3Path),
-        "Cannot make credential '%s' an s3_compatible credential: it is used by an external"
-            + " location that is not an s3:// path.",
+        credentialDAO.getCredentialType() == newType
+            || getExternalLocationDAOUsingCredential(session, credentialDAO.getId()) == null,
+        "Cannot change the type of credential '%s' while an external location uses it.",
         credentialDAO.getName());
   }
 

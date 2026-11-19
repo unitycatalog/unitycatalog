@@ -16,7 +16,7 @@ import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.S3AssumeRole;
-import io.unitycatalog.client.model.S3CompatibleRequest;
+import io.unitycatalog.client.model.S3CompatibleAccessKeyRequest;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -302,10 +302,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   /**
    * Registers the real S3-compatible storage the way a deployment does: its buckets, an {@code
-   * s3_compatible} credential, and an external location per bucket. The credential assumes the
-   * storage's role when it has one, and otherwise follows {@code
-   * server.s3-compatible-storage.static-key-vending}. The bucket for the no-credentials case gets
-   * no external location.
+   * s3_compatible_access_key} credential, and an external location per bucket at the storage's
+   * endpoint. The credential assumes the storage's role when it has one, and otherwise follows
+   * {@code server.s3-compatible-storage.static-key-vending}. The bucket for the no-credentials case
+   * gets no external location.
    */
   private void registerS3Storage(TestStorage storage) throws ApiException {
     for (String bucket : S3_BUCKETS) {
@@ -318,16 +318,14 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
             new CreateCredentialRequest()
                 .name(S3_CREDENTIAL)
                 .purpose(CredentialPurpose.STORAGE)
-                .s3Compatible(
-                    new S3CompatibleRequest()
+                .s3CompatibleAccessKey(
+                    new S3CompatibleAccessKeyRequest()
                         .accessKeyId(storage.accessKeyId())
                         .secretAccessKey(storage.secretAccessKey())
-                        .s3Endpoint(storage.s3Endpoint())
                         // Each vend is an STS session of the storage's role, narrowed by the
                         // session policy Unity Catalog sends; without STS the server's
                         // server.s3-compatible-storage.static-key-vending decides whether clients
-                        // get the key
-                        // pair.
+                        // get the key pair.
                         .assumeRole(
                             storage
                                 .roleArn()
@@ -339,7 +337,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
           new CreateExternalLocation()
               .name(bucket.replace('-', '_'))
               .url("s3://" + bucket)
-              .credentialName(S3_CREDENTIAL));
+              .credentialName(S3_CREDENTIAL)
+              .endpoint(storage.s3Endpoint()));
     }
   }
 

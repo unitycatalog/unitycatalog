@@ -7,7 +7,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.S3AssumeRole;
-import io.unitycatalog.server.model.S3CompatibleResponse;
+import io.unitycatalog.server.model.S3CompatibleAccessKeyResponse;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -65,11 +65,12 @@ import software.amazon.awssdk.services.sts.model.Credentials;
  *             uses the master role and storage role defined in this config and doesn't have support
  *             for externalId.
  *       </ul>
- *   <li><b>S3-Compatible Credentials:</b> An {@code s3_compatible} storage credential of an
- *       external location on S3-compatible storage. With {@code assume_role}, its own keys assume
- *       the role at its {@code sts_endpoint}, or its {@code s3_endpoint} when none is set, as
- *       above. Without it, the server uses the key pair for its own storage access, and {@link
- *       ServerProperties.Property#S3_COMPATIBLE_STATIC_KEY_VENDING} decides what clients receive.
+ *   <li><b>S3-Compatible Credentials:</b> An {@code s3_compatible_access_key} storage credential of
+ *       an external location on S3-compatible storage. With {@code assume_role}, its own keys
+ *       assume the role at its {@code sts_endpoint}, or the location's {@code endpoint} when none
+ *       is set, as above. Without it, the server uses the key pair for its own storage access, and
+ *       {@link ServerProperties.Property#S3_COMPATIBLE_STATIC_KEY_VENDING} decides what clients
+ *       receive.
  * </ol>
  */
 public class AwsCredentialVendor implements AutoCloseable {
@@ -111,7 +112,8 @@ public class AwsCredentialVendor implements AutoCloseable {
     return generator;
   }
 
-  // STS clients for s3_compatible credentials with assume_role, one per STS endpoint and signing
+  // STS clients for s3_compatible_access_key credentials with assume_role, one per STS endpoint and
+  // signing
   // region. They hold no keys: each AssumeRole is signed with the key pair of the credential
   // version the request read, so a credential update needs no new client. Endpoints and regions
   // come from the credential API, so the cache is bounded; a client it evicts closes once the
@@ -214,10 +216,10 @@ public class AwsCredentialVendor implements AutoCloseable {
   }
 
   /**
-   * Vends for an {@code s3_compatible} credential: scoped short-lived credentials from its STS with
-   * {@code assume_role}. Without it, the key pair for the server's own access, and for clients only
-   * when {@code server.s3-compatible-storage.static-key-vending} is {@code static-key}, with the
-   * lifetime of an STS session.
+   * Vends for an {@code s3_compatible_access_key} credential: scoped short-lived credentials from
+   * its STS with {@code assume_role}. Without it, the key pair for the server's own access, and for
+   * clients only when {@code server.s3-compatible-storage.static-key-vending} is {@code
+   * static-key}, with the lifetime of an STS session.
    *
    * @return the credentials, or empty when the key pair is not vended to clients
    */
@@ -226,14 +228,15 @@ public class AwsCredentialVendor implements AutoCloseable {
     // Credentials stored while the feature was enabled stay in the database after it is turned off;
     // they are not vended then.
     serverProperties.checkS3CompatibleStorageEnabled();
-    S3CompatibleResponse s3Compatible = credentialDAO.getS3CompatibleResponse();
+    S3CompatibleAccessKeyResponse s3Compatible = credentialDAO.getS3CompatibleAccessKeyResponse();
     S3AssumeRole assumeRole = s3Compatible.getAssumeRole();
     if (assumeRole != null) {
-      // STS is commonly served at the storage's S3 endpoint, the default when none is set.
+      // STS is commonly served at the storage's S3 endpoint: the endpoint of the path's external
+      // location, the default when none is set.
       String stsEndpoint =
           assumeRole.getStsEndpoint() != null
               ? assumeRole.getStsEndpoint()
-              : s3Compatible.getS3Endpoint();
+              : context.getS3Endpoint().orElseThrow();
       StsClientKey key = new StsClientKey(stsEndpoint, stsRegion(s3Compatible, context));
       AwsCredentialsProvider signer =
           StaticCredentialsProvider.create(
@@ -295,7 +298,7 @@ public class AwsCredentialVendor implements AutoCloseable {
   }
 
   private Credentials.Builder keyPair(
-      CredentialDAO credentialDAO, S3CompatibleResponse s3Compatible) {
+      CredentialDAO credentialDAO, S3CompatibleAccessKeyResponse s3Compatible) {
     return Credentials.builder()
         .accessKeyId(s3Compatible.getAccessKeyId())
         .secretAccessKey(secretAccessKey(credentialDAO));
@@ -320,7 +323,8 @@ public class AwsCredentialVendor implements AutoCloseable {
    *
    * @return the signing region
    */
-  private static String stsRegion(S3CompatibleResponse s3Compatible, CredentialContext context) {
+  private static String stsRegion(
+      S3CompatibleAccessKeyResponse s3Compatible, CredentialContext context) {
     String stsRegion = s3Compatible.getAssumeRole().getStsRegion();
     if (stsRegion != null && !stsRegion.isEmpty()) {
       return stsRegion;

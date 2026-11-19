@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service.credential;
 
+import io.unitycatalog.server.model.S3AddressingStyle;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.UriScheme;
@@ -45,6 +46,8 @@ public class CredentialContext {
   @Builder.Default private final Optional<String> s3Endpoint = Optional.empty();
   // The region to sign requests to that S3 endpoint with, set together with s3Endpoint.
   @Builder.Default private final Optional<String> s3Region = Optional.empty();
+  // How requests to that S3 endpoint name the bucket, set together with s3Endpoint.
+  @Builder.Default private final Optional<S3AddressingStyle> s3AddressingStyle = Optional.empty();
   // Whether the credentials are for the server's own storage access rather than for a client. The
   // server always needs usable keys, even when its credential does not vend keys to clients.
   private final boolean isServerAccess;
@@ -65,6 +68,7 @@ public class CredentialContext {
         credentialDAO,
         Optional.empty(),
         Optional.empty(),
+        Optional.empty(),
         /* isServerAccess= */ false);
   }
 
@@ -78,6 +82,7 @@ public class CredentialContext {
    *     configuration.
    * @param s3Endpoint the external location's S3 endpoint for S3-compatible storage, empty for AWS
    * @param s3Region the region of the storage at {@code s3Endpoint}, empty for AWS
+   * @param s3AddressingStyle how requests to {@code s3Endpoint} name the bucket, empty for AWS
    * @param isServerAccess whether the credentials are for the server's own storage access
    * @return a new CredentialContext instance
    */
@@ -87,6 +92,7 @@ public class CredentialContext {
       Optional<CredentialDAO> credentialDAO,
       Optional<String> s3Endpoint,
       Optional<String> s3Region,
+      Optional<S3AddressingStyle> s3AddressingStyle,
       boolean isServerAccess) {
     URI locationURI = location.toUri();
     return CredentialContext.builder()
@@ -97,6 +103,7 @@ public class CredentialContext {
         .credentialDAO(credentialDAO)
         .s3Endpoint(s3Endpoint)
         .s3Region(s3Region)
+        .s3AddressingStyle(s3AddressingStyle)
         .isServerAccess(isServerAccess)
         .build();
   }

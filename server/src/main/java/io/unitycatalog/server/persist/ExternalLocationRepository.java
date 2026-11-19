@@ -6,6 +6,7 @@ import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.CredentialPurpose;
 import io.unitycatalog.server.model.ExternalLocationInfo;
 import io.unitycatalog.server.model.ListExternalLocationsResponse;
+import io.unitycatalog.server.model.S3AddressingStyle;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -24,6 +25,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -65,28 +67,58 @@ public class ExternalLocationRepository {
     return credentialDAO;
   }
 
+  // A bucket name that is also a host name label, which virtual-hosted requests put in the host;
+  // no dots, since a dot breaks wildcard TLS certificates.
+  private static final Pattern VIRTUAL_HOSTED_BUCKET =
+      Pattern.compile("[a-z0-9][a-z0-9-]{1,61}[a-z0-9]");
+
   /**
-   * Checks that a location can be reached with its credential: an {@code s3_compatible} credential
-   * names S3-compatible storage, so its locations must be {@code s3://} paths.
+   * Checks that a location can be reached with its credential: an {@code s3_compatible_access_key}
+   * credential reaches S3-compatible storage, so its locations must be {@code s3://} paths with the
+   * storage's endpoint and addressing style, and other credentials' locations have neither.
    *
    * @param url the location URL
+   * @param endpoint the location's endpoint, or null if it has none
+   * @param addressingStyle the location's addressing style, or null if it has none
    * @param credentialDAO the location's storage credential, or null if it was force-deleted
    * @throws BaseException with INVALID_ARGUMENT if the credential cannot reach the URL
    */
-  static void validateUrlForCredential(String url, CredentialDAO credentialDAO) {
-    // Only an s3_compatible credential limits its locations' URLs, so a location an earlier release
-    // stored with a URL that no longer parses can still change otherwise; such a URL is not an
-    // s3:// path.
-    if (credentialDAO == null
-        || credentialDAO.getCredentialType() != CredentialType.S3_COMPATIBLE) {
+  static void validateForCredential(
+      String url, String endpoint, S3AddressingStyle addressingStyle, CredentialDAO credentialDAO) {
+    // A force-deleted credential leaves nothing to check against; setting a new one checks again.
+    if (credentialDAO == null) {
       return;
     }
+    if (credentialDAO.getCredentialType() != CredentialType.S3_COMPATIBLE) {
+      ValidationUtils.checkArgument(
+          endpoint == null && addressingStyle == null,
+          "Storage credential '%s' is not an s3_compatible_access_key credential, so its external"
+              + " locations have no endpoint or addressing style.",
+          credentialDAO.getName());
+      return;
+    }
+    // Only an s3_compatible_access_key credential limits its locations' URLs, so a location an
+    // earlier release stored with a URL that no longer parses can still change otherwise; such a
+    // URL is not an s3:// path.
     ValidationUtils.checkArgument(
         NormalizedURL.isS3Path(url),
-        "Storage credential '%s' is an s3_compatible credential, so its external locations must be"
-            + " s3:// paths: %s",
+        "Storage credential '%s' is an s3_compatible_access_key credential, so its external"
+            + " locations must be s3:// paths: %s",
         credentialDAO.getName(),
         url);
+    ValidationUtils.checkArgument(
+        endpoint != null,
+        "Storage credential '%s' is an s3_compatible_access_key credential, so its external"
+            + " locations need the endpoint of their storage.",
+        credentialDAO.getName());
+    ValidationUtils.validateHttpUrl(endpoint, "endpoint");
+    String bucket = NormalizedURL.from(url).toUri().getRawAuthority();
+    ValidationUtils.checkArgument(
+        addressingStyle != S3AddressingStyle.VIRTUAL_HOSTED
+            || VIRTUAL_HOSTED_BUCKET.matcher(bucket).matches(),
+        "Bucket '%s' cannot be addressed VIRTUAL_HOSTED: use 3 to 63 lowercase letters, digits and"
+            + " hyphens, starting and ending with a letter or digit, or the PATH addressing style.",
+        bucket);
   }
 
   public ExternalLocationInfo addExternalLocation(CreateExternalLocation createExternalLocation) {
@@ -108,7 +140,14 @@ public class ExternalLocationRepository {
 
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
-          validateUrlForCredential(url.toString(), credentialDAO);
+          // A location with an endpoint is addressed path-style unless it says otherwise.
+          S3AddressingStyle addressingStyle =
+              createExternalLocation.getAddressingStyle() == null
+                      && createExternalLocation.getEndpoint() != null
+                  ? S3AddressingStyle.PATH
+                  : createExternalLocation.getAddressingStyle();
+          validateForCredential(
+              url.toString(), createExternalLocation.getEndpoint(), addressingStyle, credentialDAO);
           UUID externalLocationId = UUID.randomUUID();
           ExternalLocationDAO externalLocationDAO =
               ExternalLocationDAO.builder()
@@ -118,6 +157,8 @@ public class ExternalLocationRepository {
                   .comment(createExternalLocation.getComment())
                   .owner(callerId)
                   .credentialId(credentialDAO.getId())
+                  .endpoint(createExternalLocation.getEndpoint())
+                  .addressingStyle(addressingStyle == null ? null : addressingStyle.getValue())
                   .createdAt(new Date())
                   .createdBy(callerId)
                   .build();
@@ -256,13 +297,27 @@ public class ExternalLocationRepository {
           if (updateExternalLocation.getComment() != null) {
             existingLocation.setComment(updateExternalLocation.getComment());
           }
+          if (updateExternalLocation.getEndpoint() != null) {
+            existingLocation.setEndpoint(updateExternalLocation.getEndpoint());
+          }
+          if (updateExternalLocation.getAddressingStyle() != null) {
+            existingLocation.setAddressingStyle(
+                updateExternalLocation.getAddressingStyle().getValue());
+          }
           String credentialName;
           if (updateExternalLocation.getCredentialName() != null) {
             // Setting a new credential
             credentialName = updateExternalLocation.getCredentialName();
             CredentialDAO credentialDAO = validateAndGetCredentialDAO(session, credentialName);
+            validateTypeKept(
+                session.get(CredentialDAO.class, existingLocation.getCredentialId()),
+                credentialDAO);
             existingLocation.setCredentialId(credentialDAO.getId());
-            validateUrlForCredential(existingLocation.getUrl(), credentialDAO);
+            validateForCredential(
+                existingLocation.getUrl(),
+                existingLocation.getEndpoint(),
+                storedAddressingStyle(existingLocation),
+                credentialDAO);
           } else {
             // Keep the current credential. Locked on its first read in this session: a lock taken
             // on an entity already loaded does not refresh it, so a concurrent type change could go
@@ -272,7 +327,11 @@ public class ExternalLocationRepository {
                     session, CredentialDAO.class, existingLocation.getCredentialId());
             credentialName = current == null ? null : current.getName();
             // Checked whether or not the URL changes, against the credential's committed type.
-            validateUrlForCredential(existingLocation.getUrl(), current);
+            validateForCredential(
+                existingLocation.getUrl(),
+                existingLocation.getEndpoint(),
+                storedAddressingStyle(existingLocation),
+                current);
           }
 
           existingLocation.setUpdatedAt(new Date());
@@ -287,6 +346,28 @@ public class ExternalLocationRepository {
         // Reads after the row lock see what was committed while it waited (see
         // RepositoryUtils#getForUpdateByName).
         Optional.of(Connection.TRANSACTION_READ_COMMITTED));
+  }
+
+  /** The addressing style the location stores, or null if none, without the default. */
+  private static S3AddressingStyle storedAddressingStyle(ExternalLocationDAO location) {
+    return location.getAddressingStyle() == null
+        ? null
+        : S3AddressingStyle.fromValue(location.getAddressingStyle());
+  }
+
+  /**
+   * Rejects moving a location between an {@code s3_compatible_access_key} credential and a
+   * credential of another type, since the location has an endpoint exactly with the former.
+   *
+   * @param current the location's credential, or null if it was force-deleted
+   * @param next the credential the update sets
+   */
+  private static void validateTypeKept(CredentialDAO current, CredentialDAO next) {
+    ValidationUtils.checkArgument(
+        current == null || current.getCredentialType() == next.getCredentialType(),
+        "An external location cannot move between an s3_compatible_access_key credential and a"
+            + " credential of another type: %s",
+        next.getName());
   }
 
   /**

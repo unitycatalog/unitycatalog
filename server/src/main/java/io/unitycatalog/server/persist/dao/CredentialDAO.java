@@ -12,8 +12,8 @@ import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
 import io.unitycatalog.server.model.S3AssumeRole;
-import io.unitycatalog.server.model.S3CompatibleRequest;
-import io.unitycatalog.server.model.S3CompatibleResponse;
+import io.unitycatalog.server.model.S3CompatibleAccessKeyRequest;
+import io.unitycatalog.server.model.S3CompatibleAccessKeyResponse;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore.SecretContext;
 import io.unitycatalog.server.service.CredentialService;
@@ -23,7 +23,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -42,8 +41,8 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Data Access Object for storing cloud provider credentials in Unity Catalog. The credential
- * payload is stored as a JSON blob in the {@code credential} column, with the {@code
- * credentialType} discriminator indicating how to deserialize it.
+ * payload is stored as JSON text in the {@code credential} column, with the {@code credentialType}
+ * discriminator indicating how to deserialize it.
  *
  * @see CredentialService
  * @see AwsCredentialVendor
@@ -59,8 +58,8 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class CredentialDAO extends IdentifiableDAO {
   private static ObjectMapper objectMapper = new ObjectMapper();
-  // Write-only request field of s3_compatible: stored in the blob next to the S3CompatibleResponse
-  // fields and dropped when the blob is read back as a response.
+  // Write-only request field of s3_compatible_access_key: stored in the JSON next to the
+  // S3CompatibleAccessKeyResponse fields and dropped when the JSON is read back as a response.
   private static final String SECRET_ACCESS_KEY_FIELD = "secret_access_key";
 
   public enum CredentialType {
@@ -75,8 +74,8 @@ public class CredentialDAO extends IdentifiableDAO {
   @Setter(AccessLevel.NONE)
   private CredentialType credentialType;
 
-  @Lob
-  @Column(name = "credential", nullable = false)
+  // Text, not a large object; the length makes it mediumtext rather than tinytext on MySQL.
+  @Column(name = "credential", nullable = false, length = 16777215)
   // No direct access from outside
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
@@ -125,15 +124,16 @@ public class CredentialDAO extends IdentifiableDAO {
             .updatedBy(callerId)
             .build();
     ValidationUtils.checkArgument(
-        createRequest.getAwsIamRole() == null || createRequest.getS3Compatible() == null,
-        "Specify only one of aws_iam_role and s3_compatible.");
+        createRequest.getAwsIamRole() == null || createRequest.getS3CompatibleAccessKey() == null,
+        "Specify only one of aws_iam_role and s3_compatible_access_key.");
     if (createRequest.getAwsIamRole() != null) {
       dao.setAwsIamRole(createRequest.getAwsIamRole());
-    } else if (createRequest.getS3Compatible() != null) {
-      dao.setS3Compatible(createRequest.getS3Compatible(), secretStore);
+    } else if (createRequest.getS3CompatibleAccessKey() != null) {
+      dao.setS3CompatibleAccessKey(createRequest.getS3CompatibleAccessKey(), secretStore);
     } else {
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Specify exactly one of aws_iam_role and s3_compatible.");
+          ErrorCode.INVALID_ARGUMENT,
+          "Specify exactly one of aws_iam_role and s3_compatible_access_key.");
     }
     return dao;
   }
@@ -157,7 +157,7 @@ public class CredentialDAO extends IdentifiableDAO {
         credentialInfo.setAwsIamRole(awsIamRole);
         break;
       case S3_COMPATIBLE:
-        credentialInfo.setS3Compatible(getS3CompatibleResponse());
+        credentialInfo.setS3CompatibleAccessKey(getS3CompatibleAccessKeyResponse());
         break;
       // TODO: support Azure and GCP.
       default:
@@ -209,46 +209,44 @@ public class CredentialDAO extends IdentifiableDAO {
   }
 
   /**
-   * Validates an {@code s3_compatible} credential and stores it, replacing the stored credential;
-   * its {@code secret_access_key} goes through {@code secretStore}, bound to this credential's id.
+   * Validates an {@code s3_compatible_access_key} credential and stores it, replacing the stored
+   * credential; its {@code secret_access_key} goes through {@code secretStore}, bound to this
+   * credential's id.
    *
-   * <p>TODO(#2169): on MySQL, {@code credential} is {@code tinytext} (255 bytes) until #2169 widens
-   * it, which an {@code s3_compatible} credential with {@code assume_role} and real endpoints
-   * usually exceeds.
-   *
-   * @param s3Compatible the credential to store
+   * @param accessKey the credential to store
    * @param secretStore keeps its {@code secret_access_key}
    */
-  public void setS3Compatible(S3CompatibleRequest s3Compatible, CredentialSecretStore secretStore) {
-    validateS3Compatible(s3Compatible);
-    ObjectNode stored = objectMapper.valueToTree(fromS3CompatibleRequest(s3Compatible));
+  public void setS3CompatibleAccessKey(
+      S3CompatibleAccessKeyRequest accessKey, CredentialSecretStore secretStore) {
+    validateS3CompatibleAccessKey(accessKey);
+    ObjectNode stored = objectMapper.valueToTree(fromS3CompatibleAccessKeyRequest(accessKey));
     stored.put(
         SECRET_ACCESS_KEY_FIELD,
-        secretStore.store(s3Compatible.getSecretAccessKey(), getS3SecretAccessKeyContext()));
+        secretStore.store(accessKey.getSecretAccessKey(), getS3SecretAccessKeyContext()));
     setCredential(CredentialType.S3_COMPATIBLE, stored);
   }
 
-  private static void validateS3Compatible(S3CompatibleRequest s3Compatible) {
+  private static void validateS3CompatibleAccessKey(S3CompatibleAccessKeyRequest accessKey) {
     ValidationUtils.checkArgument(
-        s3Compatible.getAccessKeyId() != null && !s3Compatible.getAccessKeyId().isEmpty(),
-        "s3_compatible.access_key_id is required.");
+        accessKey.getAccessKeyId() != null && !accessKey.getAccessKeyId().isEmpty(),
+        "s3_compatible_access_key.access_key_id is required.");
     ValidationUtils.checkArgument(
-        s3Compatible.getSecretAccessKey() != null && !s3Compatible.getSecretAccessKey().isEmpty(),
-        "s3_compatible.secret_access_key is required.");
-    ValidationUtils.validateHttpUrl(s3Compatible.getS3Endpoint(), "s3_compatible.s3_endpoint");
-    S3AssumeRole assumeRole = s3Compatible.getAssumeRole();
+        accessKey.getSecretAccessKey() != null && !accessKey.getSecretAccessKey().isEmpty(),
+        "s3_compatible_access_key.secret_access_key is required.");
+    S3AssumeRole assumeRole = accessKey.getAssumeRole();
     if (assumeRole != null) {
       if (assumeRole.getStsEndpoint() != null) {
         ValidationUtils.validateHttpUrl(
-            assumeRole.getStsEndpoint(), "s3_compatible.assume_role.sts_endpoint");
+            assumeRole.getStsEndpoint(), "s3_compatible_access_key.assume_role.sts_endpoint");
       }
       ValidationUtils.checkArgument(
           assumeRole.getRoleArn() != null && !assumeRole.getRoleArn().isEmpty(),
-          "s3_compatible.assume_role.role_arn is required.");
+          "s3_compatible_access_key.assume_role.role_arn is required.");
       // A region name signs AssumeRole requests; storage may use its own names, such as "garage".
       ValidationUtils.checkArgument(
           assumeRole.getStsRegion() == null || assumeRole.getStsRegion().matches("[A-Za-z0-9._-]+"),
-          "Invalid s3_compatible.assume_role.sts_region: use letters, digits, '.', '_' and '-'.");
+          "Invalid s3_compatible_access_key.assume_role.sts_region: use letters, digits, '.', '_'"
+              + " and '-'.");
     }
   }
 
@@ -268,26 +266,27 @@ public class CredentialDAO extends IdentifiableDAO {
         .externalId(UUID.randomUUID().toString());
   }
 
-  private static S3CompatibleResponse fromS3CompatibleRequest(S3CompatibleRequest s3Compatible) {
-    // An sts_endpoint not set stays absent, and AssumeRole goes to s3_endpoint at vend time, so a
-    // read-modify-write that changes s3_endpoint moves STS too.
-    return new S3CompatibleResponse()
-        .accessKeyId(s3Compatible.getAccessKeyId())
-        .s3Endpoint(s3Compatible.getS3Endpoint())
-        .assumeRole(s3Compatible.getAssumeRole());
+  private static S3CompatibleAccessKeyResponse fromS3CompatibleAccessKeyRequest(
+      S3CompatibleAccessKeyRequest accessKey) {
+    // An sts_endpoint not set stays absent, and AssumeRole goes to the endpoint of the requested
+    // path's external location at vend time.
+    return new S3CompatibleAccessKeyResponse()
+        .accessKeyId(accessKey.getAccessKeyId())
+        .assumeRole(accessKey.getAssumeRole());
   }
 
   public AwsIamRoleResponse getAwsIamRoleResponse() {
     return parseCredential(CredentialType.AWS_IAM_ROLE, AwsIamRoleResponse.class);
   }
 
-  public S3CompatibleResponse getS3CompatibleResponse() {
-    return parseCredential(CredentialType.S3_COMPATIBLE, S3CompatibleResponse.class);
+  public S3CompatibleAccessKeyResponse getS3CompatibleAccessKeyResponse() {
+    return parseCredential(CredentialType.S3_COMPATIBLE, S3CompatibleAccessKeyResponse.class);
   }
 
   /**
    * @param secretStore the store that keeps it
-   * @return the write-only {@code secret_access_key} of an {@code s3_compatible} credential
+   * @return the write-only {@code secret_access_key} of an {@code s3_compatible_access_key}
+   *     credential
    */
   public String getS3SecretAccessKey(CredentialSecretStore secretStore) {
     JsonNode stored = readCredential(CredentialType.S3_COMPATIBLE).get(SECRET_ACCESS_KEY_FIELD);

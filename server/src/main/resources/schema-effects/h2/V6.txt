@@ -1,0 +1,1 @@
++ column uc_external_locations.addressing_style type=character varying size=32 nullable=YES default=null

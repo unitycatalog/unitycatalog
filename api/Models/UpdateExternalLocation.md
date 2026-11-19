@@ -5,6 +5,8 @@
 |------------ | ------------- | ------------- | -------------|
 | **url** | **String** | Path URL of the external location. | [optional] [default to null] |
 | **credential\_name** | **String** | Name of the storage credential used with this location. Setting it on an external location whose credential was force-deleted repairs the location. | [optional] [default to null] |
+| **endpoint** | **String** | EXPERIMENTAL. S3 API endpoint of the S3-compatible storage the external location is on, for example &#x60;https://minio.example.com:9000&#x60;: an http or https URL with a host, and without user info, a query or a fragment; other values fail with &#x60;INVALID_ARGUMENT&#x60;. Set exactly when the location&#39;s credential is &#x60;s3_compatible_access_key&#x60;. Credential vending returns it with the region and the addressing style engines need to reach the storage.  | [optional] [default to null] |
+| **addressing\_style** | [**S3AddressingStyle**](S3AddressingStyle.md) |  | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
 | **owner** | **String** | The owner of the external location. | [optional] [default to null] |
 | **new\_name** | **String** | New name for the external location. | [optional] [default to null] |

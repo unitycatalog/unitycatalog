@@ -80,10 +80,16 @@ public enum CliParams {
   CREDENTIAL_NAME("credential_name", "The name of the storage credential", "credential_name"),
   AWS_IAM_ROLE_ARN(
       "aws_iam_role_arn", "The ARN of the AWS IAM role for credential", "aws_iam_role_arn"),
-  S3_ENDPOINT(
-      "s3_endpoint",
-      "The S3 API endpoint of the S3-compatible storage of an s3_compatible credential",
-      "s3_endpoint"),
+  ENDPOINT(
+      "endpoint",
+      "The S3 API endpoint of the S3-compatible storage of the external location; required with an"
+          + " s3_compatible_access_key credential",
+      "endpoint"),
+  ADDRESSING_STYLE(
+      "addressing_style",
+      "How requests to the endpoint of the external location name the bucket: PATH (the default)"
+          + " or VIRTUAL_HOSTED",
+      "addressing_style"),
   S3_ACCESS_KEY_ID(
       "s3_access_key_id", "The access key id for S3-compatible storage", "s3_access_key_id"),
   S3_SECRET_ACCESS_KEY(
@@ -92,7 +98,8 @@ public enum CliParams {
       "s3_secret_access_key"),
   S3_STS_ENDPOINT(
       "s3_sts_endpoint",
-      "The STS endpoint to assume s3_role_arn at; defaults to s3_endpoint",
+      "The STS endpoint to assume s3_role_arn at; defaults to the endpoint of the external"
+          + " location",
       "s3_sts_endpoint"),
   S3_ROLE_ARN("s3_role_arn", "The role to assume at s3_sts_endpoint", "s3_role_arn"),
   S3_STS_REGION(

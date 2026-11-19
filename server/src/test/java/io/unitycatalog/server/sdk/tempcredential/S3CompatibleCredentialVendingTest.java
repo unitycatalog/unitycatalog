@@ -37,7 +37,7 @@ import io.unitycatalog.client.model.ModelVersionInfo;
 import io.unitycatalog.client.model.ModelVersionOperation;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.S3AssumeRole;
-import io.unitycatalog.client.model.S3CompatibleRequest;
+import io.unitycatalog.client.model.S3CompatibleAccessKeyRequest;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
@@ -74,13 +74,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Checks what every client credential endpoint returns for a path behind an {@code s3_compatible}
- * credential on real S3-compatible storage. Without {@code assume_role}, {@code
- * server.s3-compatible-storage.static-key-vending} decides: {@code endpoint-only} returns the
- * endpoint and region with no keys, and {@code static-key} the key pair. With {@code assume_role},
- * every endpoint returns an STS session whatever the mode; the test runs those storages only in
- * {@code static-key} mode, where a vended key pair in place of a session would show. Runs only when
- * {@code UC_TEST_STORAGE} selects such storage, since the server writes Iceberg metadata to it.
+ * Checks what every client credential endpoint returns for a path behind an {@code
+ * s3_compatible_access_key} credential on real S3-compatible storage. Without {@code assume_role},
+ * {@code server.s3-compatible-storage.static-key-vending} decides: {@code endpoint-only} returns
+ * the endpoint and region with no keys, and {@code static-key} the key pair. With {@code
+ * assume_role}, every endpoint returns an STS session whatever the mode; the test runs those
+ * storages only in {@code static-key} mode, where a vended key pair in place of a session would
+ * show. Runs only when {@code UC_TEST_STORAGE} selects such storage, since the server writes
+ * Iceberg metadata to it.
  */
 public class S3CompatibleCredentialVendingTest extends BaseCRUDTest {
   private static final String BUCKET = "vending-bucket";
@@ -132,11 +133,10 @@ public class S3CompatibleCredentialVendingTest extends BaseCRUDTest {
               new CreateCredentialRequest()
                   .name("vending_credential")
                   .purpose(CredentialPurpose.STORAGE)
-                  .s3Compatible(
-                      new S3CompatibleRequest()
+                  .s3CompatibleAccessKey(
+                      new S3CompatibleAccessKeyRequest()
                           .accessKeyId(storage.accessKeyId())
                           .secretAccessKey(storage.secretAccessKey())
-                          .s3Endpoint(storage.s3Endpoint())
                           .assumeRole(
                               storage
                                   .roleArn()
@@ -147,7 +147,8 @@ public class S3CompatibleCredentialVendingTest extends BaseCRUDTest {
               new CreateExternalLocation()
                   .name("vending_location")
                   .url("s3://" + BUCKET)
-                  .credentialName("vending_credential"));
+                  .credentialName("vending_credential")
+                  .endpoint(storage.s3Endpoint()));
       catalogOperations.createCatalog(
           new CreateCatalog().name(CATALOG_NAME).storageRoot(root + "/managed"));
       new SchemasApi(apiClient)

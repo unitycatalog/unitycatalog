@@ -61,6 +61,8 @@ class S3CredPropsTest extends CredPropsBaseTest {
         "",
         UCHadoopConfConstants.UC_VENDED_S3_REGION_PREFIX + "bucket",
         "",
+        UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX + "bucket",
+        "",
         UCHadoopConfConstants.UC_VENDED_S3_KEYS_PREFIX + "bucket",
         String.valueOf(vendedKeysSign));
   }
@@ -82,7 +84,8 @@ class S3CredPropsTest extends CredPropsBaseTest {
             UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk",
             UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st",
             UCHadoopConfConstants.S3A_INIT_S3_ENDPOINT, "",
-            UCHadoopConfConstants.S3A_INIT_S3_REGION, "");
+            UCHadoopConfConstants.S3A_INIT_S3_REGION, "",
+            UCHadoopConfConstants.S3A_INIT_S3_PATH_STYLE, "");
     if (expiration != null) {
       keys.put(UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, String.valueOf(expiration));
     }
@@ -114,7 +117,7 @@ class S3CredPropsTest extends CredPropsBaseTest {
   }
 
   @Test
-  void endpointAndRegionAreSetPerBucketOfEachCredential() {
+  void endpointRegionAndAddressingStyleAreSetPerBucketOfEachCredential() {
     Map<String, String> conf =
         CredPropsBuilder.forCloud(CloudType.S3, new Configuration())
             .initialCredentials(
@@ -127,10 +130,27 @@ class S3CredPropsTest extends CredPropsBaseTest {
                     // A bucket name that is not a valid URI host.
                     new AwsCredential(null, null, null, null, "s3://bucket_d/t", "http://d:9000"),
                     // AWS S3: no endpoint, so the SDK resolves it.
-                    new AwsCredential("ak", "sk", "st", null, "s3://bucket-c/t")))
+                    new AwsCredential("ak", "sk", "st", null, "s3://bucket-c/t"),
+                    // Virtual-hosted.
+                    new AwsCredential(
+                        null,
+                        null,
+                        null,
+                        null,
+                        "s3://bucket-e/t",
+                        "http://e:9000",
+                        null,
+                        /* isS3PathStyle= */ false)))
             .build();
 
     assertThat(conf)
+        // Path-style unless the credential says otherwise, recorded for renewal to check.
+        .containsEntry("fs.s3a.bucket.bucket-a.path.style.access", "true")
+        .containsEntry("fs.s3a.bucket.bucket-e.path.style.access", "false")
+        .containsEntry(UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX + "bucket-a", "true")
+        .containsEntry(UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX + "bucket-e", "false")
+        .containsEntry(UCHadoopConfConstants.UC_VENDED_S3_PATH_STYLE_PREFIX + "bucket-c", "")
+        .containsEntry("fs.s3a.bucket.bucket-e.endpoint", "http://e:9000")
         .containsEntry("fs.s3a.bucket.bucket-a.endpoint", "http://a:9000")
         .containsEntry("fs.s3a.bucket.bucket-a.endpoint.region", "eu-test-1")
         .containsEntry("fs.s3a.bucket.bucket-b.endpoint", "http://b:9000")
