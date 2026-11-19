@@ -482,10 +482,7 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
 
 
 # Unlike JSON_ARGUMENT_PARAMS, these have no DATE, TIMESTAMP or DECIMAL parameter and no nullable
-# struct field, since a Gemini function schema accepts no union type and no default. The struct
-# fields are strings because the protobuf Struct of a function call returns every number as a
-# float, so 150 would come back as 150.0, tracked in
-# https://github.com/unitycatalog/unitycatalog/issues/2308.
+# struct field, since a Gemini function schema accepts no union type and no default.
 PLACE_TYPE_JSON = {
     "type": "struct",
     "fields": [
@@ -539,3 +536,86 @@ def test_function_call_sends_arguments_as_json_values(function_info, encoded):
     declaration(protos.FunctionCall(name=declaration.name, args=arguments))
 
     assert client.execute_function.call_args.kwargs["parameters"] == arguments
+
+
+POINT_TYPE_JSON = {
+    "type": "struct",
+    "fields": [
+        {"name": "x", "type": "integer", "nullable": False, "metadata": {}},
+        {"name": "weight", "type": "double", "nullable": False, "metadata": {}},
+    ],
+}
+
+GEMINI_NUMBER_ARGUMENT_PARAMS = {
+    "tiny": ("byte", "byte"),
+    "small": ("short", "short"),
+    "medium": ("int", "integer"),
+    "big": ("long", "long"),
+    "ratio": ("double", "double"),
+    "label": ("string", "string"),
+    "point": ("struct<x:int,weight:double>", POINT_TYPE_JSON),
+    "ids": (
+        "array<long>",
+        {"type": "array", "elementType": "long", "containsNull": True},
+    ),
+    "counts": (
+        "map<string,short>",
+        {"type": "map", "keyType": "string", "valueType": "short", "valueContainsNull": False},
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (
+            {
+                "tiny": 1,
+                "small": 2,
+                "medium": 3,
+                "big": 4,
+                "ratio": 2,
+                "label": "5",
+                "point": {"x": 6, "weight": 7},
+                "ids": [8, None],
+                "counts": {"a": 9},
+            },
+            {
+                "tiny": 1,
+                "small": 2,
+                "medium": 3,
+                "big": 4,
+                "ratio": 2.0,
+                "label": "5",
+                "point": {"x": 6, "weight": 7.0},
+                "ids": [8, None],
+                "counts": {"a": 9},
+            },
+        ),
+        (
+            {"big": 4.5, "point": {"x": 6.5, "weight": 7.5}, "ids": [8.5], "counts": {"a": 9.5}},
+            {"big": 4.5, "point": {"x": 6.5, "weight": 7.5}, "ids": [8.5], "counts": {"a": 9.5}},
+        ),
+    ],
+    ids=["integral", "fractional"],
+)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(GEMINI_NUMBER_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(GEMINI_NUMBER_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+def test_function_call_sends_integer_arguments_as_int(function_info, arguments, expected):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    declaration = toolkit.generate_callable_tool_list()[0]
+
+    declaration(protos.FunctionCall(name=declaration.name, args=arguments))
+
+    parameters = client.execute_function.call_args.kwargs["parameters"]
+    assert json.dumps(parameters, sort_keys=True) == json.dumps(expected, sort_keys=True)

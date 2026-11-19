@@ -1,6 +1,7 @@
+import json
 import logging
 from collections.abc import Mapping, Sequence
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from google.generativeai.types import CallableFunctionDeclaration, content_types
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -16,6 +17,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
 from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
 )
+from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 _logger = logging.getLogger(__name__)
@@ -34,6 +36,43 @@ def _function_call_value_to_python(value: Any) -> Any:
     if isinstance(value, Sequence):
         return list(value)
     return str(value)
+
+
+_INTEGER_TYPE_NAMES = frozenset(
+    name for name, python_type in UC_TYPE_JSON_MAPPING.items() if python_type is int
+)
+
+
+def _restore_integers(value: Any, uc_type_json: Union[str, Dict[str, Any]]) -> Any:
+    """
+    Converts the integral floats in a function call argument back to int where the UC type is an
+    integer type, including in STRUCT fields, ARRAY elements and MAP values.
+
+    Gemini passes the arguments of a function call as a protobuf Struct, which returns every number
+    as a float. Any other value is returned as it is, so the function client still validates it.
+    """
+    if isinstance(uc_type_json, str):
+        if (
+            uc_type_json.upper() in _INTEGER_TYPE_NAMES
+            and isinstance(value, float)
+            and value.is_integer()
+        ):
+            return int(value)
+        return value
+    type_ = uc_type_json["type"]
+    if type_ == "array" and isinstance(value, list):
+        return [_restore_integers(element, uc_type_json["elementType"]) for element in value]
+    if type_ == "map" and isinstance(value, dict):
+        return {
+            key: _restore_integers(item, uc_type_json["valueType"]) for key, item in value.items()
+        }
+    if type_ == "struct" and isinstance(value, dict):
+        field_types = {field["name"]: field["type"] for field in uc_type_json["fields"]}
+        return {
+            key: _restore_integers(item, field_types[key]) if key in field_types else item
+            for key, item in value.items()
+        }
+    return value
 
 
 class GeminiTool(BaseModel):
@@ -184,11 +223,17 @@ class UCFunctionToolkit(BaseModel):
             raise ValueError("Either function_name or function_info should be provided.")
 
         schema = UCFunctionToolkit.convert_to_gemini_schema(function_info, strict=True)
+        param_infos = function_info.input_params.parameters if function_info.input_params else []
+        params_type_json = {
+            "type": "struct",
+            "fields": [json.loads(param_info.type_json) for param_info in param_infos],
+        }
 
         def func(**kwargs: Any) -> str:
+            arguments = to_jsonable_python(kwargs, fallback=_function_call_value_to_python)
             result = client.execute_function(
                 function_name=function_name,
-                parameters=to_jsonable_python(kwargs, fallback=_function_call_value_to_python),
+                parameters=_restore_integers(arguments, params_type_json),
                 enable_retriever_tracing=mlflow_tracing_enabled("gemini"),
             )
 
