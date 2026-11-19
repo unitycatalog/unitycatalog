@@ -55,13 +55,20 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 - The `etc/db/` directory contains the backend database that is used by the UC server. By default
     this is an H2 database file, `h2db.mv.db`. H2 supports one server per file; to run more than one server, use
     PostgreSQL or MySQL. H2's server mode (`AUTO_SERVER=TRUE`, `jdbc:h2:tcp:` or `jdbc:h2:ssl:`) is
-    refused by `bin/start-uc-server --upgrade-schema` (see [Upgrading the database schema](upgrades.md)).
-    In a source checkout (where `build/sbt` is present and executable) the launcher builds `etc/db/h2db.mv.db` when it is missing and the command line starts the server, whatever database the configuration uses, and starts the server even when that build fails.
+    refused at start.
+    In a source checkout (where `build/sbt` is present and executable) the launcher builds `etc/db/h2db.mv.db`
+    when it is missing and the command line starts the server, whatever database the configuration uses, and
+    starts the server even when that build fails.
 
 ### Configuring the database
 
 - The backend database can be configured by modifying the `etc/conf/hibernate.properties` file.
 - You need to provide the connection details to connect to your database server.
+- The server doesn't set up the schema of a new database. Before the first start, run
+    `bin/start-uc-server --upgrade-schema` once; see [Upgrading the database schema](upgrades.md).
+    In a source checkout, the quickstart's sample database (`etc/db/h2db.mv.db`) is built by
+    `build/sbt buildSampleDatabase` or by the first start and needs no `--upgrade-schema`: running it first
+    creates an empty database instead.
 - With an H2 file database, set the URL as the default file does:
     `jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=0`.
     - `DB_CLOSE_ON_EXIT=FALSE` stops H2 from closing the database as soon as the JVM starts to exit. Without it,
@@ -168,31 +175,13 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 
 ### Existing deployments and column type changes
 
-The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
-columns, but **it does not change the type or length of a column that already exists**.
+Flyway manages the database schema. See [Upgrading the database schema](upgrades.md).
 
 `uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
 (user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
-that. New installs get a wider column from Hibernate. **Existing databases keep `varchar(255)`
-until you run one of the statements below**; upgrading the server JAR alone has no effect.
-
-PostgreSQL:
-
-```sql
-ALTER TABLE uc_properties ALTER COLUMN property_value TYPE text;
-```
-
-MySQL:
-
-```sql
-ALTER TABLE uc_properties MODIFY property_value MEDIUMTEXT NOT NULL;
-```
-
-H2:
-
-```sql
-ALTER TABLE uc_properties ALTER COLUMN property_value SET DATA TYPE VARCHAR(16777215);
-```
+that. New installs get a wider column from the schema steps. A database created before 0.7.0 keeps
+`varchar(255)` until you start a 0.7.0 server on it once, which widens the column; see
+[The baseline release](upgrades.md#the-baseline-release).
 
 ### Retained Delta commits: upgrade and downgrade
 

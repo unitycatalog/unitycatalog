@@ -201,6 +201,8 @@ public class SchemaMigratorTest {
         db, historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE"));
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
     String message = "schema history does not match";
+    // A history failure is not one that --upgrade-schema gets past: it refuses the same way.
+    String advice = "Run the release that applied the steps, or restore the backup";
     switch (refusal) {
       case EDITED_STEP ->
           UpgradeTestUtils.execute(
@@ -213,11 +215,14 @@ public class SchemaMigratorTest {
         UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
         migrator = new SchemaMigrator(db.dataSource());
         message = "Detected failed migration to version 1000";
+        // A server of this release refuses to start on it too.
+        assertThatThrownBy(migrator::requireCurrentSchema).hasMessageContaining(message);
       }
       case SCHEMA_NEITHER_BEFORE_NOR_AFTER -> {
         UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
         UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
         message = "so schema step 1000 can't run";
+        advice = "then run bin/start-uc-server --upgrade-schema again";
       }
       case FAILED_BELOW_THE_RECORDED_VERSION -> {
         UpgradeTestUtils.execute(
@@ -242,8 +247,10 @@ public class SchemaMigratorTest {
 
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
-    assertThat(out.toString(StandardCharsets.UTF_8)).contains(message);
-    assertThatThrownBy(migrator::upgradeSchema).hasMessageContaining(message);
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains(message).contains(advice);
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining(message)
+        .hasMessageContaining(advice);
     assertThat(failedRecords()).isOne();
   }
 
@@ -712,6 +719,73 @@ public class SchemaMigratorTest {
         .endsWith("The schema does not allow the upgrade.\n");
   }
 
+  @ParameterizedTest
+  @EnumSource(NotCurrent.class)
+  void serverRefusesToStartOnADatabaseNotAtThisReleasesSchema(NotCurrent database) {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    String q = identifierQuote(db.dataSource());
+    String history = "UPDATE %1$suc_schema_history%1$s SET ".formatted(q);
+    switch (database) {
+      case PENDING -> new SchemaMigrator(db.dataSource()).upgradeSchema();
+      case FAILED_STEP -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(db, historyUpdate(history + "%1$ssuccess%1$s = false WHERE"));
+      }
+      case EDITED_STEP -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(
+            db,
+            (history + "%1$schecksum%1$s = %1$schecksum%1$s + 1 WHERE %1$sversion%1$s = '2'")
+                .formatted(q));
+      }
+      case STEP_MISSING_BELOW -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(
+            db, "DELETE FROM %1$suc_schema_history%1$s WHERE %1$sversion%1$s = '2'".formatted(q));
+      }
+      case AHEAD -> {
+        migrator.upgradeSchema();
+        migrator = new SchemaMigrator(db.dataSource());
+      }
+      case SCHEMA_DIFFERS -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+      }
+    }
+
+    assertThatThrownBy(migrator::requireCurrentSchema)
+        .hasMessageContaining(
+            switch (database) {
+              case AHEAD -> "newer than this release";
+              case SCHEMA_DIFFERS -> "unexpected column uc_catalogs.extra ";
+              case EDITED_STEP, STEP_MISSING_BELOW ->
+                  "Run the release that applied the steps, or restore the backup";
+              default -> "bin/start-uc-server --upgrade-schema";
+            });
+    if (database == NotCurrent.EDITED_STEP || database == NotCurrent.STEP_MISSING_BELOW) {
+      // --upgrade-schema refuses a history that fails Flyway's validation, so it is no advice.
+      assertThatThrownBy(migrator::requireCurrentSchema)
+          .hasMessageNotContaining("--upgrade-schema")
+          .hasMessageNotContaining("--check-schema");
+    }
+  }
+
+  /** Databases the server refuses to start on, for a release that ends at step 1000. */
+  private enum NotCurrent {
+    /** Step 1000 is not applied. */
+    PENDING,
+    /** Step 1000 failed (H2, MySQL). */
+    FAILED_STEP,
+    /** Step 2 was edited after it ran. */
+    EDITED_STEP,
+    /** Step 2 is not recorded, below the recorded step 1000. */
+    STEP_MISSING_BELOW,
+    /** The database is at step 1000, after this release's last step. */
+    AHEAD,
+    /** The history records step 1000, but the schema has a column no step adds. */
+    SCHEMA_DIFFERS
+  }
+
   @Test
   void refusesAStepWhenTheSchemaIsNeitherBeforeNorAfterIt() {
     new SchemaMigrator(db.dataSource()).upgradeSchema();
@@ -990,6 +1064,83 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> SchemaMigrator.fromHibernateProperties(properties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("H2 in server mode is not supported");
+  }
+
+  /**
+   * The URL as {@code hibernate.connection.url}, with {@code IFEXISTS=FALSE}, or as the URL of a
+   * pool set up by data source class.
+   */
+  @ParameterizedTest
+  @CsvSource({"PLAIN", "IFEXISTS_FALSE", "DATA_SOURCE_URL", "WRAPPED"})
+  void serverRefusesToStartOnAMissingH2FileWithoutCreatingIt(String form, @TempDir Path dir) {
+    Properties properties = db.hibernateProperties();
+    java.util.function.Consumer<String> setUrl =
+        url -> {
+          switch (form) {
+            case "PLAIN" -> {
+              properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+              properties.setProperty("hibernate.connection.url", url);
+            }
+            case "IFEXISTS_FALSE" -> {
+              properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+              properties.setProperty("hibernate.connection.url", url + ";IFEXISTS=FALSE");
+            }
+            case "WRAPPED" -> {
+              properties.setProperty(
+                  "hibernate.connection.driver_class", WrappingDriver.class.getName());
+              properties.setProperty(
+                  "hibernate.connection.url",
+                  WrappingDriver.PREFIX + url.substring("jdbc:".length()));
+            }
+            default -> {
+              properties.remove("hibernate.connection.url");
+              properties.remove("hibernate.connection.driver_class");
+              properties.setProperty(
+                  "hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+              properties.setProperty("hibernate.hikari.dataSource.URL", url);
+            }
+          }
+        };
+    setUrl.accept("jdbc:h2:file:" + dir + "/typo");
+
+    assertThatThrownBy(() -> SchemaMigrator.requireH2DatabaseExists(properties))
+        .hasMessageContaining("H2 database file that hibernate.connection.url names is not found");
+    assertThat(dir).isEmptyDirectory();
+
+    // An existing file passes.
+    setUrl.accept("jdbc:h2:file:" + dir + "/uc");
+    try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(properties)) {
+      migrator.upgradeSchema();
+    }
+    SchemaMigrator.requireH2DatabaseExists(properties);
+  }
+
+  @Test
+  void runsStartingAtOnceInOneProcessTakeTurns() throws Exception {
+    // As two servers on one in-memory database starting together; on H2 no lock call exists.
+    CountDownLatch go = new CountDownLatch(1);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      List<Future<Integer>> runs = new ArrayList<>();
+      for (int i = 0; i < 2; i++) {
+        runs.add(
+            executor.submit(
+                () -> {
+                  go.await();
+                  return new SchemaMigrator(db.dataSource()).upgradeSchema();
+                }));
+      }
+      go.countDown();
+      int applied = 0;
+      for (Future<Integer> run : runs) {
+        applied += run.get(1, TimeUnit.MINUTES);
+      }
+      SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+      assertThat(applied).isEqualTo(releaseSteps(migrator));
+      assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test
