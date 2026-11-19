@@ -10,16 +10,12 @@ import java.util.Date;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.SneakyThrows;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class SecurityContext {
 
   public interface Issuers {
     String INTERNAL = "internal";
   }
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(SecurityContext.class);
 
   private final Path serviceTokenFile;
 
@@ -28,7 +24,6 @@ public class SecurityContext {
   @Getter private final String serviceName;
   @Getter private final String localIssuer;
 
-  @SneakyThrows
   public SecurityContext(
       Path configurationFolder,
       SecurityConfiguration securityConfiguration,

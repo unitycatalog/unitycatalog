@@ -273,10 +273,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
 
   @Test
   public void startFailsWhenThePortIsTaken() throws Exception {
-    // The server setUp() built writes certs.json and token.txt to configurationFolder, next to the
-    // signing keys copied there.
-    String keyId = Files.readString(configurationFolder.resolve("key_id.txt"));
-    assertThat(Files.readString(configurationFolder.resolve("certs.json"))).contains(keyId);
+    // The server setUp() built writes token.txt to configurationFolder.
     assertThat(configurationFolder.resolve("token.txt")).isNotEmptyFile();
     assertThatThrownBy(() -> UnityCatalogServer.builder().configurationFolder(null))
         .isInstanceOf(NullPointerException.class);
