@@ -168,15 +168,16 @@ jobs:
           grep -qF -- '- name: UC_HIBERNATE_CONNECTION_PASSWORD' <<<"$upgrade"
           grep -qF -- '- name: JDK_JAVA_OPTIONS' <<<"$upgrade"
           ! grep -qF -- '- name: UC_S3_ACCESSKEY_0' <<<"$upgrade" || exit 1
-          # An upgrade stops every old server first: Recreate renders, and a rolling update is rejected.
-          out="$(helm template uc helm)"
+          # An upgrade stops every old server first by default; a rolling update renders when asked for.
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml)"
           grep -qE '^    type: Recreate$' <<<"$out"
-          if err="$(helm template uc helm --set server.deployment.updateStrategy.type=RollingUpdate 2>&1)"; then exit 1; fi
-          grep -qF 'updateStrategy.type must be Recreate' <<<"$err"
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml --set server.deployment.updateStrategy.type=RollingUpdate)"
+          grep -qE '^    type: RollingUpdate$' <<<"$out"
+          ! grep -qE '^    type: Recreate$' <<<"$out" || exit 1
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml --set server.deployment.updateStrategy.type=RollingUpdate --set server.deployment.updateStrategy.rollingUpdate.maxSurge=1)"
+          grep -qE '^      maxSurge: 1$' <<<"$out"
           if err="$(helm template uc helm --set server.deployment.updateStrategy.rollingUpdate.maxSurge=1 2>&1)"; then exit 1; fi
-          grep -qF 'updateStrategy.type must be Recreate' <<<"$err"
-          out="$(helm template uc helm --set server.deployment.updateStrategy.type=Recreate)"
-          grep -qE '^    type: Recreate$' <<<"$out"
+          grep -qF 'updateStrategy.rollingUpdate needs server.deployment.updateStrategy.type=RollingUpdate' <<<"$err"
           # The H2 file database supports one server; PostgreSQL takes more.
           if err="$(helm template uc helm --set server.deployment.replicaCount=2 2>&1)"; then exit 1; fi
           grep -qF 'replicaCount must be 1 with server.db.type=file' <<<"$err"

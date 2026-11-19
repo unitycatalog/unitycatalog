@@ -1255,8 +1255,10 @@ type: Recreate
 </td>
 			<td>Update strategy for the deployment
 
-Only `type: Recreate` is allowed: an upgrade changes the database schema, so all old servers
-stop before the new ones start.
+The default `Recreate` stops every old server pod before the new ones start. An upgrade with
+schema steps needs this: the old pods must not run on the new schema, and the new release's
+servers refuse an old schema. `RollingUpdate` keeps the old pods serving during the upgrade,
+so use it only for an upgrade without schema steps, at your own risk.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
 </td>
