@@ -199,19 +199,6 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   /**
-   * Whether the engine's configuration sets {@code key} itself: a value only from Hadoop's
-   * defaults, such as S3A's default provider list, which reads the keys set here, is not the
-   * engine's own.
-   */
-  private boolean engineSets(String key) {
-    if (hadoopConf().get(key) == null) {
-      return false;
-    }
-    String[] sources = hadoopConf().getPropertySources(key);
-    return sources == null || !Arrays.stream(sources).allMatch("core-default.xml"::equals);
-  }
-
-  /**
    * @return the S3A provider that reads a fixed key pair, with its session token if it has one
    */
   static String fixedKeysProvider(String sessionToken) {

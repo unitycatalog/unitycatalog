@@ -194,6 +194,23 @@ public class ExternalLocationRepository {
         /* readOnly= */ true);
   }
 
+  /**
+   * Updates an external location by name.
+   *
+   * <p>Changing the URL fails while the external location is in use, as described for {@link
+   * #deleteExternalLocation}, unless the new URL is the same as, or a parent of, the current one,
+   * so everything under the current URL keeps getting credentials from it. Set force to change the
+   * URL anyway. A forced change of a location in use is logged as a warning.
+   *
+   * @param name The name of the external location to update
+   * @param updateExternalLocation The fields to change
+   * @return The updated external location
+   * @throws BaseException with NOT_FOUND if the external location doesn't exist
+   * @throws BaseException with INVALID_ARGUMENT if the URL change is refused because the location
+   *     is in use, or the new URL is invalid or overlaps another external location
+   * @throws BaseException with FAILED_PRECONDITION if the URL change is refused because a storage
+   *     cleanup is pending at, above, or under the current URL
+   */
   public ExternalLocationInfo updateExternalLocation(
       String name, UpdateExternalLocation updateExternalLocation) {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -222,6 +239,18 @@ public class ExternalLocationRepository {
             ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(url);
             validateUrlNotUsedByAnyExternalLocation(
                 session, url, Optional.of(existingLocation.getId()));
+            if (Boolean.TRUE.equals(updateExternalLocation.getForce())) {
+              warnIfInUse(
+                  session,
+                  existingLocation.getUrl(),
+                  Optional.of(url),
+                  "Changing the URL of external location '" + name + "' to " + url);
+            } else {
+              NormalizedURL currentUrl = storedUrlToCheckOrRefuse(existingLocation.getUrl(), name);
+              if (!ExternalLocationUtils.stillCovers(url, currentUrl)) {
+                ExternalLocationUtils.validateExternalLocationNotInUse(session, currentUrl);
+              }
+            }
             existingLocation.setUrl(url.toString());
           }
           if (updateExternalLocation.getComment() != null) {
@@ -264,8 +293,9 @@ public class ExternalLocationRepository {
    * Deletes an external location by name.
    *
    * <p>By default, deletion will fail if the external location is still in use by any tables,
-   * volumes, or registered models. Use the force parameter to bypass this check and delete the
-   * external location even if it is still referenced.
+   * volumes, registered models, managed storage of catalogs or schemas, or pending storage cleanup.
+   * Use the force parameter to bypass this check and delete the external location even if it is
+   * still referenced.
    *
    * @param name The name of the external location to delete
    * @param force If true, delete the external location even if it's still in use by other entities
@@ -273,6 +303,8 @@ public class ExternalLocationRepository {
    * @throws BaseException with NOT_FOUND if the external location doesn't exist
    * @throws BaseException with INVALID_ARGUMENT if the external location is in use and force is
    *     false
+   * @throws BaseException with FAILED_PRECONDITION if a storage cleanup is pending at, above, or
+   *     under the external location's URL and force is false
    */
   public ExternalLocationDAO deleteExternalLocation(String name, boolean force) {
     return TransactionManager.executeWithTransaction(
@@ -282,31 +314,15 @@ public class ExternalLocationRepository {
           if (existingLocation == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
-          // Check if the external location is in use by any data objects (tables, volumes, models)
-          if (!force) {
-            if (ExternalLocationUtils.hasPendingCleanupOverlap(
-                session, NormalizedURL.from(existingLocation.getUrl()))) {
-              throw new BaseException(
-                  ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
-            }
-            ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
-                    session,
-                    NormalizedURL.from(existingLocation.getUrl()),
-                    ExternalLocationUtils.DATA_SECURABLE_TYPES,
-                    /* limit= */ 1,
-                    /* includeParent= */ false,
-                    /* includeSelf= */ true,
-                    /* includeSubdir= */ true)
-                .stream()
-                .findAny()
-                .ifPresent(
-                    pair -> {
-                      throw new BaseException(
-                          ErrorCode.INVALID_ARGUMENT,
-                          String.format(
-                              "External location still used by %s '%s'",
-                              pair.getLeft(), pair.getRight().getId()));
-                    });
+          if (force) {
+            warnIfInUse(
+                session,
+                existingLocation.getUrl(),
+                Optional.empty(),
+                "Deleting external location '" + name + "'");
+          } else {
+            ExternalLocationUtils.validateExternalLocationNotInUse(
+                session, storedUrlToCheckOrRefuse(existingLocation.getUrl(), name));
           }
           session.remove(existingLocation);
           LOGGER.info("Deleted external location: {}", name);
@@ -368,5 +384,57 @@ public class ExternalLocationRepository {
                   "Cannot accept an external location that duplicates or overlaps with existing "
                       + "external location");
             });
+  }
+
+  /**
+   * Logs a warning when a forced delete, or a forced change to {@code newUrl}, leaves the external
+   * location stored at {@code storedUrl} in use. This only logs, so a URL stored by an earlier
+   * release that no longer parses doesn't block the forced change.
+   */
+  private static void warnIfInUse(
+      Session session, String storedUrl, Optional<NormalizedURL> newUrl, String action) {
+    Optional<NormalizedURL> currentUrl = storedUrlToCheck(storedUrl);
+    if (currentUrl.isEmpty()) {
+      LOGGER.warn("{} with force. Its stored URL cannot be checked, as it does not parse.", action);
+      return;
+    }
+    if (newUrl.isPresent() && ExternalLocationUtils.stillCovers(newUrl.get(), currentUrl.get())) {
+      return;
+    }
+    ExternalLocationUtils.LocationUse use =
+        ExternalLocationUtils.findLocationUse(session, currentUrl.get());
+    if (use.inUse()) {
+      LOGGER.warn(
+          "{} with force while it is in use. Pending storage cleanup: {}. Still used by: {}.",
+          action,
+          use.pendingCleanup(),
+          use.storageUser().orElse("nothing"));
+    }
+  }
+
+  /**
+   * Parses a stored URL for the in-use check. Empty when an earlier release stored a URL that the
+   * current parser rejects, or one whose parent paths can't be built, such as s3:///.
+   */
+  private static Optional<NormalizedURL> storedUrlToCheck(String storedUrl) {
+    try {
+      NormalizedURL url = NormalizedURL.from(storedUrl);
+      return ExternalLocationUtils.canBuildParentPaths(url) ? Optional.of(url) : Optional.empty();
+    } catch (BaseException | IllegalArgumentException e) {
+      return Optional.empty();
+    }
+  }
+
+  /** The error leaves the stored URL out, since the caller did not send it. */
+  private static NormalizedURL storedUrlToCheckOrRefuse(String storedUrl, String name) {
+    return storedUrlToCheck(storedUrl)
+        .orElseThrow(
+            () ->
+                new BaseException(
+                    ErrorCode.INVALID_ARGUMENT,
+                    "The stored URL of external location '"
+                        + name
+                        + "' cannot be checked for use, as it does not parse. Set force to true"
+                        + " to skip this check."));
   }
 }
