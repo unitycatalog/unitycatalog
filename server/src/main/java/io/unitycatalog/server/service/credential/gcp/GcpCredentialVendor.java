@@ -27,8 +27,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.apache.iceberg.Files;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GcpCredentialVendor {
+  private static final Logger LOGGER = LoggerFactory.getLogger(GcpCredentialVendor.class);
 
   public static final List<String> INITIAL_SCOPES =
       List.of("https://www.googleapis.com/auth/cloud-platform");
@@ -65,14 +68,18 @@ public class GcpCredentialVendor {
     if (credentialDAO.isPresent()) {
       // The storage credential of the external location holds the service account key.
       CredentialDAO dao = credentialDAO.get();
-      GcpServiceAccountKeyResponse key = dao.getGcpServiceAccountKeyResponse();
-      return keyGenerators
-          .apply(
-              new GcpServiceAccountKeyRequest()
-                  .email(key.getEmail())
-                  .privateKeyId(key.getPrivateKeyId())
-                  .privateKey(dao.getGcpPrivateKey(secretStore)))
-          .generate(credentialContext);
+      GcpServiceAccountKeyRequest key = storedKey(dao);
+      try {
+        return keyGenerators.apply(key).generate(credentialContext);
+      } catch (BaseException e) {
+        // The caller gets a message without the credential; the administrator gets it here.
+        LOGGER.warn(
+            "Cannot get a token with storage credential '{}': {}",
+            dao.getName(),
+            e.getMessage(),
+            e);
+        throw e;
+      }
     }
 
     NormalizedURL storageBase = credentialContext.getStorageBase();
@@ -87,6 +94,28 @@ public class GcpCredentialVendor {
     GcpCredentialGenerator generator =
         credentialGenerators.computeIfAbsent(storageBase, key -> createGenerator(storageConfig));
     return generator.generate(credentialContext);
+  }
+
+  /**
+   * Reads the service account key of a storage credential. Whoever asks for access may not be
+   * allowed to read the credential, so a failure names none of it publicly; the cause is logged.
+   */
+  private GcpServiceAccountKeyRequest storedKey(CredentialDAO dao) {
+    try {
+      GcpServiceAccountKeyResponse key = dao.getGcpServiceAccountKeyResponse();
+      return new GcpServiceAccountKeyRequest()
+          .email(key.getEmail())
+          .privateKeyId(key.getPrivateKeyId())
+          .privateKey(dao.getGcpPrivateKey(secretStore));
+    } catch (BaseException e) {
+      LOGGER.warn(
+          "Cannot read the key of storage credential '{}': {}", dao.getName(), e.getMessage(), e);
+      throw new BaseException(
+          e.getErrorCode(),
+          "The storage credential for this location cannot be used. Contact the server"
+              + " administrator.",
+          e);
+    }
   }
 
   private GcpCredentialGenerator createGenerator(GcsStorageConfig storageConfig) {
@@ -290,6 +319,13 @@ public class GcpCredentialVendor {
     // Google's answer to the key is in the causes: the downscoping step reports only that it could
     // not refresh the source credential.
     String reasons = causeMessages(e);
+    // invalid_grant also means the server's clock is off, which the key cannot fix.
+    if (reasons.contains("Token must be a short-lived token")) {
+      return new BaseException(
+          ErrorCode.INTERNAL,
+          "Google rejected the server's sign-in timestamps. Contact the server administrator.",
+          e);
+    }
     if (reasons.contains("invalid_grant")
         || reasons.contains("invalid_client")
         || reasons.contains("unauthorized_client")) {
