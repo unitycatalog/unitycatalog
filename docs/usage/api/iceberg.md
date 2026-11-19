@@ -1,0 +1,133 @@
+# UC Iceberg REST API
+
+Unity Catalog serves an Apache Iceberg REST catalog at `/api/2.1/unity-catalog/iceberg`. Iceberg clients such as
+Apache Spark, Trino and PyIceberg can connect to it and work with Unity Catalog tables through the standard Iceberg
+REST protocol.
+
+In this API a Unity Catalog catalog is the Iceberg `warehouse`, and a Unity Catalog schema is an Iceberg `namespace`.
+
+## Connecting a client
+
+Point the client at `/api/2.1/unity-catalog/iceberg` and set `warehouse` to the name of a Unity Catalog catalog. Do
+not put `catalogs/<catalog>` in the URI yourself.
+
+On startup the client calls `GET /v1/config?warehouse=<catalog>`. The server answers with a `prefix` override of
+`catalogs/<catalog>`, and the client adds it to every later request, so a call to list namespaces goes to
+`/v1/catalogs/<catalog>/namespaces`. If the URI already ended in `catalogs/<catalog>`, the prefix would be added twice
+and the requests would fail.
+
+## Read and write access
+
+The read endpoints are always available. You can use them to read native Iceberg tables and
+[UniForm](../tables/uniform.md) tables.
+
+The write endpoints (creating, updating, renaming and dropping namespaces and tables) are on by default. To turn them
+off, set this in `etc/conf/server.properties` and restart the server:
+
+```properties
+server.iceberg-table.enabled=false
+```
+
+When writes are off, an authorized write request returns HTTP 400 with the message `Iceberg table writes are currently disabled.
+To enable them, set 'server.iceberg-table.enabled=true' in server.properties`. Tables that were already created stay
+readable. `GET /v1/config` only lists the endpoints the server supports, so the list it returns changes with this
+setting.
+
+## Endpoints
+
+All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation column is the operation name in the
+[Iceberg REST catalog spec](https://github.com/apache/iceberg/blob/main/open-api/rest-catalog-open-api.yaml).
+
+### Config
+
+| Method | Path         | Operation   | Description                                                                                      |
+|--------|--------------|-------------|--------------------------------------------------------------------------------------------------|
+| GET    | `/v1/config` | `getConfig` | Returns the `prefix` override and the supported endpoints. Needs `warehouse` (the catalog name). |
+
+### Namespaces
+
+| Method | Path                                                       | Operation               | Description                         | Write |
+|--------|------------------------------------------------------------|-------------------------|-------------------------------------|-------|
+| GET    | `/v1/catalogs/{catalog}/namespaces`                        | `listNamespaces`        | List namespaces                     |       |
+| POST   | `/v1/catalogs/{catalog}/namespaces`                        | `createNamespace`       | Create a namespace                  | Yes   |
+| HEAD   | `/v1/catalogs/{catalog}/namespaces/{namespace}`            | `namespaceExists`       | Check if a namespace exists         |       |
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}`            | `loadNamespaceMetadata` | Load a namespace and its properties |       |
+| DELETE | `/v1/catalogs/{catalog}/namespaces/{namespace}`            | `dropNamespace`         | Drop an empty namespace             | Yes   |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/properties` | `updateProperties`      | Set or remove namespace properties  | Yes   |
+
+### Tables
+
+| Method | Path                                                                       | Operation         | Description                                                                                                                     | Write |
+|--------|----------------------------------------------------------------------------|-------------------|---------------------------------------------------------------------------------------------------------------------------------|-------|
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables`                     | `listTables`      | List tables                                                                                                                     |       |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables`                     | `createTable`     | Create a table. Set `stage-create` to `true` to stage the create; the table is not registered until a commit with `assert-create` arrives. | Yes   |
+| HEAD   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `tableExists`     | Check if a table exists                                                                                                         |       |
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `loadTable`       | Load table metadata                                                                                                             |       |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `updateTable`     | Commit changes to a table                                                                                                       | Yes   |
+| DELETE | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `dropTable`       | Drop a table                                                                                                                    | Yes   |
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials` | `loadCredentials` | Get temporary storage credentials                                                                                               |       |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics`     | `reportMetrics`   | Report scan or commit metrics                                                                                                   |       |
+| POST   | `/v1/catalogs/{catalog}/tables/rename`                                     | `renameTable`     | Rename a table                                                                                                                  | Yes   |
+
+### Views
+
+| Method | Path                                                         | Operation  | Description                    |
+|--------|--------------------------------------------------------------|------------|--------------------------------|
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `loadView` | Always returns 404 (see below) |
+
+## Limitations
+
+- **Views are not supported.** The load view endpoint exists only because Iceberg clients look for a view when a
+  table is not found. It always returns 404.
+- **Nested namespaces are not supported.** A namespace maps to one Unity Catalog schema, so it can only have one level.
+- **Renaming a table into another namespace is not supported.** The source and destination namespace must be the same.
+- **UniForm tables are read-only here.** Commits, drops and renames work only on native Iceberg tables. Change UniForm
+  tables through the [Unity Catalog REST API](index.md).
+- **`purgeRequested` does not delete files of external tables.** Dropping an external table removes it from the
+  catalog but leaves its data and metadata files in place, even when the client asks for a purge. Dropping a managed
+  table schedules its storage directory for removal by the storage cleanup worker, after
+  `server.storage-cleanup.initial-delay` (default `P7D`).
+- **Local tables get no credentials.** `loadCredentials` returns an empty list for a local `file://` table. A caller
+  without access to the table gets a permission error.
+- **Metrics reports are accepted but not stored.**
+
+## Quickstart
+
+Start a local Unity Catalog server:
+
+```sh
+bin/start-uc-server
+```
+
+The sample UniForm table expects its files under `/tmp`, so copy it there first (see
+[UniForm](../tables/uniform.md)):
+
+```sh
+cp -r etc/data/external/unity/default/tables/marksheet_uniform /tmp/marksheet_uniform
+```
+
+Set the base path and get the config for the `unity` catalog:
+
+```sh
+export UC_ICEBERG="http://localhost:8080/api/2.1/unity-catalog/iceberg"
+
+curl -s "$UC_ICEBERG/v1/config?warehouse=unity" | jq .
+```
+
+List the namespaces and the tables in `default`:
+
+```sh
+curl -s "$UC_ICEBERG/v1/catalogs/unity/namespaces" | jq .
+curl -s "$UC_ICEBERG/v1/catalogs/unity/namespaces/default/tables" | jq .
+```
+
+Load the sample table:
+
+```sh
+curl -s "$UC_ICEBERG/v1/catalogs/unity/namespaces/default/tables/marksheet_uniform" | jq .
+```
+
+## Engine integrations
+
+- [Spark](../tables/uniform.md#setting-up-rest-catalog-with-apache-spark)
+- [Trino](../../integrations/unity-catalog-trino.md)

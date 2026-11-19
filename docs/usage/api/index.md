@@ -16,6 +16,9 @@ The Unity Catalog REST API allows you to manage and interact with Unity Catalog 
 Unity Catalog 0.5.0 also adds a dedicated [UC Delta API](delta.md) for catalog-managed Delta tables, credential vending,
 and commit operations.
 
+The [UC Iceberg REST API](iceberg.md) serves an Apache Iceberg REST catalog, so Iceberg clients such as Spark, Trino
+and PyIceberg can work with Unity Catalog tables.
+
 Each subsection shows how to use the REST API with the corresponding type of asset.
 
 ## Getting Started
