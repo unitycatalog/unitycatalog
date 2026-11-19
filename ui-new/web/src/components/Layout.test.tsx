@@ -27,7 +27,11 @@ vi.mock("@/context/auth-context", () => ({
 import Layout from "@/components/Layout";
 import { renderWithProviders } from "@/test/providers";
 
-const emptyCatalogs = () => ({ httpStatus: 200, ok: true, body: JSON.stringify({ catalogs: [] }) });
+const emptyCatalogs = () => ({
+  httpStatus: 200,
+  ok: true,
+  body: JSON.stringify({ catalogs: [] }),
+});
 
 describe("Layout", () => {
   it("renders the chrome, auth badge, and children", async () => {
@@ -37,11 +41,15 @@ describe("Layout", () => {
       </Layout>,
       { handler: emptyCatalogs },
     );
-    expect(screen.getByRole("img", { name: "Unity Catalog" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Unity Catalog" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("authenticated")).toBeInTheDocument();
     expect(screen.getByText("page content")).toBeInTheDocument();
     // CatalogTree mounted inside the sidebar.
-    await waitFor(() => expect(screen.getByText("No catalogs.")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("No catalogs.")).toBeInTheDocument(),
+    );
   });
 
   it("logs out from the sidebar button", async () => {
@@ -55,7 +63,9 @@ describe("Layout", () => {
     renderWithProviders(<Layout>x</Layout>, { handler: emptyCatalogs });
     await userEvent.click(screen.getByRole("button", { name: /^Log out$/ }));
     await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Sign out failed: UC request failed (HTTP 500): {}"),
+      expect(toastError).toHaveBeenCalledWith(
+        "Sign out failed: UC request failed (HTTP 500): {}",
+      ),
     );
   });
 
@@ -63,6 +73,8 @@ describe("Layout", () => {
     renderWithProviders(<Layout>x</Layout>, { handler: emptyCatalogs });
     const toggle = screen.getByRole("button", { name: /Collapse navigation/ });
     await userEvent.click(toggle);
-    expect(screen.getByRole("button", { name: /Expand navigation/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Expand navigation/ }),
+    ).toBeInTheDocument();
   });
 });
