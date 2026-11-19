@@ -152,6 +152,38 @@ public class StoredGcpKeyVendingTest extends BaseCRUDTest {
             });
   }
 
+  /**
+   * A credential of another type bound to a gs:// location cannot be vended from. Whoever asks for
+   * access may not read the credential, so the error names nothing of it.
+   */
+  @Test
+  public void testCredentialOfAnotherTypeIsNotNamedInTheError() throws ApiException {
+    var apiClient = TestUtils.createApiClient(serverConfig);
+    new CredentialsApi(apiClient)
+        .createCredential(
+            new CreateCredentialRequest()
+                .name("aws_role_credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(
+                    new io.unitycatalog.client.model.AwsIamRoleRequest()
+                        .roleArn("arn:aws:iam::123456789012:role/r")));
+    new ExternalLocationsApi(apiClient)
+        .createExternalLocation(
+            new CreateExternalLocation()
+                .name("gcs_location_with_role")
+                .url("gs://uc-test-bucket/aws")
+                .credentialName("aws_role_credential"));
+
+    assertThatThrownBy(() -> vend("gs://uc-test-bucket/aws/table", PathOperation.PATH_READ))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            e -> {
+              assertThat(e.getResponseBody()).contains("Contact the server administrator");
+              assertThat(e.getResponseBody()).doesNotContain("aws_role_credential");
+            });
+    assertThat(keysSeen).isEmpty();
+  }
+
   @Test
   public void testPathOutsideTheLocationIsNotVended() {
     assertThatThrownBy(() -> vend("gs://uc-test-bucket/other/table", PathOperation.PATH_READ))

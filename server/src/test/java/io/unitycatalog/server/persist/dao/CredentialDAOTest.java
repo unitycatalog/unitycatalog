@@ -20,6 +20,7 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -155,13 +156,20 @@ public class CredentialDAOTest {
     KeyPairGenerator ec = KeyPairGenerator.getInstance("EC");
     ec.initialize(256);
     String ecPem = pem("PRIVATE" + " KEY", ec.generateKeyPair().getPrivate().getEncoded());
-    assertThatThrownBy(() -> gcsDao(ecPem)).isInstanceOf(BaseException.class);
-    // PKCS#1 ("RSA PRIVATE KEY") is a different format from the PKCS#8 Google issues.
+    assertThatThrownBy(() -> gcsDao(ecPem)).satisfies(DAO_REFUSAL);
+    // A PEM labeled as PKCS#1 ("RSA PRIVATE KEY") is refused by its label: Google issues PKCS#8.
     KeyPairGenerator rsa = KeyPairGenerator.getInstance("RSA");
     rsa.initialize(2048);
     String pkcs1Pem = pem("RSA PRIVATE" + " KEY", rsa.generateKeyPair().getPrivate().getEncoded());
-    assertThatThrownBy(() -> gcsDao(pkcs1Pem)).isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> gcsDao(pkcs1Pem)).satisfies(DAO_REFUSAL);
   }
+
+  private static final Consumer<Throwable> DAO_REFUSAL =
+      e ->
+          assertThat(e)
+              .isInstanceOfSatisfying(
+                  BaseException.class,
+                  b -> assertThat(b.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT));
 
   private static String pem(String label, byte[] der) {
     return "-----BEGIN "
