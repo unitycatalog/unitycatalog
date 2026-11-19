@@ -10,11 +10,11 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
-  "typing_extensions>=4.0.0,<=4.15.0",
+  "typing_extensions>=4.0.0",
   "pydantic>=2.0.0,<3",
-  "nest_asyncio>=1.5.0,<=1.6.0",
+  "nest_asyncio>=1.5.0",
   "unitycatalog-client>=0.4.0, <0.5.0",
-  "cloudpickle>=2.0.0,<=3.1.2",
+  "cloudpickle>=2.0.0",
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
 classifiers = [
@@ -67,8 +67,8 @@ only-include = ["src/unitycatalog/ai/core"]
 [project.optional-dependencies]
 
 databricks = [
-  "databricks-sdk>=0.32.0,<=0.94.0",
-  "pandas>=1.0.0,<=3.0.1",
+  "databricks-sdk>=0.32.0",
+  "pandas>=1.0.0",
   "databricks-connect>=15.1.0,<17.1",
 ]
 databricks-dev = [
