@@ -1,0 +1,9 @@
++ column os_share_properties.property_key type=varchar size=255 nullable=NO default=null
++ column os_share_properties.property_value type=varchar size=1000 nullable=YES default=null
++ column os_share_properties.share_id type=binary size=16 nullable=NO default=null
++ fk os_share_properties.fk_share_properties_share os_share_properties.share_id -> os_shares.id#1 on update restrict on delete restrict
++ index os_share_properties.primary unique=true column=property_key#2
++ index os_share_properties.primary unique=true column=share_id#1
++ pk os_share_properties.property_key#2
++ pk os_share_properties.share_id#1
++ table os_share_properties

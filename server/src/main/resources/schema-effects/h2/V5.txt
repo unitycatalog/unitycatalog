@@ -1,0 +1,10 @@
++ column os_share_properties.property_key type=character varying size=255 nullable=NO default=null
++ column os_share_properties.property_value type=character varying size=1000 nullable=YES default=null
++ column os_share_properties.share_id type=uuid size=16 nullable=NO default=null
++ fk os_share_properties.fk_share_properties_share os_share_properties.share_id -> os_shares.id#1 on update restrict on delete restrict
++ index os_share_properties.fk_share_properties_share_index_* unique=false column=share_id#1
++ index os_share_properties.primary_key_* unique=true column=property_key#2
++ index os_share_properties.primary_key_* unique=true column=share_id#1
++ pk os_share_properties.property_key#2
++ pk os_share_properties.share_id#1
++ table os_share_properties

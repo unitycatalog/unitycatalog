@@ -1,0 +1,1 @@
++ index os_shares.idx_shares_owner_id unique=false column=owner_id#1
