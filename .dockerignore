@@ -1,0 +1,3 @@
+# The image builds its own sample database.
+etc/db/h2db.*
+etc/db/building-*

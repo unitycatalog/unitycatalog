@@ -5,12 +5,74 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 TARBALL_JAR_DIR="$ROOT_DIR/jars"
 SERVER_CLASS_FILE="$ROOT_DIR/server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
+SAMPLE_DATABASE="$ROOT_DIR/etc/db/h2db.mv.db"
 
 # This function generates the unity catalog jars using sbt
 generate_jar() {
   local GENERATE_JAR_COMMAND="$ROOT_DIR/build/sbt -info clean package"
   echo "Running SBT to generate Server JAR: $GENERATE_JAR_COMMAND"
   $GENERATE_JAR_COMMAND || exit
+}
+
+# This function builds the quickstart's sample database (etc/db/h2db.mv.db) using sbt. A source
+# checkout does not hold it; the tarball and the Docker image ship one.
+build_sample_database() {
+  local BUILD_SAMPLE_DATABASE_COMMAND="$ROOT_DIR/build/sbt -info buildSampleDatabase"
+  echo "Running SBT to build the sample database $SAMPLE_DATABASE: $BUILD_SAMPLE_DATABASE_COMMAND"
+  if ! $BUILD_SAMPLE_DATABASE_COMMAND; then
+    echo "Could not build the sample database $SAMPLE_DATABASE; starting the server anyway." >&2
+  fi
+}
+
+# This function succeeds when its argument is a number the option parser takes as a port value: an
+# optional + or -, then digits, within the range of an int.
+is_port_number() {
+  local digits=${1#[+-]} limit=2147483647
+  [ -n "$digits" ] && [ -z "${digits//[0-9]/}" ] || return 1
+  [ "${1:0:1}" = "-" ] && limit=2147483648
+  digits=${digits#"${digits%%[!0]*}"}
+  [ "${#digits}" -le 10 ] && (( 10#${digits:-0} <= limit ))
+}
+
+# This function succeeds when the command line starts the server: it holds nothing but the port
+# options (one or two dashes, the start of the name, the value after a space, an = or, for -p, right
+# after it) and words that are not options. A port value is a number the option parser takes. A --
+# ends the options: the words after it are not options. A schema command, --version, --help or an
+# unknown option does not start it.
+starts_server() {
+  local arg long name
+  while [ $# -gt 0 ]; do
+    arg=$1
+    shift
+    case "$arg" in
+      --) return 0 ;;
+      -) continue ;;
+      -*) ;;
+      *) continue ;;
+    esac
+    long=${arg#--}
+    name=${long#-}
+    name=${name%%=*}
+    # A single dash takes a one-letter option only as -p.
+    if [ "$long" = "$arg" ] && [ "${#name}" -lt 2 ] && [ "$name" != p ]; then
+      return 1
+    fi
+    if [[ port == "$name"* || obs-port == "$name"* ]]; then
+      case "$arg" in
+        *=*) is_port_number "${arg#*=}" || return 1 ;;
+        *)
+          # The value is the next word.
+          [ $# -ge 1 ] && is_port_number "$1" || return 1
+          shift
+          ;;
+      esac
+    elif [ "$long" = "$arg" ] && [ "${name:0:1}" = p ] && [[ "$arg" != *=* ]]; then
+      # -p with its value right after it.
+      is_port_number "${name:1}" || return 1
+    else
+      return 1
+    fi
+  done
 }
 
 # This function starts the unity catalog server. exec makes the JVM this process, so it receives
@@ -36,6 +98,14 @@ run_in_source_code() {
   if [ -z "$SERVER_CLASSPATH_FILE" ]; then
       echo "No classpath file found in the target directory '$SERVER_TARGET_DIR'."
       generate_jar
+  fi
+
+  # The Docker image holds the server's sources but not build/sbt: it ships its sample database,
+  # and a volume mounted over etc/db stays empty.
+  # Only a command line that starts the server uses the sample database.
+  if [ ! -f "$SAMPLE_DATABASE" ] && [ -x "$ROOT_DIR/build/sbt" ] && starts_server "$@"; then
+      echo "Sample database '$SAMPLE_DATABASE' not found."
+      build_sample_database
   fi
 
   run_uc_server_java_command "$SERVER_CLASSPATH_FILE" "$@"
