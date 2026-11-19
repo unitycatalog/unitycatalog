@@ -270,7 +270,9 @@ Messages that the server prints when it refuses to start, and that `--check-sche
 `The H2 database file that hibernate.connection.url names is not found.`
 : The server refuses to start on an H2 database file that does not exist, and doesn't create it.
   Check `hibernate.connection.url` in `etc/conf/hibernate.properties`. For a new install, run
-  `bin/start-uc-server --upgrade-schema`, which sets up the database there, then start the server.
+  `bin/start-uc-server --upgrade-schema`, which sets up the database there, then start the server. In a source
+  checkout, `build/sbt buildSampleDatabase` builds the quickstart's sample database, and so does starting the server
+  with `bin/start-uc-server` when `build/sbt` is there.
 
 `The database's schema history does not match this release's schema steps: <reasons>`
 : Flyway's check of `uc_schema_history` failed, for example because a recorded step differs from

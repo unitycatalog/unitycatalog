@@ -678,7 +678,9 @@ public final class SchemaMigrator implements AutoCloseable {
         throw new IllegalStateException(
             "The H2 database file that hibernate.connection.url names is not found. Check the"
                 + " configuration; to set up a new database there, run bin/start-uc-server"
-                + " --upgrade-schema, then start the server.",
+                + " --upgrade-schema, then start the server. In a source checkout, the quickstart's"
+                + " sample database is built by build/sbt buildSampleDatabase (or by starting the"
+                + " server with bin/start-uc-server when build/sbt is there).",
             e);
       }
       throw e;

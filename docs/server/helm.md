@@ -148,9 +148,13 @@ deployment name and `--replicas=0`) and back up the database (see
 the same `--values` file. If you pass any `--values` or `--set`, Helm doesn't keep the values from your earlier
 install, so pass the full file each time.
 
-An upgrade stops all server pods before it starts the new ones, so the server is unavailable until the new pods are
-ready. In each new pod, the `upgrade-schema` init container (left out with `server.db.schemaManagement: hibernate`; see
-[Letting Hibernate manage the schema](upgrades.md#letting-hibernate-manage-the-schema)) runs `bin/start-uc-server --upgrade-schema`, which brings
+By default, an upgrade stops all server pods before it starts the new ones (`server.deployment.updateStrategy.type:
+Recreate`), so the server is unavailable until the new pods are ready. An upgrade with schema steps needs this: the old
+pods must not run on the new schema, and the new release's servers refuse an old schema. Setting the type to
+`RollingUpdate` keeps the old pods serving during the upgrade, so use it only for an upgrade without schema steps, at
+your own risk. In each new pod, the `upgrade-schema` init container (left out with `server.db.schemaManagement: hibernate`;
+see [Letting Hibernate manage the schema](upgrades.md#letting-hibernate-manage-the-schema)) runs
+`bin/start-uc-server --upgrade-schema`, which brings
 the database schema up to date before the server starts. If it fails, Kubernetes runs it again; read its log with
 `kubectl logs <pod> --namespace unitycatalog -c upgrade-schema` and fix the cause it names. With `--wait`, set a
 `--timeout` longer than the schema upgrade takes. See [Upgrading the database schema](upgrades.md).
@@ -191,8 +195,9 @@ server:
     terminationGracePeriodSeconds: 30
 ```
 
-This avoids downtime only when other server pods keep serving, for example on a scale-down. An upgrade stops all
-server pods first, so the server is unavailable until the new pods are ready.
+This avoids downtime only when other server pods keep serving, for example on a scale-down. With the default
+`Recreate` update strategy, an upgrade stops all server pods first, so the server is unavailable until the new pods are
+ready.
 
 ## Configuration
 

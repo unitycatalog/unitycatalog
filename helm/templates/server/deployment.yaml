@@ -336,12 +336,10 @@ spec:
       {{- with .Values.server.deployment.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
-  {{- /* An upgrade changes the schema, so every old server stops before a new pod starts. */}}
   {{- with .Values.server.deployment.updateStrategy }}
-  {{- if ne .type "Recreate" }}
-  {{- fail "server.deployment.updateStrategy.type must be Recreate: an upgrade changes the database schema, so the old servers must stop before the new ones start." }}
+  {{- if and .rollingUpdate (ne .type "RollingUpdate") }}
+  {{- fail "server.deployment.updateStrategy.rollingUpdate needs server.deployment.updateStrategy.type=RollingUpdate." }}
   {{- end }}
+  strategy: {{- toYaml . | nindent 4 }}
   {{- end }}
-  strategy:
-    type: Recreate
 {{- end -}}
