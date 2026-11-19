@@ -9,7 +9,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from unitycatalog.ai.core.utils.function_processing_utils import (
     FullFunctionName,
@@ -596,3 +596,20 @@ def test_process_function_parameter_defaults_with_binary_literal(parameter_defau
 
     assert result["bytes_param"] == expected
     assert isinstance(result["bytes_param"], type(expected))
+
+
+@pytest.mark.parametrize("type_name", ["binary", "BINARY"])
+def test_param_info_to_pydantic_type_decodes_base64_binary_in_any_case(type_name):
+    param_info = FunctionParameterInfo(
+        name="data",
+        type_name="BINARY",
+        type_text="binary",
+        position=0,
+        type_json=json.dumps(
+            {"name": "data", "type": type_name, "nullable": False, "metadata": {}}
+        ),
+    )
+
+    field_type = param_info_to_pydantic_type(param_info).pydantic_type
+
+    assert TypeAdapter(field_type).validate_python("YWJjZA==") == b"abcd"

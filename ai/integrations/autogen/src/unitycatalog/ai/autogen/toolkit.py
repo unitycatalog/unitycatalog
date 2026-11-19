@@ -50,13 +50,11 @@ class UCFunctionTool(BaseTool):
 
     async def run(self, args: BaseModel, cancellation_token: CancellationToken) -> str:
         """
-        Actually call the UC function with the provided parameters.
+        Actually call the UC function with the provided parameters, keeping their python values.
         """
-        param_dict = args.model_dump()
-
         result = self._client.execute_function(
             function_name=self._function_full_name,
-            parameters=param_dict,
+            parameters=args.model_dump(),
         )
         return result.to_json()
 

@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -27,14 +28,20 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
+    JSON_ARGUMENT_PARAMS,
+    JSON_ARGUMENTS,
+    NATIVE_ARGUMENTS,
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
     RETRIEVER_TABLE_FULL_DATA_TYPE,
     RETRIEVER_TABLE_RETURN_PARAMS,
     create_function_and_cleanup,
     create_python_function_and_cleanup,
+    generate_function_info_with_params,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_llama_index_test")
 
@@ -628,3 +635,37 @@ def test_toolkit_with_invalid_function_input_mocked():
             parameters=invalid_inputs,
             enable_retriever_tracing=False,
         )
+
+
+@pytest.mark.parametrize("native", [False, True], ids=["json", "native"])
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+@pytest.mark.asyncio
+async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_async, native):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+    arguments = {**JSON_ARGUMENTS, "data": encoded}
+    tool_call_arguments = {
+        **json.loads(json.dumps(arguments)),
+        **({**NATIVE_ARGUMENTS, "data": base64.b64decode(encoded)} if native else {}),
+    }
+
+    if use_async:
+        await tool.acall(**tool_call_arguments)
+    else:
+        tool.call(**tool_call_arguments)
+
+    # A native Decimal is sent as its text, as before this change.
+    expected = {**arguments, "amount": "12.5"} if native else arguments
+    assert client.execute_function.call_args.kwargs["parameters"] == expected
