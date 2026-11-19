@@ -39,6 +39,7 @@ import io.unitycatalog.server.service.delta.DeltaConsts;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
+import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URI;
@@ -1381,6 +1382,80 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
           assertEquals("Updated description", dao.getComment());
           verifyUniformFields(dao, tableInfo.getStorageLocation() + "/_u/v2.json", 2L, timestamp2);
         });
+  }
+
+  @Test
+  public void testCommitsTurningUniformOffAndOn() throws ApiException {
+    String enabledFormats = TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS;
+    deltaCommitsApi.commit(
+        commitWithProperties(1L, Map.of(enabledFormats, "iceberg")).uniform(uniformAt(1L)));
+    verifyIcebergMetadata(Optional.of(1L));
+
+    DeltaCommit turnOff = commitWithProperties(2L, Map.of());
+    deltaCommitsApi.commit(turnOff);
+    verifyIcebergMetadata(Optional.empty());
+
+    deltaCommitsApi.commit(
+        commitWithProperties(3L, Map.of(enabledFormats, "iceberg,hudi")).uniform(uniformAt(3L)));
+    verifyIcebergMetadata(Optional.of(3L));
+
+    deltaCommitsApi.commit(turnOff);
+    verifyIcebergMetadata(Optional.of(3L));
+
+    deltaCommitsApi.commit(commitWithProperties(4L, Map.of(enabledFormats, "hudi")));
+    verifyIcebergMetadata(Optional.empty());
+  }
+
+  /** A commit that replaces the table properties with the table ID plus {@code properties}. */
+  private DeltaCommit commitWithProperties(long version, Map<String, String> properties) {
+    return createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation())
+        .metadata(
+            new DeltaMetadata()
+                .properties(constructProperties(tableInfo.getTableId(), false, properties)));
+  }
+
+  private DeltaUniform uniformAt(long version) {
+    return new DeltaUniform()
+        .iceberg(
+            new DeltaUniformIceberg()
+                .metadataLocation(URI.create(uniformMetadataLocation(version)))
+                .convertedDeltaVersion(version)
+                .convertedDeltaTimestamp(uniformTimestamp(version).toString()));
+  }
+
+  private String uniformMetadataLocation(long version) {
+    return tableInfo.getStorageLocation() + "/_u/v" + version + ".json";
+  }
+
+  private static Instant uniformTimestamp(long version) {
+    return Instant.ofEpochMilli(1700000000000L + version);
+  }
+
+  /**
+   * Verify the stored UniForm Iceberg fields and what the Delta loadTable and the Iceberg REST
+   * catalog serve from them. Empty means UniForm is off and nothing is stored or served.
+   */
+  private void verifyIcebergMetadata(Optional<Long> convertedVersion) throws ApiException {
+    Optional<String> location = convertedVersion.map(this::uniformMetadataLocation);
+    verifyTableInfoDAO(
+        dao -> {
+          assertEquals(location.orElse(null), dao.getIcebergMetadataLocation());
+          assertEquals(convertedVersion.orElse(null), dao.getUniformIcebergConvertedDeltaVersion());
+          assertEquals(
+              convertedVersion.map(SdkDeltaCommitsCRUDTest::uniformTimestamp),
+              Optional.ofNullable(dao.getUniformIcebergConvertedDeltaTimestamp())
+                  .map(Date::toInstant));
+        });
+    DeltaLoadTableResponse loaded =
+        new DeltaTablesApi(TestUtils.createApiClient(serverConfig))
+            .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+    assertEquals(
+        location,
+        Optional.ofNullable(loaded.getUniform()).map(u -> u.getIceberg().getMetadataLocation()));
+    assertEquals(
+        location.isPresent(),
+        new IcebergRestClient(serverConfig)
+            .tableExists(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
   }
 
   @Test
