@@ -61,8 +61,7 @@ fn env_string(key: &str, default: &str) -> String {
 impl Config {
     /// Load configuration from the process environment, applying defaults.
     pub fn from_env() -> Result<Self, String> {
-        let allowed_origins = std::env::var("ALLOWED_ORIGINS")
-            .ok()
+        let allowed_origins = env_value("ALLOWED_ORIGINS")?
             .map(|v| {
                 v.split(',')
                     .map(|s| s.trim().to_string())

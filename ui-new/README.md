@@ -111,7 +111,8 @@ UC_SERVER=http://localhost:8080 ./target/release/uc-ui-bridge
 ```
 
 Serve `web/dist` from a web server that proxies `/uc.v1.*`, `/config`, and
-`/healthz` to the bridge.
+`/healthz` to the bridge, and falls back to `index.html` for any other path so
+client-side routes load on refresh or from a link.
 
 ## Bridge configuration (env)
 
@@ -126,8 +127,8 @@ Serve `web/dist` from a web server that proxies `/uc.v1.*`, `/config`, and
 | `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated, each must exactly match the browser's serialized `Origin`—no trailing slash or explicit default port; other entries are logged and skipped); empty = same-origin only |
 
 The `*_ENABLED` variables accept `true`/`false`, `1`/`0`, `yes`/`no`, or
-`on`/`off`, ignoring case. An invalid boolean or `PORT` stops the bridge at
-startup with an error naming the variable.
+`on`/`off`, ignoring case. An invalid or empty boolean or `PORT` stops the
+bridge at startup with an error naming the variable.
 
 ## Test
 

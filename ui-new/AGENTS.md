@@ -68,8 +68,9 @@ The SPA uses Vitest + React Testing Library (config in `web/vitest.config.ts`,
 env `happy-dom`). Shared harness lives in `web/src/test/`:
 - `providers.tsx` — `renderWithProviders` / `renderHookWithProviders` wrap a
   QueryClient and in-memory implementations of the generic proxy and typed
-  domain services, so hooks/pages run their real query paths against canned UC
-  replies (pass a `UcHandler` keyed by method + path).
+  domain services, so hooks/pages run their real query paths. Pass `rpc`
+  (`RpcHandlers`) to answer typed service methods, and `handler` (a
+  `UcHandler` keyed by method + path) to answer `UnityProxyService/Call`.
 - `tanstack-router-mock.tsx` — a Link/useParams/useNavigate/Navigate stand-in;
   opt in per file with `vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"))`.
 - `localstorage-polyfill.ts` — the test DOM has no Web Storage; the polyfill is
@@ -77,8 +78,8 @@ env `happy-dom`). Shared harness lives in `web/src/test/`:
 
 Tests co-locate as `*.test.ts(x)` next to the code. Coverage is gated at 80%
 (generated code, vendored `components/ui`, routes, and the entry are excluded).
-When testing components that read UC data, prefer a `UcHandler` over mocking the
-hooks, so the hook + query-key wiring is exercised too.
+When testing components that read UC data, prefer these handlers over mocking
+the hooks, so the hook + query-key wiring is exercised too.
 
 ## Checks before pushing
 

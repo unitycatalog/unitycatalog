@@ -126,7 +126,9 @@ message CreateTableResponse {
 
 // DeleteTableRequest deletes a non-metric-view table. Metric views share UC's
 // table resource, so the bridge reads the kind first; a metric view at this
-// name is FAILED_PRECONDITION and nothing is deleted.
+// name is FAILED_PRECONDITION and nothing is deleted. The read and the delete
+// are separate UC calls, so the check is best effort against a concurrent
+// drop-and-recreate.
 message DeleteTableRequest {
   SchemaObjectRef table = 1 [(buf.validate.field).required = true];
 }

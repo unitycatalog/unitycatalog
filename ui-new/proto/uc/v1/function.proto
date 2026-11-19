@@ -126,6 +126,7 @@ message CreateFunctionRequest {
     in: 12
     in: 18
   }];
+  // At most 1 MiB of UTF-8, a UI limit below UC's 16,777,215 characters.
   string routine_definition = 4 [(buf.validate.field).string = {
     min_len: 1
     max_bytes: 1048576

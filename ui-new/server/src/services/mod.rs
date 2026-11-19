@@ -24,7 +24,7 @@ mod view;
 mod volume;
 
 pub(crate) struct UiRpc {
-    pub(super) upstream: Upstream,
+    pub(crate) upstream: Upstream,
 }
 
 impl UiRpc {

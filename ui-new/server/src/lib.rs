@@ -12,7 +12,7 @@ use tower_http::trace::TraceLayer;
 
 pub mod config;
 mod mapping;
-pub mod proxy;
+mod proxy;
 mod services;
 mod upstream;
 
