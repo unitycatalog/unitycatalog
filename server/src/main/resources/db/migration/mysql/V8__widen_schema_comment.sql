@@ -1,1 +1,1 @@
-ALTER TABLE uc_schemas MODIFY COLUMN `comment` text NULL;
+ALTER TABLE uc_schemas MODIFY COLUMN `comment` mediumtext NULL;

@@ -107,6 +107,15 @@ public abstract class BaseSchemaCRUDTest extends BaseSchemaCRUDTestEnv {
     assertThat(updatedSchemaInfo3.getComment()).isEqualTo(TestUtils.LONG_COMMENT);
     assertThat(schemaOperations.getSchema(TestUtils.SCHEMA_NEW_FULL_NAME).getComment())
         .isEqualTo(TestUtils.LONG_COMMENT);
+    assertThat(
+            schemaOperations
+                .updateSchema(
+                    TestUtils.SCHEMA_NEW_FULL_NAME,
+                    new UpdateSchema().comment(TestUtils.MULTI_BYTE_LONG_COMMENT))
+                .getComment())
+        .isEqualTo(TestUtils.MULTI_BYTE_LONG_COMMENT);
+    assertThat(schemaOperations.getSchema(TestUtils.SCHEMA_NEW_FULL_NAME).getComment())
+        .isEqualTo(TestUtils.MULTI_BYTE_LONG_COMMENT);
     assertThat(updatedSchemaInfo3.getFullName()).isEqualTo(TestUtils.SCHEMA_NEW_FULL_NAME);
     assertThat(updatedSchemaInfo3.getProperties()).isEqualTo(updateSchema3.getProperties());
     assertThat(updatedSchemaInfo3.getUpdatedAt()).isNotNull();

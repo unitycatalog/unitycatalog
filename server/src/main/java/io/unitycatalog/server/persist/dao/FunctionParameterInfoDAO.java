@@ -70,10 +70,10 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
   @Column(name = "parameter_type")
   private FunctionParameterType parameterType;
 
-  @Column(name = "parameter_default", length = 65535)
+  @Column(name = "parameter_default", length = 65536)
   private String parameterDefault;
 
-  @Column(name = "comment", length = 65535)
+  @Column(name = "comment", length = 65536)
   private String comment;
 
   public static FunctionParameterInfoDAO from(

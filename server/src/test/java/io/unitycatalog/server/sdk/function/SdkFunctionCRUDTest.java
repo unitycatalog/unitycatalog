@@ -3,7 +3,7 @@ package io.unitycatalog.server.sdk.function;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.FUNCTION_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.FUNCTION_NAME;
-import static io.unitycatalog.server.utils.TestUtils.LONG_COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.MULTI_BYTE_LONG_COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,7 +45,7 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
   // Over 255 characters, like the type of a parameter that takes a record with many fields
   private static final String LONG_STRUCT_TYPE = longStructType("field_");
   private static final String LONG_RETURN_TYPE = longStructType("result_");
-  private static final String LONG_DEFAULT = "d".repeat(300);
+  private static final String LONG_DEFAULT = String.valueOf((char) 0xFC).repeat(65536);
 
   private static String longStructType(String fieldPrefix) {
     return "STRUCT<"
@@ -64,7 +64,7 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
             .typeName(ColumnTypeName.STRUCT)
             .typeText(LONG_STRUCT_TYPE)
             .typeJson("{\"type\":\"struct\",\"fields\":[]}")
-            .comment(LONG_COMMENT)
+            .comment(MULTI_BYTE_LONG_COMMENT)
             .parameterDefault(LONG_DEFAULT)
             .position(0);
     FunctionParameterInfo returnParameter =
@@ -101,7 +101,7 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
         .satisfies(
             stored -> {
               assertThat(stored.getTypeText()).isEqualTo(LONG_STRUCT_TYPE);
-              assertThat(stored.getComment()).isEqualTo(LONG_COMMENT);
+              assertThat(stored.getComment()).isEqualTo(MULTI_BYTE_LONG_COMMENT);
               assertThat(stored.getParameterDefault()).isEqualTo(LONG_DEFAULT);
             });
     assertThat(functionInfo.getReturnParams().getParameters())

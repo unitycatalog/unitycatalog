@@ -3,6 +3,7 @@ package io.unitycatalog.server.base.volume;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.COMMON_ENTITY_NAME;
 import static io.unitycatalog.server.utils.TestUtils.LONG_COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.MULTI_BYTE_LONG_COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NEW_COMMENT;
@@ -147,8 +148,8 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
     assertThat(updatedVolumeInfo2.getComment()).isEqualTo(LONG_COMMENT);
     assertThat(volumeOperations.getVolume(VOLUME_NEW_FULL_NAME).getComment())
         .isEqualTo(LONG_COMMENT);
-    // The API allows 65536 characters. Multi-byte ones need more than 65535 bytes on MySQL.
-    String longestComment = String.valueOf((char) 0xE9).repeat(65536);
+    // The API allows 65536 characters.
+    String longestComment = MULTI_BYTE_LONG_COMMENT;
     assertThat(
             volumeOperations
                 .updateVolume(
