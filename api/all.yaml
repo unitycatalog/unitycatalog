@@ -1422,8 +1422,9 @@ paths:
       summary: Create an external location
       description: |
         Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
-        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
-        otherwise the request fails with `INVALID_ARGUMENT`.
+        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL, and
+        one whose credential is `gcp_service_account_key` must have a `gs://` URL; otherwise the
+        request fails with `INVALID_ARGUMENT`.
       operationId: createExternalLocation
       requestBody:
         required: true
@@ -1529,8 +1530,9 @@ paths:
         or have MANAGE on the external location.
         Unless force is true, changing the url fails if the location is in use (as described for
         deleting it), unless the new url is the same as, or a parent of, the old one.
-        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
-        otherwise the request fails with `INVALID_ARGUMENT`.
+        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL, and
+        one whose credential is `gcp_service_account_key` must have a `gs://` URL; otherwise the
+        request fails with `INVALID_ARGUMENT`.
       operationId: updateExternalLocation
       requestBody:
         required: true
