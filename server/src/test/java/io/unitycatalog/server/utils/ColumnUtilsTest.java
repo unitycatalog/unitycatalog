@@ -17,6 +17,7 @@ import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Tests for ColumnUtils.toStructField parsing typeJson into typed DeltaStructField. */
@@ -405,6 +406,68 @@ public class ColumnUtilsTest {
           .isInstanceOf(BaseException.class)
           .hasMessageContaining("Unsupported Delta primitive type: " + unsupported);
     }
+  }
+
+  /**
+   * Every wire form of geometry/geography maps to its enum value, and the type string is kept as
+   * written in {@code type_text} and {@code type_json} so a read returns what was written.
+   */
+  @Test
+  public void testToColumnInfoGeoTypes() {
+    Map<String, ColumnTypeName> accepted =
+        Map.of(
+            "geometry", ColumnTypeName.GEOMETRY,
+            "geometry(OGC:CRS84)", ColumnTypeName.GEOMETRY,
+            "geometry(EPSG:3857)", ColumnTypeName.GEOMETRY,
+            "geography", ColumnTypeName.GEOGRAPHY,
+            "geography(OGC:CRS84)", ColumnTypeName.GEOGRAPHY,
+            "geography(spherical)", ColumnTypeName.GEOGRAPHY,
+            "geography(OGC:CRS84, spherical)", ColumnTypeName.GEOGRAPHY,
+            "geography(OGC:CRS84, SPHERICAL)", ColumnTypeName.GEOGRAPHY);
+    accepted.forEach(
+        (wire, expected) -> {
+          ColumnInfo info = ColumnUtils.toColumnInfo(primitiveField(wire), 0);
+          assertThat(info.getTypeName()).as(wire).isEqualTo(expected);
+          assertThat(info.getTypeText()).as(wire).isEqualTo(wire);
+          assertThat(info.getTypeJson()).as(wire).contains("\"type\":\"" + wire + "\"");
+        });
+  }
+
+  @Test
+  public void testToColumnInfoRejectsMalformedGeoTypes() {
+    for (String malformed :
+        List.of(
+            "geometry()",
+            "geometry(OGC:CRS84",
+            "geometry(OGC:CRS84, spherical)",
+            "geometry(not a crs)",
+            "geography(OGC:CRS84,)",
+            "geography(OGC:CRS84, planar)",
+            "geography(a:b, c:d)")) {
+      assertThatThrownBy(() -> ColumnUtils.toColumnInfo(primitiveField(malformed), 0))
+          .as("malformed geo type: %s", malformed)
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("Invalid geospatial type: " + malformed)
+          .hasMessageNotContaining("io.delta");
+    }
+  }
+
+  /** A nested geo type is validated and resolved like a top-level one. */
+  @Test
+  public void testToCatalogStringKeepsNestedGeoTypes() {
+    DeltaArrayType array =
+        new DeltaArrayType()
+            .elementType(new DeltaPrimitiveType().type("geometry(OGC:CRS84)"))
+            .containsNull(true);
+    assertThat(ColumnUtils.toCatalogString(array)).isEqualTo("array<geometry(OGC:CRS84)>");
+  }
+
+  private static DeltaStructField primitiveField(String type) {
+    return new DeltaStructField()
+        .name("x")
+        .type(new DeltaPrimitiveType().type(type))
+        .nullable(true)
+        .metadata(new DeltaStructFieldMetadata());
   }
 
   // ---------- applyPartitionColumns ----------

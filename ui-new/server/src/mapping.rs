@@ -485,6 +485,8 @@ fn column_type(value: Option<&str>) -> EnumValue<ColumnTypeName> {
         Some("NULL") => ColumnTypeName::Null,
         Some("USER_DEFINED_TYPE") => ColumnTypeName::UserDefinedType,
         Some("TABLE_TYPE") => ColumnTypeName::TableType,
+        Some("GEOMETRY") => ColumnTypeName::Geometry,
+        Some("GEOGRAPHY") => ColumnTypeName::Geography,
         _ => ColumnTypeName::Unspecified,
     }
     .into()
