@@ -31,7 +31,10 @@ public class PythonInvoker {
         function, scriptPath, Paths.get(System.getProperty("java.io.tmpdir")), args);
   }
 
-  /** Same as above, with the stderr file of the call created in {@code tempDir}. */
+  /**
+   * Like {@link #invokePython(FunctionInfo, String, String...)}, but creates the stderr file of the
+   * call in {@code tempDir}, which must exist.
+   */
   static String invokePython(FunctionInfo function, String scriptPath, Path tempDir, String... args)
       throws ApiException {
     try {
@@ -152,7 +155,7 @@ public class PythonInvoker {
     try {
       Files.deleteIfExists(file);
     } catch (IOException e) {
-      LOGGER.debug("Could not delete {}, deleting it at exit instead", file);
+      LOGGER.debug("Could not delete {}, deleting it at exit instead", file, e);
       file.toFile().deleteOnExit();
     }
   }

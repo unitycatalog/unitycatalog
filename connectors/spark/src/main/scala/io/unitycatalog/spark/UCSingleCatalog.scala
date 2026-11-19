@@ -392,11 +392,6 @@ class UCSingleCatalog
     // a REPLACE against a non-managed-Delta table still surfaces the precise error rather than
     // tripping the more generic "only supported for catalog-managed UC Delta tables" gate.
     rejectSystemManagedProperties(properties)
-    if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
-      throw new ApiException(
-        s"$operation cannot specify property '${TableCatalog.PROP_LOCATION}' " +
-          s"on an existing UC-managed Delta table.")
-    }
     // Second, make sure UC says this is an existing catalog-managed Delta table and that the
     // metadata we need to reuse it for replace (storage location and table ID) is present.
     if (!isCatalogManagedDeltaTable(tableInfo)) {
@@ -615,6 +610,10 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("REPLACE TABLE")
+    if (isDeltaOrIcebergPathTable(ident)) {
+      return stagingCatalog.stageReplace(ident, schema, partitions, properties)
+    }
+    rejectExternalReplace("REPLACE TABLE", ident, properties)
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer load + augment to the Delta-side `buildReplaceProps`. UCSingleCatalog no longer
       // loads the existing table and prepare the properties for replace as this will be done by
@@ -651,6 +650,10 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("CREATE OR REPLACE TABLE")
+    if (isDeltaOrIcebergPathTable(ident)) {
+      return stagingCatalog.stageCreateOrReplace(ident, schema, partitions, properties)
+    }
+    rejectExternalReplace("CREATE OR REPLACE TABLE", ident, properties)
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer existence-probe + branch (create-staging vs replace) to the Delta catalog.
       // UCSingleCatalog no longer loads the existing table and prepare the properties for replace,
@@ -692,6 +695,41 @@ class UCSingleCatalog
     } catch {
       case e: ApiException if e.getCode == 404 && allowMissingTable => None
       case e: ApiException if e.getCode == 404 => throw new NoSuchTableException(ident)
+    }
+  }
+
+  /**
+   * True for a path-based identifier that Delta resolves itself, such as delta.`/tmp/table`.
+   * Unlike [[isDeltaOrIcebergPath]], which only looks at the namespace, the name must also be an
+   * absolute path, so a table in a real UC schema named delta or iceberg is not taken for one. A
+   * name that is not a valid path, such as `ab:cd`, is not a path table, as in Delta's
+   * isPathIdentifier.
+   */
+  private def isDeltaOrIcebergPathTable(ident: Identifier): Boolean =
+    isDeltaOrIcebergPath(ident) && isAbsolutePath(ident.name())
+
+  private def isAbsolutePath(name: String): Boolean =
+    try new Path(name).isAbsolute
+    catch { case _: IllegalArgumentException => false }
+
+  /**
+   * Only catalog-managed Delta tables can be replaced, so a replace that asks for an external table
+   * fails whether or not the table exists. Creating it when it is missing would make the statement
+   * work once and fail on every rerun.
+   */
+  private def rejectExternalReplace(
+      operation: String,
+      ident: Identifier,
+      properties: util.Map[String, String]): Unit = {
+    val clause =
+      if (properties.containsKey(TableCatalog.PROP_LOCATION)) Some("LOCATION")
+      else if (properties.containsKey(TableCatalog.PROP_EXTERNAL)) Some("EXTERNAL")
+      else None
+    clause.foreach { clause =>
+      throw new ApiException(
+        s"$operation with $clause is not supported for " +
+          s"${UCSingleCatalog.fullTableNameForApi(name(), ident)}: external tables cannot be " +
+          "replaced. Use CREATE TABLE ... LOCATION for a new table, or drop the existing one first.")
     }
   }
 

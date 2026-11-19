@@ -45,7 +45,11 @@ export default function Layout({ children }: { children: ReactNode }) {
               title={navOpen ? "Collapse navigation" : "Expand navigation"}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md text-white/90 transition hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             >
-              {navOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
+              {navOpen ? (
+                <PanelLeftClose className="h-5 w-5" />
+              ) : (
+                <PanelLeftOpen className="h-5 w-5" />
+              )}
             </button>
             <Logo className="h-7 w-auto" title="Unity Catalog" />
           </div>
@@ -65,8 +69,14 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
-                      <span className="truncate text-sm font-medium">{displayName}</span>
-                      {email && <span className="truncate text-xs text-muted-foreground">{email}</span>}
+                      <span className="truncate text-sm font-medium">
+                        {displayName}
+                      </span>
+                      {email && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {email}
+                        </span>
+                      )}
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />

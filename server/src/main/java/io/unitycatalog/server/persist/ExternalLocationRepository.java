@@ -246,7 +246,7 @@ public class ExternalLocationRepository {
                   Optional.of(url),
                   "Changing the URL of external location '" + name + "' to " + url);
             } else {
-              NormalizedURL currentUrl = NormalizedURL.from(existingLocation.getUrl());
+              NormalizedURL currentUrl = storedUrlToCheckOrRefuse(existingLocation.getUrl(), name);
               if (!ExternalLocationUtils.stillCovers(url, currentUrl)) {
                 ExternalLocationUtils.validateExternalLocationNotInUse(session, currentUrl);
               }
@@ -322,7 +322,7 @@ public class ExternalLocationRepository {
                 "Deleting external location '" + name + "'");
           } else {
             ExternalLocationUtils.validateExternalLocationNotInUse(
-                session, NormalizedURL.from(existingLocation.getUrl()));
+                session, storedUrlToCheckOrRefuse(existingLocation.getUrl(), name));
           }
           session.remove(existingLocation);
           LOGGER.info("Deleted external location: {}", name);
@@ -393,25 +393,16 @@ public class ExternalLocationRepository {
    */
   private static void warnIfInUse(
       Session session, String storedUrl, Optional<NormalizedURL> newUrl, String action) {
-    NormalizedURL currentUrl;
-    try {
-      currentUrl = NormalizedURL.from(storedUrl);
-    } catch (BaseException | IllegalArgumentException e) {
-      warnNotChecked(action, e);
+    Optional<NormalizedURL> currentUrl = storedUrlToCheck(storedUrl);
+    if (currentUrl.isEmpty()) {
+      LOGGER.warn("{} with force. Its stored URL cannot be checked, as it does not parse.", action);
       return;
     }
-    ExternalLocationUtils.LocationUse use;
-    try {
-      if (newUrl.isPresent() && ExternalLocationUtils.stillCovers(newUrl.get(), currentUrl)) {
-        return;
-      }
-      use = ExternalLocationUtils.findLocationUse(session, currentUrl);
-    } catch (IllegalArgumentException e) {
-      // Thrown while building the parent paths of a URL that passed NormalizedURL.from, such as
-      // s3:///.
-      warnNotChecked(action, e);
+    if (newUrl.isPresent() && ExternalLocationUtils.stillCovers(newUrl.get(), currentUrl.get())) {
       return;
     }
+    ExternalLocationUtils.LocationUse use =
+        ExternalLocationUtils.findLocationUse(session, currentUrl.get());
     if (use.inUse()) {
       LOGGER.warn(
           "{} with force while it is in use. Pending storage cleanup: {}. Still used by: {}.",
@@ -421,7 +412,29 @@ public class ExternalLocationRepository {
     }
   }
 
-  private static void warnNotChecked(String action, RuntimeException e) {
-    LOGGER.warn("{} with force. Its stored URL does not parse, so it was not checked.", action, e);
+  /**
+   * Parses a stored URL for the in-use check. Empty when an earlier release stored a URL that the
+   * current parser rejects, or one whose parent paths can't be built, such as s3:///.
+   */
+  private static Optional<NormalizedURL> storedUrlToCheck(String storedUrl) {
+    try {
+      NormalizedURL url = NormalizedURL.from(storedUrl);
+      return ExternalLocationUtils.canBuildParentPaths(url) ? Optional.of(url) : Optional.empty();
+    } catch (BaseException | IllegalArgumentException e) {
+      return Optional.empty();
+    }
+  }
+
+  /** The error leaves the stored URL out, since the caller did not send it. */
+  private static NormalizedURL storedUrlToCheckOrRefuse(String storedUrl, String name) {
+    return storedUrlToCheck(storedUrl)
+        .orElseThrow(
+            () ->
+                new BaseException(
+                    ErrorCode.INVALID_ARGUMENT,
+                    "The stored URL of external location '"
+                        + name
+                        + "' cannot be checked for use, as it does not parse. Set force to true"
+                        + " to skip this check."));
   }
 }

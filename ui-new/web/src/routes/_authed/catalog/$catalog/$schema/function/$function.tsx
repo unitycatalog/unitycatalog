@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import FunctionDetails from "@/pages/FunctionDetails";
 
-export const Route = createFileRoute("/_authed/catalog/$catalog/$schema/function/$function")({
+export const Route = createFileRoute(
+  "/_authed/catalog/$catalog/$schema/function/$function",
+)({
   component: RouteComponent,
 });
 

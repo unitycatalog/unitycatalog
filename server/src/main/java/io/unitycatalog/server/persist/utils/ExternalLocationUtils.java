@@ -668,7 +668,10 @@ public class ExternalLocationUtils {
     }
   }
 
-  /** Finds what keeps an external location at the URL in use, without throwing. */
+  /**
+   * Finds what keeps an external location at the URL in use, without throwing merely because the
+   * location is in use.
+   */
   public static LocationUse findLocationUse(Session session, NormalizedURL url) {
     return new LocationUse(hasPendingCleanupOverlap(session, url), findStorageUser(session, url));
   }
@@ -703,12 +706,17 @@ public class ExternalLocationUtils {
    * parent. A narrowed or unrelated URL does not, so the in-use check applies to it.
    */
   public static boolean stillCovers(NormalizedURL newUrl, NormalizedURL currentUrl) {
-    return isSameOrUnder(currentUrl, newUrl);
+    return currentUrl.equals(newUrl) || getParentPathsList(currentUrl).contains(newUrl);
   }
 
-  /** Returns whether {@code url} is {@code ancestor} itself or a path under it. */
-  public static boolean isSameOrUnder(NormalizedURL url, NormalizedURL ancestor) {
-    return url.equals(ancestor) || getParentPathsList(url).contains(ancestor);
+  /** Returns whether the parent paths of {@code url} can be built, which fails for s3:///. */
+  public static boolean canBuildParentPaths(NormalizedURL url) {
+    try {
+      getParentPathsList(url);
+      return true;
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
   }
 
   /**

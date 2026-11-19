@@ -25,15 +25,23 @@ export default function GoogleAuthButton({
     const initialize = () => {
       const google = (window as unknown as { google?: any }).google;
       if (!google) return;
-      google.accounts.id.initialize({ client_id: clientId, callback: handleCredential });
-      google.accounts.id.renderButton(document.getElementById("google-client-button"), {
-        text: "continue_with",
-        width: 320,
-        theme: "outline",
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleCredential,
       });
+      google.accounts.id.renderButton(
+        document.getElementById("google-client-button"),
+        {
+          text: "continue_with",
+          width: 320,
+          theme: "outline",
+        },
+      );
     };
 
-    const existing = Array.from(document.getElementsByTagName("script")).find((s) => s.src === SRC);
+    const existing = Array.from(document.getElementsByTagName("script")).find(
+      (s) => s.src === SRC,
+    );
     if (existing) {
       initialize();
       return;

@@ -9,6 +9,8 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.spark.utils.OptionsUtil;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -16,6 +18,8 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.DataFrameWriterV2;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
@@ -193,6 +197,83 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
             () ->
                 sql("CREATE EXTERNAL TABLE %s(name STRING) USING %s", fullTableName, tableFormat()))
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
+  }
+
+  protected static Stream<Arguments> deltaRestApiAndTableExistsParameters() {
+    return Stream.of(
+        Arguments.of(true, false),
+        Arguments.of(true, true),
+        Arguments.of(false, false),
+        Arguments.of(false, true));
+  }
+
+  /**
+   * CREATE OR REPLACE with a LOCATION fails whether or not the table exists, and so does REPLACE,
+   * since external tables cannot be replaced, both in SQL and through DataFrameWriterV2. A missing
+   * table is not created and an existing one is left as it was.
+   */
+  @ParameterizedTest(name = "deltaRestApi={0}, tableExists={1}")
+  @MethodSource("deltaRestApiAndTableExistsParameters")
+  public void testReplaceWithLocationIsRejected(boolean deltaRestApiEnabled, boolean tableExists)
+      throws ApiException {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    setDeltaRestApiEnabled(CATALOG_NAME, deltaRestApiEnabled);
+    TableSetupOptions options =
+        new TableSetupOptions()
+            .setCatalogName(CATALOG_NAME)
+            .setTableName(TEST_TABLE)
+            .setCloudScheme("s3");
+    String location = getLocation(options);
+    if (tableExists) {
+      sql(options.createExternalTableSql(location));
+    }
+
+    // Spark itself fails REPLACE on a missing table before it reaches the catalog.
+    List<TableDdlMode> ddlModes =
+        tableExists
+            ? List.of(TableDdlMode.REPLACE_EXISTING, TableDdlMode.CREATE_OR_REPLACE_EXISTING)
+            : List.of(TableDdlMode.CREATE_OR_REPLACE_MISSING);
+    for (TableDdlMode ddlMode : ddlModes) {
+      assertThatThrownBy(() -> sql(options.setDdlMode(ddlMode).createExternalTableSql(location)))
+          .isInstanceOf(ApiException.class)
+          .hasMessage(
+              "%s TABLE with LOCATION is not supported for %s.%s.%s: external tables cannot be "
+                  + "replaced. Use CREATE TABLE ... LOCATION for a new table, or drop the existing "
+                  + "one first.",
+              ddlMode.sql(), CATALOG_NAME, SCHEMA_NAME, TEST_TABLE);
+    }
+    DataFrameWriterV2<Row> writer =
+        session
+            .range(1)
+            .toDF()
+            .writeTo(options.fullTableName())
+            .using("delta")
+            .tableProperty(TableCatalog.PROP_LOCATION, location);
+    assertThatThrownBy(writer::createOrReplace)
+        .isInstanceOf(ApiException.class)
+        .hasMessageStartingWith("CREATE OR REPLACE TABLE with LOCATION is not supported");
+    if (tableExists) {
+      assertThatThrownBy(writer::replace)
+          .isInstanceOf(ApiException.class)
+          .hasMessageStartingWith("REPLACE TABLE with LOCATION is not supported");
+    }
+
+    if (tableExists) {
+      TableInfo tableInfo = tableOperations.getTable(options.fullTableName());
+      assertThat(tableInfo.getTableType()).isEqualTo(TableType.EXTERNAL);
+      assertThat(tableInfo.getStorageLocation()).isEqualTo(location);
+    } else {
+      assertThatThrownBy(() -> tableOperations.getTable(options.fullTableName()))
+          .isInstanceOf(ApiException.class);
+    }
+  }
+
+  protected void setDeltaRestApiEnabled(String catalogName, boolean enabled) {
+    session
+        .conf()
+        .set(
+            "spark.sql.catalog." + catalogName + "." + OptionsUtil.DELTA_API_ENABLED,
+            String.valueOf(enabled));
   }
 
   /**

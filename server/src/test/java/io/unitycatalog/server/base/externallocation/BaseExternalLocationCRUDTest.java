@@ -395,10 +395,34 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     credentialOperations.deleteCredential(COMPAT_CREDENTIAL_NAME, Optional.empty());
   }
 
-  /** A forced URL change or delete only logs whether the location is in use, so it still works. */
+  /**
+   * A URL change or delete without force is refused, as the location can't be checked for use. A
+   * forced one only logs, so it still works.
+   */
   @Test
   public void testForcedChangesWorkWhenTheStoredUrlDoesNotParse() throws ApiException {
     create(EXTERNAL_LOCATION_NAME, testUrl());
+    String notChecked =
+        "The stored URL of external location '"
+            + EXTERNAL_LOCATION_NAME
+            + "' cannot be checked for use, as it does not parse. Set force to true to skip this"
+            + " check.";
+    for (String storedUrl : List.of("s3:///", "s3://secret-bucket/a b")) {
+      setStoredUrl(EXTERNAL_LOCATION_NAME, storedUrl);
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(anotherTestUrl())),
+          ErrorCode.INVALID_ARGUMENT,
+          notChecked);
+      assertApiException(
+          () ->
+              externalLocationOperations.deleteExternalLocation(
+                  EXTERNAL_LOCATION_NAME, Optional.of(false)),
+          ErrorCode.INVALID_ARGUMENT,
+          notChecked);
+    }
+
     setStoredUrl(EXTERNAL_LOCATION_NAME, "s3:///");
     assertThat(
             externalLocationOperations
@@ -817,6 +841,11 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
                     new UpdateExternalLocation().url(anotherTestUrl()).force(true))
                 .getUrl())
         .isEqualTo(anotherTestUrl());
+    createCleanupTask(anotherTestUrl() + "/fourth");
+    assertPendingCleanupRefused(
+        () ->
+            externalLocationOperations.deleteExternalLocation(
+                externalLocationName, Optional.of(false)));
     delete(externalLocationName, Optional.of(true));
   }
 
