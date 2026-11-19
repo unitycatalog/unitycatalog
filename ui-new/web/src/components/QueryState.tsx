@@ -23,7 +23,9 @@ export function QueryState({
   }
   if (error) {
     return (
-      <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error.message}</p>
+      <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        {error.message}
+      </p>
     );
   }
   return <>{children}</>;

@@ -9,6 +9,7 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFs;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -173,6 +174,20 @@ public abstract class CredPropsBuilder {
     props.put(key + ".original", hadoopConf.get(key, defaultOriginal));
     props.put(key, newValue);
     return this;
+  }
+
+  /**
+   * Whether the engine's configuration sets {@code key} itself: a value counts as the engine's own
+   * unless every recorded source is {@code core-default.xml}, which holds Hadoop's own defaults
+   * such as S3A's default provider list and Hadoop 3.5's GCS conflict-check default.
+   */
+  protected boolean engineSets(String key) {
+    if (hadoopConf().get(key) == null) {
+      return false;
+    }
+    // No recorded source means we cannot show the value came from defaults, so respect it.
+    String[] sources = hadoopConf().getPropertySources(key);
+    return sources == null || !Arrays.stream(sources).allMatch("core-default.xml"::equals);
   }
 
   protected boolean isCredScopedFsEnabled() {

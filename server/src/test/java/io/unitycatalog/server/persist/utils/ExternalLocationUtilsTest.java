@@ -73,6 +73,26 @@ public class ExternalLocationUtilsTest {
   }
 
   @Test
+  public void testStillCovers() {
+    NormalizedURL current = NormalizedURL.from("s3://b/a");
+    for (String covering : List.of("s3://b/a", "s3://b", "s3://b/")) {
+      assertThat(ExternalLocationUtils.stillCovers(NormalizedURL.from(covering), current))
+          .as(covering)
+          .isTrue();
+    }
+    for (String notCovering :
+        List.of("s3://b/a/c", "s3://b/ab", "s3://b/a-b", "s3://c/a", "s3://c", "gs://b/a")) {
+      assertThat(ExternalLocationUtils.stillCovers(NormalizedURL.from(notCovering), current))
+          .as(notCovering)
+          .isFalse();
+    }
+    assertThat(
+            ExternalLocationUtils.stillCovers(
+                NormalizedURL.from("s3://b/a"), NormalizedURL.from("s3://b/ab")))
+        .isFalse();
+  }
+
+  @Test
   public void testPendingCleanupIsRejectedBeforePathFallback() {
     session.beginTransaction();
     ExternalLocationDAO externalLocation =

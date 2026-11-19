@@ -1315,7 +1315,8 @@ public class DeltaCommitRepository {
    * metadata provided in a commit. This method handles:
    *
    * <ul>
-   *   <li>Properties: Replaces all existing properties with new ones
+   *   <li>Properties: Replaces all existing properties with new ones, and clears the UniForm
+   *       metadata when the new properties no longer enable UniForm-Iceberg
    *   <li>Schema: Replaces all existing columns with new ones
    *   <li>Description: Updates the table comment
    * </ul>
@@ -1335,6 +1336,8 @@ public class DeltaCommitRepository {
       session.flush();
       PropertyDAO.from(metadata.getProperties().getProperties(), tableId, Constants.TABLE)
           .forEach(session::persist);
+      DeltaUniformUtils.clearUnlessIcebergEnabled(
+          tableInfoDAO, metadata.getProperties().getProperties());
     }
 
     if (metadata.getSchema() != null) {

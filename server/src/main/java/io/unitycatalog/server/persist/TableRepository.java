@@ -367,6 +367,7 @@ public class TableRepository {
           DeltaUpdateTableMapper.checkTableUuidRequirement(dao, collected);
           String preApplyEtag = DeltaUpdateTableMapper.computeEtag(dao);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          boolean hadUniformMetadata = dao.getIcebergMetadataLocation() != null;
           // The request is validated against the table's current state, which would wrongly
           // reject a replay of an add-commit whose changes a later commit superseded. Settle a
           // taken add-commit version first, so the replay or conflict is reported as the commit
@@ -403,8 +404,10 @@ public class TableRepository {
           properties.flush(session, dao.getId());
           // updatedAt/updatedBy track the last change to the table's catalog-visible metadata.
           // Data-only add-commit and backfill-only requests change no metadata, so they must
-          // not advance these fields.
-          if (collected.updates().changesTableMetadata()) {
+          // not advance these fields unless they cleared stale UniForm metadata.
+          boolean clearedUniformMetadata =
+              hadUniformMetadata && dao.getIcebergMetadataLocation() == null;
+          if (collected.updates().changesTableMetadata() || clearedUniformMetadata) {
             dao.setUpdatedAt(new Date());
             dao.setUpdatedBy(callerId);
           }

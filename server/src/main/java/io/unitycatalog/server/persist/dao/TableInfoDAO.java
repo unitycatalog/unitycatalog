@@ -176,4 +176,14 @@ public class TableInfoDAO extends IdentifiableDAO {
     setUniformIcebergConvertedDeltaVersion(convertedDeltaVersion);
     setUniformIcebergConvertedDeltaTimestamp(new Date(convertedDeltaTimestampMs));
   }
+
+  /**
+   * Clear all three UniForm Iceberg fields together. Delta tables only; see {@link
+   * io.unitycatalog.server.service.delta.DeltaUniformUtils#clearUnlessIcebergEnabled}.
+   */
+  public void clearUniformIcebergMetadata() {
+    setIcebergMetadataLocation(null);
+    setUniformIcebergConvertedDeltaVersion(null);
+    setUniformIcebergConvertedDeltaTimestamp(null);
+  }
 }

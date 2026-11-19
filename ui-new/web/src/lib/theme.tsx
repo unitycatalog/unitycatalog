@@ -1,4 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 export type ColorMode = "light" | "dark" | "auto";
@@ -7,7 +13,10 @@ const STORAGE_KEY = "uc-ui-color-mode";
 
 // Read the persisted preference; default to "auto" (follow the OS).
 export function readColorMode(): ColorMode {
-  const v = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+  const v =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem(STORAGE_KEY)
+      : null;
   return v === "light" || v === "dark" || v === "auto" ? v : "auto";
 }
 
@@ -16,7 +25,10 @@ export function applyColorMode(mode: ColorMode) {
   document.documentElement.dataset.colorMode = mode;
 }
 
-type ThemeContextValue = { mode: ColorMode; setMode: (mode: ColorMode) => void };
+type ThemeContextValue = {
+  mode: ColorMode;
+  setMode: (mode: ColorMode) => void;
+};
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
@@ -32,7 +44,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setModeState(next);
   }, []);
 
-  return <ThemeContext.Provider value={{ mode, setMode }}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={{ mode, setMode }}>
+      {children}
+    </ThemeContext.Provider>
+  );
 }
 
 export function useTheme(): ThemeContextValue {

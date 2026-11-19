@@ -32,9 +32,11 @@ WORKDIR $HOME
 
 COPY --parents dev/ build/ project/ examples/ server/ api/ clients/ version.sbt build.sbt ./
 
-# Only the server and the CLI ship in the image. The root `package` would also
-# resolve Spark, Delta, and Hadoop for the connectors.
-RUN apk add --no-cache bash && ./build/sbt -info clean server/package cli/package
+# Only the server, the CLI, and the sample database ship in the image. The root `package`
+# would also resolve Spark, Delta, and Hadoop for the connectors. The sample database is built
+# here, never taken from the build context: etc/ is not copied into this stage, so a change in
+# it does not rebuild this layer.
+RUN apk add --no-cache bash && ./build/sbt -info clean server/package cli/package sampleDatabase/buildSampleDatabase
 
 # Stage only what the launchers load, at its build path, because the classpath
 # files hold absolute paths: the classpath files, their entries, and the source
@@ -93,8 +95,10 @@ COPY --from=base --chown=$USER:$USER --chmod=550 /staging$HOME/ $HOME/
 USER $USER
 
 # Copy remaining directories here for caching optimization. The server writes
-# its database, data, and logs under etc/.
+# its database, data, and logs under etc/. .dockerignore keeps the context's
+# sample database out, so the one below is the built one.
 COPY --chown=$USER:$USER --parents bin/ etc/ $HOME/
+COPY --from=base --chown=$USER:$USER $HOME/etc/db/h2db.mv.db $HOME/etc/db/h2db.mv.db
 
 # COPY creates $HOME with mode 755 and gives etc/ and etc/conf the modes of the
 # build context. Set these three directories, not their contents, so their modes

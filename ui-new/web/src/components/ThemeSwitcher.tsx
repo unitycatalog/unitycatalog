@@ -24,7 +24,9 @@ export default function ThemeSwitcher() {
           aria-pressed={mode === m}
           className={cn(
             "inline-flex h-7 w-7 items-center justify-center rounded transition",
-            mode === m ? "bg-white/90 text-neutral-900 shadow-sm" : "text-white/90 hover:bg-white/20",
+            mode === m
+              ? "bg-white/90 text-neutral-900 shadow-sm"
+              : "text-white/90 hover:bg-white/20",
           )}
         >
           <Icon className="h-4 w-4" />

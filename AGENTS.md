@@ -86,6 +86,7 @@ Key points: HTTP verb annotations (`@Post`, `@Get`, `@Patch`, `@Delete`) with `@
 | `connectors/spark/` | The Apache Spark connector (Scala). |
 | `connectors/hadoop/` | The Hadoop connector. |
 | `examples/cli/` | The `uc` command-line client. |
+| `examples/sample-database/` | Builds the sample H2 database (`etc/db/h2db.mv.db`) that the quickstart examples use. |
 | `integration-tests/` | Cross-module and end-to-end tests. |
 | `ui/` | The web UI (React, built with Yarn / Node). |
 | `docs/` | User documentation, published with MkDocs (`mkdocs.yml`). |
@@ -94,7 +95,7 @@ Key points: HTTP verb annotations (`@Post`, `@Get`, `@Patch`, `@Delete`) with `@
 
 Server internal packages (`server/src/main/java/io/unitycatalog/server/`): `service/` (request handlers), `persist/` (repositories, DAOs, transactions), `auth/` (authorization), `security/` (authentication: JWT and security context), `delta/` (Delta integration), `exception/` (error types and handlers), `utils/` (config and shared helpers). Tests mirror this under `server/src/test/...`, with `base/` holding the shared test base classes (`BaseServerTest`, `BaseCRUDTest`) and per-domain extensions.
 
-sbt projects: `server`, `serverShaded`, `client`, `pythonClient`, `controlApi`, generated model projects (`serverModels`, `controlModels`), `apiDocs`, `cli`, `spark`, `hadoop`, `integrationTests`, and the aggregate `root`.
+sbt projects: `server`, `serverShaded`, `client`, `pythonClient`, `controlApi`, generated model projects (`serverModels`, `controlModels`), `apiDocs`, `cli`, `sampleDatabase`, `spark`, `hadoop`, `integrationTests`, and the aggregate `root`.
 
 ## Domain and authorization model
 

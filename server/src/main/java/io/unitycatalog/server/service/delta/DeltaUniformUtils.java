@@ -35,6 +35,7 @@ import java.util.Optional;
  *       (metadata-location, version, timestamp-ms, optional base-version) so no field is normalized
  *       or parsed twice.
  *   <li>{@link #applyToDao} -- writes the triple to the DAO; no-op when absent.
+ *   <li>{@link #clearUnlessIcebergEnabled} -- clears the triple once UniForm-Iceberg is off.
  * </ul>
  */
 public final class DeltaUniformUtils {
@@ -317,5 +318,19 @@ public final class DeltaUniformUtils {
         f ->
             dao.updateUniformIcebergMetadata(
                 f.metadataLocation(), f.convertedDeltaVersion(), f.convertedDeltaTimestampMs()));
+  }
+
+  /**
+   * Clear the UniForm Iceberg fields on a Delta table's {@link TableInfoDAO} unless {@code
+   * properties}, the table's properties after the request, enable UniForm-Iceberg. Otherwise a
+   * table that turned UniForm off keeps being served at its last converted version through the
+   * Iceberg REST catalog and in the {@code uniform} block of the Delta {@code loadTable}. Callers
+   * must only pass Delta tables: a native Iceberg table keeps its metadata pointer in the same
+   * column.
+   */
+  public static void clearUnlessIcebergEnabled(TableInfoDAO dao, Map<String, String> properties) {
+    if (!isIcebergEnabled(properties)) {
+      dao.clearUniformIcebergMetadata();
+    }
   }
 }
