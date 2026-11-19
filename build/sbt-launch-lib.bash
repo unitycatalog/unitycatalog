@@ -49,34 +49,45 @@ sbt_launch_sha256 () {
 }
 
 # Prints the SHA-256 of $1 as a lowercase hex string, using whichever of sha256sum (Linux) or
-# shasum -a 256 (macOS) is on PATH.
+# shasum -a 256 (macOS) is on PATH. acquire_sbt_jar checks up front that one of them exists, so
+# this only returns non-zero here as a last-resort guard, without repeating that message.
 sha256_of () {
   if command -v sha256sum > /dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
   elif command -v shasum > /dev/null 2>&1; then
     shasum -a 256 "$1" | awk '{print $1}'
   else
-    echoerr "Neither sha256sum nor shasum is available to verify the sbt launcher checksum."
     return 1
   fi
 }
 
+# Compares the SHA-256 of $1 against the expected hash $2. Returns 0 on a match. On a mismatch,
+# prints the expected and actual hashes and returns 1; the caller decides what to do with $1.
+checksum_matches () {
+  local file="$1"
+  local expected_sha256="$2"
+  local actual_sha256
+  actual_sha256="$(sha256_of "$file")"
+  if [[ "$actual_sha256" == "$expected_sha256" ]]; then
+    return 0
+  fi
+  echoerr "sbt launcher checksum mismatch for $file"
+  echoerr "  expected sha256: $expected_sha256"
+  echoerr "  actual sha256:   $actual_sha256"
+  return 1
+}
+
 # Verifies $1 (a freshly downloaded "*.part" file) against the expected SHA-256 $3, and moves it
-# to $2 only on a match. On a mismatch, deletes $1 and prints the expected and actual hashes so
-# the caller can retry from another URL or fail.
+# to $2 only on a match. On a mismatch, deletes $1 so the caller can retry from another URL or
+# fail.
 verify_and_install_sbt_jar () {
   local jar_dl="$1"
   local jar_dest="$2"
   local expected_sha256="$3"
-  local actual_sha256
-  actual_sha256="$(sha256_of "$jar_dl")"
-  if [[ "$actual_sha256" == "$expected_sha256" ]]; then
+  if checksum_matches "$jar_dl" "$expected_sha256"; then
     mv "$jar_dl" "$jar_dest"
     return 0
   fi
-  echoerr "sbt launcher checksum mismatch for $jar_dl"
-  echoerr "  expected sha256: $expected_sha256"
-  echoerr "  actual sha256:   $actual_sha256"
   rm -f "$jar_dl"
   return 1
 }
@@ -108,11 +119,14 @@ acquire_sbt_jar () {
   JAR=build/sbt-launch-${SBT_VERSION}.jar
   sbt_jar=$JAR
 
-  if [[ -f "$sbt_jar" ]] && [[ "$(sha256_of "$sbt_jar")" != "${SBT_LAUNCH_SHA256}" ]]; then
-    # A cached jar is just a file on disk; verify it on every run; the same way a fresh download
-    # is verified, so one swapped or corrupted after it was fetched is never run unverified.
+  if [[ -f "$sbt_jar" ]] && ! checksum_matches "$sbt_jar" "${SBT_LAUNCH_SHA256}"; then
+    # A jar already on disk may have been swapped or corrupted after download, so it is
+    # re-verified on every run.
     echoerr "Cached sbt launcher ${sbt_jar} does not match the expected checksum; re-downloading."
-    rm -f "$sbt_jar"
+    rm -f "$sbt_jar" || {
+      echoerr "Could not remove the cached sbt launcher ${sbt_jar}; refusing to run it unverified."
+      exit 1
+    }
   fi
 
   if [[ ! -f "$sbt_jar" ]]; then
@@ -134,7 +148,7 @@ acquire_sbt_jar () {
     fi
     if [ ! -f "${JAR}" ]; then
     # Primary download failed (or failed checksum verification), retry from Maven Central directly
-    printf 'Download from %s failed. Retrying from %s\n' "${URL1}" "${BACKUP_URL}"
+    printf 'Could not fetch a verified sbt launcher from %s. Retrying from %s\n' "${URL1}" "${BACKUP_URL}"
     JAR_DL="${JAR}.part"
     if [ $(command -v curl) ]; then
       curl --fail --location --silent ${BACKUP_URL} > "${JAR_DL}" &&\
@@ -146,7 +160,7 @@ acquire_sbt_jar () {
     fi
     if [ ! -f "${JAR}" ]; then
     # Both downloads failed, or neither one passed checksum verification
-    printf "Our attempt to download sbt locally to ${JAR} failed. Please install sbt manually from https://www.scala-sbt.org/\n"
+    printf "Our attempt to download and verify sbt locally to ${JAR} failed. Please install sbt manually from https://www.scala-sbt.org/\n"
     exit -1
     fi
     printf "Launching sbt from ${JAR}\n"
