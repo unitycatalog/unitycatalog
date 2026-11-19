@@ -172,6 +172,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     System.out.println("Testing update model: changing name..");
     UpdateRegisteredModel updateRegisteredModel =
         new UpdateRegisteredModel().newName(MODEL_NEW_NAME);
+    waitForClockToPass(rmInfo.getCreatedAt());
     RegisteredModelInfo updatedRegisteredModelInfo =
         modelOperations.updateRegisteredModel(MODEL_FULL_NAME, updateRegisteredModel);
     assertThat(updatedRegisteredModelInfo.getId()).isEqualTo(rmInfo.getId());
@@ -181,11 +182,12 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(updatedRegisteredModelInfo.getUpdatedAt()).isNotNull();
     long firstUpdatedAt = updatedRegisteredModelInfo.getUpdatedAt();
     assertThat(updatedRegisteredModelInfo.getUpdatedAt())
-        .isNotEqualTo(updatedRegisteredModelInfo.getCreatedAt());
+        .isGreaterThan(updatedRegisteredModelInfo.getCreatedAt());
 
     // Update model comment without updating name
     System.out.println("Testing update model: changing comment..");
     UpdateRegisteredModel updateModel2 = new UpdateRegisteredModel().comment(MODEL_NEW_COMMENT);
+    waitForClockToPass(firstUpdatedAt);
     RegisteredModelInfo updatedRegisteredModelInfo2 =
         modelOperations.updateRegisteredModel(MODEL_NEW_FULL_NAME, updateModel2);
     assertThat(updatedRegisteredModelInfo2.getId()).isEqualTo(updatedRegisteredModelInfo.getId());
@@ -193,7 +195,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(updatedRegisteredModelInfo2.getComment()).isEqualTo(updateModel2.getComment());
     assertThat(updatedRegisteredModelInfo2.getFullName()).isEqualTo(MODEL_NEW_FULL_NAME);
     assertThat(updatedRegisteredModelInfo2.getUpdatedAt()).isNotNull();
-    assertThat(updatedRegisteredModelInfo2.getUpdatedAt()).isNotEqualTo(firstUpdatedAt);
+    assertThat(updatedRegisteredModelInfo2.getUpdatedAt()).isGreaterThan(firstUpdatedAt);
 
     // Now update the parent catalog name
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);
@@ -325,6 +327,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Update model version comment
     System.out.println("Testing update model version comment...");
     UpdateModelVersion updateModelVersion = new UpdateModelVersion().comment(MODEL_NEW_COMMENT);
+    waitForClockToPass(mvInfo3.getUpdatedAt());
     ModelVersionInfo updatedModelVersionInfo =
         modelOperations.updateModelVersion(MODEL_FULL_NAME, 3L, updateModelVersion);
     assertThat(updatedModelVersionInfo.getCatalogName()).isEqualTo(mvInfo3.getCatalogName());
@@ -339,7 +342,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(updatedModelVersionInfo.getStorageLocation())
         .isEqualTo(mvInfo3.getStorageLocation());
     assertThat(updatedModelVersionInfo.getCreatedAt()).isEqualTo(mvInfo3.getCreatedAt());
-    assertThat(updatedModelVersionInfo.getUpdatedAt()).isNotEqualTo(mvInfo3.getUpdatedAt());
+    assertThat(updatedModelVersionInfo.getUpdatedAt()).isGreaterThan(mvInfo3.getUpdatedAt());
     assertThat(updatedModelVersionInfo.getId()).isEqualTo(mvInfo3.getId());
     ModelVersionInfo anotherMv3 = modelOperations.getModelVersion(MODEL_FULL_NAME, 3L);
     assertThat(updatedModelVersionInfo).isEqualTo(anotherMv3);
@@ -374,5 +377,15 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         .isInstanceOf(Exception.class);
     assertThatThrownBy(() -> modelOperations.getRegisteredModel(MODEL_FULL_NAME))
         .isInstanceOf(Exception.class);
+  }
+
+  /**
+   * Returns once the clock is past {@code millis}. The server sets updated_at from the same clock,
+   * so an update sent next gets a later timestamp instead of one in the same millisecond.
+   */
+  private static void waitForClockToPass(long millis) {
+    while (System.currentTimeMillis() <= millis) {
+      Thread.onSpinWait();
+    }
   }
 }
