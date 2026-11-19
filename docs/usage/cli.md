@@ -65,7 +65,7 @@ storage access role trust in `unity_catalog_iam_arn`, additionally with an `exte
 trust relationship must check. Please refer to [Deploy for AWS](../server/aws.md) on how to properly
 configure both roles to make it working.
 
-Here's how to create a Credential to access Google Cloud Storage with a service account key:
+Here's how to store a Google Cloud service account key as a Credential:
 
 ```sh
 bin/uc credential create \
@@ -84,6 +84,10 @@ instance and keep it as long as the credentials exist. The `private_key` is neve
 and `list` show only the `email` and `private_key_id`.
 
 An external location that uses a Google Cloud Storage credential must be a `gs://` path.
+
+For now this only stores the key and binds external locations to it. Getting temporary access tokens
+from the stored credential is not supported yet: a request for access under such a location fails
+with `UNIMPLEMENTED`.
 
 ### List Credentials
 
