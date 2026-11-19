@@ -842,9 +842,9 @@ public class SchemaMigratorTest {
 
   /**
    * {@code fromBaseline}: a 0.7.0 database without schema history, so that steps 2 and 3 are both
-   * pending and step 2 is simulated first; otherwise only step 3 is pending. {@code onOtherTable}:
-   * another application's table has a constraint of the dropped name; PostgreSQL's constraint names
-   * are per table, so that is not the constraint that the step drops.
+   * pending and step 2 is simulated first; otherwise step 3 is the first pending step. {@code
+   * onOtherTable}: another application's table has a constraint of the dropped name; PostgreSQL's
+   * constraint names are per table, so that is not the constraint that the step drops.
    */
   @ParameterizedTest
   @CsvSource({"false, false", "true, false", "false, true", "true, true"})
@@ -855,7 +855,7 @@ public class SchemaMigratorTest {
     if (fromBaseline) {
       UpgradeTestUtils.createBaselineSchema(db);
     } else {
-      migrator.upgradeSchema();
+      UpgradeTestUtils.migrateTo(db, "3");
     }
     UpgradeTestUtils.execute(
         db,

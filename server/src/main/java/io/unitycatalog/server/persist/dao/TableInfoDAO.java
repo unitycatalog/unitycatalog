@@ -30,6 +30,7 @@ import org.hibernate.annotations.BatchSize;
     name = "uc_tables",
     indexes = {
       @Index(name = "idx_name", columnList = "name"),
+      @Index(name = "uk_uc_tables_schema_name", columnList = "schema_id, name", unique = true),
     })
 // Lombok annotations
 @Getter
@@ -104,6 +105,10 @@ public class TableInfoDAO extends IdentifiableDAO {
    */
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String icebergMetadataLocation;
+
+  // Separate from the table/UniForm pointer: views must never enter listIcebergTables.
+  @Column(name = "iceberg_view_metadata_location", length = 65535)
+  private String icebergViewMetadataLocation;
 
   @Column(name = "uniform_iceberg_converted_delta_version")
   private Long uniformIcebergConvertedDeltaVersion;

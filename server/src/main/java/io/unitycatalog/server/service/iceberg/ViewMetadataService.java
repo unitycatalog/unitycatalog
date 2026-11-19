@@ -1,0 +1,194 @@
+package io.unitycatalog.server.service.iceberg;
+
+import com.google.common.hash.Hashing;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.TableInfo;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Supplier;
+import org.apache.iceberg.Schema;
+import org.apache.iceberg.exceptions.BadRequestException;
+import org.apache.iceberg.exceptions.ValidationException;
+import org.apache.iceberg.rest.requests.CreateViewRequest;
+import org.apache.iceberg.view.SQLViewRepresentation;
+import org.apache.iceberg.view.ViewMetadata;
+import org.apache.iceberg.view.ViewMetadataParser;
+import org.apache.iceberg.view.ViewVersion;
+
+/** Spark-only view protocol state. SQL and its output schema are supplied by the engine. */
+public final class ViewMetadataService {
+  private static final String CONTEXT_COUNT = "view.catalogAndNamespace.numParts";
+  private static final String CONTEXT_PART = "view.catalogAndNamespace.part.";
+  private final Path root;
+
+  public ViewMetadataService(String root) {
+    if (root == null || root.isBlank()) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "server.iceberg-view.metadata-root is required when Iceberg views are enabled");
+    }
+    this.root = Path.of(root).toAbsolutePath().normalize();
+  }
+
+  public static String sparkSql(ViewVersion version) {
+    if (version.representations().size() != 1
+        || !(version.representations().get(0) instanceof SQLViewRepresentation sql)
+        || !"spark".equals(sql.dialect())
+        || sql.sql().isBlank()) {
+      throw new BadRequestException(
+          "Views require exactly one nonempty SQL representation with dialect spark");
+    }
+    return sql.sql();
+  }
+
+  private static void validateVersion(ViewVersion version) {
+    sparkSql(version);
+    if (version.defaultNamespace().length() > 1) {
+      throw new BadRequestException("Only single-level view namespaces are supported");
+    }
+  }
+
+  public ViewMetadata create(TableInfo info, CreateViewRequest request) {
+    if (request.properties().keySet().stream().anyMatch(k -> k.startsWith("view."))) {
+      throw new BadRequestException(
+          "Spark view.* properties are server-owned on the Iceberg view API");
+    }
+    validateVersion(request.viewVersion());
+    if (request.schema().columns().isEmpty()) {
+      throw new BadRequestException("Views require at least one output column");
+    }
+    if (request.location() != null) {
+      throw new BadRequestException("View locations are assigned by the catalog");
+    }
+    ViewMetadata metadata =
+        ViewMetadata.builder()
+            .assignUUID(info.getTableId())
+            .setLocation(directory(info.getTableId()).toUri().toString())
+            .setCurrentVersion(request.viewVersion(), request.schema())
+            .setProperties(request.properties())
+            .build();
+    return write(metadata);
+  }
+
+  public static Map<String, String> nativeProperties(CreateViewRequest request, String catalog) {
+    Map<String, String> properties = new HashMap<>(request.properties());
+    ViewVersion version = request.viewVersion();
+    Schema schema = request.schema();
+    properties.put(CONTEXT_COUNT, Integer.toString(1 + version.defaultNamespace().length()));
+    properties.put(
+        CONTEXT_PART + "0", version.defaultCatalog() != null ? version.defaultCatalog() : catalog);
+    for (int i = 0; i < version.defaultNamespace().length(); i++) {
+      properties.put(CONTEXT_PART + (i + 1), version.defaultNamespace().level(i));
+    }
+    // Iceberg schemas name query outputs. Native readers use these for positional binding.
+    properties.put("view.query.out.numCols", Integer.toString(schema.columns().size()));
+    for (int i = 0; i < schema.columns().size(); i++) {
+      properties.put("view.query.out.col." + i, schema.columns().get(i).name());
+    }
+    return properties;
+  }
+
+  /** Materialize a reusable native snapshot without changing the canonical view or its pointer. */
+  public ViewMetadata readNative(TableInfo info) {
+    Path directory = directory(info.getTableId());
+    String location = directory.toUri().toString();
+    if (!location.endsWith("/")) {
+      location += "/";
+    }
+    ViewMetadata metadata = NativeViewMetadata.from(info, location);
+    String json = ViewMetadataParser.toJson(metadata);
+    String digest = Hashing.sha256().hashString(json, StandardCharsets.UTF_8).toString();
+    Path file = directory.resolve("native-" + digest + ".metadata.json");
+    try {
+      if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+        prepareDirectory(directory);
+        Path temporary = directory.resolve(UUID.randomUUID() + ".tmp");
+        Files.writeString(temporary, json, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        // Readers see a complete snapshot. Concurrent writers publish identical bytes at this path.
+        try {
+          Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
+        } catch (FileAlreadyExistsException e) {
+          // Some providers refuse to replace a snapshot another reader just published.
+          Files.deleteIfExists(temporary);
+        }
+      }
+      ViewMetadata loaded = read(info.getTableId(), file.toUri().toString());
+      if (!json.equals(Files.readString(file))) {
+        throw new BaseException(
+            ErrorCode.INTERNAL, "Native view metadata snapshot is inconsistent");
+      }
+      return loaded;
+    } catch (IOException | UncheckedIOException | IllegalArgumentException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Could not materialize native view metadata", e);
+    }
+  }
+
+  private Path directory(String uuid) {
+    return root.resolve(UUID.fromString(uuid).toString());
+  }
+
+  private ViewMetadata write(ViewMetadata metadata) {
+    Path directory = directory(metadata.uuid());
+    Path file = directory.resolve(UUID.randomUUID() + ".metadata.json");
+    try {
+      prepareDirectory(directory);
+      Files.writeString(
+          file,
+          ViewMetadataParser.toJson(metadata),
+          StandardOpenOption.CREATE_NEW,
+          StandardOpenOption.WRITE);
+      return ViewMetadataParser.fromJson(file.toUri().toString(), Files.readString(file));
+    } catch (IOException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Could not persist view metadata", e);
+    }
+  }
+
+  private static void prepareDirectory(Path directory) throws IOException {
+    Files.createDirectories(directory);
+    // The root is trusted administrator configuration. Reject links in its descendants.
+    if (Files.isSymbolicLink(directory)) {
+      throw new IOException("View metadata directory is a symbolic link");
+    }
+  }
+
+  public ViewMetadata read(String uuid, String pointer) {
+    Path file = Path.of(java.net.URI.create(pointer)).toAbsolutePath().normalize();
+    if (!directory(uuid).equals(file.getParent())
+        || Files.isSymbolicLink(file.getParent())
+        || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+      throw new BaseException(ErrorCode.INTERNAL, "Invalid persisted view metadata location");
+    }
+    try {
+      ViewMetadata metadata = ViewMetadataParser.fromJson(pointer, Files.readString(file));
+      if (!uuid.equals(metadata.uuid())) {
+        throw new BaseException(ErrorCode.INTERNAL, "Persisted view metadata identity mismatch");
+      }
+      return metadata;
+    } catch (IOException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Could not read view metadata", e);
+    }
+  }
+
+  /** Preserve protocol error statuses across the repository's transaction wrapper. */
+  public static <T> T protocolAction(Supplier<T> action) {
+    try {
+      return action.get();
+    } catch (IllegalArgumentException
+        | BadRequestException
+        | UnsupportedOperationException
+        | ValidationException e) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, e.getMessage(), e);
+    }
+  }
+}

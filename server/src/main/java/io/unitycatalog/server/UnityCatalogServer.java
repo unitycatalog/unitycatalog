@@ -129,6 +129,7 @@ public class UnityCatalogServer implements AutoCloseable {
             : unityCatalogServerBuilder.hibernateConfigurator;
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      HibernateConfigurator.requireUniqueTableNameIndex(hibernateConfigurator.getDataSource());
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())

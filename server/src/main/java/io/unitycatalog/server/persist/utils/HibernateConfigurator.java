@@ -41,6 +41,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.sql.DataSource;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
@@ -202,6 +203,7 @@ public class HibernateConfigurator implements AutoCloseable {
   private static SessionFactory createSessionFactory(
       Properties hibernateProperties, HikariDataSource dataSource) {
     try {
+      requireUniqueTableNames(dataSource);
       Properties sessionFactoryProperties = new Properties();
       sessionFactoryProperties.putAll(hibernateProperties);
       sessionFactoryProperties.remove("hibernate.connection.driver_class");
@@ -244,6 +246,81 @@ public class HibernateConfigurator implements AutoCloseable {
     } catch (Exception e) {
       throw new RuntimeException("Exception during creation of SessionFactory", e);
     }
+  }
+
+  /** Refuse ambiguous names before a schema upgrade or Hibernate update changes any schema. */
+  public static void requireUniqueTableNames(DataSource dataSource) {
+    try (Connection connection = dataSource.getConnection()) {
+      String table =
+          connection.getMetaData().storesUpperCaseIdentifiers() ? "UC_TABLES" : "uc_tables";
+      try (ResultSet tables =
+          connection
+              .getMetaData()
+              .getTables(
+                  connection.getCatalog(), connection.getSchema(), table, new String[] {"TABLE"})) {
+        if (!tables.next()) {
+          return;
+        }
+      }
+      if (hasUniqueTableNameIndex(connection)) {
+        return;
+      }
+      try (Statement statement = connection.createStatement()) {
+        statement.setMaxRows(1);
+        try (ResultSet duplicates =
+            statement.executeQuery(
+                "SELECT schema_id, name FROM uc_tables GROUP BY schema_id, name HAVING COUNT(*)"
+                    + " > 1")) {
+          if (duplicates.next()) {
+            throw new IllegalStateException(
+                "Duplicate table name: "
+                    + duplicates.getString("name")
+                    + ". Stop all servers, back up the database, and resolve duplicate (schema_id,"
+                    + " name) entries in uc_tables before retrying --upgrade-schema; see"
+                    + " docs/server/upgrades.md.");
+          }
+        }
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not check for duplicate table names", e);
+    }
+  }
+
+  /** Hibernate update may log and ignore a failed index creation on an existing database. */
+  public static void requireUniqueTableNameIndex(DataSource dataSource) {
+    try (Connection connection = dataSource.getConnection()) {
+      if (!hasUniqueTableNameIndex(connection)) {
+        throw new IllegalStateException(
+            "Table name uniqueness is not enforced. Stop all servers and run --upgrade-schema;"
+                + " resolve any duplicate (schema_id, name) entries as described in"
+                + " docs/server/upgrades.md.");
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not verify table name uniqueness", e);
+    }
+  }
+
+  private static boolean hasUniqueTableNameIndex(Connection connection) throws SQLException {
+    String table =
+        connection.getMetaData().storesUpperCaseIdentifiers() ? "UC_TABLES" : "uc_tables";
+    Set<String> columns = new TreeSet<>();
+    try (ResultSet indexes =
+        connection
+            .getMetaData()
+            .getIndexInfo(connection.getCatalog(), connection.getSchema(), table, true, false)) {
+      while (indexes.next()) {
+        String index = indexes.getString("INDEX_NAME");
+        String column = indexes.getString("COLUMN_NAME");
+        if (index != null
+            && column != null
+            && index
+                .toLowerCase(Locale.ROOT)
+                .matches("uk_uc_tables_schema_name(?:_index_[a-z0-9]+)?")) {
+          columns.add(column.toLowerCase(Locale.ROOT));
+        }
+      }
+    }
+    return columns.equals(Set.of("schema_id", "name"));
   }
 
   @Override

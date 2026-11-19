@@ -11,6 +11,7 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.CreateViewRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequestParser;
@@ -45,6 +46,26 @@ public class IcebergRestClient {
 
   public IcebergRestClient(ServerConfig config) {
     this.config = config;
+  }
+
+  public LoadViewResponse createView(String catalog, String namespace, CreateViewRequest request)
+      throws ApiException {
+    return parse(
+        post(namespacePath(catalog, namespace) + "/views", toJson(request)),
+        LoadViewResponse.class);
+  }
+
+  public boolean viewExists(String catalog, String namespace, String view) throws ApiException {
+    HttpResponse<String> response = head(namespacePath(catalog, namespace) + "/views/" + view);
+    if (response.statusCode() == 404) {
+      return false;
+    }
+    checkSuccess(response);
+    return true;
+  }
+
+  public void dropView(String catalog, String namespace, String view) throws ApiException {
+    checkSuccess(delete(namespacePath(catalog, namespace) + "/views/" + view));
   }
 
   // --- endpoints ------------------------------------------------------------------------------

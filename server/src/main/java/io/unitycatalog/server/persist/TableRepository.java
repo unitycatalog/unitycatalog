@@ -52,8 +52,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.iceberg.view.ViewMetadata;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -762,6 +764,58 @@ public class TableRepository {
         (session, dao, tableInfo) -> tableInfo);
   }
 
+  public record CreatedIcebergView(TableInfo view, ViewMetadata metadata) {}
+
+  public CreatedIcebergView createViewForIceberg(
+      CreateTable request, Function<TableInfo, ViewMetadata> metadataWriter) {
+    if (request.getTableType() != TableType.VIEW) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Expected an ordinary view");
+    }
+    return createTableImpl(
+        request,
+        Optional.empty(),
+        Optional.empty(),
+        (session, dao, info) -> {
+          ViewMetadata metadata = metadataWriter.apply(info);
+          dao.setIcebergViewMetadataLocation(metadata.metadataFileLocation());
+          return new CreatedIcebergView(info, metadata);
+        });
+  }
+
+  public record IcebergViewState(TableInfo view, String metadataLocation) {}
+
+  /** Read a consistent native view definition or an immutable IRC metadata pointer. */
+  public IcebergViewState getIcebergViewState(String catalog, String schema, String name) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTableOrThrow(session, catalog, schema, name);
+          if (!TableType.VIEW.getValue().equals(dao.getType())) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "View does not exist: " + name);
+          }
+          String pointer = dao.getIcebergViewMetadataLocation();
+          TableInfo info = dao.toTableInfo(pointer == null, catalog, schema);
+          if (pointer == null) {
+            RepositoryUtils.attachProperties(info, info.getTableId(), Constants.TABLE, session);
+          }
+          return new IcebergViewState(info, pointer);
+        },
+        "Failed to load view " + name,
+        /* readOnly= */ true,
+        Optional.of(TRANSACTION_REPEATABLE_READ));
+  }
+
+  private static void requireIcebergView(TableInfoDAO dao, String name) {
+    if (!TableType.VIEW.getValue().equals(dao.getType())
+        || dao.getIcebergViewMetadataLocation() == null) {
+      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "View does not exist: " + name);
+    }
+  }
+
+  public TableInfoDAO deleteViewForIceberg(String catalog, String schema, String name) {
+    return deleteTable(catalog, schema, name, dao -> requireIcebergView(dao, name));
+  }
+
   /**
    * Create a table and return the UC Delta API {@link DeltaLoadTableResponse} in a single
    * transaction. The DAO persisted during create is the same one used to build the response, so
@@ -1360,7 +1414,7 @@ public class TableRepository {
           session.merge(tableInfoDAO);
           return null;
         },
-        "Failed to rename table " + catalog + "." + schema + "." + table,
+        "Failed to rename table " + catalog + "." + schema + "." + table + " to " + newName,
         /* readOnly= */ false);
   }
 }
