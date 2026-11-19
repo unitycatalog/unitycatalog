@@ -4,7 +4,6 @@ import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
-import static org.mockito.Mockito.mock;
 
 import com.google.api.client.testing.http.MockHttpTransport;
 import com.google.api.client.testing.http.MockLowLevelHttpResponse;
@@ -15,15 +14,21 @@ import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.CreateCredentialRequest;
+import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.Date;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -65,22 +70,6 @@ public class GcpCredentialVendorTest {
             + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
             + ".startsWith(\"%s/\")",
         bucket, escapedPath, bucket, escapedPath, escapedPath, escapedPath);
-  }
-
-  /** Vending from a stored credential comes with a later change; until then it fails closed. */
-  @Test
-  public void testStoredCredentialIsNotVendedYet() {
-    CredentialContext context =
-        CredentialContext.create(
-            NormalizedURL.from("gs://test-bucket/t"),
-            Set.of(CredentialContext.Privilege.SELECT),
-            Optional.of(mock(CredentialDAO.class)));
-
-    BaseException error =
-        catchThrowableOfType(
-            BaseException.class, () -> credentialVendor.vendGcpCredential(context));
-
-    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.UNIMPLEMENTED);
   }
 
   @Test
@@ -248,6 +237,88 @@ public class GcpCredentialVendorTest {
       // A clock problem is not fixed by replacing the key.
       assertThat(error.getMessage()).doesNotContain("Replace the storage credential");
     }
+  }
+
+  /** The generator of the {@code gcs.*} settings, counting how often it is asked for a token. */
+  public static class ConfiguredGenerator implements GcpCredentialGenerator {
+    static final AtomicInteger CALLS = new AtomicInteger();
+
+    @Override
+    public AccessToken generate(CredentialContext context) {
+      CALLS.incrementAndGet();
+      return new AccessToken("from-gcs-settings", new Date(System.currentTimeMillis() + 600_000));
+    }
+  }
+
+  private static final EncryptedCredentialSecretStore SECRET_STORE =
+      new EncryptedCredentialSecretStore(Optional.of(TestUtils.CREDENTIAL_ENCRYPTION_KEY));
+
+  private static CredentialContext contextWithStoredKey() {
+    CredentialDAO stored =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("gcs_credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServiceAccountKey(
+                    new GcpServiceAccountKeyRequest()
+                        .email(STORED_KEY_EMAIL)
+                        .privateKeyId("key-id-1")
+                        .privateKey(TestUtils.generatePkcs8PrivateKeyPem())),
+            "caller",
+            SECRET_STORE);
+    return CredentialContext.create(
+        NormalizedURL.from("gs://test-bucket/t"),
+        Set.of(CredentialContext.Privilege.SELECT),
+        Optional.of(stored));
+  }
+
+  private static GcpCredentialVendor vendorWithGcsSettingsFor(
+      java.util.function.Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> keys) {
+    Properties properties = new Properties();
+    properties.setProperty("gcs.bucketPath.0", "gs://test-bucket");
+    properties.setProperty("gcs.credentialGenerator.0", ConfiguredGenerator.class.getName());
+    return new GcpCredentialVendor(new ServerProperties(properties), SECRET_STORE, keys);
+  }
+
+  @Test
+  public void testStoredKeyTakesPrecedenceOverGcsSettings() {
+    ConfiguredGenerator.CALLS.set(0);
+    GcpCredentialVendor vendor =
+        vendorWithGcsSettingsFor(
+            key -> context -> new AccessToken("from-stored-key:" + key.getEmail(), null));
+
+    AccessToken stored = vendor.vendGcpCredential(contextWithStoredKey());
+
+    assertThat(stored.getTokenValue()).isEqualTo("from-stored-key:" + STORED_KEY_EMAIL);
+    assertThat(ConfiguredGenerator.CALLS).hasValue(0);
+
+    // Without a stored credential, the same bucket is vended from the gcs.* settings.
+    AccessToken configured =
+        vendor.vendGcpCredential(
+            CredentialContext.create(
+                NormalizedURL.from("gs://test-bucket/t"),
+                Set.of(CredentialContext.Privilege.SELECT),
+                Optional.empty()));
+    assertThat(configured.getTokenValue()).isEqualTo("from-gcs-settings");
+    assertThat(ConfiguredGenerator.CALLS).hasValue(1);
+  }
+
+  @Test
+  public void testStoredKeyFailureDoesNotFallBackToGcsSettings() {
+    ConfiguredGenerator.CALLS.set(0);
+    GcpCredentialVendor vendor =
+        vendorWithGcsSettingsFor(
+            key ->
+                context -> {
+                  throw new BaseException(ErrorCode.FAILED_PRECONDITION, "key rejected");
+                });
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class, () -> vendor.vendGcpCredential(contextWithStoredKey()));
+
+    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(ConfiguredGenerator.CALLS).hasValue(0);
   }
 
   @Test
