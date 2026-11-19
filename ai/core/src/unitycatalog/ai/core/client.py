@@ -186,7 +186,10 @@ class _SingleLoopRESTClient:
         it starts its own on its first request. The lock is replaced too, in case another thread
         held it during the fork.
         """
-        _inherited_before_fork.append((self._loop, self._thread, self._rest_client))
+        _inherited_before_fork.append(
+            (self._loop, self._thread, self._rest_client, self._replaced_rest_client)
+        )
+        self._replaced_rest_client = None
         self._shut_down = threading.Event()
         if self._closed:
             self._shut_down.set()
@@ -280,7 +283,8 @@ class _SingleLoopRESTClient:
             request.cancel()
         await asyncio.gather(*requests, return_exceptions=True)
         try:
-            await self._replaced_rest_client.close()
+            if self._replaced_rest_client is not None:
+                await self._replaced_rest_client.close()
         finally:
             try:
                 if self._rest_client is not None:
@@ -310,11 +314,8 @@ class UnitycatalogClient:
         its connections and stop the background thread that sends requests. A second call does
         nothing, and later calls through this client or its ApiClient raise
         `RuntimeError("Session is closed")`. Clients built on the same ApiClient share its
-        connections, so closing one closes them for all.
+        connections, so closing one closes them for all. If closing fails, a later call tries again.
         """
-        if getattr(self, "_closed", None):
-            return
-        self._closed = True
         try:
             await self.api_client.close()
             _logger.info("ApiClient successfully closed.")
@@ -326,9 +327,6 @@ class UnitycatalogClient:
         Synchronously close the underlying ApiClient. See `close_async` for what this does. Blocks
         until the background thread has stopped.
         """
-        if getattr(self, "_closed", None):
-            return
-        self._closed = True
         try:
             self._rest_client.shutdown()
             _logger.info("ApiClient successfully closed.")

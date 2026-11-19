@@ -3281,10 +3281,11 @@ async def test_a_request_after_a_failed_thread_start_starts_the_thread(not_found
 
 
 @pytest.mark.asyncio
-async def test_a_close_after_a_failed_thread_start_closes_the_client(not_found_server):
+@pytest.mark.parametrize("same_client", [True, False], ids=["same client", "another client"])
+async def test_a_close_after_a_failed_thread_start_closes_the_client(not_found_server, same_client):
     api_client = ApiClient(configuration=Configuration(host=not_found_server))
     first = UnitycatalogFunctionClient(api_client=api_client)
-    second = UnitycatalogFunctionClient(api_client=api_client)
+    second = first if same_client else UnitycatalogFunctionClient(api_client=api_client)
     with client_thread_fails_to_start():
         first.close()
     closing = threading.Thread(target=second.close, daemon=True)
