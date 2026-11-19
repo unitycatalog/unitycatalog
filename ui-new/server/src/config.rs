@@ -24,8 +24,8 @@ type Lookup<'a> = &'a dyn Fn(&str) -> Result<String, VarError>;
 
 /// Reads `key`. An unset or exactly empty variable is `None`, since deployment
 /// templates often render an unset value as an empty string. A whitespace-only
-/// value is kept: `PORT` and the booleans reject it, and the string variables
-/// use it as given.
+/// value is kept: `PORT`, the booleans, and `UC_SERVER` reject it, and
+/// `GOOGLE_CLIENT_ID` uses it as given.
 fn env_value(env: Lookup<'_>, key: &str) -> Result<Option<String>, String> {
     match env(key) {
         Ok(value) if value.is_empty() => Ok(None),
@@ -47,6 +47,15 @@ fn env_string(env: Lookup<'_>, key: &str, default: &str) -> Result<String, Strin
     Ok(env_value(env, key)?.unwrap_or_else(|| default.to_string()))
 }
 
+/// Like `env_string`, but a whitespace-only value is an error. A blank server
+/// URL would otherwise start the bridge and fail only on its first UC call.
+fn env_non_blank(env: Lookup<'_>, key: &str, default: &str) -> Result<String, String> {
+    match env_value(env, key)? {
+        Some(value) if value.trim().is_empty() => Err(format!("{key} must not be whitespace only")),
+        value => Ok(value.unwrap_or_else(|| default.to_string())),
+    }
+}
+
 fn parse_port(key: &str, value: &str) -> Result<u16, String> {
     match value.trim().parse::<u16>() {
         Ok(port) if port > 0 => Ok(port),
@@ -66,8 +75,9 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, String> {
 
 impl Config {
     /// Load configuration from the process environment. An unset or empty
-    /// variable takes its default. An invalid `PORT` or boolean, or a value
-    /// that is not valid Unicode, is an `Err` naming the variable.
+    /// variable takes its default. An invalid `PORT` or boolean, a
+    /// whitespace-only `UC_SERVER`, or a value that is not valid Unicode is an
+    /// `Err` naming the variable.
     pub fn from_env() -> Result<Self, String> {
         Self::from_lookup(&|key: &str| std::env::var(key))
     }
@@ -83,7 +93,7 @@ impl Config {
             .unwrap_or_default();
         Ok(Config {
             port: env_port(env, "PORT", 8081)?,
-            uc_server: env_string(env, "UC_SERVER", "http://localhost:8080")?,
+            uc_server: env_non_blank(env, "UC_SERVER", "http://localhost:8080")?,
             auth_enabled: env_bool(env, "UI_AUTH_ENABLED", false)?,
             google_client_id: env_string(env, "GOOGLE_CLIENT_ID", "")?,
             okta_enabled: env_bool(env, "OKTA_AUTH_ENABLED", false)?,
@@ -172,10 +182,13 @@ mod tests {
         let not_a_port = "PORT must be a port number from 1 to 65535";
         let not_a_bool =
             |key: &str| format!("{key} must be one of true/false, 1/0, yes/no, or on/off");
-        // (variable, value, error)
+        let blank_server = "UC_SERVER must not be whitespace only";
+        // (variable, value, error); an exactly empty value takes its default.
         let cases = [
             ("PORT", "0", not_a_port.to_string()),
             ("PORT", " ", not_a_port.to_string()),
+            ("UC_SERVER", " ", blank_server.to_string()),
+            ("UC_SERVER", "\t\n", blank_server.to_string()),
             ("UI_AUTH_ENABLED", "treu", not_a_bool("UI_AUTH_ENABLED")),
             ("OKTA_AUTH_ENABLED", " ", not_a_bool("OKTA_AUTH_ENABLED")),
             (

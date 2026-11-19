@@ -128,9 +128,9 @@ client-side routes load on refresh or from a link.
 
 The `*_ENABLED` variables accept `true`/`false`, `1`/`0`, `yes`/`no`, or
 `on`/`off`, ignoring case. An unset or empty variable takes its default. A
-non-empty invalid boolean or `PORT` (including whitespace only), or a value
-that is not valid Unicode, stops the bridge at startup with an error naming the
-variable.
+non-empty invalid boolean or `PORT` (including whitespace only), a
+whitespace-only `UC_SERVER`, or a value that is not valid Unicode, stops the
+bridge at startup with an error naming the variable.
 
 ## Test
 
