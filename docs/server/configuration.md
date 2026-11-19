@@ -104,6 +104,7 @@ environment):
 | `aws.secretKey` | `UC_AWS_SECRETKEY` |
 | `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `UC_S3_SECRETKEY_<n>`, `UC_S3_SESSIONTOKEN_<n>` |
 | `adls.clientSecret.<n>` | `UC_ADLS_CLIENTSECRET_<n>` |
+| `server.credential-encryption-key` | `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY` |
 | `hibernate.connection.password` (in `hibernate.properties`) | `UC_HIBERNATE_CONNECTION_PASSWORD` |
 
 ```sh
@@ -119,7 +120,14 @@ server logs the name of each environment variable it uses for a setting, never i
 read by `bin/uc auth login`, not by the server. The Helm chart passes each S3 and ADLS credential to the server
 container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`,
 `UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. With `server.db.type: postgresql` or `mysql`, it also passes
-`UC_HIBERNATE_CONNECTION_PASSWORD` if that database's `passwordSecretName` is set.
+`UC_HIBERNATE_CONNECTION_PASSWORD` if that database's `passwordSecretName` is set. With any database, if
+`server.credentialEncryptionKeySecret.name` is set, it passes `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY` from that Secret's
+`server.credentialEncryptionKeySecret.key` (by default `encryptionKey`). Only the experimental `s3_compatible`
+credentials need it, and only with `server.s3-compatible-storage.enabled=true` (in the chart, under
+`server.config.extraProperties`): the server then refuses to start with a malformed key, and without one it cannot
+create or use such credentials. See the chart's
+[README](https://github.com/unitycatalog/unitycatalog/blob/main/helm/README.md#s3-compatible-storage-credentials) for a
+complete example.
 
 !!! warning "Deprecated: secrets in properties files"
     Secrets in `server.properties` and the password in `hibernate.properties` still work, but this is deprecated. The

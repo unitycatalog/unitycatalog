@@ -12,6 +12,7 @@ import unitycatalog.client.delta.models as delta_models
 from unitycatalog.client import ApiClient, CatalogsApi, Configuration
 from unitycatalog.client.delta.api import DeltaTablesApi
 from unitycatalog.client.delta.models.delta_commit import DeltaCommit
+from unitycatalog.client.delta.models.delta_create_table_request import DeltaCreateTableRequest
 from unitycatalog.client.delta.models.delta_load_table_response import DeltaLoadTableResponse
 from unitycatalog.client.models.delta_commit import DeltaCommit as UcDeltaCommit
 
@@ -150,3 +151,65 @@ def test_lookup_model_raises_for_an_unknown_name():
 
     with pytest.raises(AttributeError, match="no model named 'NoSuchModel'"):
         api_client._lookup_model("NoSuchModel")
+
+
+def test_api_client_serializes_delta_requests_with_struct_columns():
+    columns = {
+        "type": "struct",
+        "fields": [
+            {
+                "name": "id",
+                "type": "long",
+                "nullable": False,
+                "metadata": {"comment": "c", "delta.columnMapping.id": 1},
+            },
+            {
+                "name": "price",
+                "type": "decimal(10,2)",
+                "nullable": True,
+                "metadata": {},
+            },
+            {
+                "name": "points",
+                "type": {
+                    "type": "array",
+                    "element-type": {
+                        "type": "struct",
+                        "fields": [
+                            {"name": "x", "type": "double", "nullable": True, "metadata": {"comment": "x"}},
+                        ],
+                    },
+                    "contains-null": True,
+                },
+                "nullable": True,
+                "metadata": {},
+            },
+            {
+                "name": "tags",
+                "type": {
+                    "type": "map",
+                    "key-type": "string",
+                    "value-type": "string",
+                    "value-contains-null": True,
+                },
+                "nullable": True,
+                "metadata": {},
+            },
+        ],
+    }
+    request = {
+        "name": "t",
+        "location": "s3://bucket/t",
+        "table-type": "MANAGED",
+        "columns": columns,
+        "protocol": {"min-reader-version": 3, "min-writer-version": 7},
+        "properties": {"delta.enableDeletionVectors": "true"},
+        "last-commit-timestamp-ms": 1,
+    }
+    api_client = ApiClient(
+        Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
+    )
+
+    body = api_client.sanitize_for_serialization(DeltaCreateTableRequest.from_dict(request))
+
+    assert body == request

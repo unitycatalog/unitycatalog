@@ -17,7 +17,14 @@ import { ThemeProvider } from "@/lib/theme";
 
 describe("MetaGrid", () => {
   it("renders label/value pairs and an em dash for missing values", () => {
-    render(<MetaGrid items={[{ label: "Owner", value: "me" }, { label: "ID", value: undefined }]} />);
+    render(
+      <MetaGrid
+        items={[
+          { label: "Owner", value: "me" },
+          { label: "ID", value: undefined },
+        ]}
+      />,
+    );
     expect(screen.getByText("Owner")).toBeInTheDocument();
     expect(screen.getByText("me")).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
@@ -76,7 +83,9 @@ describe("QueryState", () => {
 describe("Logo", () => {
   it("renders an accessible titled svg", () => {
     render(<Logo title="Unity Catalog" />);
-    expect(screen.getByRole("img", { name: "Unity Catalog" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Unity Catalog" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -122,6 +131,9 @@ describe("ThemeSwitcher", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /dark theme/i }));
     expect(document.documentElement.dataset.colorMode).toBe("dark");
-    expect(screen.getByRole("button", { name: /dark theme/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /dark theme/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });

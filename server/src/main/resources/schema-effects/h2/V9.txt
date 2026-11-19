@@ -1,0 +1,2 @@
+- column uc_volumes.comment type=character varying size=255 nullable=YES default=null
++ column uc_volumes.comment type=character varying size=65535 nullable=YES default=null

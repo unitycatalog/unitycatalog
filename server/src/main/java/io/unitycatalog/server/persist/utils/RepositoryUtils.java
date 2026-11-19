@@ -9,6 +9,7 @@ import io.unitycatalog.server.persist.DependencyRepository;
 import io.unitycatalog.server.persist.PropertyRepository;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
+import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -116,6 +117,60 @@ public class RepositoryUtils {
       Map<String, Object> key,
       String description,
       Supplier<BaseException> notFound) {
+    T locked = lockByKeyOrNull(session, type, id, key, description);
+    if (locked == null) {
+      throw notFound.get();
+    }
+    return locked;
+  }
+
+  /**
+   * Reads the entity with a name, with a write lock on its row until the transaction ends. The id
+   * is read first without a lock, then the row is locked by its id and name: names have no index on
+   * MySQL, where a locking read by name locks every row and gap it scans, so it could deadlock with
+   * a concurrent insert. A rename that commits in between makes the locked read miss, and the
+   * database compares the name as for every lookup by name. Call it in a READ COMMITTED
+   * transaction: under MySQL's default REPEATABLE READ, the id read fixes the transaction's
+   * snapshot, so reads after the lock would not see rows committed while it waited.
+   *
+   * @param session the session of the transaction
+   * @param entityClass the entity's class
+   * @param name the entity's name
+   * @return the entity, or null if none has the name
+   * @throws BaseException with UNAVAILABLE, to retry, if the lock is not acquired
+   */
+  public static <T extends IdentifiableDAO> T getForUpdateByName(
+      Session session, Class<T> entityClass, String name) {
+    UUID id =
+        session
+            .createSelectionQuery(
+                "SELECT id FROM " + entityClass.getSimpleName() + " WHERE name = :name", UUID.class)
+            .setParameter("name", name)
+            .setMaxResults(1)
+            .getSingleResultOrNull();
+    if (id == null) {
+      return null;
+    }
+    return lockByKeyOrNull(session, entityClass, id, Map.of("name", name), "'" + name + "'");
+  }
+
+  /**
+   * Reads the entity with an id, with a write lock on its row until the transaction ends.
+   *
+   * @param session the session of the transaction
+   * @param entityClass the entity's class
+   * @param id the entity's id
+   * @return the entity, or null if none has the id
+   * @throws BaseException with UNAVAILABLE, to retry, if the lock is not acquired
+   */
+  public static <T extends IdentifiableDAO> T getForUpdate(
+      Session session, Class<T> entityClass, UUID id) {
+    return lockByKeyOrNull(session, entityClass, id, Map.of(), id.toString());
+  }
+
+  /** As {@link #lockByKey}, but null if no row matches. */
+  private static <T extends UuidEntity> T lockByKeyOrNull(
+      Session session, Class<T> type, UUID id, Map<String, Object> key, String description) {
     return unavailableOnLockFailure(
         description,
         () -> {
@@ -124,11 +179,10 @@ public class RepositoryUtils {
                   "from " + type.getSimpleName() + " where " + predicate(key), type);
           bindKey(query, id, key);
           T locked = query.setHibernateLockMode(LockMode.PESSIMISTIC_WRITE).getSingleResultOrNull();
-          if (locked == null) {
-            throw notFound.get();
+          if (locked != null) {
+            // The locking query returns an entity already in the session as it was first read.
+            session.refresh(locked, LockMode.PESSIMISTIC_WRITE);
           }
-          // The locking query returns an entity already in the session as it was first read.
-          session.refresh(locked, LockMode.PESSIMISTIC_WRITE);
           return locked;
         });
   }

@@ -330,7 +330,8 @@ lazy val pythonClient = (project in file("clients/python"))
           specs = Seq(
             // The delta.yaml run goes first because its "__init__.py" filter matches by file name: besides the
             // delta api/ and models/ inits (patchDeltaDataTypeModule needs the models one), it also writes
-            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite.
+            // unitycatalog/client/__init__.py, which the all.yaml run below must overwrite (checked in
+            // processGeneratedFiles by PythonClientPostBuild.clientPackageInitProblem).
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
@@ -960,3 +961,16 @@ addCommandAlias(
     s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database", "UC_TEST_MIGRATION_CHECKS" -> "true", "UC_UPDATE_SCHEMA_EFFECTS" -> "true")""" +
       " ; server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest"
   }.mkString)
+
+// Runs every project's tests with s3:// paths on one S3-compatible storage. One alias per
+// SupportedStorage constant except EMULATED (the default). Forked tests also inherit the shell's
+// environment, so UC_TEST_DATABASE set there selects the database as well.
+def testOnStorage(storage: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_STORAGE" -> "$storage") ; test"""
+addCommandAlias("testMinIO", testOnStorage("MINIO"))
+addCommandAlias("testCeph", testOnStorage("CEPH"))
+addCommandAlias("testCephStaticKey", testOnStorage("CEPH_STATIC_KEY"))
+addCommandAlias("testRustFS", testOnStorage("RUSTFS"))
+addCommandAlias("testSeaweedFS", testOnStorage("SEAWEEDFS"))
+addCommandAlias("testGarage", testOnStorage("GARAGE"))
+addCommandAlias("testGarageStaticKey", testOnStorage("GARAGE_STATIC_KEY"))

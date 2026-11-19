@@ -1,2 +1,2 @@
-- column uc_function_params.type_text type=varchar size=255 nullable=NO default=null
-+ column uc_function_params.type_text type=text size=2147483647 nullable=NO default=null
+- check uc_credentials (((credential_type)::text = 'AWS_IAM_ROLE'::text))
++ check uc_credentials (((credential_type)::text = ANY ((ARRAY['AWS_IAM_ROLE'::character varying, 'S3_COMPATIBLE'::character varying])::text[])))
