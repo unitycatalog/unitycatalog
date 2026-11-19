@@ -782,19 +782,27 @@ public class TableRepository {
         });
   }
 
-  public record IcebergViewState(UUID viewId, String metadataLocation) {}
+  public record IcebergViewState(TableInfo view, String metadataLocation) {}
 
-  /** Read the identity and metadata pointer of a view created through IRC. */
+  /** Read a consistent native view definition or an immutable IRC metadata pointer. */
   public IcebergViewState getIcebergViewState(String catalog, String schema, String name) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, name);
-          requireIcebergView(dao, name);
-          return new IcebergViewState(dao.getId(), dao.getIcebergViewMetadataLocation());
+          if (!TableType.VIEW.getValue().equals(dao.getType())) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "View does not exist: " + name);
+          }
+          String pointer = dao.getIcebergViewMetadataLocation();
+          TableInfo info = dao.toTableInfo(pointer == null, catalog, schema);
+          if (pointer == null) {
+            RepositoryUtils.attachProperties(info, info.getTableId(), Constants.TABLE, session);
+          }
+          return new IcebergViewState(info, pointer);
         },
         "Failed to load view " + name,
-        /* readOnly= */ true);
+        /* readOnly= */ true,
+        Optional.of(TRANSACTION_REPEATABLE_READ));
   }
 
   private static void requireIcebergView(TableInfoDAO dao, String name) {

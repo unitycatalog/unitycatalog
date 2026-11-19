@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.utils.IcebergViewTestUtils.nativeRequest;
 import static io.unitycatalog.server.utils.IcebergViewTestUtils.request;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -17,6 +18,7 @@ import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseServerTest;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
@@ -25,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -135,7 +138,7 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
   }
 
   @Test
-  public void viewRoutesLeaveTablesAndNativeCreatedViewsUntouched() throws Exception {
+  public void viewReadsLeaveCanonicalObjectsAndMutationBoundariesUntouched() throws Exception {
     var column =
         new ColumnInfo()
             .name("id")
@@ -161,13 +164,76 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
             .storageLocation(testDirectoryRoot.resolve("data").toUri().toString());
       }
       var before = nativeApi.createTable(create);
-      assertThat(client.viewExists(CAT, NS, name)).isFalse();
-      assertIcebergApiException(() -> client.loadView(CAT, NS, name), 404);
+      if (type == TableType.VIEW) {
+        assertThat(client.viewExists(CAT, NS, name)).isTrue();
+        var loaded = client.loadView(CAT, NS, name);
+        assertThat(loaded.metadata().uuid()).isEqualTo(before.getTableId());
+        assertThat(loaded.metadata().currentVersion().representations()).hasSize(1);
+        assertThat(client.loadView(CAT, NS, name).metadataLocation())
+            .isEqualTo(loaded.metadataLocation());
+        try (var session = hibernateConfigurator.getSessionFactory().openSession()) {
+          assertThat(
+                  session
+                      .get(TableInfoDAO.class, UUID.fromString(before.getTableId()))
+                      .getIcebergViewMetadataLocation())
+              .isNull();
+        }
+      } else {
+        assertThat(client.viewExists(CAT, NS, name)).isFalse();
+        assertIcebergApiException(() -> client.loadView(CAT, NS, name), 404);
+      }
       assertIcebergApiException(() -> client.dropView(CAT, NS, name), 404);
       assertThat(nativeApi.getTable(CAT + "." + NS + "." + name, true, false, false))
           .isEqualTo(before);
     }
     assertThat(client.viewExists(CAT, NS, "missing")).isFalse();
     assertIcebergApiException(() -> client.dropView(CAT, NS, "missing"), 404);
+  }
+
+  @Test
+  public void nativeReadFailuresLeaveTheViewIntactAndRecreationGetsAFreshIdentity()
+      throws Exception {
+    String name = "native_read";
+    String fullName = CAT + "." + NS + "." + name;
+    var created =
+        nativeApi.createTable(nativeRequest(CAT, NS, name, "select cast(1 as bigint) as id"));
+    Path root = testDirectoryRoot.resolve("view_metadata");
+    Files.writeString(root, "not a directory");
+    assertIcebergApiException(() -> client.loadView(CAT, NS, name), 500);
+    assertThat(nativeApi.getTable(fullName, true, false, false)).isEqualTo(created);
+    Files.delete(root);
+    var loaded = client.loadView(CAT, NS, name);
+    assertThat(Files.isRegularFile(Path.of(URI.create(loaded.metadataLocation())))).isTrue();
+    nativeApi.deleteTable(fullName);
+    assertThat(client.viewExists(CAT, NS, name)).isFalse();
+    assertIcebergApiException(() -> client.loadView(CAT, NS, name), 404);
+    var replacement =
+        nativeApi.createTable(nativeRequest(CAT, NS, name, "select cast(2 as bigint) as id"));
+    var recreated = client.loadView(CAT, NS, name);
+    assertThat(recreated.metadata().uuid())
+        .isEqualTo(replacement.getTableId())
+        .isNotEqualTo(created.getTableId());
+    assertThat(recreated.metadataLocation()).isNotEqualTo(loaded.metadataLocation());
+    assertThat(Files.exists(Path.of(URI.create(loaded.metadataLocation())))).isTrue();
+  }
+
+  @Test
+  public void nativeViewsWithUnsupportedResolutionStateReturnAnActionableError() throws Exception {
+    int index = 0;
+    for (var properties :
+        List.of(
+            Map.of("view.sqlConfig.spark.sql.caseSensitive", "true"),
+            Map.of("view.catalogAndNamespace.numParts", "2"))) {
+      String name = "unsupported_" + index++;
+      var before =
+          nativeApi.createTable(
+              nativeRequest(CAT, NS, name, "select cast(1 as bigint) as id")
+                  .properties(properties));
+      assertThat(client.viewExists(CAT, NS, name)).isTrue();
+      assertIcebergApiException(() -> client.loadView(CAT, NS, name), 400);
+      assertThat(nativeApi.getTable(CAT + "." + NS + "." + name, true, false, false))
+          .isEqualTo(before);
+    }
+    assertThat(Files.exists(testDirectoryRoot.resolve("view_metadata"))).isFalse();
   }
 }
