@@ -484,7 +484,8 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
 # Unlike JSON_ARGUMENT_PARAMS, these have no DATE, TIMESTAMP or DECIMAL parameter and no nullable
 # struct field, since a Gemini function schema accepts no union type and no default. The struct
 # fields are strings because the protobuf Struct of a function call returns every number as a
-# float, so 150 would come back as 150.0.
+# float, so 150 would come back as 150.0, tracked in
+# https://github.com/unitycatalog/unitycatalog/issues/2308.
 PLACE_TYPE_JSON = {
     "type": "struct",
     "fields": [
