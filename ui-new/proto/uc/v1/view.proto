@@ -17,9 +17,6 @@ message MetricViewSummary {
 
 // MetricViewInfo contains the complete metric-view details exposed by the UI.
 message MetricViewInfo {
-  reserved 7;
-  reserved "dependencies";
-
   string catalog_name = 1;
   string schema_name = 2;
   string name = 3;

@@ -124,10 +124,6 @@ enum ColumnTypeName {
 
 // ColumnInfo is the UI-facing shape of a UC table column.
 message ColumnInfo {
-  reserved 3, 5 to 7, 11;
-  reserved "type_json", "type_precision", "type_scale", "type_interval_type",
-      "partition_index";
-
   string name = 1 [(buf.validate.field).string = {
     min_len: 1
     max_len: 255

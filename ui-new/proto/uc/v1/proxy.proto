@@ -10,10 +10,6 @@ message KeyValue {
 // Generic passthrough for the control-plane auth, SCIM, and read-only
 // permissions endpoints that do not yet have typed UI services.
 message CallRequest {
-  // Removed: the bridge uses its configured UC_SERVER, and a bearer token
-  // travels in the Authorization header.
-  reserved 1, 2;
-  reserved "server_url", "token";
   // HTTP method: GET | POST | PATCH | PUT | DELETE.
   string method = 3;
   // Allowlisted request path, e.g. /api/1.0/unity-control/scim2/Me.

@@ -241,9 +241,10 @@ async fn call_rejects_an_oversized_response() {
 }
 
 #[tokio::test]
-async fn call_ignores_the_removed_server_url_and_token_fields() {
-    // Older clients sent these. The call must still go to the configured UC,
-    // and a body token must not become an Authorization header.
+async fn call_ignores_server_url_and_token_keys_in_the_body() {
+    // CallRequest has no such fields, so the JSON decoder drops them. A client
+    // that sends them must still reach only the configured UC, and a body token
+    // must not become an Authorization header.
     let uc = MockServer::start().await;
     Mock::given(header_exists("authorization"))
         .respond_with(ResponseTemplate::new(500))
