@@ -193,9 +193,7 @@ public class StoredGcpKeyVendingTest extends BaseCRUDTest {
 
   /**
    * Paths that look like they are under the location but are not, or that try to leave it. None may
-   * be vended a token wider than the location. Most are refused; {@code %2e%2e} is accepted, since
-   * the location covers the literal path, and the token is limited to that literal object name: GCS
-   * does not resolve {@code ..}, so it cannot reach {@code other/}.
+   * be vended a token, and each is refused as a bad request.
    */
   @ParameterizedTest
   @ValueSource(
@@ -207,7 +205,6 @@ public class StoredGcpKeyVendingTest extends BaseCRUDTest {
         "gs://uc-test-bucket/",
         "gs://uc-test-bucket/other/table",
         "gs://uc-test-bucket/data/../other/table",
-        "gs://uc-test-bucket/data/%2e%2e/other/table",
         "gs://uc-test-bucket/data%2F..%2Fother/table",
         "gs://uc-test-bucket/data/./../other/table",
         "gs://other-bucket/data/table",
@@ -217,17 +214,24 @@ public class StoredGcpKeyVendingTest extends BaseCRUDTest {
         "s3://uc-test-bucket/data/table",
         "abfss://data@uc-test-bucket.dfs.core.windows.net/table",
       })
-  public void testPathsOutsideTheLocationAreNeverVended(String url) {
-    try {
-      TemporaryCredentials vended = vend(url, PathOperation.PATH_READ);
-      // If a hostile path is accepted at all, the token must still be for a path inside data/.
-      assertThat(vended.getGcpOauthToken().getOauthToken())
-          .as("token for %s", url)
-          .contains("[gs://uc-test-bucket/data/")
-          .doesNotContain("/..");
-    } catch (ApiException e) {
-      // Refused, as it should be.
-      assertThat(keysSeen).isEmpty();
-    }
+  public void testPathsOutsideTheLocationAreRefused(String url) {
+    assertThatThrownBy(() -> vend(url, PathOperation.PATH_READ))
+        .as("vending %s", url)
+        .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo(400));
+    assertThat(keysSeen).isEmpty();
+  }
+
+  /**
+   * {@code ..} written as {@code %2e%2e} is part of the location's literal path, so it is accepted,
+   * and the token is limited to that literal object name: GCS does not resolve {@code ..}, so it
+   * cannot reach {@code other/}.
+   */
+  @Test
+  public void testEncodedDotDotStaysInsideTheLocation() throws ApiException {
+    String path = "gs://uc-test-bucket/data/%2e%2e/other/table";
+
+    String token = vend(path, PathOperation.PATH_READ).getGcpOauthToken().getOauthToken();
+
+    assertThat(token).endsWith("[" + path + "]").doesNotContain("/..");
   }
 }
