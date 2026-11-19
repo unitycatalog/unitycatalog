@@ -9,5 +9,12 @@ export const Route = createFileRoute(
 
 function RouteComponent() {
   const { catalog, schema, model, version } = Route.useParams();
-  return <ModelVersionDetails catalog={catalog} schema={schema} model={model} version={version} />;
+  return (
+    <ModelVersionDetails
+      catalog={catalog}
+      schema={schema}
+      model={model}
+      version={version}
+    />
+  );
 }

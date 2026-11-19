@@ -28,7 +28,8 @@ export function Link({
   // assert link targets without the real router.
   let href = to ?? "#";
   if (params) {
-    for (const [k, v] of Object.entries(params)) href = href.replace(`$${k}`, v);
+    for (const [k, v] of Object.entries(params))
+      href = href.replace(`$${k}`, v);
   }
   const { className } = rest as { className?: string };
   return (
