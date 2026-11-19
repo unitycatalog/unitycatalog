@@ -28,7 +28,7 @@ off, set this in `etc/conf/server.properties` and restart the server:
 server.iceberg-table.enabled=false
 ```
 
-When writes are off, a write request returns HTTP 400 with the message `Iceberg table writes are currently disabled.
+When writes are off, an authorized write request returns HTTP 400 with the message `Iceberg table writes are currently disabled.
 To enable them, set 'server.iceberg-table.enabled=true' in server.properties`. Tables that were already created stay
 readable. `GET /v1/config` only lists the endpoints the server supports, so the list it returns changes with this
 setting.
