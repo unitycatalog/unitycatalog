@@ -1,0 +1,11 @@
++ column os_recipients.authentication_type type=varchar size=255 nullable=NO default=null
++ column os_recipients.comment type=mediumtext size=16777215 nullable=YES default=null
++ column os_recipients.created_at type=datetime size=26 nullable=NO default=null
++ column os_recipients.id type=binary size=16 nullable=NO default=null
++ column os_recipients.name type=varchar size=255 nullable=NO default=null
++ column os_recipients.owner_id type=varchar size=255 nullable=NO default=null
++ column os_recipients.updated_at type=datetime size=26 nullable=NO default=null
++ index os_recipients.primary unique=true column=id#1
++ index os_recipients.uk_recipients_name unique=true column=name#1
++ pk os_recipients.id#1
++ table os_recipients

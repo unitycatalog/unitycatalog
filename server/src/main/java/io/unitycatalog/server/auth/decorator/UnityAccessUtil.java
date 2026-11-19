@@ -25,14 +25,14 @@ public class UnityAccessUtil {
   /**
    * Returns the parent type in the stored authorization hierarchy, or null at a root.
    *
-   * <p>Metastore ownership is checked separately; catalogs, external locations, and credentials
-   * have no stored parent.
+   * <p>Metastore ownership is checked separately; catalogs, external locations, credentials,
+   * shares, and recipients have no stored parent.
    */
   public static SecurableType getHierarchyParentType(SecurableType type) {
     return switch (type) {
       case TABLE, VOLUME, FUNCTION, REGISTERED_MODEL -> SecurableType.SCHEMA;
       case SCHEMA -> SecurableType.CATALOG;
-      case METASTORE, CATALOG, EXTERNAL_LOCATION, CREDENTIAL -> null;
+      case METASTORE, CATALOG, EXTERNAL_LOCATION, CREDENTIAL, SHARE, RECIPIENT -> null;
     };
   }
 

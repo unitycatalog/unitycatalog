@@ -1,0 +1,11 @@
++ column os_shares.comment type=character varying size=65536 nullable=YES default=null
++ column os_shares.created_at type=timestamp with time zone size=32 nullable=NO default=null
++ column os_shares.display_name type=character varying size=255 nullable=YES default=null
++ column os_shares.id type=uuid size=16 nullable=NO default=null
++ column os_shares.name type=character varying size=255 nullable=NO default=null
++ column os_shares.owner_id type=character varying size=255 nullable=NO default=null
++ column os_shares.updated_at type=timestamp with time zone size=32 nullable=NO default=null
++ index os_shares.primary_key_* unique=true column=id#1
++ index os_shares.uk_shares_name_index_* unique=true column=name#1
++ pk os_shares.id#1
++ table os_shares

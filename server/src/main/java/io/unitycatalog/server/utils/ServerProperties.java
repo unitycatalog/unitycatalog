@@ -366,7 +366,10 @@ public class ServerProperties {
             false,
             S3CompatibleStaticKeyVending.ENDPOINT_ONLY.value(),
             S3CompatibleStaticKeyVending.STATIC_KEY.value())),
-    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
+    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR),
+    OPENSHARING_ENABLED("server.opensharing.enabled", "false", BOOLEAN_VALIDATOR),
+    // The address recipients reach this server at; their activation links and profiles name it.
+    OPENSHARING_PUBLIC_URL("server.opensharing.public-url", URL_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
     // getS3Configurations.
@@ -1086,5 +1089,9 @@ public class ServerProperties {
       return List.of();
     }
     return Arrays.stream(value.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+  }
+
+  public boolean isOpenSharingEnabled() {
+    return isTrueOrEnable(get(Property.OPENSHARING_ENABLED));
   }
 }
