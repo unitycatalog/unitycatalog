@@ -1,5 +1,7 @@
 etc/db/h2db.mv.db
 etc/db/h2db.trace.db
+# What a killed sample database build leaves behind
+etc/db/building-*
 mlflow.db
 target/
 

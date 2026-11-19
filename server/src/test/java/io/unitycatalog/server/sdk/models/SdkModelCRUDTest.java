@@ -80,7 +80,8 @@ public class SdkModelCRUDTest extends BaseModelCRUDTest {
 
   private ListRegisteredModelsResponse listAllModels(Integer maxResults, String pageToken)
       throws ApiException {
-    return localRegisteredModelsApi.listRegisteredModels(null, null, maxResults, pageToken);
+    return localRegisteredModelsApi.listRegisteredModels(
+        null, null, maxResults, pageToken, /* includeBrowse= */ false);
   }
 
   private List<String> collectFullNames(ListRegisteredModelsResponse... pages) {

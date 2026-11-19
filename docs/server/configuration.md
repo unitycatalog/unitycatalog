@@ -89,6 +89,9 @@ The server config file is at the location `etc/conf/server.properties` (relative
         warning at each start. This still works, but is deprecated; set the key file setting instead. A newly
         generated private key is readable by its owner only. Before rolling back to an earlier version, see
         [Upgrading](auth.md#upgrading) in the authentication docs.
+- `server.iceberg-table.enabled`: Turns on the write endpoints of the [Iceberg REST catalog](../usage/api/iceberg.md),
+    such as creating, committing to, renaming and dropping tables. Defaults to `true`. Set it to `false` to reject
+    namespace and table changes through the Iceberg REST catalog. Tables that were already created stay readable.
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
@@ -119,6 +122,7 @@ environment):
 | `aws.secretKey` | `UC_AWS_SECRETKEY` |
 | `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `UC_S3_SECRETKEY_<n>`, `UC_S3_SESSIONTOKEN_<n>` |
 | `adls.clientSecret.<n>` | `UC_ADLS_CLIENTSECRET_<n>` |
+| `server.credential-encryption-key` | `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY` |
 | `hibernate.connection.password` (in `hibernate.properties`) | `UC_HIBERNATE_CONNECTION_PASSWORD` |
 
 ```sh
@@ -134,7 +138,14 @@ server logs the name of each environment variable it uses for a setting, never i
 read by `bin/uc auth login`, not by the server. The Helm chart passes each S3 and ADLS credential to the server
 container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`,
 `UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. With `server.db.type: postgresql` or `mysql`, it also passes
-`UC_HIBERNATE_CONNECTION_PASSWORD` if that database's `passwordSecretName` is set.
+`UC_HIBERNATE_CONNECTION_PASSWORD` if that database's `passwordSecretName` is set. With any database, if
+`server.credentialEncryptionKeySecret.name` is set, it passes `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY` from that Secret's
+`server.credentialEncryptionKeySecret.key` (by default `encryptionKey`). Only the experimental `s3_compatible`
+credentials need it, and only with `server.s3-compatible-storage.enabled=true` (in the chart, under
+`server.config.extraProperties`): the server then refuses to start with a malformed key, and without one it cannot
+create or use such credentials. See the chart's
+[README](https://github.com/unitycatalog/unitycatalog/blob/main/helm/README.md#s3-compatible-storage-credentials) for a
+complete example.
 
 !!! warning "Deprecated: secrets in properties files"
     Secrets in `server.properties` and the password in `hibernate.properties` still work, but this is deprecated. The
@@ -215,8 +226,9 @@ Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is f
 
 ### Audit records
 
-The server can write an audit record for each storage credential it issues and each permission
-change. Audit records are off by default. Set `server.audit.sink` to turn them on:
+The server can write an audit record for each storage credential it issues, each permission change,
+and each storage cleanup it queues when a managed table, volume, model, or model version is
+dropped. Audit records are off by default. Set `server.audit.sink` to turn them on:
 
 | Property | Default | Description |
 | --- | --- | --- |
@@ -230,7 +242,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 
 - `time`: when the record was made, in ISO 8601 UTC.
 - `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
-  grants), or `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants).
+  grants), `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants), or `QUEUE_CLEANUP` (a dropped
+  object's storage is queued for deletion).
 - `user`: `system:storage-cleanup` on `CLEANUP` records, whether or not authorization is on. On other
   records, the caller's identity from the token (`sub`): the user's email, or `admin` for the
   bootstrap admin token. It is `system:server` for work the server does outside a request,
@@ -238,8 +251,11 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: on a permission change, the object whose grants changed (absent for
-  `CLEAR_PRINCIPAL_GRANTS`). On a `CLEANUP` credential, the ID of the dropped object. Other
-  credential records do not carry it.
+  `CLEAR_PRINCIPAL_GRANTS`). On a `QUEUE_CLEANUP` record and on a `CLEANUP` credential, the ID of the
+  dropped object, so match the two on `resource_id`; they can be written in either order. Other
+  credential records do not carry it. A `CLEANUP` record can have no matching `QUEUE_CLEANUP`
+  record, for example when the drop was queued before audit records were turned on. Cleanup of
+  local `file:` storage vends no credential, so it has no `CLEANUP` record.
 - `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
   changed.
 - `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG`, or `OWNER` for the
@@ -258,8 +274,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 A record is written for every credential issued, including ones served from the credential cache.
 For local `file:` storage there is no credential to issue. A request for credentials, through the
 temporary-credentials endpoints, the Delta API or the Iceberg REST catalog, still writes a record of
-the access the server granted, without `expires_at`. The server's own reads, writes and cleanup of
-`file:` storage write no record.
+the access the server granted, without `expires_at`. The server's own reads and writes of `file:`
+storage, and its background cleanup, write no record.
 
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
 `REVOKE` and the two `CLEAR_*` actions are recorded once the server has run them without an error, whether or

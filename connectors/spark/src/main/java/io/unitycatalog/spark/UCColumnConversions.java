@@ -8,11 +8,15 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Preconditions;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.spark.SparkRuntimeException;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.expressions.NamedReference;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataType;
+import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Shared helpers for converting Spark schema/partitioning into the wire shapes Unity Catalog
@@ -24,6 +28,8 @@ public final class UCColumnConversions {
 
   private UCColumnConversions() {}
 
+  private static final Logger LOG = LoggerFactory.getLogger(UCColumnConversions.class);
+
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   // Field names of the canonical "StructField-shape" JSON stored in ColumnInfo.type_json.
@@ -32,6 +38,11 @@ public final class UCColumnConversions {
   private static final String FIELD_NULLABLE = "nullable";
   private static final String FIELD_METADATA = "metadata";
   private static final String FIELD_COMMENT = "comment";
+
+  // Delta owns these per-column physical-layout keys through its log. They are not user schema
+  // metadata, so loading must not hand them to Spark, which would copy them into tables created
+  // from this schema (CTAS, CREATE TABLE LIKE).
+  private static final String DELTA_COLUMN_MAPPING_PREFIX = "delta.columnMapping.";
 
   /**
    * Serialize a Spark {@link StructField} to the canonical "StructField-shape" JSON that Unity
@@ -118,6 +129,44 @@ public final class UCColumnConversions {
     String metadataInJSON = metadataObj.isEmpty() ? null : writeValueAsString(metadataObj);
 
     return Column.create(name, dataType, nullable, comment, metadataInJSON);
+  }
+
+  /**
+   * Wire -&gt; Spark field metadata: read the {@code metadata} object of a column's {@code
+   * type_json}. It carries what {@code type_text} cannot, such as the {@code CURRENT_DEFAULT} and
+   * {@code EXISTS_DEFAULT} keys of a column {@code DEFAULT}. Returns empty metadata when {@code
+   * type_json} or its {@code metadata} object is absent. Delta's {@code delta.columnMapping.*} keys
+   * are dropped: they describe the physical layout recorded in the Delta log.
+   *
+   * <p>The column type always comes from {@code type_text}, so this metadata is best effort. If
+   * {@code type_json} is malformed, or its {@code metadata} holds values Spark cannot represent
+   * (such as a mixed-type array), this logs a warning and returns empty metadata instead of failing
+   * the table load.
+   *
+   * @param columnName the column name, used only in the warning log
+   * @param typeJson the column's {@code type_json}, possibly null or empty
+   * @return the Spark field metadata, or empty metadata when absent or unreadable
+   */
+  static Metadata metadataOf(String columnName, String typeJson) {
+    if (typeJson == null || typeJson.isEmpty()) {
+      return Metadata.empty();
+    }
+    try {
+      JsonNode metadataNode = readTree(typeJson).get(FIELD_METADATA);
+      if (metadataNode == null || !metadataNode.isObject()) {
+        return Metadata.empty();
+      }
+      ObjectNode userMetadata = (ObjectNode) metadataNode.deepCopy();
+      userMetadata
+          .properties()
+          .removeIf(entry -> entry.getKey().startsWith(DELTA_COLUMN_MAPPING_PREFIX));
+      return Metadata.fromJson(writeValueAsString(userMetadata));
+    } catch (IllegalArgumentException | ClassCastException | SparkRuntimeException e) {
+      // readTree wraps Jackson errors in IllegalArgumentException; Metadata.fromJson throws
+      // ClassCastException or SparkRuntimeException for values Spark metadata cannot hold.
+      LOG.warn("Ignoring unreadable metadata in type_json of column {}", columnName, e);
+      return Metadata.empty();
+    }
   }
 
   /**

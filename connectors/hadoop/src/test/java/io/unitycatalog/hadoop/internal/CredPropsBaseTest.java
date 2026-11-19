@@ -14,6 +14,7 @@ import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -83,6 +84,16 @@ abstract class CredPropsBaseTest {
 
   /** Keys emitted on every path. */
   abstract Map<String, String> defaultKeys();
+
+  /**
+   * The keys recording the storage vended for {@link #location()}'s bucket, if the cloud has any.
+   *
+   * @param vendedKeysSign whether S3A signs with the vended keys: always for one credential, and
+   *     for several only with renewal, as only then are their keys used
+   */
+  Map<String, String> vendedStorageKeys(boolean vendedKeysSign) {
+    return Map.of();
+  }
 
   /** Non-renewable credentials keys. */
   abstract Map<String, String> staticCredKeys(Long expiration);
@@ -354,6 +365,7 @@ abstract class CredPropsBaseTest {
       expected.put(
           UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
           String.join(",", CredentialUtil.encodeCredPrefixes(prefixes)));
+      expected.putAll(vendedStorageKeys(/* vendedKeysSign= */ renew));
     }
     if (credScoped) {
       expected.putAll(customImplKeys(conf));
@@ -376,10 +388,16 @@ abstract class CredPropsBaseTest {
       expected.putAll(requestContext(appVersions));
     } else {
       expected.putAll(staticCredKeys(expiration));
+      if (credScoped) {
+        expected.put(
+            UCHadoopConfConstants.UC_FIXED_CREDENTIAL_ID_KEY,
+            MapIdGenerator.generateId(staticCredKeys(expiration)));
+      }
     }
     expected.put(
         UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
         CredentialUtil.encodeCredPrefixes(List.of(location()))[0]);
+    expected.putAll(vendedStorageKeys(/* vendedKeysSign= */ true));
     if (credScoped) {
       expected.putAll(customImplKeys(conf));
     }

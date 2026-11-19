@@ -9,7 +9,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from unitycatalog.ai.core.utils.function_processing_utils import (
     FullFunctionName,
@@ -551,3 +551,65 @@ def test_process_function_parameter_defaults_with_null():
 
     assert result["null_param"] == "override"
     assert result["str_param"] == "default"
+
+
+@pytest.mark.parametrize(
+    ("parameter_default", "expected"),
+    [
+        # Valid binary literals parse back to bytes, not stay strings
+        ("X'0102'", b"\x01\x02"),
+        ("X''", b""),
+        # The prefix match is case-insensitive
+        ("x'0102'", b"\x01\x02"),
+        # Odd-length hex: Spark prepends a 0, so these parse as X'0123' / X'01'
+        ("X'123'", b"\x01\x23"),
+        ("X'1'", b"\x01"),
+        # Malformed hex takes the ValueError fallback and stays a raw string
+        ("X'zz'", "X'zz'"),
+        # Odd-length malformed hex also falls back, after the prepend
+        ("X'12z'", "X'12z'"),
+        ("X'z'", "X'z'"),
+        # Guard misses (too short, no closing quote) also stay raw strings
+        ("X'", "X'"),
+        ("X'01", "X'01"),
+    ],
+)
+def test_process_function_parameter_defaults_with_binary_literal(parameter_default, expected):
+    func_info = FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="test_func",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="bytes_param",
+                    type_name="BINARY",
+                    type_text="binary",
+                    position=0,
+                    parameter_default=parameter_default,
+                ),
+            ]
+        ),
+    )
+
+    result = process_function_parameter_defaults(func_info, {})
+
+    assert result["bytes_param"] == expected
+    assert isinstance(result["bytes_param"], type(expected))
+
+
+@pytest.mark.parametrize("type_name", ["binary", "BINARY"])
+def test_param_info_to_pydantic_type_decodes_base64_binary_in_any_case(type_name):
+    param_info = FunctionParameterInfo(
+        name="data",
+        type_name="BINARY",
+        type_text="binary",
+        position=0,
+        type_json=json.dumps(
+            {"name": "data", "type": type_name, "nullable": False, "metadata": {}}
+        ),
+    )
+
+    field_type = param_info_to_pydantic_type(param_info).pydantic_type
+
+    assert TypeAdapter(field_type).validate_python("YWJjZA==") == b"abcd"

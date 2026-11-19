@@ -1,9 +1,10 @@
-import json
 import logging
+from collections.abc import Mapping, Sequence
 from typing import Any, Callable, Dict, List, Optional
 
 from google.generativeai.types import CallableFunctionDeclaration, content_types
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import to_jsonable_python
 
 from unitycatalog.ai.core.client import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
@@ -18,6 +19,21 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 _logger = logging.getLogger(__name__)
+
+
+def _function_call_value_to_python(value: Any) -> Any:
+    """
+    Converts a value that `to_jsonable_python` does not know into a JSON-compatible one.
+
+    Gemini passes the STRUCT, ARRAY and MAP arguments of a function call as protobuf
+    `MapComposite` and `RepeatedComposite` objects, which are converted to a dict and a list.
+    Any other value is converted to its string form.
+    """
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, Sequence):
+        return list(value)
+    return str(value)
 
 
 class GeminiTool(BaseModel):
@@ -103,7 +119,7 @@ class UCFunctionToolkit(BaseModel):
         """
 
         fields_dict = {}
-        param_infos = function_info.input_params.parameters
+        param_infos = function_info.input_params.parameters if function_info.input_params else []
         if param_infos is None:
             raise ValueError("Function input parameters are None.")
 
@@ -170,10 +186,9 @@ class UCFunctionToolkit(BaseModel):
         schema = UCFunctionToolkit.convert_to_gemini_schema(function_info, strict=True)
 
         def func(**kwargs: Any) -> str:
-            args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,
-                parameters=args_json,
+                parameters=to_jsonable_python(kwargs, fallback=_function_call_value_to_python),
                 enable_retriever_tracing=mlflow_tracing_enabled("gemini"),
             )
 

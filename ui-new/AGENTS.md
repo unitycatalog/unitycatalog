@@ -9,24 +9,29 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
 
 - `web/` — Bun + Vite + React 19 SPA. shadcn/ui on Tailwind v4, TanStack Router
   (file-based) + TanStack Query, connect-web + connect-query.
-- `server/` — Rust axum bridge. One Connect RPC (`uc.v1.UnityProxyService/Call`,
-  a generic UC REST passthrough), plus `/config`, `/healthz`, and the built SPA.
-- `proto/` — Connect service definition. `buf.gen.yaml` generates the TS client
-  into `web/src/gen` (`bun run generate`, run from this directory).
+- `server/` — Rust axum bridge. Typed domain Connect services translate to UC
+  REST; `UnityProxyService/Call` remains for control-plane endpoints. It also
+  serves `/config` and `/healthz`; Vite (development) or a separate web server
+  serves the SPA.
+- `proto/` — typed catalog-domain RPCs plus the generic control-plane proxy.
+  `buf.gen.yaml` generates TS clients into `web/src/gen` (`bun run generate`
+  from `web/`).
 
 ## Principles
 
-1. The bridge is a thin, generic REST passthrough. Keep it that way — do not add
-   per-endpoint logic. The one non-obvious behavior is cookie handling: it
-   forwards the browser's `Cookie` to UC and copies UC's `Set-Cookie` back onto
-   the same-origin response, because the auth realm now sits on the bridge's
-   origin. Preserve that.
+1. Domain reads and mutations use the generated Connect services in
+   `server/src/services/`; keep their translation to UC REST explicit and
+   narrow. The generic proxy is reserved for auth, SCIM, and permissions.
+   Both paths forward `Cookie`, `Authorization`, and `X-Requested-With` (UC's
+   CSRF check); the generic auth path also copies UC's `Set-Cookie` onto the
+   same-origin response.
 2. Auth mirrors the legacy `ui/`: cookie-based token-exchange (`/auth/tokens`,
    `ext=cookie`) + SCIM `/scim2/Me`, with an auth-disabled mode. Provider
    enablement is runtime via `/config`, not build-time env.
-3. Data access flows through `useUcQuery` / `ucJson` (over the `Call` RPC) so
-   connect-query owns stable query keys. Add a typed hook under `web/src/hooks`
-   per domain; do not scatter raw `proxyClient.call` usage in components.
+3. Domain data access uses generated method descriptors with
+   `useQuery`/`useMutation` under `web/src/hooks`. `useUcQuery` / `ucJson` are
+   only for control-plane surfaces without typed contracts. Do not scatter raw
+   clients through components.
 4. UI is shadcn components (`web/src/components/ui/*`, imported via `@/lib/utils`
    `cn`). Reuse the shared building blocks (`EntityHeader`, `CatalogCrumbs`,
    `MetaGrid`, `PropertiesCard`, `DescriptionCard`, `PermissionsPanel`,
@@ -35,11 +40,25 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
    `web/src/routeTree.gen.ts` (TanStack router). Change the proto or the routes,
    then regenerate.
 
+## Write actions and authorization
+
+Create, edit, and delete actions are offered by the UI without pre-checking
+permissions; Unity Catalog remains authoritative, and the UI must surface its
+refusals. For pending model-version Finalize, `/config` controls the UI hint:
+when auth is enabled, show it only when the current SCIM username matches
+`audit.createdBy`; when auth is disabled, offer it. Bridge and server auth
+settings can differ, so UC may still reject the operation.
+
 ## Common tasks
 
 - Change the bridge contract: edit `proto/uc/v1/proxy.proto`, run
-  `bun run generate` in `web/`, and update the Rust `CallRequest`/`CallResponse`
-  in `server/src/proxy.rs` to match (fields use proto3 JSON camelCase).
+  `bun run generate` in `web/`, and update the generated-service implementation
+  in `server/src/proxy.rs` (fields use proto3 JSON camelCase).
+- Change a typed domain contract: edit the matching file under
+  `proto/uc/v1/`, keep its `buf.validate` rules aligned with the UC API, then
+  run `bun run proto:check` and `bun run generate` from `web/`. Update the translation in
+  `server/src/services/` or `server/src/mapping.rs`; `server/build.rs` generates
+  Connect and `protovalidate-buffa` code at compile time.
 - Add a page: add a typed hook in `web/src/hooks`, a page in `web/src/pages`, and
   a file route in `web/src/routes/_authed/**` that reads params and renders it.
 
@@ -48,9 +67,10 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
 The SPA uses Vitest + React Testing Library (config in `web/vitest.config.ts`,
 env `happy-dom`). Shared harness lives in `web/src/test/`:
 - `providers.tsx` — `renderWithProviders` / `renderHookWithProviders` wrap a
-  QueryClient + a `createRouterTransport`-based in-memory `UnityProxyService`, so
-  `useUcQuery`/hooks/pages run their real code paths against canned UC replies
-  (pass a `UcHandler` keyed by method + path).
+  QueryClient and in-memory implementations of the generic proxy and typed
+  domain services, so hooks/pages run their real query paths. Pass `rpc`
+  (`RpcHandlers`) to answer typed service methods, and `handler` (a
+  `UcHandler` keyed by method + path) to answer `UnityProxyService/Call`.
 - `tanstack-router-mock.tsx` — a Link/useParams/useNavigate/Navigate stand-in;
   opt in per file with `vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"))`.
 - `localstorage-polyfill.ts` — the test DOM has no Web Storage; the polyfill is
@@ -58,8 +78,8 @@ env `happy-dom`). Shared harness lives in `web/src/test/`:
 
 Tests co-locate as `*.test.ts(x)` next to the code. Coverage is gated at 80%
 (generated code, vendored `components/ui`, routes, and the entry are excluded).
-When testing components that read UC data, prefer a `UcHandler` over mocking the
-hooks, so the hook + query-key wiring is exercised too.
+When testing components that read UC data, prefer these handlers over mocking
+the hooks, so the hook + query-key wiring is exercised too.
 
 ## Checks before pushing
 

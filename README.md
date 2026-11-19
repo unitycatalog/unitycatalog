@@ -175,7 +175,7 @@ See the [cli usage](docs/usage/cli.md) for more details.
 
 ## APIs and Compatibility
 
-- Open API specification: See the [Unity Catalog Rest API](https://docs.unitycatalog.io/swagger-docs/).
+- Open API specification: See the [Unity Catalog Rest API](https://unitycatalog.io/docs/api/).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
 ## Building Unity Catalog
@@ -196,7 +196,7 @@ Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
   ```sh
   build/sbt createTarball
   ```
-  This will create a tarball in the `target` directory. See the full [deployment guide](docs/deployment.md) for more details.
+  This will create a tarball in the `target` directory. See the full [deployment guide](docs/server/deployment.md) for more details.
 
 ## Compiling and testing
 
@@ -206,7 +206,12 @@ Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
   ```sh
   build/sbt clean compile
   ```
-- To compile and execute tests, run the following:
+- To compile and execute tests, run the following. It runs the same tests as `build/sbt test`, split
+  across parallel JVMs sized to the machine's CPUs and memory (see `dev/run-tests.py --help`):
+  ```sh
+  dev/run-tests.py
+  ```
+  On a weak machine, where the script picks only 1-2 JVMs, run the tests serially instead:
   ```sh
   build/sbt -J-Xmx2G clean test
   ```

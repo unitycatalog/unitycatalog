@@ -40,6 +40,7 @@ import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -47,8 +48,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * How {@link AuthDecorator} answers a valid internal token whose user lookup fails or finds no
- * enabled user, and an internal token signed with another key. The token is real, signed with the
- * key in {@code etc/conf}; only the user repository is mocked.
+ * enabled user, and an internal token signed with another key. The token is real, signed with keys
+ * generated in a temp folder; only the user repository is mocked.
  */
 class AuthDecoratorTest {
 
@@ -58,10 +59,11 @@ class AuthDecoratorTest {
   private final HttpService delegate = mock();
   private AuthDecorator decorator;
   private String token;
+  // Shared by all tests, so the signing keys are generated once.
+  @TempDir static Path configurationFolder;
 
   @BeforeEach
   void setUp() {
-    Path configurationFolder = Path.of("etc", "conf");
     SecurityContext securityContext =
         new SecurityContext(
             configurationFolder,

@@ -8,11 +8,13 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
-from google.generativeai import GenerativeModel
+from google.generativeai import GenerativeModel, protos
 from google.generativeai.types import CallableFunctionDeclaration
 from pydantic import ValidationError
 
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
@@ -24,10 +26,14 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
     create_function_and_cleanup,
     create_table_function_and_cleanup,
+    generate_function_info_with_params,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
+from unitycatalog.client import FunctionInfo as OSSFunctionInfo
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_gemini_test")
@@ -414,3 +420,122 @@ def test_generate_callable_tool_list(client):
     )
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."
+
+
+@pytest.mark.parametrize(
+    "function_names",
+    [["catalog.schema.get_weather", "catalog.schema.test"], ["catalog.schema.*"]],
+    ids=["by_name", "wildcard"],
+)
+@pytest.mark.parametrize(
+    "no_params_function_info",
+    [
+        FunctionInfo(
+            catalog_name="catalog",
+            schema_name="schema",
+            name="get_weather",
+            full_name="catalog.schema.get_weather",
+            comment="Get the weather.",
+            input_params=None,
+        ),
+        OSSFunctionInfo(
+            catalog_name="catalog",
+            schema_name="schema",
+            name="get_weather",
+            full_name="catalog.schema.get_weather",
+            comment="Get the weather.",
+            data_type="STRING",
+            full_data_type="STRING",
+            input_params=None,
+        ),
+    ],
+    ids=["databricks", "oss"],
+)
+def test_toolkit_with_function_without_params(no_params_function_info, function_names):
+    function_infos = {
+        info.full_name: info for info in [no_params_function_info, generate_function_info()]
+    }
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.side_effect = function_infos.get
+    client.list_functions.return_value = PagedList(list(function_infos.values()), None)
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="sunny")
+
+    toolkit = UCFunctionToolkit(function_names=function_names, client=client)
+    declarations = {
+        declaration.name: declaration for declaration in toolkit.generate_callable_tool_list()
+    }
+
+    assert {tool.name: tool.schema for tool in toolkit.tools}["catalog__schema__get_weather"] == {
+        "name": "get_weather",
+        "description": "Get the weather.",
+    }
+    assert declarations["test"].to_proto().parameters.required == ["x"]
+    response = declarations["get_weather"](protos.FunctionCall(name="get_weather", args={}))
+    client.execute_function.assert_called_once_with(
+        function_name="catalog.schema.get_weather", parameters={}, enable_retriever_tracing=False
+    )
+    assert json.loads(type(response).to_dict(response)["response"]["result"]) == {
+        "format": "SCALAR",
+        "value": "sunny",
+    }
+
+
+# Unlike JSON_ARGUMENT_PARAMS, these have no DATE, TIMESTAMP or DECIMAL parameter and no nullable
+# struct field, since a Gemini function schema accepts no union type and no default. The struct
+# fields are strings because the protobuf Struct of a function call returns every number as a
+# float, so 150 would come back as 150.0, tracked in
+# https://github.com/unitycatalog/unitycatalog/issues/2308.
+PLACE_TYPE_JSON = {
+    "type": "struct",
+    "fields": [
+        {"name": "city", "type": "string", "nullable": False, "metadata": {}},
+        {"name": "country", "type": "string", "nullable": False, "metadata": {}},
+    ],
+}
+
+GEMINI_JSON_ARGUMENT_PARAMS = {
+    "address": ("struct<city:string,country:string>", PLACE_TYPE_JSON),
+    "stops": (
+        "array<struct<city:string,country:string>>",
+        {"type": "array", "elementType": PLACE_TYPE_JSON, "containsNull": False},
+    ),
+    "by_name": (
+        "map<string,struct<city:string,country:string>>",
+        {
+            "type": "map",
+            "keyType": "string",
+            "valueType": PLACE_TYPE_JSON,
+            "valueContainsNull": False,
+        },
+    ),
+    "data": ("binary", "binary"),
+}
+
+
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(GEMINI_JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(GEMINI_JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+def test_function_call_sends_arguments_as_json_values(function_info, encoded):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    declaration = toolkit.generate_callable_tool_list()[0]
+    arguments = {
+        "address": {"city": "Oslo", "country": "NO"},
+        "stops": [{"city": "Bergen", "country": "NO"}, {"city": "Lund", "country": "SE"}],
+        "by_name": {"home": {"city": "Oslo", "country": "NO"}},
+        "data": encoded,
+    }
+
+    declaration(protos.FunctionCall(name=declaration.name, args=arguments))
+
+    assert client.execute_function.call_args.kwargs["parameters"] == arguments

@@ -1,4 +1,5 @@
 import ast
+import base64
 import decimal
 import inspect
 import json
@@ -8,9 +9,10 @@ import re
 from dataclasses import dataclass
 from hashlib import md5
 from io import StringIO
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Annotated, Any, Callable, Dict, List, Optional, Tuple, Union
 
-from pydantic import Field, create_model
+from pydantic import BeforeValidator, Field, create_model
+from pydantic_core import to_jsonable_python
 
 from unitycatalog.ai.core.utils.callable_utils import ServiceCredential
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
@@ -223,6 +225,8 @@ def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> Pydant
     nullable = type_json.get("nullable")
     pydantic_type = uc_type_json_to_pydantic_type(type_json["type"], strict=strict)
     pydantic_field_type = pydantic_type.pydantic_type
+    if str(type_json["type"]).lower() == "binary":
+        pydantic_field_type = Annotated[pydantic_field_type, BeforeValidator(_decode_base64_text)]
     default = None
     description = param_info.comment or ""
     if param_info.parameter_default:
@@ -284,6 +288,28 @@ def generate_function_input_params_schema(
     model = create_model(params_name, **fields, __config__={"extra": "forbid"})
 
     return PydanticFunctionInputParams(pydantic_model=model, strict=strict)
+
+
+def _decode_base64_text(value: Any) -> Any:
+    """
+    Decodes the base64 text that an LLM sends for a BINARY parameter, so the model holds the bytes.
+    Bytes passed in are kept as they are.
+    """
+    return base64.b64decode(value, validate=True) if isinstance(value, str) else value
+
+
+def to_tool_call_parameters(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Returns the JSON values to send to `execute_function` for the arguments of a tool call. Bytes
+    become base64 text, which the function clients decode for a BINARY parameter. Other values are
+    converted with `to_jsonable_python`, falling back to their string form.
+    """
+    return {
+        name: base64.b64encode(value).decode("ascii")
+        if isinstance(value, bytes)
+        else to_jsonable_python(value, fallback=str)
+        for name, value in arguments.items()
+    }
 
 
 def supported_param_info_types():
@@ -428,6 +454,23 @@ def process_function_parameter_defaults(
                     defaults[param.name] = None
                 elif upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
                     defaults[param.name] = UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
+                elif (
+                    upper_str.startswith("X'")
+                    and default_str.endswith("'")
+                    and len(default_str) > 2
+                ):
+                    # Spark SQL binary literal (X'<hex>'), the form format_default_value
+                    # writes for bytes defaults; ast.literal_eval cannot parse it.
+                    try:
+                        hex_str = default_str[2:-1]
+                        if len(hex_str) % 2:
+                            # Spark prepends a 0 to odd-length hex literals
+                            # (X'123' parses as X'0123'); bytes.fromhex needs
+                            # an even number of digits, so match Spark's rule.
+                            hex_str = "0" + hex_str
+                        defaults[param.name] = bytes.fromhex(hex_str)
+                    except ValueError:
+                        defaults[param.name] = default_str
                 else:
                     try:
                         defaults[param.name] = ast.literal_eval(default_str)

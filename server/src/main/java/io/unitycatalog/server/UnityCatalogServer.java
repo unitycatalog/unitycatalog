@@ -11,6 +11,7 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.OpaAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
@@ -57,9 +58,14 @@ import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.LogManager;
@@ -86,6 +92,12 @@ public class UnityCatalogServer implements AutoCloseable {
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
 
+  /** True when the pool's live connection is to an in-memory database, decided at construction. */
+  private boolean inMemoryDatabase;
+
+  // Whether the in-memory database is one that this server chose for itself, and so drops at close.
+  private boolean dropsDatabaseAtClose;
+
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
 
@@ -94,6 +106,9 @@ public class UnityCatalogServer implements AutoCloseable {
 
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private StorageCleanupWorker cleanupWorker;
+
+  // The cloud credential vendor the repositories built, if not injected; closed with the server.
+  private CloudCredentialVendor cloudCredentialVendor;
 
   /**
    * Metrics registry owned by this server instance; set during {@link #initializeServer}. Closed on
@@ -109,8 +124,9 @@ public class UnityCatalogServer implements AutoCloseable {
 
   private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     setDefaults(unityCatalogServerBuilder);
+    unityCatalogServerBuilder.serverProperties.validateProperties();
     this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
-    Path configurationFolder = Path.of("etc", "conf");
+    Path configurationFolder = unityCatalogServerBuilder.configurationFolder;
     SecurityConfiguration securityConfiguration =
         SecurityConfiguration.load(unityCatalogServerBuilder.serverProperties, configurationFolder);
 
@@ -118,12 +134,41 @@ public class UnityCatalogServer implements AutoCloseable {
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
     // An injected configurator stays the caller's to close; only a self-built one is ours.
     this.ownsHibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator == null;
-    this.hibernateConfigurator =
-        ownsHibernateConfigurator
-            ? new HibernateConfigurator(unityCatalogServerBuilder.serverProperties)
-            : unityCatalogServerBuilder.hibernateConfigurator;
+    String ownTestDatabaseUrl = null;
+    if (ownsHibernateConfigurator) {
+      Properties ownProperties =
+          HibernateConfigurator.setupHibernateProperties(
+              unityCatalogServerBuilder.serverProperties,
+              unityCatalogServerBuilder.hibernatePropertiesFile);
+      // Before Hibernate connects: H2 creates a missing database file when it connects.
+      SchemaMigrator.requireH2DatabaseExists(ownProperties);
+      this.hibernateConfigurator = new HibernateConfigurator(ownProperties);
+      ownTestDatabaseUrl = HibernateConfigurator.ownTestDatabaseUrl(ownProperties);
+    } else {
+      this.hibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator;
+    }
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      // Serves only a database already at this release's schema: bin/start-uc-server
+      // --upgrade-schema brings it there. An in-memory database lasts only as long as this
+      // server, so the server sets it up itself, through its own data source. Whether it is in
+      // memory is read from the connection the pool opens, the one the server will use.
+      SchemaMigrator inMemoryMigrator = new SchemaMigrator(hibernateConfigurator.getDataSource());
+      this.inMemoryDatabase = inMemoryMigrator.isInMemory();
+      this.dropsDatabaseAtClose =
+          inMemoryDatabase
+              && ownTestDatabaseUrl != null
+              && sameDatabase(ownTestDatabaseUrl, inMemoryMigrator.connectionUrl());
+      if (inMemoryDatabase) {
+        inMemoryMigrator.upgradeSchema();
+      } else {
+        // The schema check has its own small pool, so the server's pool can be any size.
+        try (SchemaMigrator migrator =
+            SchemaMigrator.fromHibernateProperties(
+                hibernateConfigurator.getHibernateProperties())) {
+          migrator.requireCurrentSchema();
+        }
+      }
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())
@@ -140,6 +185,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
       closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
       closeQuietly(auditor, t, "the audit sink");
+      closeQuietly(cloudCredentialVendor, t, "the cloud credential vendor");
       closeOwnedSessionFactory(t);
       throw t;
     }
@@ -196,9 +242,39 @@ public class UnityCatalogServer implements AutoCloseable {
       return;
     }
     try {
-      hibernateConfigurator.close();
+      closeOwnedDatabase();
     } catch (Throwable closeFailure) {
       primaryFailure.addSuppressed(closeFailure);
+    }
+  }
+
+  HibernateConfigurator hibernateConfigurator() {
+    return hibernateConfigurator;
+  }
+
+  /** Whether the URLs name the same H2 database, whatever settings follow the name. */
+  private static boolean sameDatabase(String url, String connectionUrl) {
+    return url.split(";", 2)[0].equalsIgnoreCase(connectionUrl.split(";", 2)[0]);
+  }
+
+  /**
+   * Closes the database configuration this server built. An in-memory database lasts only as long
+   * as its server, but H2 keeps one that sets DB_CLOSE_DELAY=-1 until the JVM ends, so the database
+   * that this server chose for itself is shut down first, which removes it. A database that the
+   * configuration names is never dropped: another server may be using it.
+   */
+  private void closeOwnedDatabase() {
+    try {
+      if (dropsDatabaseAtClose) {
+        try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
+            Statement statement = connection.createStatement()) {
+          statement.execute("SHUTDOWN");
+        }
+      }
+    } catch (SQLException | RuntimeException e) {
+      LOGGER.warn("Could not shut down the in-memory database", e);
+    } finally {
+      hibernateConfigurator.close();
     }
   }
 
@@ -263,8 +339,19 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.fileOperationsDecorator,
             domainMetrics,
             audit);
+    cloudCredentialVendor = repositories.getOwnedCloudCredentialVendor().orElse(null);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
+    if (unityCatalogServerBuilder.serverProperties.isS3CompatibleStorageEnabled()) {
+      warnAboutUnreadableSecrets(repositories);
+      if (unityCatalogServerBuilder.serverProperties.getS3CompatibleStaticKeyVending()
+          == ServerProperties.S3CompatibleStaticKeyVending.STATIC_KEY) {
+        LOGGER.warn(
+            "{}=static-key: clients get the key pair of s3_compatible credentials without"
+                + " assume_role, which is not scoped to the requested path or privilege",
+            ServerProperties.Property.S3_COMPATIBLE_STATIC_KEY_VENDING.getKey());
+      }
+    }
     // Init authorizer
     authorizer =
         initializeAuthorizer(
@@ -336,6 +423,21 @@ public class UnityCatalogServer implements AutoCloseable {
             domainMetrics);
   }
 
+  /** Warns about each credential whose stored secret the server cannot read, with the reason. */
+  private static void warnAboutUnreadableSecrets(Repositories repositories) {
+    repositories
+        .getCredentialRepository()
+        .findUnreadableSecrets()
+        .forEach(
+            (name, failure) ->
+                // Not only a missing or changed key: the stored value can also be malformed.
+                LOGGER.warn(
+                    "Cannot read the stored secret of storage credential '{}': {}",
+                    name,
+                    failure.getMessage(),
+                    failure));
+  }
+
   private UnityCatalogAuthorizer initializeAuthorizer(
       ServerProperties serverProperties,
       HibernateConfigurator hibernateConfigurator,
@@ -346,8 +448,20 @@ public class UnityCatalogServer implements AutoCloseable {
         JCasbinAuthorizer authorizer =
             new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
         try {
+          UnityCatalogAuthorizer backend;
+          if (serverProperties.isOpaAuthorizationEnabled()) {
+            LOGGER.info("Using OPA for authorization decisions.");
+            backend =
+                new OpaAuthorizer(
+                    authorizer,
+                    hibernateConfigurator.getSessionFactory(),
+                    serverProperties.getOpaDecisionUrl(),
+                    serverProperties.getOpaResponseTimeout());
+          } else {
+            backend = authorizer;
+          }
           UnityCatalogAuthorizer effective =
-              Optional.ofNullable(auditor).map(a -> a.wrap(authorizer)).orElse(authorizer);
+              Optional.ofNullable(auditor).map(a -> a.wrap(backend)).orElse(backend);
           new UnityAccessUtil(repositories).initializeAdmin(effective);
           return effective;
         } catch (Exception e) {
@@ -467,8 +581,9 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
-    if (options.isUpgradeSchema()) {
-      int exitCode = SchemaMigrator.runCommand(Path.of("etc", "conf"), System.out);
+    if (options.isCheckSchema() || options.isUpgradeSchema()) {
+      int exitCode =
+          SchemaMigrator.runCommand(options.isUpgradeSchema(), Path.of("etc", "conf"), System.out);
       LogManager.shutdown();
       System.exit(exitCode);
     }
@@ -548,8 +663,9 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
       closeQuietly(auditor, null, "the audit sink");
+      closeQuietly(cloudCredentialVendor, null, "the cloud credential vendor");
       closeQuietly(
-          ownsHibernateConfigurator ? hibernateConfigurator : null, null, "the database pool");
+          ownsHibernateConfigurator ? this::closeOwnedDatabase : null, null, "the database pool");
     }
   }
 
@@ -581,6 +697,8 @@ public class UnityCatalogServer implements AutoCloseable {
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
+    private Path configurationFolder = Path.of("etc", "conf");
+    private Path hibernatePropertiesFile = Path.of("etc", "conf", "hibernate.properties");
 
     private Builder() {}
 
@@ -629,6 +747,29 @@ public class UnityCatalogServer implements AutoCloseable {
         UnaryOperator<FileOperations> fileOperationsDecorator) {
       this.fileOperationsDecorator =
           fileOperationsDecorator != null ? fileOperationsDecorator : UnaryOperator.identity();
+      return this;
+    }
+
+    /**
+     * Sets the folder holding the signing keys, which the server creates if missing, and the {@code
+     * certs.json} and {@code token.txt} it writes when constructed. Defaults to {@code etc/conf};
+     * tests pass their own folder so concurrent servers do not share these files.
+     *
+     * <p>Only these files move: {@code server.properties}, {@code hibernate.properties} and the
+     * log4j configuration are still read from {@code etc/conf}.
+     *
+     * @param configurationFolder the folder for the signing keys, {@code certs.json} and {@code
+     *     token.txt}
+     * @return this builder
+     */
+    public UnityCatalogServer.Builder configurationFolder(Path configurationFolder) {
+      this.configurationFolder = Objects.requireNonNull(configurationFolder, "configurationFolder");
+      return this;
+    }
+
+    /** Tests point a server that builds its own database configuration at their own file. */
+    Builder hibernatePropertiesFile(Path hibernatePropertiesFile) {
+      this.hibernatePropertiesFile = hibernatePropertiesFile;
       return this;
     }
 

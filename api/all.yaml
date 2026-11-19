@@ -85,6 +85,7 @@ paths:
             format: int32
             maximum: 1000
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listCatalogs
       summary: List catalogs
       description: |
@@ -111,6 +112,8 @@ paths:
       summary: Get a catalog
       description: |
         Gets the specified catalog.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The catalog was successfully retrieved.
@@ -206,6 +209,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listSchemas
       summary: List schemas
       description: |
@@ -233,6 +237,8 @@ paths:
       summary: Get a schema
       description: |
         Gets the specified schema for a catalog.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The schema was successfully retrieved.
@@ -369,6 +375,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listTables
       summary: List tables
       description: |
@@ -413,6 +420,7 @@ paths:
           schema:
             type: boolean
             default: true
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The table was successfully retrieved.
@@ -530,6 +538,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The volume list was successfully retrieved
@@ -576,6 +585,8 @@ paths:
       summary: Get a Volume
       description: |
         Gets a volume for a specific catalog and schema.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: Successfully retrieved the properties of the volume
@@ -764,6 +775,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listFunctions
       summary: List functions
       description: |
@@ -787,7 +799,8 @@ paths:
     get:
       tags:
         - Functions
-      parameters: []
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: getFunction
       summary: Get a function
       description: 'Gets a function from within a parent catalog and schema.'
@@ -867,6 +880,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listRegisteredModels
       summary: List models
       description: |
@@ -894,6 +908,8 @@ paths:
       summary: Get a specified registered model
       description: |
         Gets a fully specified registered model.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The registered model was successfully retrieved.
@@ -1191,7 +1207,37 @@ paths:
         - Credentials
       operationId: createCredential
       summary: Create a credential
-      description: Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+      description: |-
+        Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+        Set exactly one of `aws_iam_role` and `s3_compatible`; otherwise the request fails with
+        `INVALID_ARGUMENT`.
+
+        EXPERIMENTAL: `s3_compatible` is available only when the server property
+        `server.s3-compatible-storage.enabled` is `true`. Otherwise a create or update request that
+        sets `s3_compatible`, and vending for a path under one, fail with `INVALID_ARGUMENT`; other
+        updates, reads, lists and deletes of existing ones still work. An `s3_compatible`
+        credential holds an access key pair of S3-compatible storage and the storage's S3 endpoint.
+        `s3_endpoint` and `assume_role.sts_endpoint` are http or https URLs with a host, and
+        without user info, a query or a fragment; other values fail with `INVALID_ARGUMENT`. With
+        `assume_role`, the key pair signs AssumeRole on the storage's STS, and Unity Catalog vends
+        short-lived credentials scoped to the requested path and privilege. Without it, the server
+        property `server.s3-compatible-storage.static-key-vending` decides what clients receive:
+
+        * `endpoint-only` (default): the S3 endpoint and region, but no keys; engines bring their
+          own.
+        * `static-key`: the key pair itself. It is not scoped to the requested path or privilege,
+          and changing Unity Catalog permissions does not revoke a key pair already vended.
+
+        Vends with keys (`assume_role` sessions and `static-key` key pairs) suit only servers whose
+        clients all read `s3_endpoint`: a client that does not would send the keys to AWS S3.
+        Without `assume_role`, in both modes the vended `expiration_time` is a refetch time an hour
+        ahead, not when the keys expire, and the Iceberg REST table config of a `static-key` vend
+        carries no expiration. A running client need not fetch again then; the UC Hadoop connector
+        picks up a changed endpoint on its first table load after `expiration_time`. The external
+        locations of an `s3_compatible` credential must be `s3://` paths. Paths stay
+        `s3://<bucket>/<path>` everywhere: a path reaches the storage of the credential of the
+        external location covering it, so one bucket name can be on several storage systems under
+        different, non-overlapping locations.
       requestBody:
         content:
           application/json:
@@ -1277,7 +1323,23 @@ paths:
         - Credentials
       operationId: updateCredential
       summary: Update a credential
-      description: Updates a credential.
+      description: |-
+        Updates a credential.
+        The caller must be a metastore admin, the credential owner,
+        or have MANAGE on the credential.
+        Set at most one of `aws_iam_role` and `s3_compatible`; setting both fails with
+        `INVALID_ARGUMENT`. Either one replaces the stored credential as a whole, with no field-level
+        merge, and can change its type: an `s3_compatible` update carries `secret_access_key` again,
+        and leaving out `assume_role` removes it. Updates without either, such as of the name or
+        comment, keep the stored credential.
+
+        EXPERIMENTAL: whoever may update a credential is trusted with where the data under it lives.
+        Changing `s3_endpoint` of an `s3_compatible` credential moves data access for every path
+        under its external locations, including tables and volumes other principals own, to the new
+        host; changing `sts_endpoint` moves where their credentials are issued. The server itself
+        connects to both endpoints. An `s3_compatible` credential has only `s3://` external
+        locations: setting `s3_compatible` while a location outside `s3://` uses the credential,
+        or creating or updating such a location to use it, fails with `INVALID_ARGUMENT`.
       requestBody:
         content:
           application/json:
@@ -1295,11 +1357,14 @@ paths:
         - Credentials
       operationId: deleteCredential
       summary: Delete a credential
-      description: Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+      description: |-
+        Deletes a credential from the metastore.
+        The caller must be a metastore admin, the credential owner,
+        or have MANAGE on the credential.
       parameters:
         - name: force
           in: query
-          description: Force deletion even if there are dependent external locations.
+          description: Force deletion even if there are dependent external locations. The dependent external locations are kept, and they have no credential until they are updated with a new credential_name.
           required: false
           schema:
             type: boolean
@@ -1316,6 +1381,8 @@ paths:
       summary: Create an external location
       description: |
         Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
+        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
+        otherwise the request fails with `INVALID_ARGUMENT`.
       operationId: createExternalLocation
       requestBody:
         required: true
@@ -1336,6 +1403,8 @@ paths:
       summary: List external locations
       description: |
         Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+        Locations visible only through BROWSE are included only with include_browse=true
+        and return discovery metadata with browse_only=true.
       operationId: listExternalLocations
       parameters:
         - name: max_results
@@ -1353,6 +1422,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The external location list was successfully retrieved.
@@ -1374,7 +1444,11 @@ paths:
       summary: Get an external location
       description: |
         Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+        A BROWSE grant alone requires include_browse=true and returns discovery metadata
+        with browse_only=true.
       operationId: getExternalLocation
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The external location was successfully retrieved.
@@ -1386,12 +1460,18 @@ paths:
       tags:
         - External Locations
       summary: Delete an external location
-      description: Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+      description: |-
+        Deletes the specified external location from the metastore.
+        The caller must be a metastore admin, the external location owner,
+        or have MANAGE on the external location.
+        Unless force is true, the deletion fails while the location is in use: a table, volume
+        or registered model is stored under it, a catalog or schema keeps its managed storage
+        under it, or a storage cleanup is pending there.
       operationId: deleteExternalLocation
       parameters:
         - name: force
           in: query
-          description: Force deletion even if there are dependent external tables or mounts.
+          description: Force deletion even if the external location is in use.
           required: false
           schema:
             type: boolean
@@ -1402,8 +1482,14 @@ paths:
       tags:
         - External Locations
       summary: Update an external location
-      description: |
-        Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
+      description: |-
+        Updates an external location in the metastore.
+        The caller must be a metastore admin, the external location owner,
+        or have MANAGE on the external location.
+        Unless force is true, changing the url fails if the location is in use (as described for
+        deleting it), unless the new url is the same as, or a parent of, the old one.
+        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
+        otherwise the request fails with `INVALID_ARGUMENT`.
       operationId: updateExternalLocation
       requestBody:
         required: true
@@ -1501,6 +1587,17 @@ paths:
         '501':
           description: Not Implemented. The requested functionality is not supported.
 components:
+  parameters:
+    IncludeBrowse:
+      name: include_browse
+      in: query
+      description: |
+        Include discovery metadata for objects visible through BROWSE when ordinary access fails.
+        Such objects have browse_only=true. Ordinary access returns full metadata.
+      required: false
+      schema:
+        type: boolean
+        default: false
   schemas:
     SecurablePropertiesMap:
       description: A map of key-value properties attached to the securable.
@@ -1566,6 +1663,9 @@ components:
     VolumeInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         catalog_name:
           type: string
           description: The name of the catalog where the schema and the volume are
@@ -1698,6 +1798,9 @@ components:
     TableInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of table, relative to parent schema.
           type: string
@@ -1845,6 +1948,9 @@ components:
     SchemaInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of schema, relative to parent catalog.
           type: string
@@ -1941,6 +2047,9 @@ components:
     CatalogInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of catalog.
           type: string
@@ -2219,6 +2328,9 @@ components:
     FunctionInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of function, relative to parent schema.
           type: string
@@ -2400,6 +2512,19 @@ components:
           description: The token that users must pass to AWS API to use the temporary
             credentials.
           type: string
+        s3_endpoint:
+          description: EXPERIMENTAL. The S3 API endpoint to send requests for the path to, set when
+            the path is on S3-compatible storage. It is the `s3_endpoint` of the storage credential of
+            the external location covering the path. Requests to it always use path-style addressing.
+            Absent for AWS S3. When that credential does not vend keys, this and `s3_region` are the
+            only fields set. A client that does not support this field must not use the credentials,
+            and must not send their requests to AWS S3.
+          type: string
+        s3_region:
+          description: EXPERIMENTAL. The region to sign S3 requests with, set together with
+            `s3_endpoint`. Unity Catalog asks the storage for the bucket's region, and uses
+            `us-east-1` if it does not say.
+          type: string
       type: object
     AzureUserDelegationSAS:
       properties:
@@ -2435,6 +2560,9 @@ components:
     RegisteredModelInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: The name of the registered model
           type: string
@@ -2659,6 +2787,11 @@ components:
           description: |
             Server time when the credential will expire, in epoch milliseconds.
             The API client is advised to cache the credential given this expiration time.
+            EXPERIMENTAL: for S3-compatible storage without `assume_role`, it is a refetch time an
+            hour ahead, not when the keys expire: a vended key pair stays valid until the storage
+            rotates or revokes it, and a vend without keys has none to expire. A running client
+            need not fetch again then; the UC Hadoop connector picks up a changed endpoint on its
+            first table load after this time.
           type: integer
           format: int64
         url:
@@ -2742,7 +2875,7 @@ components:
         - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
         - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
         - 'BROWSE: Allows discovery of metadata for a catalog and its descendants, or an external location, without usage grants. Does not permit data access.'
-        - 'MANAGE: Allows metadata and grant inspection, grant changes, supported metadata changes and deletion, and ownership transfer. Does not grant data access, execution, or object creation.'
+        - 'MANAGE: Allows full metadata and grant inspection, grant changes, supported metadata changes, and deletion. Managers can grant themselves other privileges, including data access. Data access, execution, and object creation still require their own privileges.'
         - 'WRITE VOLUME: Permits creating, changing, and deleting files in volumes; also requires READ VOLUME and parent usage privileges.'
         - 'CREATE MODEL VERSION: Allows publishing versions of registered models with USE CATALOG and USE SCHEMA.'
         - 'READ METADATA: Permits reading full metadata and grants without data access or permission changes.'
@@ -2814,6 +2947,8 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleResponse'
+        s3_compatible:
+          $ref: '#/components/schemas/S3CompatibleResponse'
         comment:
           description: Comment associated with the credential.
           type: string
@@ -2855,6 +2990,8 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
+        s3_compatible:
+          $ref: '#/components/schemas/S3CompatibleRequest'
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     UpdateCredentialRequest:
@@ -2868,6 +3005,8 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
+        s3_compatible:
+          $ref: '#/components/schemas/S3CompatibleRequest'
         new_name:
           description: New name for the credential.
           type: string
@@ -2894,6 +3033,99 @@ components:
         external_id:
           description: The external ID used in role assumption to prevent confused deputy problem.
           type: string
+    S3CompatibleRequest:
+      description: |
+        EXPERIMENTAL. Available only when the server property `server.s3-compatible-storage.enabled`
+        is `true`; otherwise a create or update request that sets one, and vending for paths under
+        one, fail with `INVALID_ARGUMENT`. Access key pair of S3-compatible storage, and the
+        storage's S3 endpoint. With `assume_role`, the key pair signs AssumeRole on the storage's
+        STS, and Unity Catalog vends the resulting short-lived credentials scoped to the requested
+        path and privilege. Without `assume_role`, the key pair is the only identity, and the
+        server property `server.s3-compatible-storage.static-key-vending` decides what clients
+        receive:
+         * `endpoint-only` (default): the S3 endpoint and region, but no keys. The server uses the
+           key pair for its own storage access; engines bring their own keys. Its
+           `expiration_time`, an hour ahead, tells engines when they may fetch again, to pick up a
+           changed endpoint; one that does not, such as the UC Hadoop connector, picks it up on
+           its first table load after that time.
+         * `static-key`: the key pair itself. Its `expiration_time`, an hour ahead, only
+           tells engines when to fetch credentials again, so that they pick up an updated key pair:
+           the key pair stays valid until the storage rotates or revokes it, and changing Unity
+           Catalog permissions does not revoke a key pair already vended. The storage applies the
+           key pair's own permissions rather than the requested path and privilege. The Iceberg REST
+           table config carries no expiration, so Iceberg clients keep the key pair until they
+           load the table again.
+        Paths stay `s3://<bucket>/<path>` everywhere: a path reaches the storage of the credential
+        of the external location covering it. External locations cannot overlap, so each path has
+        one storage, and one bucket name can be on several storage systems under different
+        locations. An update replaces the whole object (see `updateCredential`); changing the
+        endpoint moves every path under the credential's locations, for example to the storage's new
+        host name.
+      type: object
+      required:
+        - access_key_id
+        - secret_access_key
+        - s3_endpoint
+      properties:
+        s3_endpoint:
+          $ref: "#/components/schemas/S3CompatibleS3Endpoint"
+        access_key_id:
+          description: EXPERIMENTAL. The access key ID.
+          type: string
+        secret_access_key:
+          description: EXPERIMENTAL. The secret access key. Write-only; never returned.
+          type: string
+        assume_role:
+          $ref: "#/components/schemas/S3AssumeRole"
+    S3CompatibleResponse:
+      description: |
+        EXPERIMENTAL. An `s3_compatible` storage credential as returned, without its write-only
+        `secret_access_key`; see `S3CompatibleRequest`.
+      type: object
+      required:
+        - access_key_id
+        - s3_endpoint
+      properties:
+        s3_endpoint:
+          $ref: "#/components/schemas/S3CompatibleS3Endpoint"
+        access_key_id:
+          description: EXPERIMENTAL. The access key ID.
+          type: string
+        assume_role:
+          $ref: "#/components/schemas/S3AssumeRole"
+    S3CompatibleS3Endpoint:
+      description: |
+        EXPERIMENTAL. S3 API endpoint of the S3-compatible storage, for example
+        `https://minio.example.com:9000`: an http or https URL with a host, and without user info, a
+        query or a fragment; other values fail with `INVALID_ARGUMENT`. Credential vending returns
+        it with the region engines need to reach the storage; requests to it use path-style
+        addressing.
+      type: string
+    S3AssumeRole:
+      description: |
+        EXPERIMENTAL. AssumeRole on the STS of S3-compatible storage, signed with the credential's
+        key pair; see `S3CompatibleRequest`.
+      type: object
+      required:
+        - role_arn
+      properties:
+        sts_endpoint:
+          description: |
+            EXPERIMENTAL. STS endpoint of the storage to call AssumeRole on, for example
+            `https://minio.example.com:9000`: an http or https URL with a host, and without user
+            info, a query or a fragment; other values fail with `INVALID_ARGUMENT`. Absent when not
+            set: AssumeRole then goes to the credential's `s3_endpoint`, so a change of
+            `s3_endpoint` moves it too.
+          type: string
+        role_arn:
+          description: EXPERIMENTAL. The role to assume.
+          type: string
+        sts_region:
+          description: |
+            EXPERIMENTAL. The region to sign the AssumeRole request with, of letters, digits, '.',
+            '_' and '-'. If not set, the region of the S3-compatible storage holding the requested
+            path is used.
+          type: string
     ListCredentialsResponse:
       type: object
       properties:
@@ -2914,6 +3146,9 @@ components:
     ExternalLocationInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of the external location.
           type: string
@@ -2924,7 +3159,7 @@ components:
           description: Path URL of the external location.
           type: string
         credential_name:
-          description: Name of the storage credential used with this location.
+          description: Name of the storage credential used with this location. Omitted when the credential no longer exists, for example after it was force-deleted. Updating the external location with a new credential_name repairs it.
           type: string
         comment:
           description: User-provided free-form text description.
@@ -2975,7 +3210,7 @@ components:
           description: Path URL of the external location.
           type: string
         credential_name:
-          description: Name of the storage credential used with this location.
+          description: Name of the storage credential used with this location. Setting it on an external location whose credential was force-deleted repairs the location.
           type: string
         comment:
           description: User-provided free-form text description.
@@ -2986,6 +3221,9 @@ components:
         new_name:
           description: New name for the external location.
           type: string
+        force:
+          description: Force the url change even if the external location is in use.
+          type: boolean
     ListExternalLocationsResponse:
       type: object
       properties:

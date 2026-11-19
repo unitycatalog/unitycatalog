@@ -50,6 +50,10 @@ jobs:
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
       (Spark ${{ matrix.spark-version }}${{ matrix.delta-version != '' && format(', Delta {0}', matrix.delta-version) || '' }}${{ matrix.test-database && format(', {0}', matrix.test-database) || '' }})
     continue-on-error: ${{ matrix.non-blocking || false }}
+    # The all-tests rows (H2, PostgreSQL 18, MySQL 8) also run the schema step checks, which run only
+    # with this set.
+    env:
+      UC_TEST_MIGRATION_CHECKS: ${{ matrix.validation-mode == 'all-tests' && 'true' || 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -111,3 +115,40 @@ jobs:
           # to H2 here; an empty value would skip the license check and fail the database lookup.
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
+      - name: Check that the schema step checks ran
+        if: matrix.validation-mode == 'all-tests'
+        # Both classes skip their tests without UC_TEST_MIGRATION_CHECKS, so each class's report must
+        # show tests and none skipped.
+        run: |
+          for class in MigrationStepRulesTest BaselineMatchesEntitiesTest; do
+            report="$(find server/target -name "TEST-io.unitycatalog.server.migrate.$class.xml" | head -n 1)"
+            if [ -z "$report" ]; then
+              echo "::error::$class did not run: no test report"
+              exit 1
+            fi
+            if ! grep -qE '<testsuite[^>]* tests="[1-9]' "$report"; then
+              echo "::error::$class ran no tests"
+              exit 1
+            fi
+            if ! grep -qE '<testsuite[^>]* skipped="0"' "$report"; then
+              echo "::error::$class skipped tests; is UC_TEST_MIGRATION_CHECKS set?"
+              exit 1
+            fi
+          done
+
+  # Databases already ran the merged schema steps, so a pull request may only add steps, and none
+  # on a release branch.
+  migration-steps:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    name: Merged migration steps unchanged
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # HEAD^1, the first parent of the merge commit, is the code this change starts from.
+          fetch-depth: 2
+      - name: Check merged migration steps
+        env:
+          # The base branch name tells the script whether the pull request targets a release branch.
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: dev/check-migration-steps.sh "$(git rev-parse HEAD^1)" "$BASE_BRANCH"

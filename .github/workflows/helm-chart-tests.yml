@@ -6,7 +6,25 @@ on:
     paths:
       - "helm/**"
       - "ui/**"
+      - "build/**"
+      - "project/**"
+      - "examples/**"
+      - "server/**"
+      - "api/**"
+      - "clients/**"
+      - "bin/**"
+      - "dev/**"
+      - "etc/**"
+      - "build.sbt"
+      - "version.sbt"
       - "Dockerfile"
+      # The chart runs the server's schema upgrade command before the server starts.
+      - "server/src/main/java/io/unitycatalog/server/migrate/**"
+      - "server/src/main/resources/db/**"
+      - "server/src/main/resources/schema-effects/**"
+      - "server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
+      - "server/src/main/java/io/unitycatalog/server/utils/OptionParser.java"
+      - "bin/start-uc-server"
       - ".github/workflows/helm-chart-tests.yml"
 
 permissions:
@@ -31,6 +49,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # HEAD^1, the first parent of the merge commit, is the code this change starts from. The
+          # upgrade test installs its chart and server first.
+          fetch-depth: 2
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -134,6 +155,53 @@ jobs:
           grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30&sslMode=REQUIRED' <<<"$out"
           grep -qF -- '--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           grep -qF 'mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
+          # With storage secrets too, the server container has one env list that holds both. The upgrade-schema
+          # container gets the database password and the driver, but no storage secrets.
+          out="$(helm template uc helm -f helm/ci/mysql-values.yaml -f helm/ci/secrets-values.yaml \
+            --set server.db.type=mysql --set server.db.mysqlConfig.passwordSecretName=ci-db \
+            --show-only templates/server/deployment.yaml)"
+          server="$(sed -n '/^        - name: server$/,/^          volumeMounts:/p' <<<"$out")"
+          [ "$(grep -c '^          env:$' <<<"$server")" = 1 ]
+          grep -qF -- '- name: UC_S3_ACCESSKEY_0' <<<"$server"
+          grep -qF -- '- name: JDK_JAVA_OPTIONS' <<<"$server"
+          upgrade="$(sed -n '/^        - name: upgrade-schema$/,/^      containers:/p' <<<"$out")"
+          grep -qF -- '- name: UC_HIBERNATE_CONNECTION_PASSWORD' <<<"$upgrade"
+          grep -qF -- '- name: JDK_JAVA_OPTIONS' <<<"$upgrade"
+          ! grep -qF -- '- name: UC_S3_ACCESSKEY_0' <<<"$upgrade" || exit 1
+          # An upgrade stops every old server first by default; a rolling update renders when asked for.
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml)"
+          grep -qE '^    type: Recreate$' <<<"$out"
+          # An upgrade with --reuse-values from an older release has no updateStrategy value.
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml --set server.deployment.updateStrategy=null)"
+          grep -qE '^    type: Recreate$' <<<"$out"
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml --set server.deployment.updateStrategy.type=RollingUpdate)"
+          grep -qE '^    type: RollingUpdate$' <<<"$out"
+          ! grep -qE '^    type: Recreate$' <<<"$out" || exit 1
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml --set server.deployment.updateStrategy.type=RollingUpdate --set server.deployment.updateStrategy.rollingUpdate.maxSurge=1)"
+          grep -qE '^      maxSurge: 1$' <<<"$out"
+          if err="$(helm template uc helm --set server.deployment.updateStrategy.rollingUpdate.maxSurge=1 2>&1)"; then exit 1; fi
+          grep -qF 'updateStrategy.rollingUpdate needs server.deployment.updateStrategy.type=RollingUpdate' <<<"$err"
+          # The H2 file database supports one server; PostgreSQL takes more.
+          if err="$(helm template uc helm --set server.deployment.replicaCount=2 2>&1)"; then exit 1; fi
+          grep -qF 'replicaCount must be 1 with server.db.type=file' <<<"$err"
+          out="$(helm template uc helm -f helm/ci/postgresql-values.yaml --set server.deployment.replicaCount=2)"
+          grep -qE '^  replicas: 2$' <<<"$out"
+          # The upgrade-schema init container reads the same configuration, and with the H2 file also its volume.
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml)"
+          upgrade="$(sed -n '/^        - name: upgrade-schema$/,/^      containers:/p' <<<"$out")"
+          grep -qF -- '- --upgrade-schema' <<<"$upgrade"
+          grep -qF -- 'mountPath: /home/unitycatalog/etc/conf' <<<"$upgrade"
+          grep -qF -- 'name: db-volume' <<<"$upgrade"
+          # An in-memory database keeps the init container: --upgrade-schema succeeds on it without doing anything.
+          for override in 'server.env=test' 'server.env: prod'$'\n''server.env=test'; do
+            out="$(helm template uc helm --show-only templates/server/deployment.yaml --set-string "server.config.override=$override")"
+            grep -qF 'name: upgrade-schema' <<<"$out"
+          done
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml --set-string 'server.db.overrideConfig=hibernate.connection.url=jdbc\:h2\:mem\:uc;DB_CLOSE_DELAY=-1')"
+          grep -qF 'name: upgrade-schema' <<<"$out"
+          # The server container stays.
+          out="$(helm template uc helm --set-string server.config.override=server.env=test)"
+          grep -qF 'name: server' <<<"$out"
           # Other databases get neither.
           for values in helm/ci/default-values.yaml helm/ci/postgresql-values.yaml; do
             out="$(helm template uc helm -f "$values")"
@@ -146,12 +214,30 @@ jobs:
           for ref in UC_S3_ACCESSKEY_0:ci-s3-credentials:accessKey UC_S3_SECRETKEY_0:ci-s3-credentials:secretKey \
             UC_ADLS_TENANTID_0:ci-adls-credentials:tenantId UC_ADLS_CLIENTID_0:ci-adls-credentials:clientId \
             UC_ADLS_CLIENTSECRET_0:ci-adls-credentials:clientSecret \
-            UC_HIBERNATE_CONNECTION_PASSWORD:ci-db-password:password; do
+            UC_HIBERNATE_CONNECTION_PASSWORD:ci-db-password:password \
+            UC_SERVER_CREDENTIAL_ENCRYPTION_KEY:ci-credential-encryption:ciEncryptionKey; do
             IFS=: read -r name secret key <<<"$ref"
             grep -A4 -- "- name: $name\$" <<<"$out" | tr -d '\n' | grep -qE "name: \"$secret\" +key: \"?$key\"?( |\$)"
           done
           # None in the file, which the init container writes only at pod start.
-          ! grep -qE 'server\.client-secret|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)|hibernate\.connection\.password' <<<"$out" || exit 1
+          ! grep -qE 'server\.client-secret|server\.credential-encryption-key|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)|hibernate\.connection\.password' <<<"$out" || exit 1
+          # The credential encryption key is passed only when its Secret is named, with any database.
+          default_render="$(helm template uc helm)"
+          ! grep -qF 'UC_SERVER_CREDENTIAL_ENCRYPTION_KEY' <<<"$default_render" || exit 1
+          # With any database, in the one env list of the server container, and never in the file.
+          for values in "" "-f helm/ci/postgresql-values.yaml" "-f helm/ci/mysql-values.yaml"; do
+            key_only="$(helm template uc helm $values --set server.credentialEncryptionKeySecret.name=k)"
+            [ "$(grep -c -- '- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY$' <<<"$key_only")" -eq 1 ]
+            grep -A4 -- "- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY\$" <<<"$key_only" | tr -d '\n' \
+              | grep -qE 'name: "k" +key: "?encryptionKey"?( |$)'
+            ! grep -qE 'server\.credential-encryption-key' <<<"$key_only" || exit 1
+          done
+          # On MySQL, JDK_JAVA_OPTIONS follows the key in the same env list: no second env: between
+          # them.
+          mysql_out="$(helm template uc helm -f helm/ci/mysql-values.yaml --set server.credentialEncryptionKeySecret.name=k)"
+          between="$(sed -n '/- name: UC_SERVER_CREDENTIAL_ENCRYPTION_KEY$/,/- name: JDK_JAVA_OPTIONS$/p' <<<"$mysql_out")"
+          grep -qF -- '- name: JDK_JAVA_OPTIONS' <<<"$between"
+          ! grep -qE '^\s*env:' <<<"$between" || exit 1
           # The rendered chart no longer has DB_PASSWORD.
           ! grep -qF 'DB_PASSWORD' <<<"$out" || exit 1
           # The deprecated init container variables are there only for a custom template.
@@ -169,6 +255,46 @@ jobs:
         run: |
           docker build -t unitycatalog:ci .
           docker build -t unitycatalog-ui:ci ui
+          mkdir "$RUNNER_TEMP/base"
+          git archive HEAD^1 | tar -x -C "$RUNNER_TEMP/base"
+          docker build -t unitycatalog:base "$RUNNER_TEMP/base"
+
+      - name: Run the server image without the chart
+        # The chart mounts etc/conf and the database. Check the standalone image's permissions
+        # and CLI output too: bin/uc can exit 0 without running Java if its source marker is missing.
+        if: matrix.db == 'file'
+        run: |
+          container="$(docker run -d unitycatalog:ci)"
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              docker logs "$container" || true
+              # The server logs only to this file, and docker cp also reads an exited container.
+              docker cp "$container":/home/unitycatalog/etc/logs/server.log - | tar -xOf - || true
+            fi
+            docker rm -f "$container" > /dev/null || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+          docker exec "$container" sh -ec '
+            [ "$(id -u):$(id -g)" = 100:101 ]
+            [ "$(stat -c %a "$HOME")" = 550 ]
+            [ "$(stat -c %a etc)" = 755 ]
+            [ "$(stat -c %a etc/conf)" = 755 ]
+            [ -w etc ]
+            [ -w etc/conf ]
+          '
+          for _ in $(seq 30); do
+            output="$(docker exec "$container" bin/uc catalog list 2>&1)" &&
+              grep -qF 'Main catalog' <<<"$output" && break
+            sleep 2
+          done
+          printf '%s\n' "$output"
+          grep -qF 'Main catalog' <<<"$output"
+          output="$(docker exec "$container" bin/uc table read --full_name unity.default.numbers)"
+          printf '%s\n' "$output"
+          grep -qF 'as_int(integer)' <<<"$output"
+          grep -qE '│[0-9]+[[:space:]]+│' <<<"$output"
 
       - name: Create kind cluster
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
@@ -182,7 +308,7 @@ jobs:
         run: |
           docker tag unitycatalog:ci unitycatalog:v0.0.0-ci
           docker tag unitycatalog-ui:ci unitycatalog-ui:v0.0.0-ci
-          kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci --name chart-testing
+          kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci unitycatalog:base --name chart-testing
 
       - name: Start the database
         if: matrix.db != 'file'
@@ -209,7 +335,7 @@ jobs:
                 -- --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_bin
               ready=(mysqladmin ping --host 127.0.0.1 --user root --password=ci-password) ;;
           esac
-          for i in $(seq 60); do
+          for _ in $(seq 60); do
             kubectl exec --namespace uc "$DB" -- "${ready[@]}" > /dev/null 2>&1 && exit 0
             sleep 5
           done
@@ -230,6 +356,14 @@ jobs:
           done
           values=()
           [ "$DB" = file ] || values=(--values "helm/ci/$DB-values.yaml")
+          # The PostgreSQL case also turns on s3_compatible credentials, with an encryption key from a
+          # Secret; the other cases keep the default install.
+          if [ "$DB" = postgresql ]; then
+            kubectl create secret generic credential-encryption --namespace uc \
+              --from-literal=encryptionKey="$(openssl rand -base64 32)"
+            values+=(--set server.credentialEncryptionKeySecret.name=credential-encryption \
+              --set-string 'server.config.extraProperties.server\.s3-compatible-storage\.enabled=true')
+          fi
           helm install uc "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace uc --create-namespace --wait --timeout 600s \
             "${values[@]}" \
             --set server.deployment.image.repository=unitycatalog \
@@ -238,4 +372,53 @@ jobs:
             --set server.deployment.enableReadinessProbe=true \
             --set ui.deployment.image.repository=unitycatalog-ui \
             --set ui.deployment.image.pullPolicy=Never
+          if [ "$DB" = postgresql ]; then
+            # The server read the key, which it checks at startup with the feature on.
+            kubectl logs --namespace uc deployment/uc-unitycatalog-server --container server \
+              | grep -F 'Using the UC_SERVER_CREDENTIAL_ENCRYPTION_KEY environment variable' > /dev/null \
+              || { echo "::error::The server did not read the credential encryption key"; exit 1; }
+          fi
           helm test uc --namespace uc --logs
+          helm uninstall uc --namespace uc --wait
+
+      - name: Upgrade from the base chart and check that the data is kept
+        run: |
+          # Installs the chart and server this change starts from, creates a catalog, upgrades to this
+          # change's chart and server, then reads the catalog back.
+          common=(--wait --timeout 600s --set fullnameOverride=upg --set ui.enabled=false
+            --set server.deployment.image.repository=unitycatalog --set server.deployment.image.pullPolicy=Never)
+          catalogs=http://localhost:8080/api/2.1/unity-catalog/catalogs
+          upgrade_test() {
+            local ns=$1
+            shift
+            helm install upg "$RUNNER_TEMP/base/helm" --namespace "$ns" --create-namespace "${common[@]}" \
+              --set server.deployment.image.tag=base "$@"
+            kubectl exec --namespace "$ns" deploy/upg-server -c server -- wget -q -O - \
+              --header "Content-Type: application/json" --post-data '{"name":"kept_by_upgrade"}' "$catalogs"
+            helm upgrade upg "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace "$ns" "${common[@]}" "$@"
+            kubectl rollout status --namespace "$ns" deploy/upg-server --timeout 300s
+            kubectl logs --namespace "$ns" deploy/upg-server -c upgrade-schema
+            kubectl exec --namespace "$ns" deploy/upg-server -c server -- wget -q -O - "$catalogs/kept_by_upgrade" \
+              | grep -q '"name":"kept_by_upgrade"' || { echo "::error::The catalog is gone after the upgrade ($ns)"; exit 1; }
+            helm test upg --namespace "$ns" --logs
+            helm uninstall upg --namespace "$ns" --wait
+          }
+
+          upgrade_test upgrade-h2
+
+          # PostgreSQL with two replicas, whose init containers both run the schema upgrade. The image is
+          # the one the PostgreSQL tests use.
+          kubectl create namespace upgrade-pg
+          kubectl run postgres --namespace upgrade-pg --port 5432 --expose \
+            --image postgres@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5 \
+            --env POSTGRES_USER=uc --env POSTGRES_PASSWORD=uc --env POSTGRES_DB=ucdb
+          kubectl wait --namespace upgrade-pg --for=condition=Ready pod/postgres --timeout 300s
+          # Over TCP, so that the server the image runs while it initializes the database does not count.
+          for i in $(seq 1 60); do
+            kubectl exec --namespace upgrade-pg postgres -- pg_isready -h 127.0.0.1 -U uc -d ucdb && break
+            sleep 2
+          done
+          kubectl create secret generic db-password --namespace upgrade-pg --from-literal=password=uc
+          upgrade_test upgrade-pg --set server.deployment.replicaCount=2 --set server.db.type=postgresql \
+            --set server.db.postgresqlConfig.host=postgres --set server.db.postgresqlConfig.username=uc \
+            --set server.db.postgresqlConfig.passwordSecretName=db-password

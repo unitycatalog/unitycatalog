@@ -1,21 +1,29 @@
 package io.unitycatalog.server.base;
 
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+
 import com.linecorp.armeria.server.ServerPortBindException;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionException;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
@@ -41,6 +49,15 @@ public abstract class BaseServerTest {
   @TempDir protected Path testDirectoryRoot;
   // The storage root URL for managed tables to be set in server properties.
   protected String tableStorageRoot;
+
+  /**
+   * The server's configuration folder for this test, used instead of the shared {@code etc/conf}
+   * because the server writes {@code certs.json} and {@code token.txt} there on every start.
+   */
+  @TempDir protected Path configurationFolder;
+
+  /** Signing keys generated once per JVM and copied into each test's configuration folder. */
+  private static Path signingKeysFolder;
 
   /**
    * This function should be overriden if the test wants to start UC server to take emulated cloud
@@ -74,6 +91,16 @@ public abstract class BaseServerTest {
         Property.EXTERNAL_LOCAL_ROOTS.getKey(), testDirectoryRoot.toString());
   }
 
+  /**
+   * Enables experimental S3-compatible storage, with a key to encrypt its secrets. Off by default,
+   * as on a server; call it from {@link #setUpProperties()} in tests that need it.
+   */
+  protected void enableS3CompatibleStorage() {
+    serverProperties.setProperty(Property.S3_COMPATIBLE_STORAGE_ENABLED.getKey(), "true");
+    serverProperties.setProperty(
+        Property.CREDENTIAL_ENCRYPTION_KEY.getKey(), TestUtils.CREDENTIAL_ENCRYPTION_KEY);
+  }
+
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
   /**
@@ -104,7 +131,31 @@ public abstract class BaseServerTest {
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
       hibernateConfigurator = testDatabase.hibernateConfigurator();
+      copySigningKeys(configurationFolder);
       startServerOnFreePorts(initServerProperties);
+    }
+  }
+
+  /**
+   * Copies this JVM's signing keys into {@code target}, generating them on first use. Saves the RSA
+   * key generation the server would otherwise do for every test.
+   */
+  private static synchronized void copySigningKeys(Path target) throws IOException {
+    if (signingKeysFolder == null) {
+      Path folder = Files.createTempDirectory("uc-test-keys");
+      new SecurityConfiguration(folder);
+      folder.toFile().deleteOnExit();
+      try (Stream<Path> keys = Files.list(folder)) {
+        keys.forEach(key -> key.toFile().deleteOnExit());
+      }
+      signingKeysFolder = folder;
+    }
+    // Replace: setUp() runs twice in one test when a subclass declares another @BeforeEach method
+    // that calls super.setUp(), instead of overriding setUp().
+    try (Stream<Path> keys = Files.list(signingKeysFolder)) {
+      for (Path key : keys.toList()) {
+        Files.copy(key, target.resolve(key.getFileName()), REPLACE_EXISTING);
+      }
     }
   }
 
@@ -124,7 +175,8 @@ public abstract class BaseServerTest {
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
-              .fileOperationsDecorator(this::decorateFileOperations);
+              .fileOperationsDecorator(this::decorateFileOperations)
+              .configurationFolder(configurationFolder);
       if (observabilityEnabled) {
         serverBuilder.observabilityPort(observabilityPort);
       }
@@ -167,5 +219,11 @@ public abstract class BaseServerTest {
       // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
       unityCatalogServer = null;
     }
+  }
+
+  /** Races {@code operation} against an uncommitted write; see {@link TestDatabase}. */
+  protected <T> T runBlockedByHeldWrite(Consumer<Session> heldWrite, Callable<T> operation)
+      throws Exception {
+    return testDatabase.runBlockedByHeldWrite(heldWrite, operation);
   }
 }

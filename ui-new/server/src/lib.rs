@@ -1,22 +1,55 @@
+#![allow(refining_impl_trait)]
+
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::http::{header, HeaderName, HeaderValue, Method};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
+use connectrpc::DeadlinePolicy;
 use tower_http::cors::CorsLayer;
-use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 pub mod config;
-pub mod proxy;
+mod mapping;
+mod proxy;
+mod services;
+mod upstream;
+
+pub mod proto {
+    connectrpc::include_generated!();
+}
+
+mod validation {
+    #![allow(dead_code, unused_imports)]
+
+    use crate::proto::uc;
+    pub(crate) use crate::proto::uc::v1::*;
+    include!(concat!(env!("OUT_DIR"), "/validation/uc.v1.mod.rs"));
+}
 
 pub use config::Config;
+
+const X_REQUESTED_WITH: HeaderName = HeaderName::from_static("x-requested-with");
+
+/// Browser request headers both bridge paths copy onto the UC request. UC's
+/// CSRF check rejects cookie-authenticated writes, the cookie token exchange,
+/// and logout unless `X-Requested-With: XMLHttpRequest` is present.
+pub(crate) const FORWARDED_HEADERS: [HeaderName; 3] =
+    [header::COOKIE, header::AUTHORIZATION, X_REQUESTED_WITH];
+
+/// The longest one RPC may spend on its Unity Catalog requests.
+pub const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Shared handler state: a reused HTTP client and the loaded config.
 #[derive(Clone)]
 pub struct AppState {
     pub http: reqwest::Client,
     pub config: Arc<Config>,
+    /// Caps a client's `Connect-Timeout-Ms` and applies when it sends none, so
+    /// a caller cannot hold UC requests open longer. Normally
+    /// [`UPSTREAM_TIMEOUT`].
+    pub upstream_timeout: Duration,
 }
 
 /// Runtime config the SPA reads at GET /config. The runtime equivalent of the
@@ -36,24 +69,28 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-/// Builds the application router. The SPA (prod) is served from `web_dist` with
-/// an index.html fallback so client-side routes deep-link correctly; in dev this
-/// directory is absent and Vite serves the SPA, proxying RPCs + /config here.
+/// Builds the bridge router. Vite serves the SPA in development and a separate
+/// web server does in production; both proxy RPCs, `/config`, and `/healthz` to
+/// this process.
 pub fn app(state: AppState) -> Router {
-    let index = state.config.web_dist.join("index.html");
-    let spa = ServeDir::new(&state.config.web_dist).fallback(ServeFile::new(index));
+    let deadlines = DeadlinePolicy::new()
+        .with_max(state.upstream_timeout)
+        .with_default_timeout(state.upstream_timeout);
+    let rpc = services::router(state.clone())
+        .into_axum_service()
+        .with_deadline_policy(deadlines);
 
     let mut router = Router::new()
-        .route("/uc.v1.UnityProxyService/Call", post(proxy::call_handler))
         .route("/config", get(config_handler))
         .route("/healthz", get(healthz))
-        .fallback_service(spa);
+        .route_service("/uc.v1.{*rpc}", rpc)
+        .with_state(state.clone());
 
     if let Some(cors) = build_cors(&state.config.allowed_origins) {
         router = router.layer(cors);
     }
 
-    router.layer(TraceLayer::new_for_http()).with_state(state)
+    router.layer(TraceLayer::new_for_http())
 }
 
 /// CORS is only needed when the SPA is served from a different origin than the
@@ -64,10 +101,7 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
     if origins.is_empty() {
         return None;
     }
-    let parsed: Vec<HeaderValue> = origins
-        .iter()
-        .filter_map(|o| o.parse::<HeaderValue>().ok())
-        .collect();
+    let parsed: Vec<HeaderValue> = origins.iter().filter_map(|o| cors_origin(o)).collect();
     Some(
         CorsLayer::new()
             .allow_origin(parsed)
@@ -75,8 +109,43 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
             .allow_headers([
                 header::CONTENT_TYPE,
                 header::AUTHORIZATION,
+                X_REQUESTED_WITH,
                 HeaderName::from_static("connect-protocol-version"),
             ])
             .allow_credentials(true),
     )
+}
+
+/// Browsers send a bare serialized origin (`scheme://host[:port]`), so any
+/// other entry, such as one with a trailing slash, can never match. Such
+/// entries are logged and skipped, so a typo shows up in the logs instead of
+/// silently rejecting every cross-origin call.
+fn cors_origin(entry: &str) -> Option<HeaderValue> {
+    let is_origin =
+        reqwest::Url::parse(entry).is_ok_and(|url| url.origin().ascii_serialization() == entry);
+    let value = is_origin.then(|| entry.parse().ok()).flatten();
+    if value.is_none() {
+        tracing::warn!(
+            entry,
+            "ignoring an ALLOWED_ORIGINS entry that is not a bare origin"
+        );
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn cors_origin_accepts_only_bare_origins() {
+        for (entry, accepted) in [
+            ("http://localhost:5173", true),
+            ("https://ui.example.com", true),
+            ("http://localhost:5173/", false),
+            ("https://ui.example.com:443", false),
+            ("localhost:5173", false),
+            ("*", false),
+        ] {
+            assert_eq!(super::cors_origin(entry).is_some(), accepted, "{entry}");
+        }
+    }
 }

@@ -1,11 +1,12 @@
 package io.unitycatalog.server.cleanup;
 
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.observability.StorageCleanupMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
+import io.unitycatalog.server.persist.CleanupTaskRepository;
+import io.unitycatalog.server.persist.CleanupTaskRepository.Claim;
+import io.unitycatalog.server.persist.CleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.ManagedResourceType;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -33,7 +34,7 @@ import org.slf4j.LoggerFactory;
 public final class StorageCleanupWorker implements AutoCloseable {
   private static final Logger LOGGER = LoggerFactory.getLogger(StorageCleanupWorker.class);
 
-  private final StorageCleanupTaskRepository taskRepository;
+  private final CleanupTaskRepository taskRepository;
   private final FileOperations fileOperations;
   private final Clock clock;
   private final Duration pollInterval;
@@ -54,7 +55,7 @@ public final class StorageCleanupWorker implements AutoCloseable {
    * @param metrics the domain metrics that count each cleanup attempt by result
    */
   public StorageCleanupWorker(
-      StorageCleanupTaskRepository taskRepository,
+      CleanupTaskRepository taskRepository,
       FileOperations fileOperations,
       Clock clock,
       ServerProperties serverProperties,
@@ -217,6 +218,12 @@ public final class StorageCleanupWorker implements AutoCloseable {
   }
 
   private static String safeError(Exception exception) {
-    return "Storage cleanup failed: " + exception.getClass().getSimpleName();
+    // A general error the server chose, such as for a failed AssumeRole, carries the failure as its
+    // cause; naming its class keeps the record specific without the failure's message.
+    String name =
+        exception instanceof BaseException be && exception.getCause() != null
+            ? be.getErrorCode() + " caused by " + exception.getCause().getClass().getSimpleName()
+            : exception.getClass().getSimpleName();
+    return "Storage cleanup failed: " + name;
   }
 }

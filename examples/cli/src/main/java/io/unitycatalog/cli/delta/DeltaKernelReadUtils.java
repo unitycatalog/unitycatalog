@@ -24,13 +24,16 @@ import io.delta.kernel.types.LongType;
 import io.delta.kernel.types.ShortType;
 import io.delta.kernel.types.StringType;
 import io.delta.kernel.types.StructType;
+import io.delta.kernel.types.TimestampNTZType;
 import io.delta.kernel.types.TimestampType;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.FileStatus;
 import java.io.IOException;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -78,15 +81,10 @@ public class DeltaKernelReadUtils {
       return LocalDate.ofEpochDay(daysSinceEpochUTC).toString();
     } else if (dataType instanceof LongType) {
       return Long.toString(row.getLong(columnOrdinal));
-    } else if (dataType instanceof TimestampType) {
-      // TimestampType data is stored internally as the number of microseconds since epoch
-      long microSecsSinceEpochUTC = row.getLong(columnOrdinal);
-      LocalDateTime dateTime =
-          LocalDateTime.ofEpochSecond(
-              microSecsSinceEpochUTC / 1_000_000 /* epochSecond */,
-              (int) (1000 * microSecsSinceEpochUTC % 1_000_000) /* nanoOfSecond */,
-              ZoneOffset.UTC);
-      return dateTime.toString();
+    } else if (dataType instanceof TimestampType || dataType instanceof TimestampNTZType) {
+      // Both are microseconds since epoch, TIMESTAMP in UTC and TIMESTAMP_NTZ with no zone
+      Instant instant = Instant.EPOCH.plus(row.getLong(columnOrdinal), ChronoUnit.MICROS);
+      return LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toString();
     } else if (dataType instanceof FloatType) {
       return Float.toString(row.getFloat(columnOrdinal));
     } else if (dataType instanceof DoubleType) {

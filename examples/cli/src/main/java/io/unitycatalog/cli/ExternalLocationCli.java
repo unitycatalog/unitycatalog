@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.ExternalLocationsApi;
@@ -14,7 +15,6 @@ import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.ListExternalLocationsResponse;
 import io.unitycatalog.client.model.UpdateExternalLocation;
-import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
@@ -65,21 +65,22 @@ public class ExternalLocationCli {
   private static String listExternalLocations(
       ExternalLocationsApi externalLocationsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    int maxResults = json.optInt(CliParams.MAX_RESULTS.getServerParam(), 100);
-    String pageToken = json.optString(CliParams.PAGE_TOKEN.getServerParam(), null);
-
-    ListExternalLocationsResponse listExternalLocationsResponse =
-        externalLocationsApi.listExternalLocations(maxResults, pageToken);
-    List<ExternalLocationInfo> externalLocations =
-        listExternalLocationsResponse.getExternalLocations();
-    return objectWriter.writeValueAsString(externalLocations);
+    return objectWriter.writeValueAsString(
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) ->
+                externalLocationsApi.listExternalLocations(
+                    maxResults, pageToken, /* includeBrowse= */ false),
+            ListExternalLocationsResponse::getExternalLocations,
+            ListExternalLocationsResponse::getNextPageToken));
   }
 
   private static String getExternalLocation(
       ExternalLocationsApi externalLocationsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String name = json.getString(CliParams.NAME.getServerParam());
-    ExternalLocationInfo externalLocationInfo = externalLocationsApi.getExternalLocation(name);
+    ExternalLocationInfo externalLocationInfo =
+        externalLocationsApi.getExternalLocation(name, /* includeBrowse= */ false);
     return objectWriter.writeValueAsString(externalLocationInfo);
   }
 

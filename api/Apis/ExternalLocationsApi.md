@@ -17,7 +17,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Create an external location
 
-    Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations. 
+    Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations. EXPERIMENTAL: a location whose credential is &#x60;s3_compatible&#x60; must have an &#x60;s3://&#x60; URL; otherwise the request fails with &#x60;INVALID_ARGUMENT&#x60;. 
 
 ### Parameters
 
@@ -44,14 +44,14 @@ No authorization required
 
 Delete an external location
 
-    Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+    Deletes the specified external location from the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location. Unless force is true, the deletion fails while the location is in use: a table, volume or registered model is stored under it, a catalog or schema keeps its managed storage under it, or a storage cleanup is pending there.
 
 ### Parameters
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| Name of the external location. | [default to null] |
-| **force** | **Boolean**| Force deletion even if there are dependent external tables or mounts. | [optional] [default to null] |
+| **force** | **Boolean**| Force deletion even if the external location is in use. | [optional] [default to null] |
 
 ### Return type
 
@@ -68,17 +68,18 @@ No authorization required
 
 <a name="getExternalLocation"></a>
 # **getExternalLocation**
-> ExternalLocationInfo getExternalLocation(name)
+> ExternalLocationInfo getExternalLocation(name, include\_browse)
 
 Get an external location
 
-    Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. 
+    Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. A BROWSE grant alone requires include_browse&#x3D;true and returns discovery metadata with browse_only&#x3D;true. 
 
 ### Parameters
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| Name of the external location. | [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
@@ -95,11 +96,11 @@ No authorization required
 
 <a name="listExternalLocations"></a>
 # **listExternalLocations**
-> ListExternalLocationsResponse listExternalLocations(max\_results, page\_token)
+> ListExternalLocationsResponse listExternalLocations(max\_results, page\_token, include\_browse)
 
 List external locations
 
-    Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. 
+    Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. Locations visible only through BROWSE are included only with include_browse&#x3D;true and return discovery metadata with browse_only&#x3D;true. 
 
 ### Parameters
 
@@ -107,6 +108,7 @@ List external locations
 |------------- | ------------- | ------------- | -------------|
 | **max\_results** | **Integer**| Maximum number of external locations to return. If not set, all external locations are returned.  | [optional] [default to null] |
 | **page\_token** | **String**| Opaque pagination token to go to the next page. | [optional] [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
@@ -127,7 +129,7 @@ No authorization required
 
 Update an external location
 
-    Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin. 
+    Updates an external location in the metastore. The caller must be a metastore admin, the external location owner, or have MANAGE on the external location. Unless force is true, changing the url fails if the location is in use (as described for deleting it), unless the new url is the same as, or a parent of, the old one. EXPERIMENTAL: a location whose credential is &#x60;s3_compatible&#x60; must have an &#x60;s3://&#x60; URL; otherwise the request fails with &#x60;INVALID_ARGUMENT&#x60;.
 
 ### Parameters
 

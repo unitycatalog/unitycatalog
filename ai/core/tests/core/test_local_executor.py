@@ -2,7 +2,11 @@ import asyncio
 import concurrent.futures
 import importlib
 import logging
+import mmap
 import multiprocessing
+import os
+import signal
+import struct
 import sys
 import time
 
@@ -264,3 +268,210 @@ def test_sandbox_reports_unsupported_platform_without_fork(monkeypatch):
         False,
         SANDBOX_UNSUPPORTED_MESSAGE,
     )
+
+
+MB = 1024 * 1024
+
+linux_only = pytest.mark.skipif(
+    sys.platform != "linux", reason="The memory limit is only enforced on Linux"
+)
+
+
+@pytest.fixture
+def parent_address_space_above_memory_limit():
+    try:
+        reservation = mmap.mmap(-1, 1024 * MB, flags=mmap.MAP_PRIVATE, prot=mmap.PROT_READ)
+    except OSError as e:
+        pytest.skip(f"Unable to reserve 1 GB of address space: {e}")
+    yield
+    reservation.close()
+
+
+def allocate_and_return_size(megabytes: int) -> int:
+    return len(bytearray(megabytes * MB))
+
+
+@linux_only
+def test_function_can_allocate_memory_when_parent_address_space_exceeds_limit(
+    parent_address_space_above_memory_limit, monkeypatch
+):
+    monkeypatch.setenv("EXECUTOR_MAX_MEMORY_LIMIT", "100")
+
+    succeeded, result = run_in_sandbox(allocate_and_return_size, {"megabytes": 80})
+
+    assert succeeded, result
+    assert result == 80 * MB
+
+
+@linux_only
+@pytest.mark.asyncio
+async def test_concurrent_calls_return_results_when_parent_address_space_exceeds_limit(
+    parent_address_space_above_memory_limit,
+):
+    results = await asyncio.gather(
+        *[run_in_sandbox_async(simple_function, {"x": i, "y": 1}) for i in range(5)]
+    )
+
+    assert results == [(True, i + 1) for i in range(5)]
+
+
+@linux_only
+def test_memory_limit_is_still_enforced_when_parent_address_space_exceeds_limit(
+    parent_address_space_above_memory_limit, monkeypatch
+):
+    monkeypatch.setenv("EXECUTOR_MAX_MEMORY_LIMIT", "50")
+
+    succeeded, result = run_in_sandbox(allocate_and_return_size, {"megabytes": 200})
+
+    assert not succeeded
+    assert "MemoryError" in result
+
+
+def test_result_larger_than_pipe_buffer_is_returned(monkeypatch):
+    monkeypatch.setenv("EXECUTOR_TIMEOUT", "5")
+
+    def large_result():
+        return "x" * MB
+
+    succeeded, result = run_in_sandbox(large_result, {})
+
+    assert succeeded, result
+    assert result == "x" * MB
+
+
+def test_unpicklable_result_reports_the_pickling_error():
+    def unpicklable_result():
+        return lambda: None
+
+    succeeded, result = run_in_sandbox(unpicklable_result, {})
+
+    assert not succeeded
+    assert "pickle" in result.lower()
+
+
+def write_partial_result_frame(sender):
+    # The length header promises 100 bytes and only 7 follow, so the reader hits EOF mid-frame.
+    os.write(sender.fileno(), struct.pack("!i", 100) + b"partial")
+
+
+def write_partial_result_frame_and_exit(sender):
+    write_partial_result_frame(sender)
+    os._exit(0)
+
+
+def write_partial_result_frame_and_get_killed(sender):
+    write_partial_result_frame(sender)
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        (
+            write_partial_result_frame_and_exit,
+            "exited with code 0, but its result could not be read: OSError",
+        ),
+        (write_partial_result_frame_and_get_killed, "terminated with a signal 9."),
+    ],
+    ids=["exit", "killed"],
+)
+@pytest.mark.skipif(not local_executor.is_sandbox_supported(), reason="Needs the fork start method")
+def test_partial_result_is_reported_with_how_the_process_ended(target, expected):
+    ctx = multiprocessing.get_context("fork")
+    receiver, sender = ctx.Pipe(duplex=False)
+    process = ctx.Process(target=target, args=(sender,))
+    process.start()
+    sender.close()
+
+    succeeded, result = local_executor._receive_result(receiver, process)
+
+    assert process.exitcode is not None
+    assert not succeeded
+    assert expected in result
+
+
+def fail_to_unpickle(error_type):
+    raise error_type("cannot rebuild this object")
+
+
+class UnpicklableInParent:
+    def __init__(self, error_type):
+        self.error_type = error_type
+
+    def __reduce__(self):
+        return fail_to_unpickle, (self.error_type,)
+
+
+@pytest.mark.parametrize("error_type", [ValueError, EOFError])
+def test_result_that_cannot_be_unpickled_is_reported_as_unreadable(error_type):
+    def unreadable_result():
+        return UnpicklableInParent(error_type)
+
+    succeeded, result = run_in_sandbox(unreadable_result, {})
+
+    assert not succeeded
+    assert (
+        f"exited with code 0, but its result could not be read: "
+        f"{error_type.__name__}: cannot rebuild this object" in result
+    )
+
+
+def test_process_exiting_without_result_reports_its_exit_code():
+    def exit_process():
+        import os
+
+        os._exit(3)
+
+    succeeded, result = run_in_sandbox(exit_process, {})
+
+    assert not succeeded
+    assert "exited with code 3" in result
+
+
+def read_memory_limit():
+    import resource
+
+    return resource.getrlimit(resource.RLIMIT_AS)
+
+
+def test_memory_limit_is_not_applied_when_address_space_size_is_unknown(
+    monkeypatch, tmp_path, caplog
+):
+    resource = pytest.importorskip("resource")
+    monkeypatch.setattr(local_executor, "_STATM_PATH", str(tmp_path / "missing"))
+    original_limits = resource.getrlimit(resource.RLIMIT_AS)
+    limited_resources = []
+
+    with (
+        monkeypatch.context() as patched,
+        caplog.at_level(logging.INFO, logger=local_executor.__name__),
+    ):
+        patched.setattr(
+            local_executor.resource,
+            "setrlimit",
+            lambda limited_resource, limits: limited_resources.append(limited_resource),
+        )
+        local_executor._limit_resources(cpu_time_limit=resource.RLIM_INFINITY, memory_limit=1)
+    succeeded, result = run_in_sandbox(read_memory_limit, {})
+
+    assert "cannot read the current address space size" in caplog.text
+    assert resource.RLIMIT_AS not in limited_resources
+    assert succeeded, result
+    assert result == original_limits
+
+
+@linux_only
+def test_lower_existing_memory_limit_is_not_raised(monkeypatch):
+    import resource
+
+    monkeypatch.setenv("EXECUTOR_MAX_MEMORY_LIMIT", "1000")
+    original_limits = resource.getrlimit(resource.RLIMIT_AS)
+    lower_soft_limit = local_executor._address_space_in_use() + 300 * MB
+    resource.setrlimit(resource.RLIMIT_AS, (lower_soft_limit, original_limits[1]))
+    try:
+        succeeded, result = run_in_sandbox(read_memory_limit, {})
+    finally:
+        resource.setrlimit(resource.RLIMIT_AS, original_limits)
+
+    assert succeeded, result
+    assert result == (lower_soft_limit, lower_soft_limit)

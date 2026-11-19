@@ -20,63 +20,67 @@ public final class AuthorizeExpressions {
 
   private AuthorizeExpressions() {}
 
+  /** Catalog BROWSE permits discovery of the catalog and its descendants without usage grants. */
+  public static final String BROWSE_CATALOG = "#authorize(#principal, #catalog, BROWSE)";
+
   /**
    * Authorization policy for reading table metadata and filtering table listings. Metastore admin
-   * and catalog owner pass unconditionally; schema owner passes with catalog {@code USE_CATALOG};
-   * regular callers need {@code USE_SCHEMA} + {@code USE_CATALOG} plus {@code OWNER} or {@code
-   * SELECT} on the table. With strict privilege checks disabled, {@code MODIFY} also permits
-   * metadata access. {@code READ_METADATA} at metastore or catalog scope needs no usage grants;
-   * schema scope needs {@code USE_CATALOG}, and table scope needs both usage grants.
+   * and catalog OWNER/MANAGE pass unconditionally; schema OWNER/MANAGE needs catalog {@code
+   * USE_CATALOG}; other callers need {@code USE_SCHEMA} + {@code USE_CATALOG} plus {@code OWNER},
+   * {@code MANAGE}, or {@code SELECT} on the table. With strict privilege checks disabled, {@code
+   * MODIFY} also permits metadata access. {@code READ_METADATA} at metastore or catalog scope needs
+   * no usage grants; schema scope needs {@code USE_CATALOG}, and table scope needs both usage
+   * grants.
    */
   // TODO(#2024): Remove the MODIFY fallback when the migration flag is removed.
   public static final String GET_TABLE =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE, READ_METADATA) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, READ_METADATA)) ||
+          #authorizeAny(#principal, #schema, OWNER, MANAGE, READ_METADATA)) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          (#authorizeAny(#principal, #table, OWNER, SELECT, READ_METADATA) ||
+          (#authorizeAny(#principal, #table, OWNER, MANAGE, SELECT, READ_METADATA) ||
               (!#strict_privilege_checks && #authorize(#principal, #table, MODIFY))))
       """;
 
   /**
-   * Catalog-level read access: metastore admin, or {@code OWNER}/{@code USE_CATALOG} on the
-   * catalog, or {@code READ_METADATA} on the metastore or catalog. Shared by the catalog get/list
-   * endpoints and the Delta/Iceberg config endpoints.
+   * Catalog-level read access: metastore admin, or {@code OWNER}/{@code MANAGE}/{@code USE_CATALOG}
+   * on the catalog, or {@code READ_METADATA} on the metastore or catalog. Shared by the catalog
+   * get/list endpoints and the Delta/Iceberg config endpoints.
    */
   public static final String GET_CATALOG =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG, READ_METADATA)
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE, USE_CATALOG, READ_METADATA)
       """;
 
   /**
-   * Schema-level read access: metastore admin, catalog {@code OWNER}, or schema {@code
-   * OWNER}/{@code USE_SCHEMA} with catalog {@code USE_CATALOG}. Used as the get-schema gate and the
-   * list-schemas/namespaces response filter (listing and reading grant the same access). {@code
-   * READ_METADATA} on the metastore or catalog needs no usage grants; on the schema it needs {@code
-   * USE_CATALOG}.
+   * Schema-level read access: metastore admin, catalog {@code OWNER}/{@code MANAGE}, or schema
+   * {@code OWNER}/{@code MANAGE}/{@code USE_SCHEMA} with catalog {@code USE_CATALOG}. Used as the
+   * get-schema gate and the list-schemas/namespaces response filter (listing and reading grant the
+   * same access). {@code READ_METADATA} on the metastore or catalog needs no usage grants; on the
+   * schema it needs {@code USE_CATALOG}.
    */
   public static final String GET_SCHEMA =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE, READ_METADATA) ||
       (#authorizeAny(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA, READ_METADATA))
+          #authorizeAny(#principal, #schema, OWNER, MANAGE, USE_SCHEMA, READ_METADATA))
       """;
 
   /** Function metadata access, shared by get and list filtering. */
   public static final String GET_FUNCTION =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE, READ_METADATA) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, READ_METADATA)) ||
+          #authorizeAny(#principal, #schema, OWNER, MANAGE, READ_METADATA)) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #function, OWNER, EXECUTE, READ_METADATA))
+          #authorizeAny(#principal, #function, OWNER, MANAGE, EXECUTE, READ_METADATA))
       """;
 
   /**
@@ -107,16 +111,17 @@ public final class AuthorizeExpressions {
           """;
 
   /**
-   * Schema-level mutation policy (update or delete a schema): catalog {@code OWNER}, or {@code
-   * USE_CATALOG} + schema {@code OWNER}. Metastore admin alone is intentionally not sufficient.
-   * Shared by the UC REST {@code updateSchema}/{@code deleteSchema} and the Iceberg REST {@code
-   * updateNamespaceProperties}/{@code dropNamespace} endpoints (updating and dropping a schema
-   * require the same privilege).
+   * Schema-level mutation policy: catalog OWNER/MANAGE, or {@code USE_CATALOG} + schema
+   * OWNER/MANAGE. Metastore admin alone is intentionally not sufficient for ordinary metadata
+   * updates or deletion. Shared by the UC REST {@code updateSchema}/{@code deleteSchema} and the
+   * Iceberg REST {@code updateNamespaceProperties}/{@code dropNamespace} endpoints (updating and
+   * dropping a schema require the same privilege). Schema grant updates also reuse this policy.
    */
   public static final String UPDATE_SCHEMA =
       """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER))
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, MANAGE))
       """;
 
   /** Deleting a schema requires the same privilege as {@link #UPDATE_SCHEMA}. */
@@ -190,15 +195,53 @@ public final class AuthorizeExpressions {
   /**
    * Authorization policy for deleting a table, shared by the UC REST, UC Delta API, and Iceberg
    * REST delete endpoints. Metastore admin alone is intentionally not sufficient -- the caller must
-   * hold {@code OWNER} somewhere in the catalog / schema / table hierarchy.
+   * hold OWNER/MANAGE in the catalog / schema / table hierarchy, with usage above that scope. Table
+   * grant updates also reuse this policy.
    */
   public static final String DELETE_TABLE =
       """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, MANAGE)) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #table, OWNER))
+          #authorizeAny(#principal, #table, OWNER, MANAGE))
+      """;
+
+  /** Function deletion and grant changes, with usage required above the management scope. */
+  public static final String UPDATE_FUNCTION =
+      """
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, MANAGE)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #function, OWNER, MANAGE))
+      """;
+
+  /** Volume metadata updates, deletion, and grant changes. File access has separate checks. */
+  public static final String UPDATE_VOLUME =
+      """
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, MANAGE)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #volume, OWNER, MANAGE))
+      """;
+
+  /**
+   * Model metadata updates, deletion, and grant changes. Publication and file access have separate
+   * checks.
+   */
+  public static final String UPDATE_REGISTERED_MODEL =
+      """
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, MANAGE)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #registered_model, OWNER, MANAGE))
       """;
 
   /**
@@ -211,8 +254,8 @@ public final class AuthorizeExpressions {
           + """
           ) &&
           (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-            (#authorize(#principal, #schema, OWNER) ||
-              #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)))
+            #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+            #authorizeAny(#principal, #schema, OWNER, CREATE_TABLE))
           """;
 
   /**
@@ -248,8 +291,8 @@ public final class AuthorizeExpressions {
   /**
    * Iceberg credentials require the read permissions in {@link #VEND_TABLE_CREDENTIAL}. With strict
    * checks disabled, metastore or catalog ownership, schema ownership with {@code USE_CATALOG}, or
-   * {@code MODIFY} with both usage grants also permits credentials. {@code READ_METADATA} alone
-   * does not permit credentials.
+   * {@code MODIFY} with both usage grants also permits credentials. {@code READ_METADATA} or {@code
+   * MANAGE} alone does not permit credentials.
    */
   // TODO(#2024): Reuse VEND_TABLE_CREDENTIAL with a fixed READ operation after removing the flag.
   public static final String VEND_ICEBERG_TABLE_CREDENTIAL =

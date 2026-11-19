@@ -3,6 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
+| **browse\_only** | **Boolean** | True when the response contains only discovery metadata authorized by BROWSE. | [optional] [default to null] |
 | **name** | **String** | Name of table, relative to parent schema. | [optional] [default to null] |
 | **catalog\_name** | **String** | Name of parent catalog. | [optional] [default to null] |
 | **schema\_name** | **String** | Name of parent schema relative to its parent catalog. | [optional] [default to null] |

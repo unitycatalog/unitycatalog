@@ -7,11 +7,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.ListCatalogsResponse;
 import io.unitycatalog.client.model.UpdateCatalog;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -65,22 +67,20 @@ public class CatalogCli {
 
   private static String listCatalogs(CatalogsApi catalogsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    int maxResults = 100;
-    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
-      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
-    }
-    String pageToken = null;
-    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
-      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
-    }
     return objectWriter.writeValueAsString(
-        catalogsApi.listCatalogs(pageToken, maxResults).getCatalogs());
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) ->
+                catalogsApi.listCatalogs(pageToken, maxResults, /* includeBrowse= */ false),
+            ListCatalogsResponse::getCatalogs,
+            ListCatalogsResponse::getNextPageToken));
   }
 
   private static String getCatalog(CatalogsApi catalogsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(NAME_PARAM);
-    return objectWriter.writeValueAsString(catalogsApi.getCatalog(catalogName));
+    return objectWriter.writeValueAsString(
+        catalogsApi.getCatalog(catalogName, /* includeBrowse= */ false));
   }
 
   private static String updateCatalog(CatalogsApi catalogsApi, JSONObject json)

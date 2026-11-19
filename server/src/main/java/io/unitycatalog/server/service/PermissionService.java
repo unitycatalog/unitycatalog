@@ -140,7 +140,8 @@ public class PermissionService implements UnityCatalogRestService {
 
   private HttpResponse getAuthorization(SecurableType securableType, String name) {
 
-    // Owners and metadata readers can view all direct grants. Other users see their own grants.
+    // Owners, managers, and metadata readers can view all direct grants. Other users see their own
+    // grants.
 
     UUID resourceId = getResourceId(securableType, name);
     UUID principalId = userRepository.findPrincipalId();
@@ -172,32 +173,54 @@ public class PermissionService implements UnityCatalogRestService {
                 metastoreRepository.getMetastoreId(),
                 Privileges.READ_METADATA)
             || switch (securableType) {
-              case METASTORE, CATALOG, CREDENTIAL, EXTERNAL_LOCATION ->
-                  authorizer.authorize(
-                      principalId, securableType, resourceId, Privileges.READ_METADATA);
+              case METASTORE -> false;
+              case CATALOG, CREDENTIAL, EXTERNAL_LOCATION ->
+                  authorizer.authorizeAny(
+                      principalId,
+                      securableType,
+                      resourceId,
+                      Privileges.MANAGE,
+                      Privileges.READ_METADATA);
               case SCHEMA ->
                   parentId != null
-                      && (authorizer.authorize(
-                              principalId, CATALOG, parentId, Privileges.READ_METADATA)
+                      && (authorizer.authorizeAny(
+                              principalId,
+                              CATALOG,
+                              parentId,
+                              Privileges.MANAGE,
+                              Privileges.READ_METADATA)
                           || (authorizer.authorize(
                                   principalId, CATALOG, parentId, Privileges.USE_CATALOG)
-                              && authorizer.authorize(
-                                  principalId, SCHEMA, resourceId, Privileges.READ_METADATA)));
+                              && authorizer.authorizeAny(
+                                  principalId,
+                                  SCHEMA,
+                                  resourceId,
+                                  Privileges.MANAGE,
+                                  Privileges.READ_METADATA)));
               case TABLE, FUNCTION, VOLUME, REGISTERED_MODEL ->
                   parentId != null
                       && grandparentId != null
-                      && (authorizer.authorize(
-                              principalId, CATALOG, grandparentId, Privileges.READ_METADATA)
+                      && (authorizer.authorizeAny(
+                              principalId,
+                              CATALOG,
+                              grandparentId,
+                              Privileges.MANAGE,
+                              Privileges.READ_METADATA)
                           || (authorizer.authorize(
                                   principalId, CATALOG, grandparentId, Privileges.USE_CATALOG)
-                              && (authorizer.authorize(
-                                      principalId, SCHEMA, parentId, Privileges.READ_METADATA)
+                              && (authorizer.authorizeAny(
+                                      principalId,
+                                      SCHEMA,
+                                      parentId,
+                                      Privileges.MANAGE,
+                                      Privileges.READ_METADATA)
                                   || (authorizer.authorize(
                                           principalId, SCHEMA, parentId, Privileges.USE_SCHEMA)
-                                      && authorizer.authorize(
+                                      && authorizer.authorizeAny(
                                           principalId,
                                           securableType,
                                           resourceId,
+                                          Privileges.MANAGE,
                                           Privileges.READ_METADATA)))));
             };
 
@@ -238,7 +261,8 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/catalog/{name}")
   @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #catalog, OWNER)")
+      "#authorize(#principal, #metastore, OWNER) || #authorizeAny(#principal, #catalog, OWNER,"
+          + " MANAGE)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalogAuthorization(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name, UpdatePermissions request) {
@@ -247,11 +271,7 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/schema/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
-      """)
+      "#authorize(#principal, #metastore, OWNER) || (" + AuthorizeExpressions.UPDATE_SCHEMA + ")")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchemaAuthorization(
       @Param("name") @AuthorizeResourceKey(SCHEMA) String name, UpdatePermissions request) {
@@ -260,14 +280,7 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/table/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #table, OWNER))
-      """)
+      "#authorize(#principal, #metastore, OWNER) || (" + AuthorizeExpressions.DELETE_TABLE + ")")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateTableAuthorization(
       @Param("name") @AuthorizeResourceKey(TABLE) String name, UpdatePermissions request) {
@@ -276,14 +289,7 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/function/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #function, OWNER))
-      """)
+      "#authorize(#principal, #metastore, OWNER) || (" + AuthorizeExpressions.UPDATE_FUNCTION + ")")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateFunctionAuthorization(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name, UpdatePermissions request) {
@@ -292,14 +298,7 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/volume/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER))
-      """)
+      "#authorize(#principal, #metastore, OWNER) || (" + AuthorizeExpressions.UPDATE_VOLUME + ")")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolumeAuthorization(
       @Param("name") @AuthorizeResourceKey(VOLUME) String name, UpdatePermissions request) {
@@ -308,14 +307,9 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/registered_model/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #registered_model, OWNER))
-      """)
+      "#authorize(#principal, #metastore, OWNER) || ("
+          + AuthorizeExpressions.UPDATE_REGISTERED_MODEL
+          + ")")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModelAuthorization(
       @Param("name") @AuthorizeResourceKey(REGISTERED_MODEL) String name,
@@ -325,8 +319,8 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/external_location/{name}")
   @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location,"
-          + " OWNER)")
+      "#authorize(#principal, #metastore, OWNER) || #authorizeAny(#principal, #external_location,"
+          + " OWNER, MANAGE)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocationAuthorization(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
@@ -336,7 +330,8 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/credential/{name}")
   @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #credential, OWNER)")
+      "#authorize(#principal, #metastore, OWNER) || #authorizeAny(#principal, #credential, OWNER,"
+          + " MANAGE)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCredentialAuthorization(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name, UpdatePermissions request) {
@@ -347,9 +342,7 @@ public class PermissionService implements UnityCatalogRestService {
       SecurableType securableType, String name, UpdatePermissions request) {
     UUID resourceId = getResourceId(securableType, name);
     List<PermissionsChange> changes = request.getChanges();
-    if (strictPrivilegeChecks) {
-      validateAddedPrivileges(securableType, changes);
-    }
+    validateAddedPrivileges(securableType, changes, strictPrivilegeChecks);
     Set<UUID> principalIds = new HashSet<>();
     changes.forEach(
         change -> {
@@ -401,8 +394,16 @@ public class PermissionService implements UnityCatalogRestService {
   /** Validates additions only, so grants saved on invalid object types can still be removed. */
   static void validateAddedPrivileges(
       SecurableType securableType, List<PermissionsChange> changes) {
+    validateAddedPrivileges(securableType, changes, true);
+  }
+
+  private static void validateAddedPrivileges(
+      SecurableType securableType, List<PermissionsChange> changes, boolean strictPrivilegeChecks) {
     for (PermissionsChange change : changes) {
       for (Privilege privilege : change.getAdd()) {
+        if (!strictPrivilegeChecks && privilege != Privilege.MANAGE) {
+          continue;
+        }
         Set<SecurableType> validTypes =
             switch (privilege) {
               case BROWSE -> Set.of(CATALOG, EXTERNAL_LOCATION);

@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.cli.utils.PythonInvoker;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
@@ -23,6 +24,7 @@ import io.unitycatalog.client.api.FunctionsApi;
 import io.unitycatalog.client.model.CreateFunction;
 import io.unitycatalog.client.model.CreateFunctionRequest;
 import io.unitycatalog.client.model.FunctionParameterInfos;
+import io.unitycatalog.client.model.ListFunctionsResponse;
 import java.util.Arrays;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -105,16 +107,14 @@ public class FunctionCli {
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
     String schemaName = json.getString(CliParams.SCHEMA_NAME.getServerParam());
-    int maxResults = 100;
-    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
-      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
-    }
-    String pageToken = null;
-    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
-      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
-    }
     return objectWriter.writeValueAsString(
-        functionsApi.listFunctions(catalogName, schemaName, maxResults, pageToken).getFunctions());
+        Pagination.listAllPages(
+            json,
+            (maxResults, pageToken) ->
+                functionsApi.listFunctions(
+                    catalogName, schemaName, maxResults, pageToken, /* includeBrowse= */ false),
+            ListFunctionsResponse::getFunctions,
+            ListFunctionsResponse::getNextPageToken));
   }
 
   private static String executeFunction(FunctionsApi functionsApi, JSONObject json)
@@ -123,18 +123,20 @@ public class FunctionCli {
     String functionFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     try {
       return PythonInvoker.invokePython(
-          functionsApi.getFunction(functionFullName),
+          functionsApi.getFunction(functionFullName, /* includeBrowse= */ false),
           "etc/data/function/python_engine.py",
           Arrays.stream(args.split(",")).map(String::trim).toArray(String[]::new));
     } catch (Exception e) {
-      throw new CliException("Failed to execute function " + functionFullName, e);
+      throw new CliException(
+          "Failed to execute function " + functionFullName + ": " + e.getMessage(), e);
     }
   }
 
   private static String getFunction(FunctionsApi functionsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String functionFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    return objectWriter.writeValueAsString(functionsApi.getFunction(functionFullName));
+    return objectWriter.writeValueAsString(
+        functionsApi.getFunction(functionFullName, /* includeBrowse= */ false));
   }
 
   private static String deleteFunction(FunctionsApi functionsApi, JSONObject json)

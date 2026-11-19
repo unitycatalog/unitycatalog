@@ -5,8 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
 import io.unitycatalog.client.delta.model.DeltaArrayType;
-import io.unitycatalog.client.delta.model.DeltaAssertEtag;
-import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCommit;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
@@ -31,7 +29,6 @@ import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
-import io.unitycatalog.client.delta.model.DeltaTableRequirement;
 import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaTableUpdate;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
@@ -46,12 +43,14 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
+import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URI;
@@ -59,6 +58,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -67,11 +67,14 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Integration tests for the Delta {@code POST /v1/.../tables/{table}} update endpoint. Consolidated
@@ -1506,6 +1509,397 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Files.createDirectories(Path.of(URI.create(storageLocation + "/" + relativePath)));
   }
 
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(
+      strings = {
+        "delta.feature.catalogManaged",
+        "io.unitycatalog.tableId",
+        "delta.enableInCommitTimestamps"
+      })
+  public void testRemovingProtectedPropertyOfManagedTableIsRejected(String key) throws Exception {
+    Handle h = createDeltaManaged("tbl_protected_" + key.replace('.', '_'), Map.of());
+    Map<String, String> before = loadProperties(h.name());
+    TestUtils.assertDeltaApiException(
+        () -> updateTable(h, new DeltaRemovePropertiesUpdate().removals(List.of(key))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        key);
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
+
+  @Test
+  public void testChangingTableIdOfManagedTableIsRejected() throws Exception {
+    Handle h = createDeltaManaged("tbl_change_table_id", Map.of());
+    Map<String, String> before = loadProperties(h.name());
+    String otherId = UUID.randomUUID().toString();
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                new DeltaSetPropertiesUpdate().updates(Map.of("io.unitycatalog.tableId", otherId))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "does not match");
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
+
+  @Test
+  public void testOrdinaryPropertiesOfManagedTableCanBeChanged() throws Exception {
+    Handle h = createDeltaManaged("tbl_ordinary_props", Map.of("drop_me", "v"));
+    Map<String, String> after =
+        updateTable(
+                h,
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of("k", "v", "io.unitycatalog.tableId", h.tableId().toString())),
+                new DeltaRemovePropertiesUpdate().removals(List.of("drop_me")))
+            .getMetadata()
+            .getProperties();
+    assertThat(after).containsEntry("k", "v").doesNotContainKey("drop_me");
+  }
+
+  @Test
+  public void testProtectedPropertiesOfExternalTableCanBeChanged() throws Exception {
+    Handle external = createDeltaExternal("tbl_protected_props_external");
+    Map<String, String> protectedValues =
+        Map.of(
+            "delta.feature.catalogManaged",
+            "supported",
+            "io.unitycatalog.tableId",
+            UUID.randomUUID().toString(),
+            "delta.enableInCommitTimestamps",
+            "true");
+    Handle set =
+        external.withEtag(
+            updateTable(external, new DeltaSetPropertiesUpdate().updates(protectedValues))
+                .getMetadata()
+                .getEtag());
+    assertThat(
+            updateTable(
+                    set,
+                    new DeltaRemovePropertiesUpdate()
+                        .removals(List.copyOf(protectedValues.keySet())))
+                .getMetadata()
+                .getProperties())
+        .doesNotContainKeys(protectedValues.keySet().toArray(String[]::new));
+  }
+
+  @Test
+  public void testTakenCommitVersionIsReportedBeforeOtherValidation() throws Exception {
+    Handle h = createDeltaManaged("tbl_taken_version_first", Map.of());
+    updateTable(h, new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")));
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                new DeltaAddCommitUpdate().commit(commit(1L, "00000001b.json")),
+                new DeltaSetPropertiesUpdate().updates(Map.of("delta.minReaderVersion", "3"))),
+        DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
+        "already accepted");
+  }
+
+  @Test
+  public void testReplayOfPropertyChangingCommitAfterLaterChangeReturnsNewestState()
+      throws Exception {
+    Handle h = createDeltaManaged("tbl_replay_property_commit", Map.of());
+    List<String> base = new ArrayList<>(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
+    base.add(TableFeature.ROW_TRACKING.specName());
+    List<String> withClustering = new ArrayList<>(base);
+    withClustering.add(TableFeature.CLUSTERING.specName());
+    DeltaLoadTableResponse r0 =
+        updateTable(
+            h,
+            new DeltaSetProtocolUpdate()
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                        .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                        .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                        .writerFeatures(withClustering)));
+    DeltaTableUpdate[] v1 = {
+      new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")),
+      new DeltaSetDomainMetadataUpdate()
+          .updates(
+              new DeltaDomainMetadataUpdates()
+                  .deltaClustering(
+                      new DeltaClusteringDomainMetadata()
+                          .clusteringColumns(List.of(List.of("id"))))),
+      new DeltaSetPropertiesUpdate().updates(Map.of("k", "v1"))
+    };
+    DeltaLoadTableResponse r1 = updateTable(h.withEtag(r0.getMetadata().getEtag()), v1);
+    DeltaLoadTableResponse r2 =
+        updateTable(
+            h.withEtag(r1.getMetadata().getEtag()),
+            new DeltaAddCommitUpdate().commit(commit(2L, "00000002.json")),
+            new DeltaSetProtocolUpdate()
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                        .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                        .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                        .writerFeatures(base)),
+            new DeltaRemoveDomainMetadataUpdate().domains(List.of("delta.clustering")),
+            new DeltaSetPropertiesUpdate().updates(Map.of("k", "v2")));
+
+    DeltaLoadTableResponse replay = updateTable(h.withEtag(r0.getMetadata().getEtag()), v1);
+
+    assertThat(replay.getLatestTableVersion()).isEqualTo(2L);
+    assertThat(replay.getMetadata().getProperties())
+        .isEqualTo(r2.getMetadata().getProperties())
+        .containsEntry("k", "v2")
+        .doesNotContainKey("clusteringColumns");
+  }
+
+  static Stream<Arguments> uniformTurnedOffCases() {
+    DeltaAddCommitUpdate commit2 = new DeltaAddCommitUpdate().commit(commit(2L, "00000002.json"));
+    DeltaRemovePropertiesUpdate removeFormats =
+        new DeltaRemovePropertiesUpdate()
+            .removals(List.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS));
+    return Stream.of(
+        Arguments.of("remove-properties with add-commit", List.of(removeFormats, commit2)),
+        Arguments.of(
+            "set-properties to hudi with add-commit",
+            List.of(
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "hudi")),
+                commit2)),
+        Arguments.of("remove-properties without a commit", List.of(removeFormats)));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("uniformTurnedOffCases")
+  public void testTurningOffUniformClearsItsIcebergMetadata(
+      String name, List<DeltaTableUpdate> updates) throws Exception {
+    Handle h = createUniformTable("tbl_uniform_turned_off");
+    updateTable(h.name(), requestWith(h.tableId(), updates.toArray(DeltaTableUpdate[]::new)));
+    assertUniformIcebergMetadata(h, Optional.empty());
+    IcebergRestClient icebergClient = new IcebergRestClient(serverConfig);
+    TestUtils.assertIcebergApiException(
+        () -> icebergClient.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name()),
+        404);
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.loadCredentials(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name()),
+        404);
+  }
+
+  @Test
+  public void testUniformIcebergMetadataIsKeptWhileIcebergStaysEnabled() throws Exception {
+    Handle h = createUniformTable("tbl_uniform_iceberg_hudi");
+    updateTable(
+        h.name(),
+        requestWith(
+            h.tableId(),
+            new DeltaSetPropertiesUpdate()
+                .updates(
+                    Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "iceberg,hudi"))));
+    assertUniformIcebergMetadata(h, Optional.of(1L));
+  }
+
+  @Test
+  public void testReenablingUniformStoresNewIcebergMetadataThatAReplayKeeps() throws Exception {
+    Handle h = createUniformTable("tbl_uniform_reenabled");
+    DeltaUpdateTableRequest turnOff =
+        requestWith(
+            h.tableId(),
+            new DeltaRemovePropertiesUpdate()
+                .removals(List.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS)),
+            new DeltaAddCommitUpdate().commit(commit(2L, "00000002.json")));
+    updateTable(h.name(), turnOff);
+    assertUniformIcebergMetadata(h, Optional.empty());
+
+    updateTable(h.name(), requestWith(h.tableId(), turnOnUniformAt(h, 3L)));
+    assertUniformIcebergMetadata(h, Optional.of(3L));
+
+    updateTable(h.name(), turnOff);
+    assertUniformIcebergMetadata(h, Optional.of(3L));
+  }
+
+  @Test
+  public void testNativeIcebergTableKeepsItsMetadataPointer() throws Exception {
+    Handle h = createDeltaExternal("tbl_native_iceberg");
+    String metadataLocation = "s3://test-bucket0/native/metadata/v1.metadata.json";
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      TableInfoDAO dao = session.get(TableInfoDAO.class, h.tableId());
+      dao.setDataSourceFormat(DataSourceFormat.ICEBERG.toString());
+      dao.setIcebergMetadataLocation(metadataLocation);
+      tx.commit();
+    }
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h.name(),
+                requestWith(
+                    h.tableId(),
+                    new DeltaRemovePropertiesUpdate()
+                        .removals(List.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS)))),
+        DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+        "Table is not a Delta table");
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(session.get(TableInfoDAO.class, h.tableId()).getIcebergMetadataLocation())
+          .isEqualTo(metadataLocation);
+    }
+  }
+
+  @Test
+  public void testRemovingUniformFromAnExternalTableClearsItsIcebergMetadata() throws Exception {
+    String name = "tbl_uniform_external";
+    String location =
+        Files.createTempDirectory(testDirectoryRoot, "external_")
+            .toUri()
+            .toString()
+            .replaceAll("/$", "");
+    DeltaLoadTableResponse created =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(name)
+                .location(location)
+                .tableType(DeltaTableType.EXTERNAL)
+                .columns(simpleSchema())
+                .protocol(new DeltaProtocol().minReaderVersion(1).minWriterVersion(2))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "iceberg"))
+                .uniform(new DeltaUniformMetadata().iceberg(uniformIceberg(location, 1L))));
+    Handle h =
+        new Handle(name, created.getMetadata().getTableUuid(), created.getMetadata().getEtag());
+    assertUniformIcebergMetadata(h, Optional.of(1L));
+
+    updateTable(
+        name,
+        requestWith(
+            h.tableId(),
+            new DeltaRemovePropertiesUpdate()
+                .removals(List.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS))));
+    assertUniformIcebergMetadata(h, Optional.empty());
+  }
+
+  @Test
+  public void testClearingStaleUniformMetadataAdvancesTheEtag() throws Exception {
+    Handle h = createDeltaManaged("tbl_uniform_stale", Map.of());
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      TableInfoDAO dao = session.get(TableInfoDAO.class, h.tableId());
+      dao.setIcebergMetadataLocation("s3://test-bucket0/stale/_uniform/v1.json");
+      dao.setUniformIcebergConvertedDeltaVersion(1L);
+      dao.setUniformIcebergConvertedDeltaTimestamp(new Date(1700000000001L));
+      tx.commit();
+    }
+    String etagBefore =
+        deltaTablesApi
+            .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name())
+            .getMetadata()
+            .getEtag();
+
+    DeltaLoadTableResponse updated =
+        updateTable(
+            h.name(),
+            requestWith(
+                h.tableId(), new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json"))));
+
+    assertUniformIcebergMetadata(h, Optional.empty());
+    assertThat(updated.getMetadata().getEtag()).isNotEqualTo(etagBefore);
+  }
+
+  /** Creates a MANAGED table and turns UniForm on with its first commit. */
+  private Handle createUniformTable(String name) throws Exception {
+    Handle h = createDeltaManaged(name, Map.of());
+    updateTable(name, requestWith(h.tableId(), turnOnUniformAt(h, 1L)));
+    assertUniformIcebergMetadata(h, Optional.of(1L));
+    return h;
+  }
+
+  private DeltaTableUpdate[] turnOnUniformAt(Handle h, long version) throws ApiException {
+    String tableLocation =
+        deltaTablesApi
+            .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name())
+            .getMetadata()
+            .getLocation();
+    return new DeltaTableUpdate[] {
+      new DeltaSetPropertiesUpdate()
+          .updates(Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "iceberg")),
+      new DeltaAddCommitUpdate()
+          .commit(commit(version, String.format("%08d.json", version)))
+          .uniform(new DeltaUniformMetadata().iceberg(uniformIceberg(tableLocation, version)))
+    };
+  }
+
+  private static DeltaUniformMetadataIceberg uniformIceberg(String tableLocation, long version) {
+    return new DeltaUniformMetadataIceberg()
+        .metadataLocation(tableLocation + "/_uniform/v" + version + ".json")
+        .convertedDeltaVersion(version)
+        .convertedDeltaTimestamp(1700000000000L + version);
+  }
+
+  /**
+   * Asserts the UniForm Iceberg metadata both APIs serve: the {@code uniform} block of the Delta
+   * loadTable, and whether the Iceberg REST catalog has the table. Empty means UniForm is off.
+   */
+  private void assertUniformIcebergMetadata(Handle h, Optional<Long> convertedVersion)
+      throws Exception {
+    DeltaLoadTableResponse loaded =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
+    Optional<DeltaUniformMetadataIceberg> expected =
+        convertedVersion.map(v -> uniformIceberg(loaded.getMetadata().getLocation(), v));
+    assertThat(Optional.ofNullable(loaded.getUniform()).map(DeltaUniformMetadata::getIceberg))
+        .isEqualTo(expected);
+    IcebergRestClient icebergClient = new IcebergRestClient(serverConfig);
+    assertThat(icebergClient.tableExists(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name()))
+        .isEqualTo(expected.isPresent());
+    assertThat(
+            icebergClient
+                .listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME)
+                .identifiers()
+                .contains(TableIdentifier.of(TestUtils.SCHEMA_NAME, h.name())))
+        .isEqualTo(expected.isPresent());
+  }
+
+  @Test
+  public void testSetProtocolCannotCarryChangesToProtocolProperties() throws Exception {
+    Handle h = createDeltaManaged("tbl_set_protocol_props", Map.of());
+    Map<String, String> before = loadProperties(h.name());
+    DeltaSetProtocolUpdate setProtocol =
+        new DeltaSetProtocolUpdate()
+            .protocol(
+                new DeltaProtocol()
+                    .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                    .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                    .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                    .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES));
+    String catalogManaged =
+        TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName();
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                setProtocol,
+                new DeltaRemovePropertiesUpdate().removals(List.of(catalogManaged))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        catalogManaged);
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                setProtocol,
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of(TableProperties.MIN_READER_VERSION, "1"))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        TableProperties.MIN_READER_VERSION);
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h, new DeltaSetPropertiesUpdate().updates(Map.of(catalogManaged, "disabled"))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        catalogManaged);
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
+
+  private Map<String, String> loadProperties(String tableName) throws ApiException {
+    return deltaTablesApi
+        .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName)
+        .getMetadata()
+        .getProperties();
+  }
+
   // ---------------------------------------------------------------- column-mapping identity tests
 
   /**
@@ -1850,15 +2244,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         "set-columns dropped column mapping metadata for column(s): a, amount, id");
   }
 
-  private static DeltaCommit commit(long version, String fileName) {
-    return new DeltaCommit()
-        .version(version)
-        .timestamp(1700000000L + version)
-        .fileName(fileName)
-        .fileSize(1024L)
-        .fileModificationTimestamp(1700000000L + version);
-  }
-
   /**
    * Top-level rename on an id-mode table (CM identity keyed on {@code delta.columnMapping.id}).
    * After "a" → "b" the new logical name is present, old is gone, and the CM id remains 1 in the
@@ -1957,37 +2342,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   }
 
   // ---------------------------------------------------------------- helpers
-
-  /** Pins the update to the table's UUID and the Handle's etag. */
-  private DeltaLoadTableResponse updateTable(Handle h, DeltaTableUpdate... updates)
-      throws ApiException {
-    return updateTable(h.name(), requestWith(h.tableId(), Optional.of(h.etag()), updates));
-  }
-
-  /** Escape hatch for tests that hand-build the request (custom requirements / empty updates). */
-  private DeltaLoadTableResponse updateTable(String tableName, DeltaUpdateTableRequest request)
-      throws ApiException {
-    return deltaTablesApi.updateTable(
-        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName, request);
-  }
-
-  /**
-   * Build an {@link DeltaUpdateTableRequest} with the canonical {@code assert-table-uuid}
-   * requirement and an optional {@code assert-etag} requirement. Empty {@code updates} is allowed
-   * for the empty-list rejection case.
-   */
-  private static DeltaUpdateTableRequest requestWith(
-      UUID assertUuid, Optional<String> assertEtag, DeltaTableUpdate... updates) {
-    List<DeltaTableRequirement> requirements = new ArrayList<>();
-    requirements.add(new DeltaAssertTableUUID().uuid(assertUuid));
-    assertEtag.ifPresent(etag -> requirements.add(new DeltaAssertEtag().etag(etag)));
-    return new DeltaUpdateTableRequest().requirements(requirements).updates(List.of(updates));
-  }
-
-  /** Convenience: assert-table-uuid only, no assert-etag. */
-  private static DeltaUpdateTableRequest requestWith(UUID assertUuid, DeltaTableUpdate... updates) {
-    return requestWith(assertUuid, Optional.empty(), updates);
-  }
 
   // -------------------------------------------------------- CM table creation helpers
 

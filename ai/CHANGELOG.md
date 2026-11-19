@@ -1,5 +1,24 @@
 # Changelog for Unity Catalog AI releases
 
+## Unreleased
+
+### Major Changes
+
+- **Sandbox memory limit is relative to the inherited address space**: In the `sandbox` execution mode, `EXECUTOR_MAX_MEMORY_LIMIT` (added in 0.3.0) is now the extra virtual memory, in MB, that the function can allocate on top of the address space the forked sandbox process inherits from your application. It used to be an absolute cap on the whole process, so functions could not allocate anything once your application used more memory than the limit. An existing lower limit is never raised, and no memory limit is applied when the current address space size cannot be read. The `local` execution mode of `DatabricksFunctionClient` is unchanged and still caps the whole subprocess. To keep a hard cap on the whole process in sandbox mode, set an address space limit on your application, for example with `ulimit -v`, which the sandbox inherits.
+
+### Bug Fixes
+
+- Fixed sandbox results being lost, with a misleading "no output was produced" message, when the application uses more memory than `EXECUTOR_MAX_MEMORY_LIMIT`. The sandbox now reports the exit code when the process exits without a result, and reports a result that cannot be read as a failure instead of raising.
+- Fixed tool calls sending `STRUCT` and `BINARY` arguments in a form the function client cannot use. LangChain, DSPy and CrewAI tools sent a struct, including a struct inside an `ARRAY` or a `MAP`, as text such as `"city='Oslo' zip=150"`, and a binary argument as `"b'aGk='"`. AutoGen tools sent a binary argument as the bytes of its base64 text, so the function received that text instead of the decoded data. Gemini tools sent every `STRUCT`, `ARRAY` and `MAP` argument of a function call as the text of a protobuf object. LangChain, DSPy, CrewAI and Gemini now send the JSON value the model passed, the same as the OpenAI, Anthropic and LiteLLM integrations. Gemini still sends a whole number as a float, at the top level and in integer fields inside a `STRUCT`, an `ARRAY` or a `MAP`, which is tracked in #2308. AutoGen now decodes the base64 text of a top-level binary argument into bytes, and keeps bytes passed to `run()` as they are. Bytes passed directly as a top-level `BINARY` argument to a LangChain, DSPy, CrewAI or LlamaIndex tool are sent as their base64 text, so the function receives the same bytes. A binary value inside an `ARRAY`, a `MAP` or a `STRUCT` is still sent as the bytes of its base64 text in every integration, not decoded, and is tracked in #2298.
+- Fixed the Gemini and DSPy toolkits failing with `AttributeError: 'NoneType' object has no attribute 'parameters'` for a function without parameters, including when such a function is matched by a `catalog.schema.*` function name. Gemini now declares the tool without parameters and DSPy builds it with no arguments, like the other integrations.
+
+### Change Log
+
+- Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
+- Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #2223
+- Send STRUCT and BINARY tool arguments as JSON values in every integration by @maharanay22 in #2244
+- Build Gemini and DSPy tools for functions without parameters by @maharanay22 in #2245
+
 ## Unity Catalog AI 0.4.0
 
 The 0.4.0 release of Unity Catalog AI includes a new framework integration, LangChain v1 compatibility, expanded Databricks client options, and dependency/security improvements.

@@ -100,15 +100,29 @@ public class SdkVolumeRenameLegacyAccessControlTest extends SdkAccessControlBase
           ErrorCode.RESOURCE_ALREADY_EXISTS,
           "Volume already exists");
       callerApi.updateVolume(fullName, rename);
-      VolumeInfo renamed = observerApi.getVolume(TestUtils.SCHEMA_FULL_NAME + ".renamed");
+      VolumeInfo renamed =
+          observerApi.getVolume(
+              TestUtils.SCHEMA_FULL_NAME + ".renamed", /* includeBrowse= */ false);
       assertThat(renamed.getVolumeId()).isEqualTo(original.getVolumeId());
       assertThat(renamed.getName()).isEqualTo("renamed");
       assertThat(renamed.getComment()).isEqualTo("renamed comment");
     } else {
       assertPermissionDenied(() -> callerApi.updateVolume(fullName, rename));
-      VolumeInfo unchanged = observerApi.getVolume(fullName);
+      VolumeInfo unchanged = observerApi.getVolume(fullName, /* includeBrowse= */ false);
       assertThat(unchanged.getName()).isEqualTo("volume");
       assertThat(unchanged.getComment()).isEqualTo(original.getComment());
+    }
+    if (!owner && useCatalog && useSchema) {
+      grantPermissions(principal, SecurableType.VOLUME, fullName, Privileges.MANAGE);
+      assertPermissionDenied(() -> callerApi.updateVolume(fullName, rename));
+      grantPermissions(
+          principal, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.CREATE_VOLUME);
+      callerApi.updateVolume(fullName, rename);
+      VolumeInfo renamed =
+          observerApi.getVolume(
+              TestUtils.SCHEMA_FULL_NAME + ".renamed", /* includeBrowse= */ false);
+      assertThat(renamed.getVolumeId()).isEqualTo(original.getVolumeId());
+      assertThat(renamed.getOwner()).isEqualTo(original.getOwner());
     }
   }
 }

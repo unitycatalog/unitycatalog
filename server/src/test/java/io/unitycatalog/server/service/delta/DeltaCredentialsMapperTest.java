@@ -11,6 +11,7 @@ import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 public class DeltaCredentialsMapperTest {
@@ -39,8 +40,61 @@ public class DeltaCredentialsMapperTest {
     assertThat(config.getS3AccessKeyId()).isEqualTo("AKIA123");
     assertThat(config.getS3SecretAccessKey()).isEqualTo("secret");
     assertThat(config.getS3SessionToken()).isEqualTo("token");
+    // AWS S3: no endpoint or region.
+    assertThat(config.getS3Endpoint()).isNull();
+    assertThat(config.getClientRegion()).isNull();
     assertThat(config.getAzureSasToken()).isNull();
     assertThat(config.getGcsOauthToken()).isNull();
+  }
+
+  @Test
+  public void testS3CompatibleCredentialsCarryTheEndpointAndRegion() {
+    // An endpoint-only vend (endpoint-only) and a key vend both carry the S3 endpoint.
+    for (AwsCredentials aws :
+        List.of(
+            new AwsCredentials()
+                .s3Endpoint("http://storage.example.com:9000")
+                .s3Region("eu-test-1"),
+            new AwsCredentials()
+                .accessKeyId("key-id-1")
+                .secretAccessKey("key-value-1")
+                .sessionToken("session-1")
+                .s3Endpoint("http://storage.example.com:9000")
+                .s3Region("eu-test-1"))) {
+      DeltaStorageCredentialConfig config =
+          DeltaCredentialsMapper.toCredentialsResponse(
+                  new TemporaryCredentials().url("s3://bucket/path").awsTempCredentials(aws),
+                  DeltaCredentialOperation.READ)
+              .getStorageCredentials()
+              .get(0)
+              .getConfig();
+
+      assertThat(config.getS3Endpoint()).isEqualTo("http://storage.example.com:9000");
+      assertThat(config.getClientRegion()).isEqualTo("eu-test-1");
+      assertThat(config.getS3AccessKeyId()).isEqualTo(aws.getAccessKeyId());
+    }
+  }
+
+  @Test
+  public void testEndpointOnlyVendCarriesItsRefetchTime() throws Exception {
+    // An endpoint-only vend carries no keys, and the time to fetch again as its expiration.
+    String json =
+        DeltaApiMappers.MAPPER.writeValueAsString(
+            DeltaCredentialsMapper.toCredentialsResponse(
+                    new TemporaryCredentials()
+                        .url("s3://bucket/path")
+                        .awsTempCredentials(
+                            new AwsCredentials()
+                                .s3Endpoint("http://storage.example.com:9000")
+                                .s3Region("eu-test-1"))
+                        .expirationTime(1700000000000L),
+                    DeltaCredentialOperation.READ)
+                .getStorageCredentials()
+                .get(0));
+    assertThat(json)
+        .contains("\"s3.endpoint\":\"http://storage.example.com:9000\"")
+        .contains("\"expiration-time-ms\":1700000000000")
+        .doesNotContain("s3.access-key-id");
   }
 
   @Test

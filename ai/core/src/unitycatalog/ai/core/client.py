@@ -36,6 +36,7 @@ from unitycatalog.ai.core.utils.type_utils import (
 )
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
+    parse_iso_datetime,
     validate_function_name_length,
 )
 from unitycatalog.client import (
@@ -508,11 +509,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         function_metadata = await self.uc.functions_client.create_function(
             function_request, _request_timeout=timeout
         )
-        # NB: Clearing the function cache here only if the function creation is successful
-        # to ensure that the cache state is viable and any replacement operations, on next execution,
-        # refresh the cache with the new function definition
         if replace:
-            self.clear_function_cache()
+            self.func_cache.pop(function_metadata.full_name, None)
         return function_metadata
 
     @override
@@ -582,6 +580,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
+
+        Raises:
+            ValueError: If `func` is not a valid function to register, for example if it is defined
+                with `async def`.
         """
 
         if not callable(func):
@@ -630,6 +632,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
+
+        Raises:
+            ValueError: If `func` is not a valid function to register, for example if it is defined
+                with `async def`.
         """
 
         pass
@@ -664,6 +670,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
+
+        Raises:
+            ValueError: If `primary_func` or `functions` are not valid to register, for example if
+                `primary_func` is defined with `async def`.
         """
 
         if not callable(primary_func):
@@ -743,6 +753,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
+
+        Raises:
+            ValueError: If `primary_func` or `functions` are not valid to register, for example if
+                `primary_func` is defined with `async def`.
         """
 
         pass
@@ -883,15 +897,21 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     def _get_callable(self, function_info: FunctionInfo) -> Callable[..., Any]:
         """
-        Extracts or dynamically constructs the function from the FunctionInfo,
-        and caches the function for future calls.
+        Extracts or dynamically constructs the function from the FunctionInfo, and caches it
+        under the function's full name, recording the source it was built from in `_uc_source`.
+
+        The cached function is reused only while the given FunctionInfo produces the same
+        source, so a function that was deleted and recreated, or replaced by another client,
+        is rebuilt instead of running its old body.
         """
-        if function_info.full_name in self.func_cache:
-            return self.func_cache[function_info.full_name]
         python_function = get_callable_definition(function_info)
+        cached_func = self.func_cache.get(function_info.full_name)
+        if getattr(cached_func, "_uc_source", None) == python_function:
+            return cached_func
         namespace = {}
         exec(python_function, namespace)
         func = namespace[function_info.name]
+        func._uc_source = python_function
         self.func_cache[function_info.full_name] = func
         return func
 
@@ -1138,10 +1158,7 @@ def _convert_json_value(value: Any, column_type: Optional[str]) -> Any:
     if column_type == "DATE":
         return datetime.date.fromisoformat(value)
     if column_type in ("TIMESTAMP", "TIMESTAMP_NTZ"):
-        # NB: datetime.fromisoformat accepts a trailing "Z" only from Python 3.11
-        result = datetime.datetime.fromisoformat(
-            value[:-1] + "+00:00" if value.endswith("Z") else value
-        )
+        result = parse_iso_datetime(value)
         if column_type == "TIMESTAMP_NTZ" and result.tzinfo is not None:
             raise ValueError("TIMESTAMP_NTZ values must not have a time zone offset")
         return result

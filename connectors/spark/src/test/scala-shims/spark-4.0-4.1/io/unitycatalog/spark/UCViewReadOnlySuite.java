@@ -64,7 +64,11 @@ public class UCViewReadOnlySuite {
             .name(name)
             .tableType(tableType)
             .viewDefinition("version: \"0.1\"");
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema." + name), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema." + name),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
         .thenReturn(row);
   }
 
@@ -106,6 +110,17 @@ public class UCViewReadOnlySuite {
   }
 
   @Test
+  public void testLoadTablePlainViewKeepsTypeJsonMetadata() throws Exception {
+    ColumnInfo column =
+        intColumn("c")
+            .typeJson(
+                "{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
+                    + "\"metadata\":{\"k\":\"v\"}}");
+    CatalogTable catalogTable = loadPlainViewCatalogTable(List.of(column), null);
+    assertThat(catalogTable.schema().apply("c").metadata().getString("k")).isEqualTo("v");
+  }
+
+  @Test
   public void testLoadTablePlainViewWithNullColumnsDoesNotThrow() throws Exception {
     // Columns are nullable on the wire (older / non-Spark writer); degrade to an empty schema
     // rather than NPE-ing, and record no query-output columns.
@@ -142,7 +157,8 @@ public class UCViewReadOnlySuite {
                     new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW),
                     new TableInfo().name("mtv1").tableType(TableType.MATERIALIZED_VIEW)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     assertThat(proxy.listTables(NAMESPACE))
@@ -224,7 +240,8 @@ public class UCViewReadOnlySuite {
             .viewDefinition(PLAIN_VIEW_QUERY)
             .columns(columns)
             .properties(properties);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.v1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.v1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(row);
 
     Table table = proxy.loadTable(Identifier.of(NAMESPACE, "v1"));

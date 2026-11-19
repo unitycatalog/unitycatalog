@@ -269,7 +269,7 @@ toolkit = UCFunctionToolkit(
 
 ### Configurations for Databricks managed UC functions execution
 
-We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
+We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../core/README.md#function-execution-arguments-configuration).
 
 ## Examples
 
