@@ -19,6 +19,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -170,6 +172,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             .withSubject(securityContext.getServiceName())
             .withIssuer(securityContext.getLocalIssuer())
             .withIssuedAt(new Date())
+            .withExpiresAt(Date.from(Instant.now().plus(Duration.ofHours(1))))
             .withKeyId(securityConfiguration.getKeyId())
             .withJWTId(UUID.randomUUID().toString())
             .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
@@ -198,6 +201,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             .withSubject(securityContext.getServiceName())
             .withIssuer(securityContext.getLocalIssuer())
             .withIssuedAt(new Date())
+            .withExpiresAt(Date.from(Instant.now().plus(Duration.ofHours(1))))
             .withKeyId(securityConfiguration.getKeyId())
             .withJWTId(UUID.randomUUID().toString())
             .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())

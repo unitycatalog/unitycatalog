@@ -21,9 +21,12 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import java.util.Set;
+import org.apache.commons.lang3.EnumUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,8 +36,9 @@ import org.slf4j.LoggerFactory;
  * <p>This decorator accepts an Authorization header with a Bearer token, or a UC_TOKEN cookie when
  * no Bearer token is present. Cookie requests other than GET, HEAD, and OPTIONS require
  * X-Requested-With: XMLHttpRequest. The token is verified to be from the "internal" issuer and the
- * token signature is checked against the internal issuer key. If all these checks pass, the request
- * is allowed to continue.
+ * token signature is checked against the internal issuer key. The token must carry a known {@code
+ * type}, and an {@code ACCESS} token must carry an expiry; the bootstrap {@code SERVICE} token has
+ * none. If all these checks pass, the request is allowed to continue.
  *
  * <p>The decoded token is also added to the request attributes so it can be referenced by the
  * request if needed.
@@ -91,6 +95,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     // Internal tokens don't need audience validation
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
     decodedJWT = jwtVerifier.verify(decodedJWT);
+    validateTypeAndExpiry(decodedJWT);
 
     String subject = decodedJWT.getSubject();
 
@@ -115,6 +120,21 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
 
     return delegate.serve(ctx, req);
+  }
+
+  private static void validateTypeAndExpiry(DecodedJWT jwt) {
+    JwtTokenType type =
+        EnumUtils.getEnum(JwtTokenType.class, jwt.getClaim(JwtClaim.TOKEN_TYPE.key()).asString());
+    if (type == null) {
+      throw new AuthorizationException(
+          ErrorCode.UNAUTHENTICATED,
+          "Access token has a missing or unknown type. Get a new token from this server.");
+    }
+    if (type == JwtTokenType.ACCESS && jwt.getExpiresAt() == null) {
+      throw new AuthorizationException(
+          ErrorCode.UNAUTHENTICATED,
+          "Access token has no expiry. Get a new token from this server.");
+    }
   }
 
   private String getAccessTokenFromCookieOrAuthHeader(
