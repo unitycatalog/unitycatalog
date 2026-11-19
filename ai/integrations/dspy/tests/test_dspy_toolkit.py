@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import typing
@@ -683,3 +684,21 @@ async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_a
     # A native Decimal is sent as its text, as before this change.
     expected = {**arguments, "amount": "12.5"} if native else arguments
     assert client.execute_function.call_args.kwargs["parameters"] == expected
+
+
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+def test_tool_function_sends_native_bytes_as_base64_text(encoded):
+    # DSPy rejects bytes passed to the tool against the JSON schema, so this calls the function.
+    function_info = generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS)
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+
+    tool.func(**JSON_ARGUMENTS, data=base64.b64decode(encoded))
+
+    assert client.execute_function.call_args.kwargs["parameters"] == {
+        **JSON_ARGUMENTS,
+        "data": encoded,
+    }

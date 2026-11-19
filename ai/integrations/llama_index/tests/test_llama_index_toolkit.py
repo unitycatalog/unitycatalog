@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -657,7 +658,7 @@ async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_a
     arguments = {**JSON_ARGUMENTS, "data": encoded}
     tool_call_arguments = {
         **json.loads(json.dumps(arguments)),
-        **(NATIVE_ARGUMENTS if native else {}),
+        **({**NATIVE_ARGUMENTS, "data": base64.b64decode(encoded)} if native else {}),
     }
 
     if use_async:

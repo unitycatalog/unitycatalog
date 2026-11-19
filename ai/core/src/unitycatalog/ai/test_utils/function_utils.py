@@ -89,8 +89,8 @@ NATIVE_ARGUMENTS = {
     "amount": decimal.Decimal("12.5"),
 }
 
-# Base64 text with padding, with "+" and "/", and empty.
-BINARY_ARGUMENTS = ["aGk=", "+/8=", "AAH/", ""]
+# Base64 text with padding, with "+" and "/", of bytes that are not UTF-8, and empty.
+BINARY_ARGUMENTS = ["aGk=", "YWJjZA==", "+/8=", "/wA=", "AAH/", ""]
 
 
 def generate_function_info_with_params(params: dict[str, tuple[str, Any]]) -> FunctionInfo:

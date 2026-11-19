@@ -2,7 +2,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
-from pydantic_core import to_jsonable_python
 
 import dspy
 from unitycatalog.ai.core.base import BaseFunctionClient
@@ -11,6 +10,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     param_info_to_pydantic_type,
     process_function_names,
+    to_tool_call_parameters,
 )
 from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
@@ -168,7 +168,7 @@ class UCFunctionToolkit(BaseModel):
         def func(**kwargs: Any) -> str:
             result = client.execute_function(
                 function_name=function_name,
-                parameters=to_jsonable_python(kwargs, fallback=str),
+                parameters=to_tool_call_parameters(kwargs),
                 enable_retriever_tracing=mlflow_tracing_enabled("dspy"),
             )
             return result.to_json()

@@ -3,7 +3,6 @@ from dataclasses import asdict
 from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pydantic_core import to_jsonable_python
 
 from llama_index.core.tools import FunctionTool
 from llama_index.core.tools.types import ToolMetadata
@@ -13,6 +12,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,
+    to_tool_call_parameters,
 )
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
@@ -179,7 +179,7 @@ class UCFunctionToolkit(BaseModel):
             kwargs = extract_properties(kwargs)
             result = client.execute_function(
                 function_name=function_name,
-                parameters=to_jsonable_python(kwargs, fallback=str),
+                parameters=to_tool_call_parameters(kwargs),
                 enable_retriever_tracing=mlflow_tracing_enabled("llama_index"),
             )
             return result.to_json()

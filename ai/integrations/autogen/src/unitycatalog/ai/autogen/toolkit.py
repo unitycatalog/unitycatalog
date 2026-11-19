@@ -1,11 +1,9 @@
-import base64
-import json
 import logging
-from typing import Any, Dict, List, Optional, Type
+from typing import Dict, List, Optional
 
 from autogen_core import CancellationToken
 from autogen_core.tools import BaseTool
-from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
@@ -134,9 +132,7 @@ class UCFunctionToolkit(BaseModel):
             function_info, strict=True
         )
 
-        args_model = _decode_binary_arguments(
-            function_input_params_schema.pydantic_model, function_info
-        )
+        args_model = function_input_params_schema.pydantic_model
 
         # Build the UCFunctionTool
         tool_name = get_tool_name(function_name)  # short name for the LLM
@@ -156,27 +152,3 @@ class UCFunctionToolkit(BaseModel):
         Retrieves the list of UCFunctionTool objects managed by this toolkit.
         """
         return list(self.tools_dict.values())
-
-
-def _decode_base64_text(cls, value: Any) -> Any:
-    return base64.b64decode(value, validate=True) if isinstance(value, str) else value
-
-
-def _decode_binary_arguments(args_model: Type[BaseModel], function_info: Any) -> Type[BaseModel]:
-    """
-    Returns a subclass of the args model that decodes the base64 text the model sends for a
-    top-level BINARY parameter, so the model holds the bytes. Bytes passed in are kept as they are.
-    """
-    params = function_info.input_params.parameters if function_info.input_params else None
-    binary_names = [
-        param.name for param in params or [] if json.loads(param.type_json)["type"] == "binary"
-    ]
-    if not binary_names:
-        return args_model
-    return create_model(
-        args_model.__name__,
-        __base__=args_model,
-        __validators__={
-            "decode_base64_text": field_validator(*binary_names, mode="before")(_decode_base64_text)
-        },
-    )

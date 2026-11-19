@@ -406,6 +406,29 @@ async def test_tool_keeps_native_binary_arguments(data):
 
 
 @pytest.mark.asyncio
+async def test_tool_sends_nested_binary_text_as_its_bytes():
+    # Only top-level BINARY values are decoded. Nested ones are still the bytes of their base64
+    # text, as before this change.
+    function_info = generate_function_info_with_params_oss(
+        {
+            "blobs": (
+                "array<binary>",
+                {"type": "array", "elementType": "binary", "containsNull": False},
+            )
+        }
+    )
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+
+    await tool.run_json({"blobs": ["aGk="]}, CancellationToken())
+
+    assert client.execute_function.call_args.kwargs["parameters"] == {"blobs": [b"aGk="]}
+
+
+@pytest.mark.asyncio
 async def test_tool_rejects_binary_text_that_is_not_base64():
     tool, client = _json_argument_tool()
 
