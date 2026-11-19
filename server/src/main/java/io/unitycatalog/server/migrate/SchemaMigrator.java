@@ -499,6 +499,7 @@ public final class SchemaMigrator implements AutoCloseable {
           (step, runs) -> {
             if (runs) {
               refuseTakenNames(step);
+              HibernateConfigurator.requireUniqueTableNames(dataSource);
             }
           });
       int changed = 0;
@@ -574,6 +575,7 @@ public final class SchemaMigrator implements AutoCloseable {
                             : ": recorded without running (its change is already there)"));
                 if (runs) {
                   refuseTakenNames(step);
+                  HibernateConfigurator.requireUniqueTableNames(dataSource);
                 }
               });
       SchemaSnapshot expected = expected(latestVersion());

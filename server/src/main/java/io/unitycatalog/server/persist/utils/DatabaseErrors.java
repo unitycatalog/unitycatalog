@@ -3,16 +3,19 @@ package io.unitycatalog.server.persist.utils;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import org.hibernate.SessionFactory;
 import org.hibernate.dialect.Dialect;
 import org.hibernate.dialect.PostgreSQLDialect;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.exception.ConstraintViolationException;
 
 /**
  * Database errors that map to a specific {@link ErrorCode}, such as a value above a database limit.
  * Each entry names one database dialect, and matches its subclasses too, because databases differ
- * in their limits and in the SQLSTATE they report.
+ * in their limits and in the SQLSTATE they report. Table-name collisions are recognized by their
+ * constraint name; unrelated uniqueness failures retain their existing handling.
  */
 final class DatabaseErrors {
 
@@ -37,6 +40,16 @@ final class DatabaseErrors {
 
   /** Returns the error code for {@code error}, or empty if it is not a listed database error. */
   static Optional<ErrorCode> errorCode(SessionFactory sessionFactory, Exception error) {
+    for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+      if (cause instanceof ConstraintViolationException violation
+          && violation.getConstraintName() != null) {
+        String name = violation.getConstraintName().toLowerCase(Locale.ROOT);
+        // H2 includes the schema and an index suffix; MySQL may include the table.
+        if (name.matches("(?:[a-z0-9_]+\\.)?uk_uc_tables_schema_name(?:_index_[a-z0-9]+)?")) {
+          return Optional.of(ErrorCode.TABLE_ALREADY_EXISTS);
+        }
+      }
+    }
     Optional<String> sqlState = sqlState(error);
     if (sqlState.isEmpty()) {
       return Optional.empty();

@@ -163,6 +163,8 @@ public class TransactionManager {
       return StorageExceptions.toGeneralError(e);
     }
     ErrorCode errorCode = DatabaseErrors.errorCode(sessionFactory, e).orElse(ErrorCode.INTERNAL);
-    return new BaseException(errorCode, errorMessage + ": " + e.getMessage(), e);
+    String detail =
+        errorCode == ErrorCode.TABLE_ALREADY_EXISTS ? "table name already exists" : e.getMessage();
+    return new BaseException(errorCode, errorMessage + ": " + detail, e);
   }
 }

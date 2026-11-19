@@ -1,0 +1,2 @@
++ index uc_tables.uk_uc_tables_schema_name unique=true column=name#2
++ index uc_tables.uk_uc_tables_schema_name unique=true column=schema_id#1

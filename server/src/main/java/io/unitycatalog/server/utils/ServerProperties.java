@@ -336,6 +336,8 @@ public class ServerProperties {
     // Not a total shutdown deadline, so leave headroom under the orchestrator grace period.
     SHUTDOWN_TIMEOUT("server.shutdown-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
+    ICEBERG_VIEW_ENABLED("server.iceberg-view.enabled", "false", BOOLEAN_VALIDATOR),
+    ICEBERG_VIEW_METADATA_ROOT("server.iceberg-view.metadata-root"),
     // Enables native Iceberg tables; when disabled, existing ones stay readable.
     ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "true", BOOLEAN_VALIDATOR),
     // Local roots where external Iceberg tables may be created without an external location.

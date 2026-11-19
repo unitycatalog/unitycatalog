@@ -43,7 +43,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * The rules every schema step keeps, so that {@code --upgrade-schema} can tell from the schema
- * whether a step ran, and so that rows already in the database can't make a step fail:
+ * whether a step ran, and so that existing rows cannot make a step fail without an explicit
+ * preflight refusal:
  *
  * <ul>
  *   <li>A step is one SQL statement, as Flyway sends it to each database, or none when the step
@@ -54,7 +55,8 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       PostgreSQL index entry, INCLUDE columns too, fits 2,704 bytes, add a column (NOT NULL only
  *       with a literal DEFAULT, without a key or CHECK rule), change a column's type (each index on
  *       the column still fitting an index entry), drop its NOT NULL, or, on PostgreSQL, replace a
- *       column's CHECK of its values with one that keeps them all.
+ *       column's CHECK of its values with one that keeps them all. The table-name unique constraint
+ *       is an exception: upgrade preflight refuses existing duplicates before the statement runs.
  *   <li>A type change widens the column, keeps its default, collation and enum or set members, and
  *       no change makes an existing nullable column NOT NULL ({@link #typeChangesWiden}). Adding a
  *       Java enum constant changes the type on MySQL and H2, where the type holds the members; on
@@ -685,6 +687,16 @@ public class MigrationStepRulesTest {
     }
     if (firstStep) {
       return "the first step only creates tables and indexes";
+    }
+    // This key repairs the create/rename race; preflight refuses duplicates without deleting them.
+    if (statement
+        .toString()
+        .replaceAll("\\s+", " ")
+        .trim()
+        .equalsIgnoreCase(
+            "ALTER TABLE uc_tables ADD CONSTRAINT uk_uc_tables_schema_name UNIQUE (schema_id,"
+                + " name)")) {
+      return null;
     }
     if (statement instanceof Alter alter
         && kind == DatabaseKind.POSTGRESQL

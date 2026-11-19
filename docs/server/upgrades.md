@@ -24,6 +24,26 @@ exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
   are not applied yet. If it fails, fix the cause it names
   and run the same command again: it also retries a step that a crash left half done.
 
+## Duplicate table names
+
+Table names must be unique within a schema, including views. Earlier concurrent creates or renames
+could leave duplicates. Both `--check-schema` and `--upgrade-schema` refuse those rows without
+deleting or choosing an object.
+Stop all servers and back up the database before investigating:
+
+```sql
+SELECT schema_id, name, COUNT(*)
+FROM uc_tables
+GROUP BY schema_id, name
+HAVING COUNT(*) > 1;
+```
+
+Inspect the affected objects and their IDs, permissions, properties, columns, and dependencies before
+choosing which names to retain. Rename conflicting entries to distinct unused names with administrator
+assistance, preserving their IDs and related records, then rerun `--upgrade-schema`. Do not delete rows
+blindly: objects with the same name can have different definitions and permissions. Upgrade every
+server before restarting writers. Server startup refuses to serve without the unique index.
+
 ## The baseline release
 
 The first baseline release is 0.7.0: schema version 1 is its schema. A database without schema
