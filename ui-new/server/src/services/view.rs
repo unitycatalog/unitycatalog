@@ -4,8 +4,8 @@ use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, Service
 use serde_json::{json, Map};
 
 use super::{
-    column_value, dependencies_value, object_full_name, page_query, properties_value, TableKind,
-    UiRpc,
+    column_value, dependencies_value, object_full_name, page_query, properties_value, rows_of_kind,
+    TableKind, UiRpc,
 };
 use crate::mapping;
 use crate::proto::uc::v1::*;
@@ -25,11 +25,13 @@ impl ViewService for UiRpc {
             ("omit_properties", "true".to_string()),
         ]);
         let value = self.upstream.get(&ctx, "/tables", query).await?;
-        let views = mapping::required_array(&value, "tables")?
-            .iter()
-            .filter(|table| TableKind::of(table) == TableKind::MetricView)
-            .map(mapping::metric_view_summary)
-            .collect::<Result<Vec<_>, _>>()?;
+        let views = rows_of_kind(
+            mapping::required_array(&value, "tables")?,
+            TableKind::MetricView,
+        )?
+        .into_iter()
+        .map(mapping::metric_view_summary)
+        .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListViewsResponse {
             views,
             page: mapping::page(&value).into(),

@@ -343,7 +343,7 @@ fn parameter(value: &Value) -> MappingResult<FunctionParameterInfo> {
     })
 }
 
-fn table_type(value: Option<&str>) -> EnumValue<TableType> {
+pub(crate) fn table_type(value: Option<&str>) -> EnumValue<TableType> {
     match value {
         Some("MANAGED") => TableType::Managed,
         Some("EXTERNAL") => TableType::External,
@@ -481,7 +481,7 @@ fn object_identity(value: &Value, name_key: &str) -> MappingResult<(String, Stri
     ))
 }
 
-fn invalid_response(detail: &str) -> ConnectError {
+pub(crate) fn invalid_response(detail: &str) -> ConnectError {
     ConnectError::internal(format!(
         "Invalid response from Unity Catalog server: {detail}"
     ))

@@ -2,8 +2,8 @@ use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
 use super::{
-    column_value, data_source_format, object_full_name, page_query, properties_value, TableKind,
-    UiRpc,
+    column_value, data_source_format, object_full_name, page_query, properties_value, rows_of_kind,
+    TableKind, UiRpc,
 };
 use crate::mapping;
 use crate::proto::uc::v1::*;
@@ -23,9 +23,8 @@ impl TableService for UiRpc {
             ("omit_properties", "true".to_string()),
         ]);
         let value = self.upstream.get(&ctx, "/tables", query).await?;
-        let tables = mapping::required_array(&value, "tables")?
-            .iter()
-            .filter(|table| TableKind::of(table) == TableKind::Table)
+        let tables = rows_of_kind(mapping::required_array(&value, "tables")?, TableKind::Table)?
+            .into_iter()
             .map(mapping::table_summary)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListTablesResponse {

@@ -3,13 +3,14 @@ use connectrpc::{ConnectError, RequestContext, Router};
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
+use crate::mapping;
 use crate::proto::uc::v1::__buffa::view::{
     ColumnInputView, DependencyView, PageRequestView, PropertiesView, SchemaObjectRefView,
 };
 use crate::proto::uc::v1::{
     dependency, CatalogServiceExt, ColumnTypeName, DataSourceFormat, FunctionServiceExt,
-    ModelServiceExt, SchemaServiceExt, TableServiceExt, UnityProxyServiceExt, ViewServiceExt,
-    VolumeServiceExt, VolumeType,
+    ModelServiceExt, SchemaServiceExt, TableServiceExt, TableType, UnityProxyServiceExt,
+    ViewServiceExt, VolumeServiceExt, VolumeType,
 };
 use crate::upstream::{path_segment, Upstream};
 use crate::AppState;
@@ -45,7 +46,7 @@ impl UiRpc {
             .upstream
             .get(ctx, &table_path(full_name), Vec::new())
             .await?;
-        match kind_mismatch(&value, full_name, expected) {
+        match kind_mismatch(&value, full_name, expected)? {
             Some(message) => Err(ConnectError::not_found(message)),
             None => Ok(value),
         }
@@ -61,7 +62,7 @@ impl UiRpc {
     ) -> Result<(), ConnectError> {
         let path = table_path(full_name);
         let value = self.upstream.get(ctx, &path, Vec::new()).await?;
-        if let Some(message) = kind_mismatch(&value, full_name, expected) {
+        if let Some(message) = kind_mismatch(&value, full_name, expected)? {
             return Err(ConnectError::failed_precondition(format!(
                 "{message}; nothing was deleted"
             )));
@@ -79,11 +80,15 @@ enum TableKind {
 }
 
 impl TableKind {
-    fn of(table: &Value) -> Self {
-        if table.get("table_type").and_then(Value::as_str) == Some("METRIC_VIEW") {
-            Self::MetricView
-        } else {
-            Self::Table
+    /// Classifies a UC table resource. A reply with no known `table_type` is
+    /// an error, so an unclassified resource is never treated as a table.
+    fn of(table: &Value) -> Result<Self, ConnectError> {
+        match mapping::table_type(table.get("table_type").and_then(Value::as_str)).as_known() {
+            Some(TableType::MetricView) => Ok(Self::MetricView),
+            Some(TableType::Unspecified) | None => {
+                Err(mapping::invalid_response("missing or unknown table_type"))
+            }
+            Some(_) => Ok(Self::Table),
         }
     }
 
@@ -95,10 +100,26 @@ impl TableKind {
     }
 }
 
-fn kind_mismatch(table: &Value, full_name: &str, expected: TableKind) -> Option<String> {
-    let actual = TableKind::of(table);
-    (actual != expected)
-        .then(|| format!("{full_name} is {}, not {}", actual.noun(), expected.noun()))
+fn kind_mismatch(
+    table: &Value,
+    full_name: &str,
+    expected: TableKind,
+) -> Result<Option<String>, ConnectError> {
+    let actual = TableKind::of(table)?;
+    Ok((actual != expected)
+        .then(|| format!("{full_name} is {}, not {}", actual.noun(), expected.noun())))
+}
+
+/// Keeps the rows of one kind from a UC table list; a row of unknown kind
+/// fails the whole list.
+fn rows_of_kind(rows: &[Value], kind: TableKind) -> Result<Vec<&Value>, ConnectError> {
+    let mut kept = Vec::new();
+    for row in rows {
+        if TableKind::of(row)? == kind {
+            kept.push(row);
+        }
+    }
+    Ok(kept)
 }
 
 fn table_path(full_name: &str) -> String {

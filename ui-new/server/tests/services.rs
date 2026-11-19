@@ -552,74 +552,113 @@ async fn list_tables_omits_metric_views() {
 #[tokio::test]
 async fn table_and_view_rpcs_act_only_on_their_own_kind() {
     // Tables and metric views share UC's table resource. Each typed service reads
-    // the kind first: a get of the other kind is not found, and a delete of the
-    // other kind is refused before UC is asked to delete anything.
+    // the kind first: a get of the other kind is not found, a delete of the other
+    // kind is refused, and a resource of no known kind is an error. Only a
+    // successful read of the right kind lets a delete reach UC.
+    let unclassified = Some((
+        "internal",
+        "Invalid response from Unity Catalog server: missing or unknown table_type",
+    ));
+    // (rpc, GET status, table_type, expected refusal)
     let cases = [
-        ("TableService", "GetTable", "table", "MANAGED", None),
-        ("ViewService", "GetView", "view", "METRIC_VIEW", None),
+        ("GetTable", 200, Some("MANAGED"), None),
+        ("GetTable", 200, Some("VIEW"), None),
+        ("GetView", 200, Some("METRIC_VIEW"), None),
+        ("DeleteTable", 200, Some("MANAGED"), None),
+        ("DeleteTable", 200, Some("MATERIALIZED_VIEW"), None),
+        ("DeleteView", 200, Some("METRIC_VIEW"), None),
         (
-            "TableService",
             "GetTable",
-            "table",
-            "METRIC_VIEW",
+            200,
+            Some("METRIC_VIEW"),
             Some((
                 "not_found",
                 "main.default.obj is a metric view, not a table",
             )),
         ),
         (
-            "ViewService",
             "GetView",
-            "view",
-            "EXTERNAL",
+            200,
+            Some("EXTERNAL"),
             Some((
                 "not_found",
                 "main.default.obj is a table, not a metric view",
             )),
         ),
-        ("TableService", "DeleteTable", "table", "MANAGED", None),
-        ("ViewService", "DeleteView", "view", "METRIC_VIEW", None),
         (
-            "TableService",
             "DeleteTable",
-            "table",
-            "METRIC_VIEW",
+            200,
+            Some("METRIC_VIEW"),
             Some((
                 "failed_precondition",
                 "main.default.obj is a metric view, not a table; nothing was deleted",
             )),
         ),
         (
-            "ViewService",
             "DeleteView",
-            "view",
-            "EXTERNAL",
+            200,
+            Some("EXTERNAL"),
             Some((
                 "failed_precondition",
                 "main.default.obj is a table, not a metric view; nothing was deleted",
             )),
         ),
+        ("GetTable", 200, None, unclassified),
+        ("GetView", 200, None, unclassified),
+        ("DeleteTable", 200, None, unclassified),
+        ("DeleteView", 200, None, unclassified),
+        ("DeleteTable", 200, Some("FOREIGN"), unclassified),
+        ("DeleteView", 200, Some("FOREIGN"), unclassified),
+        (
+            "DeleteTable",
+            404,
+            None,
+            Some(("not_found", "upstream refused")),
+        ),
+        (
+            "DeleteView",
+            403,
+            None,
+            Some(("permission_denied", "upstream refused")),
+        ),
+        (
+            "DeleteTable",
+            500,
+            None,
+            Some(("internal", "upstream refused")),
+        ),
     ];
 
-    for (service, rpc, field, table_type, refusal) in cases {
+    for (rpc, status, table_type, refusal) in cases {
+        let (service, field) = if rpc.ends_with("Table") {
+            ("TableService", "table")
+        } else {
+            ("ViewService", "view")
+        };
+        let case = format!("{rpc} after a {status} GET with table_type {table_type:?}");
+        let mut reply = serde_json::json!({
+            "name": "obj",
+            "catalog_name": "main",
+            "schema_name": "default"
+        });
+        if let Some(table_type) = table_type {
+            reply["table_type"] = table_type.into();
+        }
+        if status != 200 {
+            reply = serde_json::json!({"message": "upstream refused"});
+        }
         let uc = MockServer::start().await;
         let resource = "/api/2.1/unity-catalog/tables/main%2Edefault%2Eobj";
         Mock::given(method("GET"))
             .and(path(resource))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "name": "obj",
-                "catalog_name": "main",
-                "schema_name": "default",
-                "table_type": table_type
-            })))
+            .respond_with(ResponseTemplate::new(status).set_body_json(reply))
             .expect(1)
             .mount(&uc)
             .await;
-        let deletes = u64::from(rpc.starts_with("Delete") && refusal.is_none());
         Mock::given(method("DELETE"))
             .and(path(resource))
             .respond_with(ResponseTemplate::new(200))
-            .expect(deletes)
+            .expect(u64::from(rpc.starts_with("Delete") && refusal.is_none()))
             .mount(&uc)
             .await;
 
@@ -634,17 +673,13 @@ async fn table_and_view_rpcs_act_only_on_their_own_kind() {
             .await
             .unwrap();
 
-        let status = response.status();
+        let http_status = response.status();
         let json = body_json(response).await;
         match refusal {
-            None => assert_eq!(
-                status,
-                StatusCode::OK,
-                "{service}/{rpc} on {table_type}: {json}"
-            ),
+            None => assert_eq!(http_status, StatusCode::OK, "{case}: {json}"),
             Some((code, message)) => {
-                assert_eq!(json["code"], code, "{service}/{rpc} on {table_type}");
-                assert_eq!(json["message"], message, "{service}/{rpc} on {table_type}");
+                assert_eq!(json["code"], code, "{case}");
+                assert_eq!(json["message"], message, "{case}");
             }
         }
         uc.verify().await;
@@ -680,8 +715,20 @@ async fn delete_accepts_non_json_success_body() {
 async fn malformed_uc_lists_map_to_internal() {
     let cases = [
         (
-            serde_json::json!({"tables": [{"catalog_name": "main", "schema_name": "default"}]}),
+            serde_json::json!({"tables": [{
+                "catalog_name": "main",
+                "schema_name": "default",
+                "table_type": "MANAGED"
+            }]}),
             "Invalid response from Unity Catalog server: missing or invalid name",
+        ),
+        (
+            serde_json::json!({"tables": [{
+                "name": "t",
+                "catalog_name": "main",
+                "schema_name": "default"
+            }]}),
+            "Invalid response from Unity Catalog server: missing or unknown table_type",
         ),
         (
             serde_json::json!({"tables": "not a list"}),
