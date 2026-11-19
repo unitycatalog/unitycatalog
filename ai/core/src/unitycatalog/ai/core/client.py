@@ -232,8 +232,9 @@ class _SingleLoopRESTClient:
         """
         with self._lock:
             first = not self._closed
-            self._closed = True
-            loop = self._started_loop() if first else None
+            if first:
+                loop = self._started_loop()
+                self._closed = True
         if not first:
             self._shut_down.wait()
             return
@@ -249,11 +250,16 @@ class _SingleLoopRESTClient:
 
     def _started_loop(self) -> asyncio.AbstractEventLoop:
         if self._loop is None:
-            self._loop = asyncio.new_event_loop()
-            self._thread = threading.Thread(
-                target=self._loop.run_forever, name="unitycatalog-client", daemon=True
+            loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                target=loop.run_forever, name="unitycatalog-client", daemon=True
             )
-            self._thread.start()
+            try:
+                thread.start()
+            except BaseException:
+                loop.close()
+                raise
+            self._loop, self._thread = loop, thread
         return self._loop
 
     async def _request(self, *args, **kwargs):
@@ -317,7 +323,8 @@ class UnitycatalogClient:
 
     def close(self):
         """
-        Synchronously close the underlying ApiClient. See `close_async` for what this does.
+        Synchronously close the underlying ApiClient. See `close_async` for what this does. Blocks
+        until the background thread has stopped.
         """
         if getattr(self, "_closed", None):
             return

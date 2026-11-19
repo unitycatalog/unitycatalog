@@ -3163,6 +3163,7 @@ async def test_a_forked_child_sends_requests_on_its_own_thread(keep_alive_server
     with pytest.raises(NotFoundException):
         await client.delete_function_async("catalog.schema.missing")
 
+    status = (0, 0)
     pid = os.fork()
     if pid == 0:
         try:
@@ -3251,3 +3252,43 @@ async def test_a_second_close_waits_for_the_first_to_finish():
     assert not second_close.done()
     release.set()
     await asyncio.wait_for(asyncio.gather(first_close, second_close), timeout=30)
+
+
+@contextmanager
+def client_thread_fails_to_start():
+    start = threading.Thread.start
+
+    def failing_start(thread):
+        if thread.name == "unitycatalog-client":
+            raise RuntimeError("can't start new thread")
+        start(thread)
+
+    with mock.patch.object(threading.Thread, "start", failing_start):
+        yield
+
+
+@pytest.mark.asyncio
+async def test_a_request_after_a_failed_thread_start_starts_the_thread(not_found_server):
+    client = function_client(not_found_server)
+    try:
+        with client_thread_fails_to_start():
+            with pytest.raises(RuntimeError, match="can't start new thread"):
+                await client.delete_function_async("catalog.schema.missing")
+        with pytest.raises(NotFoundException):
+            await asyncio.wait_for(client.delete_function_async("catalog.schema.missing"), 10)
+    finally:
+        await asyncio.wait_for(client.close_async(), 10)
+
+
+@pytest.mark.asyncio
+async def test_a_close_after_a_failed_thread_start_closes_the_client(not_found_server):
+    api_client = ApiClient(configuration=Configuration(host=not_found_server))
+    first = UnitycatalogFunctionClient(api_client=api_client)
+    second = UnitycatalogFunctionClient(api_client=api_client)
+    with client_thread_fails_to_start():
+        first.close()
+    closing = threading.Thread(target=second.close, daemon=True)
+    closing.start()
+    await asyncio.to_thread(closing.join, 10)
+    assert not closing.is_alive(), "the second close hung"
+    await assert_session_closed(second)
