@@ -171,6 +171,9 @@ jobs:
           # An upgrade stops every old server first by default; a rolling update renders when asked for.
           out="$(helm template uc helm --show-only templates/server/deployment.yaml)"
           grep -qE '^    type: Recreate$' <<<"$out"
+          # An upgrade with --reuse-values from an older release has no updateStrategy value.
+          out="$(helm template uc helm --show-only templates/server/deployment.yaml --set server.deployment.updateStrategy=null)"
+          grep -qE '^    type: Recreate$' <<<"$out"
           out="$(helm template uc helm --show-only templates/server/deployment.yaml --set server.deployment.updateStrategy.type=RollingUpdate)"
           grep -qE '^    type: RollingUpdate$' <<<"$out"
           ! grep -qE '^    type: Recreate$' <<<"$out" || exit 1
