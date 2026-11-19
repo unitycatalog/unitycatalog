@@ -1,0 +1,21 @@
++ column os_shared_data_objects.auxiliary_locations type=varchar size=8192 nullable=YES default=null
++ column os_shared_data_objects.created_at type=datetime size=26 nullable=NO default=null
++ column os_shared_data_objects.full_name type=varchar size=512 nullable=NO default=null
++ column os_shared_data_objects.id type=binary size=16 nullable=NO default=null
++ column os_shared_data_objects.share_id type=binary size=16 nullable=NO default=null
++ column os_shared_data_objects.shared_as_schema type=varchar size=255 nullable=NO default=null
++ column os_shared_data_objects.shared_as_table type=varchar size=255 nullable=NO default=null
++ column os_shared_data_objects.source_asset_id type=varchar size=255 nullable=YES default=null
++ column os_shared_data_objects.source_format type=varchar size=255 nullable=YES default=null
++ column os_shared_data_objects.storage_location type=varchar size=2048 nullable=YES default=null
++ column os_shared_data_objects.type type=varchar size=255 nullable=NO default=null
++ column os_shared_data_objects.updated_at type=datetime size=26 nullable=NO default=null
++ fk os_shared_data_objects.fk_shared_objects_share os_shared_data_objects.share_id -> os_shares.id#1 on update restrict on delete restrict
++ index os_shared_data_objects.primary unique=true column=id#1
++ index os_shared_data_objects.uk_shared_objects_alias unique=true column=share_id#1
++ index os_shared_data_objects.uk_shared_objects_alias unique=true column=shared_as_schema#2
++ index os_shared_data_objects.uk_shared_objects_alias unique=true column=shared_as_table#3
++ index os_shared_data_objects.uk_shared_objects_source unique=true column=full_name#2
++ index os_shared_data_objects.uk_shared_objects_source unique=true column=share_id#1
++ pk os_shared_data_objects.id#1
++ table os_shared_data_objects
