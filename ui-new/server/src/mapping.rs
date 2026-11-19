@@ -494,35 +494,87 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_missing_object_identity() {
-        let error = table_info(&json!({
-            "catalog_name": "catalog",
-            "schema_name": "schema"
-        }))
-        .unwrap_err();
+    fn rejects_incomplete_replies() {
+        let identity = json!({"catalog_name": "c", "schema_name": "s", "name": "t"});
+        let with = |extra: Value| {
+            let mut value = identity.clone();
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            value
+        };
+        let version = |version: Value| json!({"catalog_name": "c", "schema_name": "s", "model_name": "m", "version": version});
+        let cases = [
+            (
+                "a table without a name",
+                table_info(&json!({"catalog_name": "c", "schema_name": "s"})).map(drop),
+                "missing or invalid name",
+            ),
+            (
+                "a table with an empty name",
+                table_info(&with(json!({"name": ""}))).map(drop),
+                "missing or invalid name",
+            ),
+            (
+                "a table with an empty catalog",
+                table_info(&with(json!({"catalog_name": ""}))).map(drop),
+                "missing or invalid catalog_name",
+            ),
+            (
+                "a column without a name",
+                table_info(&with(json!({"columns": [{"type_text": "int"}]}))).map(drop),
+                "missing or invalid name",
+            ),
+            (
+                "a parameter without a name",
+                function_info(&with(
+                    json!({"input_params": {"parameters": [{"type_text": "int"}]}}),
+                ))
+                .map(drop),
+                "missing or invalid name",
+            ),
+            (
+                "a version without a model name",
+                model_version_info(&json!({"catalog_name": "c", "schema_name": "s", "version": 1}))
+                    .map(drop),
+                "missing or invalid model_name/name",
+            ),
+            (
+                "version 0",
+                model_version_info(&version(json!(0))).map(drop),
+                "version must be a positive integer",
+            ),
+            (
+                "a negative version",
+                model_version_info(&version(json!(-1))).map(drop),
+                "version must be a positive integer",
+            ),
+            (
+                "a non-numeric version",
+                model_version_info(&version(json!("one"))).map(drop),
+                "version must be a positive integer",
+            ),
+        ];
 
-        assert!(error
-            .message
-            .as_deref()
-            .unwrap_or_default()
-            .contains("missing or invalid name"));
+        for (case, result, expected) in cases {
+            let message = result.expect_err(case).message.unwrap_or_default();
+            assert!(message.contains(expected), "{case}: {message}");
+        }
     }
 
     #[test]
-    fn rejects_non_positive_model_version() {
-        let error = model_version_info(&json!({
-            "catalog_name": "catalog",
-            "schema_name": "schema",
-            "model_name": "model",
-            "version": 0
-        }))
-        .unwrap_err();
-
-        assert!(error
-            .message
-            .as_deref()
-            .unwrap_or_default()
-            .contains("version must be a positive integer"));
+    fn reads_a_model_version_name_from_either_key() {
+        for key in ["model_name", "name"] {
+            let mut value = json!({"catalog_name": "c", "schema_name": "s", "version": "3"});
+            value[key] = json!("m");
+            let version = model_version_info(&value).unwrap();
+            assert_eq!(
+                (version.model_name.as_str(), version.version),
+                ("m", 3),
+                "{key}"
+            );
+        }
     }
 
     #[test]

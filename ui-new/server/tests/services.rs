@@ -717,9 +717,22 @@ async fn delete_accepts_non_json_success_body() {
 }
 
 #[tokio::test]
-async fn malformed_uc_lists_map_to_internal() {
+async fn malformed_uc_replies_map_to_internal() {
+    let list_tables = (
+        "TableService",
+        "ListTables",
+        serde_json::json!({"schema": {"catalogName": "main", "name": "default"}}),
+        "/api/2.1/unity-catalog/tables",
+    );
+    let get_catalog = (
+        "CatalogService",
+        "GetCatalog",
+        serde_json::json!({"catalog": {"name": "main"}}),
+        "/api/2.1/unity-catalog/catalogs/main",
+    );
     let cases = [
         (
+            list_tables.clone(),
             serde_json::json!({"tables": [{
                 "catalog_name": "main",
                 "schema_name": "default",
@@ -728,6 +741,7 @@ async fn malformed_uc_lists_map_to_internal() {
             "Invalid response from Unity Catalog server: missing or invalid name",
         ),
         (
+            list_tables.clone(),
             serde_json::json!({"tables": [{
                 "name": "t",
                 "catalog_name": "main",
@@ -736,26 +750,28 @@ async fn malformed_uc_lists_map_to_internal() {
             "Invalid response from Unity Catalog server: missing or unknown table_type",
         ),
         (
+            list_tables,
             serde_json::json!({"tables": "not a list"}),
             "Invalid response from Unity Catalog server",
         ),
+        (
+            get_catalog,
+            serde_json::json!({"comment": "no name"}),
+            "Invalid response from Unity Catalog server: missing or invalid name",
+        ),
     ];
 
-    for (reply, message) in cases {
+    for ((service, rpc, request, uc_path), reply, message) in cases {
         let uc = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/api/2.1/unity-catalog/tables"))
+            .and(path(uc_path))
             .respond_with(ResponseTemplate::new(200).set_body_json(reply))
             .expect(1)
             .mount(&uc)
             .await;
 
         let response = build_app(uc.uri())
-            .oneshot(rpc_request(
-                "TableService",
-                "ListTables",
-                serde_json::json!({"schema": {"catalogName": "main", "name": "default"}}),
-            ))
+            .oneshot(rpc_request(service, rpc, request))
             .await
             .unwrap();
 

@@ -96,11 +96,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_boolean_values() {
-        assert_eq!(
-            parse_bool("FLAG", "treu"),
-            Err("FLAG must be one of true/false, 1/0, yes/no, or on/off".to_string())
-        );
+    fn rejects_unknown_and_empty_boolean_values() {
+        for value in ["treu", "", " "] {
+            assert_eq!(
+                parse_bool("FLAG", value),
+                Err("FLAG must be one of true/false, 1/0, yes/no, or on/off".to_string()),
+                "{value:?}"
+            );
+        }
     }
 
     #[test]

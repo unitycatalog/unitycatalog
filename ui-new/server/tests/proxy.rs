@@ -5,7 +5,9 @@ use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt; // for `oneshot`
 use uc_ui_bridge::{app, AppState, Config, UPSTREAM_TIMEOUT};
-use wiremock::matchers::{header_exists, method, path};
+use wiremock::matchers::{
+    body_string, header as header_match, header_exists, method, path, query_param,
+};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn test_config(uc_server: String) -> Config {
@@ -165,6 +167,38 @@ async fn call_requires_path() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let json = body_json(resp).await;
     assert_eq!(json["code"], "invalid_argument");
+}
+
+#[tokio::test]
+async fn call_forwards_query_and_defaults_the_json_content_type() {
+    let uc = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/1.0/unity-control/auth/tokens"))
+        .and(query_param("ext", "cookie"))
+        .and(header_match("content-type", "application/json"))
+        .and(body_string(r#"{"a":1}"#))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let resp = build_app(uc.uri())
+        .oneshot(call_request(serde_json::json!({
+            "method": "POST",
+            "path": "/api/1.0/unity-control/auth/tokens",
+            "query": [
+                {"key": "ext", "value": "cookie"},
+                {"key": "", "value": "dropped"}
+            ],
+            "jsonBody": "{\"a\":1}"
+        })))
+        .await
+        .unwrap();
+
+    assert_eq!(body_json(resp).await["httpStatus"], 200);
+    // The pair with an empty key never reaches UC.
+    let requests = uc.received_requests().await.unwrap();
+    assert_eq!(requests[0].url.query(), Some("ext=cookie"));
 }
 
 #[tokio::test]
