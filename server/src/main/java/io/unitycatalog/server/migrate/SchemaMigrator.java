@@ -2,6 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.pool.ProxyConnection;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
@@ -1089,29 +1090,35 @@ public final class SchemaMigrator implements AutoCloseable {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
       return;
     }
-    try (Connection connection = dataSource.getConnection()) {
+    Connection connection = null;
+    Boolean autoCommit = null;
+    try {
+      connection = dataSource.getConnection();
       // The caller's pool may not commit by itself, and a rollback would keep the record. The
       // previous setting is restored, for a pool that does not reset it.
-      boolean autoCommit = connection.getAutoCommit();
+      autoCommit = connection.getAutoCommit();
       connection.setAutoCommit(true);
-      try {
-        String q = connection.getMetaData().getIdentifierQuoteString();
-        try (PreparedStatement delete =
-            connection.prepareStatement(
-                "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
-                    .formatted(q, HISTORY_TABLE))) {
-          delete.setString(1, step);
-          if (delete.executeUpdate() > 0) {
-            LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
-          }
+      String q = connection.getMetaData().getIdentifierQuoteString();
+      try (PreparedStatement delete =
+          connection.prepareStatement(
+              "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false AND %1$sversion%1$s = ?"
+                  .formatted(q, HISTORY_TABLE))) {
+        delete.setString(1, step);
+        if (delete.executeUpdate() > 0) {
+          LOGGER.info("Deleted the record of failed schema step {}; it is tried again", step);
         }
-      } finally {
-        // Never replaces the DELETE's own failure.
-        RunLock.restoreAutoCommit(connection, autoCommit);
       }
     } catch (SQLException e) {
       throw new IllegalStateException(
           "Could not delete the record of a failed schema step: " + e.getMessage(), e);
+    } finally {
+      // Cleanup never replaces the outcome of the DELETE: both calls log and swallow failures.
+      if (connection != null) {
+        if (autoCommit != null) {
+          RunLock.restoreAutoCommit(dataSource, connection, autoCommit);
+        }
+        RunLock.close(connection);
+      }
     }
   }
 
@@ -1120,7 +1127,8 @@ public final class SchemaMigrator implements AutoCloseable {
    * release's), no edited step (checksum), no step missing below the recorded version. With {@code
    * upgrading}, steps after the recorded version may be pending and may have failed: the upgrade
    * runs them. A failed step that is not one of this build's pending steps, such as a newer
-   * release's, is still refused.
+   * release's, or whose script changed since it failed, is still refused: a published step is never
+   * changed, and a fix for a failed step ships as a new step.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
@@ -1131,13 +1139,35 @@ public final class SchemaMigrator implements AutoCloseable {
     // Flyway ignores a newer release's steps (future) unless told otherwise. Nothing is ignored
     // but, for an upgrade, the steps it is about to run (pending).
     configuration.ignoreMigrationPatterns(upgrading ? "*:pending" : "");
+    Flyway flyway = configuration.load();
+    // Flyway reports a failed step before it compares checksums, so an edit to it goes unreported.
+    Set<String> edited =
+        Arrays.stream(flyway.info().all())
+            .filter(
+                m ->
+                    m.getVersion() != null
+                        && retried.contains(m.getVersion().getVersion())
+                        && m.getState().isFailed()
+                        && !Objects.equals(m.getAppliedChecksum(), m.getResolvedChecksum()))
+            .map(m -> m.getVersion().getVersion())
+            .collect(Collectors.toSet());
     String errors =
-        configuration.load().validateWithResult().invalidMigrations.stream()
+        flyway.validateWithResult().invalidMigrations.stream()
             .filter(
                 m ->
                     !(m.errorDetails.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION
-                        && retried.contains(m.version)))
-            .map(m -> m.errorDetails.errorMessage)
+                        && retried.contains(m.version)
+                        && !edited.contains(m.version)))
+            .map(
+                m ->
+                    m.errorDetails.errorMessage
+                        + (m.errorDetails.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION
+                                && edited.contains(m.version)
+                            ? "\nIts script differs from the one that failed (checksum), so it is"
+                                + " not tried again. A published step is never changed: a fix for"
+                                + " a failed step ships as a new step. Run the release whose step"
+                                + " failed, or restore the backup."
+                            : ""))
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
       throw new IllegalStateException(
@@ -1569,13 +1599,19 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     private static final Map<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
 
+    private final DataSource dataSource;
     private final Connection connection; // null on H2
     private final String unlockSql;
     private final ReentrantLock h2Lock; // null except on H2
     private final boolean autoCommit;
 
     private RunLock(
-        Connection connection, String unlockSql, ReentrantLock h2Lock, boolean autoCommit) {
+        DataSource dataSource,
+        Connection connection,
+        String unlockSql,
+        ReentrantLock h2Lock,
+        boolean autoCommit) {
+      this.dataSource = dataSource;
       this.connection = connection;
       this.unlockSql = unlockSql;
       this.h2Lock = h2Lock;
@@ -1597,7 +1633,7 @@ public final class SchemaMigrator implements AutoCloseable {
         }
         ReentrantLock lock = H2_LOCKS.computeIfAbsent(url, u -> new ReentrantLock());
         lock.lock();
-        return new RunLock(null, null, lock, true);
+        return new RunLock(dataSource, null, null, lock, true);
       }
       LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
@@ -1613,10 +1649,10 @@ public final class SchemaMigrator implements AutoCloseable {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, calls.unlock(), null, autoCommit);
+        return new RunLock(dataSource, connection, calls.unlock(), null, autoCommit);
       } catch (SQLException e) {
         if (connection != null) {
-          restoreAutoCommit(connection, autoCommit);
+          restoreAutoCommit(dataSource, connection, autoCommit);
         }
         close(connection);
         throw new IllegalStateException(
@@ -1642,25 +1678,31 @@ public final class SchemaMigrator implements AutoCloseable {
         if (!isTrue(connection, unlockSql)) {
           throw new SQLException("the database did not hold it for this run");
         }
+        restoreAutoCommit(dataSource, connection, autoCommit);
       } catch (SQLException e) {
-        closeUnderlying(connection);
+        closeUnderlying(dataSource, connection);
         throw new IllegalStateException(
             "Could not release the schema migration lock: "
                 + e.getMessage()
                 + ". The database releases it when the connection closes; run the command again.",
             e);
       } finally {
-        restoreAutoCommit(connection, autoCommit);
         close(connection);
       }
     }
 
-    /** Puts back the connection's auto-commit setting, for a pool that does not reset it. */
-    private static void restoreAutoCommit(Connection connection, boolean autoCommit) {
+    /**
+     * Puts back the connection's auto-commit setting, for a pool that does not reset it. If that
+     * fails, closes the schema migration's database connection underneath, so the pool does not
+     * hand it out again with the wrong setting.
+     */
+    private static void restoreAutoCommit(
+        DataSource dataSource, Connection connection, boolean autoCommit) {
       try {
         connection.setAutoCommit(autoCommit);
-      } catch (SQLException e) {
-        // Already closed underneath, so the pool discards it.
+      } catch (SQLException | RuntimeException e) {
+        LOGGER.warn("Could not restore the connection's auto-commit setting; closing it", e);
+        closeUnderlying(dataSource, connection);
       }
     }
 
@@ -1686,15 +1728,60 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     }
 
-    private static void closeUnderlying(Connection connection) {
+    /**
+     * Discards the schema migration's database connection and makes a best effort to end its
+     * database session. A Hikari pool evicts it, so it is not handed out again, also when the
+     * caller's DataSource wraps the pool and the connection can be unwrapped to Hikari's own. For
+     * any other pool, or a connection that cannot be unwrapped to Hikari's own, the connection is
+     * aborted, and closed directly when that left it open (a driver's abort may do nothing, as H2's
+     * does).
+     */
+    private static void closeUnderlying(DataSource dataSource, Connection connection) {
+      boolean evicted = false;
       try {
-        connection.unwrap(Connection.class).close();
-      } catch (SQLException e) {
+        // Hikari ignores an eviction of a connection that is not its own, so a wrapped connection
+        // is unwrapped first. The class-name check only has to be right when it says yes: a name
+        // that does not match (for example under shading) means abort instead of evict.
+        if (dataSource.isWrapperFor(HikariDataSource.class)) {
+          Connection own = hikariConnection(connection);
+          if (own.getClass().getName().startsWith("com.zaxxer.hikari.")) {
+            dataSource.unwrap(HikariDataSource.class).evictConnection(own);
+            evicted = true;
+          }
+        }
+      } catch (SQLException | RuntimeException e) {
+        LOGGER.warn("Could not evict the schema migration's database connection from its pool", e);
+      }
+      try {
+        if (!evicted) {
+          connection.abort(Runnable::run);
+        }
+      } catch (SQLException | RuntimeException e) {
+        LOGGER.warn("Could not abort the schema migration's database connection", e);
+      }
+      // Also after an eviction: Hikari closes an evicted connection asynchronously, so the session
+      // would stay open until it does.
+      // On H2 the pool keeps a connection that was closed directly: H2's abort does nothing and
+      // its closed-connection error does not make Hikari drop it. So a wrapper that cannot unwrap
+      // to Hikari's connection leaves the pool with that connection on H2.
+      try {
+        if (!connection.unwrap(Connection.class).isClosed()) {
+          connection.unwrap(Connection.class).close();
+        }
+      } catch (SQLException | RuntimeException e) {
         LOGGER.warn(
-            "Could not close the schema migration lock's database connection; the lock stays held"
+            "Could not close the schema migration's database connection; a lock it holds stays held"
                 + " until that database session ends",
             e);
       }
+    }
+
+    /** Hikari's own connection behind a wrapper, or the connection itself when there is none. */
+    private static Connection hikariConnection(Connection connection) throws SQLException {
+      return !connection.getClass().getName().startsWith("com.zaxxer.hikari.")
+              && connection.isWrapperFor(ProxyConnection.class)
+          ? connection.unwrap(ProxyConnection.class)
+          : connection;
     }
 
     private static void close(Connection connection) {
@@ -1702,8 +1789,9 @@ public final class SchemaMigrator implements AutoCloseable {
         if (connection != null) {
           connection.close();
         }
-      } catch (SQLException e) {
-        LOGGER.debug("Could not close the schema migration lock's connection", e);
+      } catch (SQLException | RuntimeException e) {
+        // A pool may throw on a connection it evicted.
+        LOGGER.debug("Could not close the schema migration's database connection", e);
       }
     }
   }
