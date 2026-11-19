@@ -115,6 +115,9 @@ public class CredentialCli {
     JsonNode key;
     try {
       key = new ObjectMapper().readTree(new File(path));
+    } catch (JsonProcessingException e) {
+      // Not e.getMessage(): the parser quotes the offending token, which can be part of the key.
+      throw new CliException("The key file " + path + " is not valid JSON.");
     } catch (IOException e) {
       throw new CliException("Cannot read the key file " + path + ": " + e.getMessage());
     }
