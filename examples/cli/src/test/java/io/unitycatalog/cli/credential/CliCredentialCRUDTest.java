@@ -11,6 +11,8 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.credential.BaseCredentialCRUDTest;
 import io.unitycatalog.server.base.credential.CredentialOperations;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -31,6 +33,30 @@ public class CliCredentialCRUDTest extends BaseCredentialCRUDTest {
                             "/nonexistent/key.json")))
         .isInstanceOf(CliException.class)
         .hasMessageContaining("Cannot read the key file /nonexistent/key.json");
+  }
+
+  @Test
+  public void testMalformedKeyFileIsNotEchoed() throws Exception {
+    Path file = Files.createTempFile("uc-bad-key", ".json");
+    try {
+      Files.writeString(file, "{\"private_key\": SECRET_MARKER_123");
+      assertThatThrownBy(
+              () ->
+                  ((CliCredentialOperations) credentialOperations)
+                      .execute(
+                          CredentialInfo.class,
+                          "create",
+                          List.of(
+                              "--name",
+                              "uc_testcredential",
+                              "--gcp_service_account_key_file",
+                              file.toString())))
+          .isInstanceOf(CliException.class)
+          .hasMessageContaining("is not valid JSON")
+          .hasMessageNotContaining("SECRET_MARKER_123");
+    } finally {
+      Files.deleteIfExists(file);
+    }
   }
 
   @Override
