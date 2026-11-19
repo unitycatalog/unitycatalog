@@ -4,15 +4,15 @@ use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
-use uc_ui_bridge::{app, AppState, Config};
+use uc_ui_bridge::{app, AppState, Config, UPSTREAM_TIMEOUT};
 use wiremock::matchers::{
     body_partial_json, header as header_match, header_exists, method, path, query_param,
     query_param_is_missing,
 };
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn build_app(uc_server: String) -> axum::Router {
-    app(AppState {
+fn test_state(uc_server: String) -> AppState {
+    AppState {
         http: reqwest::Client::new(),
         config: Arc::new(Config {
             port: 0,
@@ -23,7 +23,12 @@ fn build_app(uc_server: String) -> axum::Router {
             keycloak_enabled: false,
             allowed_origins: vec![],
         }),
-    })
+        upstream_timeout: UPSTREAM_TIMEOUT,
+    }
+}
+
+fn build_app(uc_server: String) -> axum::Router {
+    app(test_state(uc_server))
 }
 
 fn rpc_request(service: &str, method: &str, body: serde_json::Value) -> Request<Body> {
@@ -901,9 +906,9 @@ async fn unreachable_upstream_maps_to_unavailable() {
     assert_eq!(json["message"], "Unity Catalog server is unavailable");
 }
 
-#[tokio::test]
-async fn upstream_body_timeout_maps_to_deadline_exceeded() {
-    // Send the response head, then stall before the body completes.
+/// Starts a UC stand-in that sends a response head, then stalls the body for
+/// five seconds. Returns its base URL.
+async fn stalled_uc() -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -918,32 +923,41 @@ async fn upstream_body_timeout_maps_to_deadline_exceeded() {
         .unwrap();
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     });
-    let app = app(AppState {
-        http: reqwest::Client::builder()
-            .timeout(std::time::Duration::from_millis(200))
-            .build()
-            .unwrap(),
-        config: Arc::new(Config {
-            port: 0,
-            uc_server: format!("http://{address}"),
-            auth_enabled: true,
-            google_client_id: String::new(),
-            okta_enabled: false,
-            keycloak_enabled: false,
-            allowed_origins: vec![],
-        }),
-    });
+    format!("http://{address}")
+}
 
-    let response = app
-        .oneshot(rpc_request(
+#[tokio::test]
+async fn caller_deadlines_are_capped_by_the_upstream_timeout() {
+    // A client's Connect-Timeout-Ms is clamped to the bridge's limit, the limit
+    // applies when the client sends none, and a shorter client deadline wins.
+    // Each case must end in deadline_exceeded, not when the stalled UC closes.
+    let short = std::time::Duration::from_millis(200);
+    let long = std::time::Duration::from_secs(60);
+    // (bridge limit, Connect-Timeout-Ms)
+    for (limit, client_timeout) in [(short, None), (short, Some("60000")), (long, Some("200"))] {
+        let app = app(AppState {
+            upstream_timeout: limit,
+            ..test_state(stalled_uc().await)
+        });
+        let mut request = rpc_request(
             "CatalogService",
             "GetCatalog",
             serde_json::json!({"catalog": {"name": "main"}}),
-        ))
-        .await
-        .unwrap();
+        );
+        if let Some(ms) = client_timeout {
+            request
+                .headers_mut()
+                .insert("connect-timeout-ms", ms.parse().unwrap());
+        }
 
-    assert_eq!(body_json(response).await["code"], "deadline_exceeded");
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(
+            body_json(response).await["code"],
+            "deadline_exceeded",
+            "limit {limit:?}, Connect-Timeout-Ms {client_timeout:?}"
+        );
+    }
 }
 
 struct UcCall {

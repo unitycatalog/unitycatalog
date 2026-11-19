@@ -1,10 +1,12 @@
 #![allow(refining_impl_trait)]
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::http::{header, HeaderName, HeaderValue, Method};
 use axum::routing::get;
 use axum::{Json, Router};
+use connectrpc::DeadlinePolicy;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -36,11 +38,18 @@ const X_REQUESTED_WITH: HeaderName = HeaderName::from_static("x-requested-with")
 pub(crate) const FORWARDED_HEADERS: [HeaderName; 3] =
     [header::COOKIE, header::AUTHORIZATION, X_REQUESTED_WITH];
 
+/// The longest one RPC may spend on its Unity Catalog requests.
+pub const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Shared handler state: a reused HTTP client and the loaded config.
 #[derive(Clone)]
 pub struct AppState {
     pub http: reqwest::Client,
     pub config: Arc<Config>,
+    /// Caps a client's `Connect-Timeout-Ms` and applies when it sends none, so
+    /// a caller cannot hold UC requests open longer. Normally
+    /// [`UPSTREAM_TIMEOUT`].
+    pub upstream_timeout: Duration,
 }
 
 /// Runtime config the SPA reads at GET /config. The runtime equivalent of the
@@ -64,7 +73,12 @@ async fn healthz() -> &'static str {
 /// web server does in production; both proxy RPCs, `/config`, and `/healthz` to
 /// this process.
 pub fn app(state: AppState) -> Router {
-    let rpc = services::router(state.clone()).into_axum_service();
+    let deadlines = DeadlinePolicy::new()
+        .with_max(state.upstream_timeout)
+        .with_default_timeout(state.upstream_timeout);
+    let rpc = services::router(state.clone())
+        .into_axum_service()
+        .with_deadline_policy(deadlines);
 
     let mut router = Router::new()
         .route("/config", get(config_handler))

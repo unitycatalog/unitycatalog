@@ -4,7 +4,7 @@ use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt; // for `oneshot`
-use uc_ui_bridge::{app, AppState, Config};
+use uc_ui_bridge::{app, AppState, Config, UPSTREAM_TIMEOUT};
 use wiremock::matchers::{header_exists, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -24,6 +24,7 @@ fn build_app(uc_server: String) -> axum::Router {
     app(AppState {
         http: reqwest::Client::new(),
         config: Arc::new(test_config(uc_server)),
+        upstream_timeout: UPSTREAM_TIMEOUT,
     })
 }
 
@@ -215,12 +216,11 @@ async fn call_maps_a_stalled_body_to_deadline_exceeded() {
         .unwrap();
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     });
+    // No Connect-Timeout-Ms: the bridge's own limit applies.
     let app = app(AppState {
-        http: reqwest::Client::builder()
-            .timeout(std::time::Duration::from_millis(200))
-            .build()
-            .unwrap(),
+        http: reqwest::Client::new(),
         config: Arc::new(test_config(format!("http://{address}"))),
+        upstream_timeout: std::time::Duration::from_millis(200),
     });
 
     assert_eq!(call_me(app).await["code"], "deadline_exceeded");
@@ -486,6 +486,7 @@ fn cors_app() -> axum::Router {
             allowed_origins: vec!["http://localhost:5173".to_string()],
             ..test_config("http://127.0.0.1:1".to_string())
         }),
+        upstream_timeout: UPSTREAM_TIMEOUT,
     })
 }
 
