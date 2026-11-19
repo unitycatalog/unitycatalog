@@ -508,7 +508,8 @@ async fn list_views_returns_filtered_empty_page_with_next_token() {
 #[tokio::test]
 async fn table_and_view_lists_keep_only_their_own_kind() {
     // A row of no known table_type, such as a type added by a newer UC server,
-    // is skipped rather than failing the page.
+    // is skipped rather than failing the page, and the page token survives
+    // even when every row is skipped.
     let row = |name: &str, table_type: Option<&str>| {
         let mut row = serde_json::json!({
             "name": name,
@@ -520,29 +521,52 @@ async fn table_and_view_lists_keep_only_their_own_kind() {
         }
         row
     };
-    let reply = serde_json::json!({"tables": [
+    let unclassified = vec![
+        row("future", Some("SOME_NEW_TYPE")),
+        row("foreign", Some("FOREIGN")),
+        row("empty", Some("")),
+        row("untyped", None),
+    ];
+    let mut mixed = vec![
         row("events", Some("MANAGED")),
         row("metrics", Some("METRIC_VIEW")),
-        row("future", Some("SOME_NEW_TYPE")),
-        row("untyped", None),
-    ]});
-    // (service, rpc, response field, expected full name)
+    ];
+    mixed.extend(unclassified.clone());
+    // (service, rpc, response field, UC rows, expected full names)
     let cases = [
         (
             "TableService",
             "ListTables",
             "tables",
-            "main.default.events",
+            mixed.clone(),
+            vec!["main.default.events"],
         ),
-        ("ViewService", "ListViews", "views", "main.default.metrics"),
+        (
+            "ViewService",
+            "ListViews",
+            "views",
+            mixed,
+            vec!["main.default.metrics"],
+        ),
+        (
+            "TableService",
+            "ListTables",
+            "tables",
+            unclassified.clone(),
+            vec![],
+        ),
+        ("ViewService", "ListViews", "views", unclassified, vec![]),
     ];
-    for (service, rpc, field, expected) in cases {
+    for (service, rpc, field, rows, expected) in cases {
         let uc = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/api/2.1/unity-catalog/tables"))
             .and(query_param("catalog_name", "main"))
             .and(query_param("schema_name", "default"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(reply.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "tables": rows,
+                "next_page_token": "next"
+            })))
             .expect(1)
             .mount(&uc)
             .await;
@@ -560,13 +584,15 @@ async fn table_and_view_lists_keep_only_their_own_kind() {
 
         assert_eq!(response.status(), StatusCode::OK, "{rpc}");
         let json = body_json(response).await;
+        // proto3 JSON omits an empty repeated field.
         let names: Vec<_> = json[field]
             .as_array()
-            .unwrap()
-            .iter()
+            .into_iter()
+            .flatten()
             .map(|row| row["fullName"].as_str().unwrap())
             .collect();
-        assert_eq!(names, [expected], "{rpc}");
+        assert_eq!(names, expected, "{rpc}");
+        assert_eq!(json["page"]["nextPageToken"], "next", "{rpc}");
     }
 }
 
