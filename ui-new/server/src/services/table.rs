@@ -23,10 +23,14 @@ impl TableService for UiRpc {
             ("omit_properties", "true".to_string()),
         ]);
         let value = self.upstream.get(&ctx, "/tables", query).await?;
-        let tables = rows_of_kind(mapping::required_array(&value, "tables")?, TableKind::Table)
-            .into_iter()
-            .map(mapping::table_summary)
-            .collect::<Result<Vec<_>, _>>()?;
+        let tables = rows_of_kind(
+            mapping::required_array(&value, "tables")?,
+            TableKind::Table,
+            &request.schema,
+        )
+        .into_iter()
+        .map(mapping::table_summary)
+        .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListTablesResponse {
             tables,
             page: mapping::page(&value).into(),

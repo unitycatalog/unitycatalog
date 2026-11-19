@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::mapping;
 use crate::proto::uc::v1::__buffa::view::{
     ColumnInputView, DependencyView, PageRequestView, PropertiesView, SchemaObjectRefView,
+    SchemaRefView,
 };
 use crate::proto::uc::v1::{
     dependency, CatalogServiceExt, ColumnTypeName, DataSourceFormat, FunctionServiceExt,
@@ -116,18 +117,20 @@ fn kind_mismatch(
 /// Keeps the rows of one kind from a UC table list. Rows of no known kind are
 /// skipped rather than failing the page, so a table type added by a newer UC
 /// server does not break the list; one warning per page counts them.
-fn rows_of_kind(rows: &[Value], kind: TableKind) -> Vec<&Value> {
+fn rows_of_kind<'a>(
+    rows: &'a [Value],
+    kind: TableKind,
+    schema: &SchemaRefView<'_>,
+) -> Vec<&'a Value> {
+    let mut kept = Vec::new();
     let mut unclassified = Vec::new();
-    let kept = rows
-        .iter()
-        .filter(|row| match TableKind::of(row) {
-            Some(actual) => actual == kind,
-            None => {
-                unclassified.push(*row);
-                false
-            }
-        })
-        .collect();
+    for row in rows {
+        match TableKind::of(row) {
+            Some(actual) if actual == kind => kept.push(row),
+            Some(_) => {}
+            None => unclassified.push(row),
+        }
+    }
     if !unclassified.is_empty() {
         let examples: Vec<_> = unclassified
             .iter()
@@ -135,6 +138,8 @@ fn rows_of_kind(rows: &[Value], kind: TableKind) -> Vec<&Value> {
             .map(|row| describe_row(row))
             .collect();
         tracing::warn!(
+            catalog = schema.catalog_name,
+            schema = schema.name,
             count = unclassified.len(),
             ?examples,
             "skipped listed tables with no known table_type"
