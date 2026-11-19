@@ -2,7 +2,8 @@
 
 Unity Catalog uses [Flyway](https://flywaydb.org/) to manage the schema of its database. Each
 release ships the schema steps it needs, and each step is applied once and recorded in the
-`uc_schema_history` table.
+`uc_schema_history` table. The steps also create the tables of embedded OpenSharing, whose names
+start with `os_`, whether or not it is enabled.
 
 For now the schema steps are optional, and you run them by hand. The server still lets Hibernate
 update the schema when it starts (`hibernate.hbm2ddl.auto=update` in

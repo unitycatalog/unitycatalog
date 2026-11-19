@@ -3,6 +3,7 @@ package io.unitycatalog.server.auth.decorator;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.opensharing.http.ApiException;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
@@ -134,6 +135,27 @@ public class KeyMapperTest {
         .isInstanceOf(BaseException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.CATALOG_NOT_FOUND);
+  }
+
+  @Test
+  void missingShareAndRecipientAreOpenSharingsNotFound() {
+    // The provider API's exception handler renders OpenSharing's own not-found error as a 404.
+    for (SecurableType type : new SecurableType[] {SecurableType.SHARE, SecurableType.RECIPIENT}) {
+      Map<SecurableType, Object> keys = new HashMap<>();
+      keys.put(type, "no_such_object");
+      assertThatThrownBy(() -> repositories.getKeyMapper().mapResourceKeys(keys))
+          .isInstanceOf(ApiException.class)
+          .extracting(e -> ((ApiException) e).getStatus())
+          .isEqualTo(404);
+    }
+  }
+
+  @Test
+  void nullShareAndRecipientKeysResolveToNoId() {
+    Map<SecurableType, Object> keys = new HashMap<>();
+    keys.put(SecurableType.SHARE, null);
+    keys.put(SecurableType.RECIPIENT, null);
+    assertThat(repositories.getKeyMapper().mapResourceKeys(keys)).isEmpty();
   }
 
   @Test

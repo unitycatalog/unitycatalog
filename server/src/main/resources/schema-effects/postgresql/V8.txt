@@ -1,0 +1,14 @@
++ column os_share_permissions.created_at type=timestamptz size=35 nullable=NO default=null
++ column os_share_permissions.id type=uuid size=2147483647 nullable=NO default=null
++ column os_share_permissions.privilege type=varchar size=32 nullable=NO default=null
++ column os_share_permissions.recipient_id type=uuid size=2147483647 nullable=NO default=null
++ column os_share_permissions.share_id type=uuid size=2147483647 nullable=NO default=null
++ column os_share_permissions.updated_at type=timestamptz size=35 nullable=NO default=null
++ fk os_share_permissions.fk_share_permissions_recipient os_share_permissions.recipient_id -> os_recipients.id#1 on update no action on delete no action
++ fk os_share_permissions.fk_share_permissions_share os_share_permissions.share_id -> os_shares.id#1 on update no action on delete no action
++ index os_share_permissions.os_share_permissions_pkey unique=true column=id#1
++ index os_share_permissions.uk_share_permission unique=true column=privilege#3
++ index os_share_permissions.uk_share_permission unique=true column=recipient_id#2
++ index os_share_permissions.uk_share_permission unique=true column=share_id#1
++ pk os_share_permissions.id#1
++ table os_share_permissions
