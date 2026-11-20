@@ -149,6 +149,41 @@ public class NormalizedURLTest {
         .isEqualTo(ErrorCode.INVALID_ARGUMENT);
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"my-bucket", "data.2024", "my_bucket", "Bucket9"})
+  public void testGetS3BucketTakesTheBucketAsWritten(String bucket) {
+    assertThat(NormalizedURL.from("s3://" + bucket + "/p").getS3Bucket()).isEqualTo(bucket);
+    assertThat(NormalizedURL.isS3Path("s3://" + bucket + "/p")).isTrue();
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        // No bucket, or one that starts with a character other than a letter or digit.
+        "s3:///p",
+        "s3://-bucket/p",
+        "s3://.bucket/p",
+        "s3://_bucket/p",
+        // Not a bucket name: a wildcard, an escape, user info or a port.
+        "s3://*/p",
+        "s3://%62ucket/p",
+        "s3://user@bucket/p",
+        "s3://bucket:80/p",
+        // Not s3://.
+        "gs://bucket/p",
+        "abfss://container@account.dfs.core.windows.net/p",
+        "file:///tmp/p"
+      })
+  public void testGetS3BucketRefusesAnythingElse(String location) {
+    assertThat(NormalizedURL.isS3Path(location)).isFalse();
+    NormalizedURL url = NormalizedURL.from(location);
+    assertThatThrownBy(url::getS3Bucket)
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+        .hasMessageContaining(url.toString());
+  }
+
   @Test
   public void testGetStorageBase() {
     assertThat(NormalizedURL.from("s3://bucket/path").getStorageBase())

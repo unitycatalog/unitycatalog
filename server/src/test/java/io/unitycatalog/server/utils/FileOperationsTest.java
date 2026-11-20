@@ -725,6 +725,24 @@ public class FileOperationsTest {
   }
 
   @Test
+  public void testGetFileIOConfigS3RefusesAnInvalidBucketWithoutDiscovery() {
+    // Checked on the URL as written: the storage base would decode %62ucket into bucket.
+    for (String location : List.of("s3://%62ucket/t", "s3://*/t", "s3://user@bucket/t")) {
+      S3Client s3 = mock(S3Client.class);
+      FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+      NormalizedURL url = NormalizedURL.from(location);
+
+      assertThatThrownBy(() -> fileOps.getFileIOConfig(url))
+          .as(location)
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+          .hasMessageContaining(url.toString());
+      verify(s3, never()).headBucket(any(HeadBucketRequest.class));
+    }
+  }
+
+  @Test
   public void testGetFileIOConfigS3CachesDiscoveredRegion() {
     S3Client s3 = mock(S3Client.class);
     when(s3.headBucket(any(HeadBucketRequest.class)))

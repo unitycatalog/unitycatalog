@@ -168,14 +168,17 @@ public class AwsPolicyGeneratorTest {
             "s3://%62ucket/p",
             "s3://user@bucket/p",
             "s3://bucket:80/p")) {
+      // Built outside the assertion, so only generating the policy can throw; next to a valid
+      // location, which does not hide the invalid one.
+      NormalizedURL valid = NormalizedURL.from("s3://valid/p");
+      NormalizedURL invalid = NormalizedURL.from(location);
       assertThatThrownBy(
-              () ->
-                  AwsPolicyGenerator.generatePolicy(
-                      Set.of(SELECT), List.of(NormalizedURL.from(location))))
+              () -> AwsPolicyGenerator.generatePolicy(Set.of(SELECT), List.of(valid, invalid)))
           .as(location)
           .isInstanceOfSatisfying(
               BaseException.class,
-              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT));
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+          .hasMessageContaining(invalid.toString());
     }
   }
 

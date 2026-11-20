@@ -226,7 +226,7 @@ public class FileOperationsImpl implements FileOperations {
           Optional.ofNullable(awsCredentials.getS3Region())
               .orElse(S3BucketRegions.DEFAULT_S3_COMPATIBLE_REGION));
     } else {
-      config.put(AwsClientProperties.CLIENT_REGION, getRegion(path.getStorageBase()));
+      config.put(AwsClientProperties.CLIENT_REGION, getRegion(path));
     }
     // Iceberg's refreshing credentials provider requires a session token, so a vended key pair goes
     // without its lifetime and the refresh endpoint, and an Iceberg client keeps it until the table
@@ -243,8 +243,15 @@ public class FileOperationsImpl implements FileOperations {
     return Map.copyOf(config);
   }
 
-  /** The configured region of an AWS bucket, otherwise its discovered region cached per bucket. */
-  private String getRegion(NormalizedURL storageBase) {
+  /**
+   * The configured region of the AWS bucket of {@code path}, otherwise its discovered region cached
+   * per bucket.
+   *
+   * @throws BaseException {@code INVALID_ARGUMENT} if {@code path} has no valid bucket name, which
+   *     is checked as written: {@link NormalizedURL#getStorageBase()} decodes escapes
+   */
+  private String getRegion(NormalizedURL path) {
+    NormalizedURL storageBase = NormalizedURL.from("s3://" + path.getS3Bucket());
     // Discovery runs outside any map lock (get + putIfAbsent rather than computeIfAbsent): a bucket
     // whose discovery fails is never cached and so is re-probed on every request, and holding the
     // bin lock across HeadBucket would serialize those probes and pile request threads up on it.
