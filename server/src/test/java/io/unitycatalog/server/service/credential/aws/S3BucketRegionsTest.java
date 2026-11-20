@@ -22,7 +22,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.SdkHttpResponse;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -77,6 +79,13 @@ public class S3BucketRegionsTest {
     verify(s3, times(2)).headBucket(any(HeadBucketRequest.class));
     verify(builder, times(2)).endpointOverride(URI.create(S3_ENDPOINT));
     verify(builder, times(2)).forcePathStyle(true);
+    // Each lookup is capped, so storage that does not answer cannot hold up the request.
+    ArgumentCaptor<Consumer<ClientOverrideConfiguration.Builder>> override =
+        ArgumentCaptor.forClass(Consumer.class);
+    verify(builder, times(2)).overrideConfiguration(override.capture());
+    ClientOverrideConfiguration.Builder configuration = ClientOverrideConfiguration.builder();
+    override.getValue().accept(configuration);
+    assertThat(configuration.build().apiCallTimeout()).contains(Duration.ofSeconds(10));
   }
 
   private record Failure(RuntimeException error, Duration retryDelay) {}
@@ -246,6 +255,20 @@ public class S3BucketRegionsTest {
     verify(s3, times(2)).headBucket(any(HeadBucketRequest.class));
     // The storage is not overridden: the request goes to AWS S3.
     verify(builder, never()).endpointOverride(any());
+    // After the failed recheck it backs off: AWS is asked again only once the delay has passed.
+    now.addAndGet(S3BucketRegions.FAILURE_RETRY_DELAY.toMillis() - 1);
+    assertThat(aws.getAwsRegion("bucket")).isEqualTo("eu-central-1");
+    verify(s3, times(2)).headBucket(any(HeadBucketRequest.class));
+    now.incrementAndGet();
+    assertThat(aws.getAwsRegion("bucket")).isEqualTo("eu-central-1");
+    verify(s3, times(3)).headBucket(any(HeadBucketRequest.class));
+    // If the reported region is evicted during the backoff, the bucket is asked again, and the
+    // failure is an error rather than the default of S3-compatible storage.
+    aws.evictReportedRegion(/* s3Endpoint= */ null, "bucket");
+    assertThatThrownBy(() -> aws.getAwsRegion("bucket"))
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
+    verify(s3, times(4)).headBucket(any(HeadBucketRequest.class));
 
     // Without a known region it has no default: transient failures and answers without a region
     // fail every time, and the bucket is asked again on the next request.

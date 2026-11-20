@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.credential.aws;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Ticker;
+import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
@@ -33,9 +34,15 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
  *
  * <p>AWS S3 and S3-compatible storage share the lookup: a reported region is cached per storage and
  * bucket and asked again after {@link #REPORTED_REGION_TTL}, a failed recheck keeps it, and one
- * lookup runs per bucket at a time. They differ when no region is known: S3-compatible storage
- * commonly expects {@link #DEFAULT_S3_COMPATIBLE_REGION}, while an AWS bucket has no default, so
- * its lookup fails.
+ * lookup runs per bucket at a time. They differ in two ways:
+ *
+ * <ul>
+ *   <li>When no region is known, S3-compatible storage commonly expects {@link
+ *       #DEFAULT_S3_COMPATIBLE_REGION}, while an AWS bucket has no default, so its lookup fails.
+ *   <li>A recheck answered with 404 (no such bucket) drops the reported region on S3-compatible
+ *       storage, where the same bucket name may be created again with another region. An AWS bucket
+ *       keeps it, as for any failed recheck.
+ * </ul>
  */
 public class S3BucketRegions {
   private static final Logger LOGGER = LoggerFactory.getLogger(S3BucketRegions.class);
@@ -330,10 +337,7 @@ public class S3BucketRegions {
     String location = "s3://" + storageBucket.bucket();
     if (isTransient) {
       // Transient failures are retried silently by the client, so log the underlying S3 error.
-      LOGGER.warn(
-          "Transient failure resolving the AWS region for S3 bucket {}: {}",
-          location,
-          cause == null ? "unknown" : cause.getMessage());
+      LOGGER.warn("Transient failure resolving the AWS region for S3 bucket {}", location, cause);
       throw new BaseException(
           ErrorCode.INTERNAL,
           "Could not resolve the AWS region for S3 bucket " + location + "; retry the request.",
@@ -360,6 +364,12 @@ public class S3BucketRegions {
   private String failed(StorageBucket storageBucket) {
     backOff(storageBucket);
     return lastReportedOrDefault(storageBucket);
+  }
+
+  /** Drops the region reported for {@code bucket}, as a cache eviction would. */
+  @VisibleForTesting
+  void evictReportedRegion(String s3Endpoint, String bucket) {
+    reportedRegions.invalidate(new StorageBucket(s3Endpoint, bucket));
   }
 
   private void backOff(StorageBucket storageBucket) {
