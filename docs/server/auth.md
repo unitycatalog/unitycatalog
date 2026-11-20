@@ -290,8 +290,8 @@ The server no longer writes the admin token to `etc/conf/token.txt`, and deletes
 logs a warning, so delete the file yourself. Use `bin/uc-admin-token` instead (see [Testing User and Admin
 Authentication](#testing-user-and-admin-authentication)). Copies of the old token stay valid until the signing key
 changes, so change the key to revoke them: point the token signing key file setting at a new key, or, with the generated
-key, delete `etc/conf/private_key.der` and `etc/conf/public_key.der` and restart the server. Every token signed with the
-old key stops working.
+key, delete `etc/conf/private_key.der` and `etc/conf/public_key.der`. A server reads its key only at startup, so restart
+every server instance that uses the old key. Every token signed with the old key stops working once it is restarted.
 
 Other changes to the server's own tokens:
 
