@@ -2,6 +2,7 @@ package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.stream.Stream;
 import org.apache.spark.sql.connector.catalog.Column;
@@ -42,6 +43,45 @@ public class UCColumnConversionsSuite {
     assertThat(parsed.dataType()).isEqualTo(DataTypes.StringType);
     assertThat(parsed.nullable()).isTrue();
     assertThat(parsed.comment()).isEqualTo("geo dimension");
+  }
+
+  @Test
+  public void testParseDataTypeKeepsDdlTypeText() {
+    assertThat(UCColumnConversions.parseDataType("array<int>", null).catalogString())
+        .isEqualTo("array<int>");
+  }
+
+  /** Delta's geo type_text is not DDL, so the type comes from type_json (Spark 4.1+ only). */
+  @Test
+  public void testParseDataTypeReadsDeltaGeoTypeFromJson() {
+    assumeTrue(hasGeoTypes(), "needs Spark 4.1+");
+    String[][] typeTextJsonTypeAndExpected = {
+      {"geometry(OGC:CRS84)", "\"geometry(OGC:CRS84)\"", "geometry(4326)"},
+      {"geography(OGC:CRS84, spherical)", "\"geography(OGC:CRS84, spherical)\"", "geography(4326)"},
+      {
+        "struct<g:geometry(OGC:CRS84)>",
+        "{\"type\":\"struct\",\"fields\":[{\"name\":\"g\",\"type\":\"geometry(OGC:CRS84)\","
+            + "\"nullable\":true,\"metadata\":{}}]}",
+        "struct<g:geometry(4326)>"
+      },
+    };
+    for (String[] c : typeTextJsonTypeAndExpected) {
+      String typeJson = "{\"name\":\"c\",\"type\":" + c[1] + ",\"nullable\":true,\"metadata\":{}}";
+      assertThat(UCColumnConversions.parseDataType(c[0], typeJson).catalogString())
+          .as(c[0])
+          .isEqualTo(c[2]);
+    }
+    assertThatThrownBy(() -> UCColumnConversions.parseDataType("geometry(OGC:CRS84)", null))
+        .isInstanceOf(org.apache.spark.sql.catalyst.parser.ParseException.class);
+  }
+
+  private static boolean hasGeoTypes() {
+    try {
+      Class.forName("org.apache.spark.sql.types.GeometryType");
+      return true;
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
   }
 
   @Test

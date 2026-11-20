@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.iceberg;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +9,7 @@ import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import java.util.List;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
 
@@ -135,5 +137,19 @@ public class IcebergSchemaConverterTest {
     assertThat(scoresJson.get("keyType").asText()).isEqualTo("string");
     assertThat(scoresJson.get("valueType").asText()).isEqualTo("double");
     assertThat(scoresJson.get("valueContainsNull").asBoolean()).isFalse();
+  }
+
+  /** Geometry and geography are not mapped from Iceberg yet; the error names the type. */
+  @Test
+  public void rejectsGeometryAndGeography() {
+    for (Type geo : List.of(Types.GeometryType.crs84(), Types.GeographyType.crs84())) {
+      Schema schema = new Schema(Types.NestedField.required(1, "g", geo));
+      assertThatThrownBy(() -> IcebergSchemaConverter.toColumnInfos(schema))
+          .as("Iceberg type %s", geo)
+          .hasMessageContaining(
+              "Iceberg type "
+                  + geo.toString().toUpperCase()
+                  + " is not supported by Unity Catalog");
+    }
   }
 }

@@ -6,6 +6,8 @@ import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
@@ -40,6 +42,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
+  /** POINT(1 2) as little-endian WKB. */
+  private static final String GEO_POINT_WKB_HEX = "0101000000000000000000F03F0000000000000040";
 
   protected enum TableDdlMode {
     CREATE("CREATE", false),
@@ -843,7 +847,24 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "1",
                 ColumnTypeName.VARIANT,
                 "variant",
-                "\"variant\""));
+                "\"variant\""),
+            // POINT(1 2) as WKB.
+            new ColSpec(
+                "col_geometry",
+                "GEOMETRY(4326)",
+                "ST_SetSrid(ST_GeomFromWKB(X'" + GEO_POINT_WKB_HEX + "'), 4326)",
+                "unused",
+                ColumnTypeName.GEOMETRY,
+                "geometry(OGC:CRS84)",
+                "\"geometry(OGC:CRS84)\""),
+            new ColSpec(
+                "col_geography",
+                "GEOGRAPHY(4326)",
+                "ST_GeogFromWKB(X'" + GEO_POINT_WKB_HEX + "')",
+                "unused",
+                ColumnTypeName.GEOGRAPHY,
+                "geography(OGC:CRS84, SPHERICAL)",
+                "\"geography(OGC:CRS84, SPHERICAL)\""));
     if (!isSparkAtLeast(4, 1)) {
       // VARIANT round-trips through a managed Delta table only when Delta's `variantType` writer
       // table feature is supported. The Delta build for Spark 4.0 does not support it (writes fail
@@ -853,6 +874,10 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
           cols.stream()
               .filter(col -> !col.getName().equals("col_variant"))
               .collect(Collectors.toList());
+    }
+    if (!supportsGeoDataWrites()) {
+      cols =
+          cols.stream().filter(col -> !isGeoType(col.getTypeName())).collect(Collectors.toList());
     }
     if (testingIceberg()) {
       // Iceberg has no distinct TINYINT / SMALLINT (widened to int) or CHAR / VARCHAR (stored as
@@ -866,6 +891,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
 
     session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
+    if (supportsGeoDataWrites()) {
+      enableGeoTypes();
+    }
     String tableName = TEST_TABLE + "_complex_type";
     // UC records no partitionIndex for Iceberg (its partition spec is not per-column), so Iceberg
     // tables are created unpartitioned.
@@ -927,6 +955,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       if (spec.getTypeName() == ColumnTypeName.BINARY) {
         // Read BINARY from the raw row; stringified `row` only keeps its "[B@" ref.
         assertCafebabeBinary(resultRow.get(i), spec.getName());
+      } else if (isGeoType(spec.getTypeName())) {
+        assertGeoPointWkb(spec.getName(), fullTableName);
       } else {
         assertThat(row.get(i)).as("row value for %s", spec.getName()).isEqualTo(spec.getRowValue());
       }
@@ -955,6 +985,105 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         assertThat(col.getPartitionIndex()).isNull();
       }
     }
+  }
+
+  /**
+   * Geo columns need Spark 4.1+ (which has the types) and a Delta that has the {@code geospatial}
+   * table feature, which is still behind a preview conf. Gate on the capability, not only on the
+   * Spark version, so the tests run on every Delta that can take them: the pinned 4.4.1 has the
+   * feature and so does Delta master. This gate can go when UC pins Delta 4.5.0.
+   */
+  private boolean supportsGeoTypes() {
+    if (testingIceberg() || !isSparkAtLeast(4, 1)) {
+      return false;
+    }
+    if (!testingDelta()) {
+      return true;
+    }
+    try {
+      Class.forName("org.apache.spark.sql.delta.GeoSpatialTableFeature");
+      return true;
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+  }
+
+  /** Spark's Parquet writer can only write geo values from Spark 4.2; 4.1 fails the write. */
+  private boolean supportsGeoDataWrites() {
+    return supportsGeoTypes() && testingDelta() && isSparkAtLeast(4, 2);
+  }
+
+  private void enableGeoTypes() {
+    session.conf().set("spark.sql.geospatial.enabled", "true");
+    session.conf().set("spark.databricks.delta.geo.preview.enabled", "true");
+  }
+
+  private static byte[] hexToBytes(String hex) {
+    byte[] bytes = new byte[hex.length() / 2];
+    for (int i = 0; i < bytes.length; i++) {
+      bytes[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
+    }
+    return bytes;
+  }
+
+  private static boolean isGeoType(ColumnTypeName typeName) {
+    return typeName == ColumnTypeName.GEOMETRY || typeName == ColumnTypeName.GEOGRAPHY;
+  }
+
+  /** Geo values print as an object reference, so compare the WKB of the inserted POINT(1 2). */
+  private void assertGeoPointWkb(String columnName, String fullTableName) {
+    Object wkb = sql("SELECT ST_AsBinary(%s) FROM %s", columnName, fullTableName).get(0).get(0);
+    assertThat((byte[]) wkb).as("WKB for %s", columnName).isEqualTo(hexToBytes(GEO_POINT_WKB_HEX));
+  }
+
+  /**
+   * Geo columns, top level and nested, are created in UC with the CRS and algorithm kept, and read
+   * back with the same Spark types. It does not write rows, so it also runs on Spark 4.1, whose
+   * Parquet writer can't write them.
+   */
+  @Test
+  public void testGeoColumnsRoundTripThroughUC() throws ApiException {
+    assumeTrue(supportsGeoTypes(), "needs Spark 4.1+ and Delta with the geospatial feature");
+    assumeTrue(canUpdateColumnsToUC(), "UC does not record the columns of this table");
+    session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
+    enableGeoTypes();
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setSchemaName(SCHEMA_NAME)
+                .setTableName(TEST_TABLE + "_geo")
+                .setColumns(
+                    List.of(
+                        Pair.of("id", "INT"),
+                        Pair.of("geom", "GEOMETRY(4326)"),
+                        Pair.of("geog", "GEOGRAPHY(4326)"),
+                        Pair.of("nested", "STRUCT<g: GEOMETRY(4326)>"))));
+
+    List<ColumnInfo> columns = tableOperations.getTable(fullTableName).getColumns();
+    assertThat(columns)
+        .extracting(ColumnInfo::getName, ColumnInfo::getTypeName)
+        .containsExactly(
+            tuple("id", ColumnTypeName.INT),
+            tuple("geom", ColumnTypeName.GEOMETRY),
+            tuple("geog", ColumnTypeName.GEOGRAPHY),
+            tuple("nested", ColumnTypeName.STRUCT));
+    // Delta names the CRS by authority and code and Spark by SRID, so compare what Spark makes of
+    // the stored text, which is what a reader of the table gets.
+    StructType schema = session.table(fullTableName).schema();
+    for (ColumnInfo column : columns.subList(1, columns.size())) {
+      assertThat(
+              UCColumnConversions.parseDataType(column.getTypeText(), column.getTypeJson())
+                  .catalogString())
+          .as("typeText of %s", column.getName())
+          .isEqualTo(schema.apply(column.getName()).dataType().catalogString());
+    }
+    assertThat(schema.apply("geom").dataType().catalogString()).isEqualTo("geometry(4326)");
+    assertThat(schema.apply("geog").dataType().catalogString()).isEqualTo("geography(4326)");
+    assertThat(schema.apply("nested").dataType().catalogString())
+        .isEqualTo("struct<g:geometry(4326)>");
+    assertThat(columns.get(1).getTypeJson()).contains("geometry(");
+    assertThat(columns.get(2).getTypeJson()).contains("geography(");
   }
 
   /**
