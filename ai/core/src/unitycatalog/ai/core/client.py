@@ -7,7 +7,6 @@ import decimal
 import logging
 import os
 import threading
-import weakref
 from enum import Enum
 from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -59,7 +58,6 @@ from unitycatalog.client import (
     SchemasApi,
 )
 from unitycatalog.client.exceptions import NotFoundException, ServiceException
-from unitycatalog.client.rest import RESTClientObject
 
 nest_asyncio.apply()
 
@@ -113,20 +111,40 @@ SQL_TYPE_TO_PYTHON_TYPE_MAPPING_UC_OSS = {
 _logger = logging.getLogger(__name__)
 
 _SESSION_CLOSED = "Session is closed"
-
-_clients_to_reset_after_fork: "weakref.WeakSet[_SingleLoopRESTClient]" = weakref.WeakSet()
-# A forked child shares the parent's epoll instance, so finalizing the inherited session would
-# unregister the parent's open sockets from it. The child keeps them here and never finalizes them.
-_inherited_before_fork = []
+_OTHER_PROCESS = (
+    "The ApiClient was set up in another process. Create a new ApiClient in the child process."
+)
 
 
-def _reset_clients_after_fork():
-    for client in _clients_to_reset_after_fork:
-        client._reset_after_fork()
+def _session_loop(rest_client) -> Optional[asyncio.AbstractEventLoop]:
+    # aiohttp only exposes a session's loop publicly through its deprecated `loop` property.
+    loop = getattr(getattr(rest_client, "pool_manager", None), "_loop", None)
+    return loop if isinstance(loop, asyncio.AbstractEventLoop) else None
 
 
-if hasattr(os, "register_at_fork"):
-    os.register_at_fork(after_in_child=_reset_clients_after_fork)
+def _run_on_new_thread(function: Callable[[], Any]) -> concurrent.futures.Future:
+    """
+    Runs `function` on a thread of its own rather than on an executor, which may be busy, or shut
+    down when this runs at exit.
+    """
+    future = concurrent.futures.Future()
+    # A running future can't be cancelled, so cancelling a caller that waits for it doesn't make
+    # the result below fail to set.
+    future.set_running_or_notify_cancel()
+
+    def run():
+        try:
+            future.set_result(function())
+        except BaseException as e:
+            future.set_exception(e)
+
+    threading.Thread(target=run, name="unitycatalog-client-close", daemon=True).start()
+    return future
+
+
+def _log_failed_close(future: concurrent.futures.Future):
+    if not future.cancelled() and future.exception() is not None:
+        _logger.error(f"Error while closing the ApiClient's original session: {future.exception()}")
 
 
 def syncify_method(sync_method):
@@ -158,54 +176,31 @@ class _SingleLoopRESTClient:
 
     An aiohttp session only works on the event loop it is created on, so sharing the ApiClient's
     own session fails with "Timeout context manager should be used inside a task" anywhere else.
-    Response bodies are read on the owned loop before the response is returned. The thread starts
-    with the first request, so a client that never sends one has no thread until it is closed.
-    Closing still runs the loop briefly, since the ApiClient's own session has to be closed on one.
+    Requests are sent with a new REST client of the same class, built from the configuration on
+    the owned loop, and response bodies are read there before the response is returned. The
+    thread starts with the first request, so a client that never sends one has no thread until it
+    is closed. A forked child can't use the client, since the thread that runs the loop doesn't
+    exist there.
     """
 
     def __init__(self, api_client: ApiClient):
         self._configuration = api_client.configuration
         self._replaced_rest_client = api_client.rest_client
-        if type(self._replaced_rest_client) is not RESTClientObject:
-            _logger.warning(
-                "The ApiClient's rest_client has type %s, but requests are sent with a new "
-                "RESTClientObject built from its configuration, so its own request handling is "
-                "not used.",
-                type(self._replaced_rest_client).__name__,
-            )
         self._rest_client = None
+        self._pid = os.getpid()
         self._lock = threading.Lock()
         self._closed = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
-        self._shut_down = threading.Event()
-        _clients_to_reset_after_fork.add(self)
-
-    def _reset_after_fork(self):
-        """
-        A forked child has the parent's loop and session but not the thread that runs the loop, so
-        it starts its own on its first request. The lock is replaced too, in case another thread
-        held it during the fork.
-        """
-        _inherited_before_fork.append(
-            (self._loop, self._thread, self._rest_client, self._replaced_rest_client)
-        )
-        self._replaced_rest_client = None
-        self._shut_down = threading.Event()
-        if self._closed:
-            self._shut_down.set()
-        self._lock = threading.Lock()
-        self._loop = None
-        self._thread = None
-        self._rest_client = None
 
     async def request(self, *args, **kwargs):
+        if os.getpid() != self._pid:
+            raise RuntimeError(_OTHER_PROCESS)
         with self._lock:
             if self._closed:
                 raise RuntimeError(_SESSION_CLOSED)
-            future = asyncio.run_coroutine_threadsafe(
-                self._request(*args, **kwargs), self._started_loop()
-            )
+            loop = self._started_loop()
+            future = asyncio.run_coroutine_threadsafe(self._request(*args, **kwargs), loop)
         return await asyncio.wrap_future(future)
 
     async def close(self):
@@ -213,44 +208,29 @@ class _SingleLoopRESTClient:
         Runs `shutdown` on a thread of its own, not on the caller's default executor, whose workers
         may all be blocked in requests that only `shutdown` can cancel.
         """
-        closed = concurrent.futures.Future()
-        # A running future can't be cancelled, so cancelling the caller doesn't make the result
-        # below fail to set.
-        closed.set_running_or_notify_cancel()
-
-        def shutdown():
-            try:
-                self.shutdown()
-                closed.set_result(None)
-            except BaseException as e:
-                closed.set_exception(e)
-
-        threading.Thread(target=shutdown, name="unitycatalog-client-close", daemon=True).start()
-        await asyncio.wrap_future(closed)
+        await asyncio.wrap_future(_run_on_new_thread(self.shutdown))
 
     def shutdown(self):
         """
         Cancels the requests still running, closes the replaced and the owned sessions, and stops
-        the owned event loop and its thread, even if closing a session fails. A second call, such as
-        one from another client on the same ApiClient, returns once the first one is done.
+        the owned event loop and its thread, even if closing a session fails. The lock is held until
+        all of that is done, so a second call returns once the first one has finished. If the thread
+        can't be started, the client stays open. Does nothing in a forked child, which shares the
+        sessions' connections with its parent.
         """
-        with self._lock:
-            first = not self._closed
-            if first:
-                loop = self._started_loop()
-                self._closed = True
-        if not first:
-            self._shut_down.wait()
+        if os.getpid() != self._pid:
             return
-        try:
-            asyncio.run_coroutine_threadsafe(self._close(), loop).result()
-        finally:
+        with self._lock:
+            if self._closed:
+                return
+            loop = self._started_loop()
+            self._closed = True
             try:
+                asyncio.run_coroutine_threadsafe(self._close(), loop).result()
+            finally:
                 loop.call_soon_threadsafe(loop.stop)
                 self._thread.join()
                 loop.close()
-            finally:
-                self._shut_down.set()
 
     def _started_loop(self) -> asyncio.AbstractEventLoop:
         if self._loop is None:
@@ -269,7 +249,7 @@ class _SingleLoopRESTClient:
     async def _request(self, *args, **kwargs):
         try:
             if self._rest_client is None:
-                self._rest_client = RESTClientObject(self._configuration)
+                self._rest_client = type(self._replaced_rest_client)(self._configuration)
             response = await self._rest_client.request(*args, **kwargs)
             await response.read()
             return response
@@ -284,14 +264,32 @@ class _SingleLoopRESTClient:
             request.cancel()
         await asyncio.gather(*requests, return_exceptions=True)
         try:
-            if self._replaced_rest_client is not None:
-                await self._replaced_rest_client.close()
+            await self._close_replaced()
         finally:
             try:
                 if self._rest_client is not None:
                     await self._rest_client.close()
             finally:
                 await self._loop.shutdown_default_executor()
+
+    async def _close_replaced(self):
+        """
+        Closes the replaced session on the loop it is bound to, since closing its connections from
+        another loop fails. A session that is not bound to a loop, or whose loop is closed, has no
+        connections that can still be closed, so it is closed here.
+        """
+        replaced = self._replaced_rest_client
+        owner = _session_loop(replaced)
+        if owner is None or owner.is_closed():
+            await replaced.close()
+        elif owner.is_running():
+            # Not waited for: a request made on that loop meanwhile blocks it on the lock held here.
+            asyncio.run_coroutine_threadsafe(replaced.close(), owner).add_done_callback(
+                _log_failed_close
+            )
+        else:
+            close = partial(owner.run_until_complete, replaced.close())
+            await asyncio.wrap_future(_run_on_new_thread(close))
 
 
 class UnitycatalogClient:
@@ -315,7 +313,9 @@ class UnitycatalogClient:
         its connections and stop the background thread that sends requests. A second call does
         nothing, and later calls through this client or its ApiClient raise
         `RuntimeError("Session is closed")`. Clients built on the same ApiClient share its
-        connections, so closing one closes them for all. If closing fails, a later call tries again.
+        connections, so closing one closes them for all. If closing fails, the error is logged and
+        the client stays closed. Only a background thread that can't be started leaves the client
+        open, so that a later call can close it. Does nothing in a forked child process.
         """
         try:
             await self.api_client.close()
