@@ -63,7 +63,7 @@ class ToolCallData:
             including the error, if the function failed.
         """
         result = client.execute_function(self.function_name, self.arguments)
-        return result.to_json() if result.error else str(result.value)
+        return result.to_json() if result.error is not None else str(result.value)
 
     def to_tool_result_message(self, result: str) -> dict[str, Any]:
         """

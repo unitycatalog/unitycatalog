@@ -154,18 +154,21 @@ def test_generate_tool_call_messages_multiple_choices(client: DatabricksFunction
         }
 
 
-def test_generate_tool_call_messages_reports_function_error(client: DatabricksFunctionClient):
+@pytest.mark.parametrize("error", ["date is in the past", ""])
+def test_generate_tool_call_messages_reports_function_error(
+    client: DatabricksFunctionClient, error
+):
     response = mock_chat_completion_response(
         function=Function(name="ml__test__test_func", arguments='{"arg1": "value1"}'),
     )
-    failed_result = FunctionExecutionResult(error="ValueError: date is in the past")
+    failed_result = FunctionExecutionResult(error=error)
 
     with mock.patch.object(client, "execute_function", return_value=failed_result):
         messages = generate_tool_call_messages(response=response, client=client)
 
     assert messages[1] == {
         "role": "tool",
-        "content": json.dumps({"error": "ValueError: date is in the past"}),
+        "content": json.dumps({"error": error}),
         "tool_call_id": "call_mock",
     }
 

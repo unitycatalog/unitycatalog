@@ -187,7 +187,9 @@ Construct the OpenAI response from the tool calling result
 # Create a message containing the result of the function call
 function_call_result_message = {
     "role": "tool",
-    "content": result.to_json() if result.error else json.dumps({"content": result.value}),
+    "content": (
+        result.to_json() if result.error is not None else json.dumps({"content": result.value})
+    ),
     "tool_call_id": tool_call.id,
 }
 assistant_message = response.choices[0].message.to_dict()

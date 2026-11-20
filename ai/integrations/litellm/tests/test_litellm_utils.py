@@ -274,12 +274,11 @@ def test_generate_tool_call_messages_single_tool(
     assert tool_response_message["content"] == "65 degrees"
 
 
+@pytest.mark.parametrize("error", ["date is in the past", ""])
 def test_generate_tool_call_messages_reports_function_error(
-    mock_message_single_tool, mock_client, dummy_history
+    mock_message_single_tool, mock_client, dummy_history, error
 ):
-    mock_client.execute_function.return_value = FunctionExecutionResult(
-        error="ValueError: date is in the past"
-    )
+    mock_client.execute_function.return_value = FunctionExecutionResult(error=error)
 
     *_, tool_response_message = generate_tool_call_messages(
         response=mock_message_single_tool,
@@ -287,9 +286,7 @@ def test_generate_tool_call_messages_reports_function_error(
         client=mock_client,
     )
 
-    assert tool_response_message["content"] == json.dumps(
-        {"error": "ValueError: date is in the past"}
-    )
+    assert tool_response_message["content"] == json.dumps({"error": error})
 
 
 def test_generate_tool_call_messages_multiple_tools(

@@ -41,11 +41,14 @@ def generate_tool_call_messages(
             result = client.execute_function(
                 func_name, arguments, enable_retriever_tracing=mlflow_tracing_enabled("openai")
             )
+            content = (
+                result.to_json()
+                if result.error is not None
+                else json.dumps({"content": result.value})
+            )
             function_call_result_message = {
                 "role": "tool",
-                "content": result.to_json()
-                if result.error
-                else json.dumps({"content": result.value}),
+                "content": content,
                 "tool_call_id": tool_call.id,
             }
             function_calls.append(function_call_result_message)

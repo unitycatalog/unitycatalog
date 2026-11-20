@@ -149,27 +149,23 @@ def test_generate_tool_call_messages_single_tool(
     ]
 
 
-def test_tool_call_data_execute_reports_function_error(mock_client):
-    mock_client.execute_function.return_value = FunctionExecutionResult(
-        error="ValueError: date is in the past"
-    )
+@pytest.mark.parametrize("error", ["date is in the past", ""])
+def test_tool_call_data_execute_reports_function_error(mock_client, error):
+    mock_client.execute_function.return_value = FunctionExecutionResult(error=error)
     tool_call = ToolCallData(
         function_name="catalog.schema.get_weather",
         arguments={},
         tool_use_id="toolu_01A09q90qw90lq917835lq9",
     )
 
-    assert tool_call.execute(mock_client) == json.dumps(
-        {"error": "ValueError: date is in the past"}
-    )
+    assert tool_call.execute(mock_client) == json.dumps({"error": error})
 
 
+@pytest.mark.parametrize("error", ["date is in the past", ""])
 def test_generate_tool_call_messages_reports_function_error(
-    mock_message_single_tool, mock_client, dummy_history
+    mock_message_single_tool, mock_client, dummy_history, error
 ):
-    mock_client.execute_function.return_value = FunctionExecutionResult(
-        error="ValueError: date is in the past"
-    )
+    mock_client.execute_function.return_value = FunctionExecutionResult(error=error)
 
     *_, tool_response_message = generate_tool_call_messages(
         response=mock_message_single_tool, conversation_history=dummy_history, client=mock_client
@@ -179,9 +175,36 @@ def test_generate_tool_call_messages_reports_function_error(
         {
             "type": "tool_result",
             "tool_use_id": "toolu_01A09q90qw90lq917835lq9",
-            "content": json.dumps({"error": "ValueError: date is in the past"}),
+            "content": json.dumps({"error": error}),
             "is_error": True,
         }
+    ]
+
+
+def test_generate_tool_call_messages_marks_only_failed_tool_as_error(
+    mock_message_multiple_tools, mock_client, dummy_history
+):
+    mock_client.execute_function.side_effect = [
+        FunctionExecutionResult(format="SCALAR", value="65 degrees"),
+        FunctionExecutionResult(error="date is in the past"),
+    ]
+
+    *_, tool_response_message = generate_tool_call_messages(
+        response=mock_message_multiple_tools, conversation_history=dummy_history, client=mock_client
+    )
+
+    assert tool_response_message["content"] == [
+        {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01A09q90qw90lq917835lq9",
+            "content": "65 degrees",
+        },
+        {
+            "type": "tool_result",
+            "tool_use_id": "toolu_02B24q89qw70lq986423lq6",
+            "content": json.dumps({"error": "date is in the past"}),
+            "is_error": True,
+        },
     ]
 
 

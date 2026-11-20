@@ -1,10 +1,10 @@
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, ValidationError
 
 from anthropic.types import ContentBlock, Message, ToolUseBlock
-from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import construct_original_function_name
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
@@ -57,34 +57,30 @@ class ToolCallData:
             str: The result of the function execution, or the JSON of the execution result,
             including the error, if the function failed.
         """
-        return _tool_result_content(self._execute_function(client))
+        content, _ = self._execute(client)
+        return content
 
-    def _execute_function(self, client: BaseFunctionClient) -> FunctionExecutionResult:
-        return client.execute_function(
+    def _execute(self, client: BaseFunctionClient) -> Tuple[str, bool]:
+        result = client.execute_function(
             self.function_name,
             self.arguments,
             enable_retriever_tracing=mlflow_tracing_enabled("anthropic"),
         )
+        if result.error is not None:
+            return result.to_json(), True
+        return str(result.value), False
 
-    def to_tool_result_message(self, result: str, is_error: bool = False) -> Dict[str, Any]:
+    def to_tool_result_message(self, result: str) -> Dict[str, Any]:
         """
         Creates a tool result message based on the result of the function execution.
 
         Args:
             result (str): The result of the tool execution.
-            is_error (bool): Whether the tool execution failed. Defaults to False.
 
         Returns:
             Dict[str, Any]: A dictionary representing the tool result message.
         """
-        message = {"type": "tool_result", "tool_use_id": self.tool_use_id, "content": result}
-        if is_error:
-            message["is_error"] = True
-        return message
-
-
-def _tool_result_content(result: FunctionExecutionResult) -> str:
-    return result.to_json() if result.error else str(result.value)
+        return {"type": "tool_result", "tool_use_id": self.tool_use_id, "content": result}
 
 
 def extract_tool_call_data(response: Message) -> List[ToolCallData]:
@@ -157,12 +153,9 @@ def generate_tool_call_messages(
     tool_results = []
     if tool_calls_data:
         for tool_call_data in tool_calls_data:
-            result = tool_call_data._execute_function(client)
-            tool_results.append(
-                tool_call_data.to_tool_result_message(
-                    _tool_result_content(result), is_error=bool(result.error)
-                )
-            )
+            content, is_error = tool_call_data._execute(client)
+            message = tool_call_data.to_tool_result_message(content)
+            tool_results.append({**message, "is_error": True} if is_error else message)
 
     assistant_message_content = [block.to_dict() for block in response.content]
 
