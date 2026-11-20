@@ -2,7 +2,6 @@ package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
@@ -240,6 +239,16 @@ class CredentialRepositoryTest {
                   .purpose(CredentialPurpose.STORAGE)
                   .s3Compatible(s3Compatible("value")));
     }
+    repositoryWithKey(key)
+        .addCredential(
+            new CreateCredentialRequest()
+                .name("c_gcp_credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServiceAccountKey(
+                    new GcpServiceAccountKeyRequest()
+                        .email("sa@project.iam.gserviceaccount.com")
+                        .privateKeyId("key-id")
+                        .privateKey(TestUtils.generatePkcs8PrivateKeyPem())));
     // An IAM role holds no secret, so it is never reported.
     repositoryWithKey(key)
         .addCredential(
@@ -250,43 +259,16 @@ class CredentialRepositoryTest {
 
     assertThat(repositoryWithKey(key).findUnreadableSecrets()).isEmpty();
     assertThat(repositoryWithKey(Optional.empty()).findUnreadableSecrets())
-        .containsOnlyKeys("a_credential", "b_credential")
+        .containsOnlyKeys("a_credential", "b_credential", "c_gcp_credential")
         .allSatisfy(
             (name, failure) ->
                 assertThat(failure.getMessage()).contains("no server.credential-encryption-key"));
     assertThat(
             repositoryWithKey(Optional.of(Base64.getEncoder().encodeToString(new byte[32])))
                 .findUnreadableSecrets())
-        .containsOnlyKeys("a_credential", "b_credential")
+        .containsOnlyKeys("a_credential", "b_credential", "c_gcp_credential")
         .allSatisfy(
             (name, failure) -> assertThat(failure.getMessage()).contains("encrypted with key"));
-  }
-
-  @Test
-  void testUnreadableGcpKeyIsFoundForAMissingOrChangedKey() {
-    // TODO(#2169): an encrypted key does not fit MySQL's tinytext column until it is widened.
-    assumeFalse(
-        String.valueOf(System.getenv("UC_TEST_DATABASE")).startsWith("MYSQL"),
-        "the credential column is too small on MySQL until #2169");
-    Optional<String> key = Optional.of(TestUtils.CREDENTIAL_ENCRYPTION_KEY);
-    repositoryWithKey(key)
-        .addCredential(
-            new CreateCredentialRequest()
-                .name("gcp_credential")
-                .purpose(CredentialPurpose.STORAGE)
-                .gcpServiceAccountKey(
-                    new GcpServiceAccountKeyRequest()
-                        .email("sa@project.iam.gserviceaccount.com")
-                        .privateKeyId("key-id")
-                        .privateKey(TestUtils.generatePkcs8PrivateKeyPem())));
-
-    assertThat(repositoryWithKey(key).findUnreadableSecrets()).isEmpty();
-    assertThat(repositoryWithKey(Optional.empty()).findUnreadableSecrets())
-        .containsOnlyKeys("gcp_credential");
-    assertThat(
-            repositoryWithKey(Optional.of(Base64.getEncoder().encodeToString(new byte[32])))
-                .findUnreadableSecrets())
-        .containsOnlyKeys("gcp_credential");
   }
 
   @Test
