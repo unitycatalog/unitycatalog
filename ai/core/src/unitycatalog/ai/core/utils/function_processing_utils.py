@@ -281,9 +281,11 @@ def generate_function_input_params_schema(
     for param_info in param_infos:
         pydantic_field = param_info_to_pydantic_type(param_info, strict=strict)
         strict = strict and pydantic_field.strict
+        # Required without a default, the same rule validate_input_params applies at call time.
+        default = ... if param_info.parameter_default is None else pydantic_field.default
         fields[param_info.name] = (
             pydantic_field.pydantic_type,
-            Field(default=pydantic_field.default, description=pydantic_field.description),
+            Field(default=default, description=pydantic_field.description),
         )
     model = create_model(params_name, **fields, __config__={"extra": "forbid"})
 
