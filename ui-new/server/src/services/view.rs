@@ -28,7 +28,8 @@ impl ViewService for UiRpc {
         let views = rows_of_kind(
             mapping::required_array(&value, "tables")?,
             TableKind::MetricView,
-            &request.schema,
+            request.schema.catalog_name,
+            request.schema.name,
         )
         .into_iter()
         .map(mapping::metric_view_summary)

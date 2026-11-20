@@ -6,7 +6,6 @@ use std::sync::Arc;
 use crate::mapping;
 use crate::proto::uc::v1::__buffa::view::{
     ColumnInputView, DependencyView, PageRequestView, PropertiesView, SchemaObjectRefView,
-    SchemaRefView,
 };
 use crate::proto::uc::v1::{
     dependency, CatalogServiceExt, ColumnTypeName, DataSourceFormat, FunctionServiceExt,
@@ -120,7 +119,8 @@ fn kind_mismatch(
 fn rows_of_kind<'a>(
     rows: &'a [Value],
     kind: TableKind,
-    schema: &SchemaRefView<'_>,
+    catalog: &str,
+    schema: &str,
 ) -> Vec<&'a Value> {
     let mut kept = Vec::new();
     let mut unclassified = Vec::new();
@@ -138,8 +138,8 @@ fn rows_of_kind<'a>(
             .map(|row| describe_row(row))
             .collect();
         tracing::warn!(
-            catalog = schema.catalog_name,
-            schema = schema.name,
+            catalog,
+            schema,
             count = unclassified.len(),
             ?examples,
             "skipped listed tables with no known table_type"
