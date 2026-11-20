@@ -2469,6 +2469,10 @@ class FakeParam:
         ("interval hour to second", "datetime.timedelta"),
         ("INTERVAL YEAR TO MONTH", "interval year to month"),
         ("interval month", "interval month"),
+        ("INTERVAL YEAR", "interval year"),
+        ("INTERVAL", "datetime.timedelta"),
+        ("CHAR(5)", "str"),
+        ("ARRAY<TIMESTAMP>", "list[datetime.datetime]"),
         ("ARRAY<DECIMAL(10,2)>", "list[Decimal]"),
         ("map<string,date>", "dict[str, datetime.date]"),
         ("STRUCT<field1:INT, field2:STRING>", "dict"),
@@ -2665,6 +2669,12 @@ def test_dynamically_construct_python_function_indentation(input_body, expected_
             ["from decimal import Decimal", "", "", "def test(count: int) -> Decimal:"],
         ),
         ({"count": ("LONG", "long")}, "STRING", ["def test(count: int) -> str:"]),
+        (
+            {"stamps": ("ARRAY<TIMESTAMP>", "array<timestamp>")},
+            "STRING",
+            ["import datetime", "", "", "def test(stamps: list[datetime.datetime]) -> str:"],
+        ),
+        ({"code": ("CHAR(5)", "char(5)")}, "STRING", ["def test(code: str) -> str:"]),
     ],
 )
 def test_reconstructed_source_starts_with_the_imports_its_annotations_need(
@@ -2680,6 +2690,26 @@ def test_reconstructed_source_starts_with_the_imports_its_annotations_need(
 
     assert source.splitlines()[: len(expected_head)] == expected_head
     assert namespace["test"](*(None for _ in params)) is None
+
+
+def test_reconstructed_docstring_returns_the_new_annotation():
+    function_info = generate_function_info_with_params_oss(
+        {"count": ("LONG", "long")}, routine_definition="return None", full_data_type="DATE"
+    )
+
+    source = dynamically_construct_python_function(function_info)
+
+    assert "    Returns:\n        datetime.date\n" in source
+
+
+def test_year_month_interval_still_fails_to_load():
+    function_info = generate_function_info_with_params_oss(
+        {"span": ("INTERVAL YEAR TO MONTH", "interval year to month")},
+        routine_definition="return None",
+    )
+
+    with pytest.raises(SyntaxError):
+        compile(dynamically_construct_python_function(function_info), "<source>", "exec")
 
 
 # ---------------------------
