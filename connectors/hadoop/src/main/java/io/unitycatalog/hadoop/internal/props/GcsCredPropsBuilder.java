@@ -3,17 +3,20 @@ package io.unitycatalog.hadoop.internal.props;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
+import io.unitycatalog.hadoop.internal.auth.GcsFixedTokenProvider;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 
 /** Builds GCS credential properties. */
 final class GcsCredPropsBuilder extends CredPropsBuilder {
+  private static final String GCS_AUTH_TYPE_KEY = "fs.gs.auth.type";
+  private static final String GCS_AUTH_TYPE_ACCESS_TOKEN_PROVIDER = "ACCESS_TOKEN_PROVIDER";
+  private static final String GCS_ACCESS_TOKEN_PROVIDER_KEY = "fs.gs.auth.access.token.provider";
   private static final String GCS_VENDED_TOKEN_PROVIDER_CLASS =
       "io.unitycatalog.hadoop.internal.auth.GcsVendedTokenProvider";
-  private static final String GCS_ACCESS_TOKEN_KEY = "fs.gs.auth.access.token.credential";
-  private static final String GCS_ACCESS_TOKEN_EXPIRATION_KEY =
-      "fs.gs.auth.access.token.expiration";
+  private static final String GCS_FIXED_TOKEN_PROVIDER_CLASS =
+      "io.unitycatalog.hadoop.internal.auth.GcsFixedTokenProvider";
   private static final String GCS_CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
   private static final String GCS_HNS_FOLDERS_KEY = "fs.gs.hierarchical.namespace.folders.enable";
   private static final String GCS_IMPLICIT_DIR_REPAIR_KEY = "fs.gs.implicit.dir.repair.enable";
@@ -58,8 +61,8 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
 
   @Override
   protected void setVendedProviderKeys() {
-    set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
-    set("fs.gs.auth.access.token.provider", GCS_VENDED_TOKEN_PROVIDER_CLASS);
+    set(GCS_AUTH_TYPE_KEY, GCS_AUTH_TYPE_ACCESS_TOKEN_PROVIDER);
+    set(GCS_ACCESS_TOKEN_PROVIDER_KEY, GCS_VENDED_TOKEN_PROVIDER_CLASS);
   }
 
   @Override
@@ -88,9 +91,13 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
     Long expirationTime =
         gcs.expirationTimeMillis() == null ? Long.MAX_VALUE : gcs.expirationTimeMillis();
     return Map.of(
-        GCS_ACCESS_TOKEN_KEY,
+        GCS_AUTH_TYPE_KEY,
+        GCS_AUTH_TYPE_ACCESS_TOKEN_PROVIDER,
+        GCS_ACCESS_TOKEN_PROVIDER_KEY,
+        GCS_FIXED_TOKEN_PROVIDER_CLASS,
+        GcsFixedTokenProvider.ACCESS_TOKEN_KEY,
         gcs.oauthToken(),
-        GCS_ACCESS_TOKEN_EXPIRATION_KEY,
+        GcsFixedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY,
         String.valueOf(expirationTime));
   }
 }

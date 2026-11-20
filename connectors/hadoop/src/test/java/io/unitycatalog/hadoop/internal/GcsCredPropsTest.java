@@ -2,15 +2,29 @@ package io.unitycatalog.hadoop.internal;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.hadoop.util.HadoopCredentialsConfiguration;
+import com.google.cloud.hadoop.util.HadoopCredentialsConfiguration.AccessTokenProviderCredentials;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class GcsCredPropsTest extends CredPropsBaseTest {
 
@@ -23,6 +37,11 @@ class GcsCredPropsTest extends CredPropsBaseTest {
   private static final String GHFS_AFS = "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS";
   private static final String VENDED_PROVIDER =
       "io.unitycatalog.hadoop.internal.auth.GcsVendedTokenProvider";
+  private static final String FIXED_PROVIDER =
+      "io.unitycatalog.hadoop.internal.auth.GcsFixedTokenProvider";
+  private static final String VENDED_TOKEN = "vended-gcs-token";
+  // 2100-01-01T00:00:00Z.
+  private static final long VENDED_EXPIRATION_MILLIS = 4_102_444_800_000L;
 
   @Override
   String scheme() {
@@ -59,6 +78,8 @@ class GcsCredPropsTest extends CredPropsBaseTest {
   @Override
   Map<String, String> staticCredKeys(Long expiration) {
     Map<String, String> keys = new HashMap<>();
+    keys.put("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
+    keys.put("fs.gs.auth.access.token.provider", FIXED_PROVIDER);
     keys.put("fs.gs.auth.access.token.credential", "token");
     keys.put(
         STATIC_EXPIRATION_KEY, String.valueOf(expiration == null ? Long.MAX_VALUE : expiration));
@@ -100,6 +121,74 @@ class GcsCredPropsTest extends CredPropsBaseTest {
   }
 
   // ---- GCS-only tests ------
+
+  /**
+   * The GCS connector resolves its credentials from the built props to the vended token and its
+   * expiration, whether or not renewal is enabled, rather than to the engine's own GCS identity.
+   */
+  @ParameterizedTest(name = "renew={0} credScoped={1} expiring={2}")
+  @CsvSource({
+    "false, false, false",
+    "false, false, true",
+    "true, false, false",
+    "true, false, true",
+    "false, true, true"
+  })
+  void gcsConnectorAuthenticatesWithTheVendedToken(
+      boolean renew, boolean credScoped, boolean expiring) throws Exception {
+    Long expiration = expiring ? VENDED_EXPIRATION_MILLIS : null;
+    GoogleCredentials credentials =
+        gcsConnectorCredentials(renew, credScoped, expiration, new Configuration(false));
+
+    assertThat(credentials).isInstanceOf(AccessTokenProviderCredentials.class);
+    assertThat(credentials.getRequestMetadata())
+        .containsExactlyEntriesOf(Map.of("Authorization", List.of("Bearer " + VENDED_TOKEN)));
+    assertThat(credentials.getAccessToken().getExpirationTime())
+        .isEqualTo(new Date(expiring ? VENDED_EXPIRATION_MILLIS : Long.MAX_VALUE));
+  }
+
+  /**
+   * The connector refreshes a token a few minutes before it expires. Without renewal, the token is
+   * still used until its expiration, and from then on the refresh fails.
+   */
+  @Test
+  void fixedTokenIsUsedUntilItExpires() throws Exception {
+    String clockName = UUID.randomUUID().toString();
+    Clock clock = Clock.getManualClock(clockName);
+    try {
+      Configuration conf = new Configuration(false);
+      conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+      Instant expiration = clock.now().plusSeconds(60).truncatedTo(ChronoUnit.MILLIS);
+      GoogleCredentials credentials =
+          gcsConnectorCredentials(false, false, expiration.toEpochMilli(), conf);
+
+      clock.sleep(Duration.between(clock.now(), expiration).minusMillis(1));
+      assertThat(credentials.getRequestMetadata())
+          .containsExactlyEntriesOf(Map.of("Authorization", List.of("Bearer " + VENDED_TOKEN)));
+      assertThat(credentials.getAccessToken().getExpirationTime()).isEqualTo(Date.from(expiration));
+
+      clock.sleep(Duration.ofMillis(1));
+      assertThatThrownBy(credentials::getRequestMetadata)
+          .isInstanceOf(IOException.class)
+          .hasMessage(
+              "The GCS token vended by Unity Catalog expired at "
+                  + expiration
+                  + " and credential renewal is disabled, so it cannot be renewed. Load the table"
+                  + " or path again to get a new token, or enable credential renewal.");
+    } finally {
+      Clock.removeManualClock(clockName);
+    }
+  }
+
+  /** Returns the credentials the GCS connector builds from {@code conf} plus the built props. */
+  private GoogleCredentials gcsConnectorCredentials(
+      boolean renew, boolean credScoped, Long expiration, Configuration conf) throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            mockGenericCredentialFetcher(new GcsCredential(VENDED_TOKEN, expiration, location()));
+    createCredPropsFor(CredKind.TABLE, renew, credScoped).forEach(conf::set);
+    return HadoopCredentialsConfiguration.getCredentials(conf, "fs.gs");
+  }
 
   @Test
   void conflictCheckDefaultsFalse() throws Exception {
