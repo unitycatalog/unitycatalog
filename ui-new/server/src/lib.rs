@@ -14,6 +14,8 @@ pub mod config;
 mod mapping;
 mod proxy;
 mod services;
+#[cfg(test)]
+mod test_logs;
 mod upstream;
 
 pub mod proto {

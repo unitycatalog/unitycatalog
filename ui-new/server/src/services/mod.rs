@@ -351,46 +351,19 @@ fn dependencies_value(dependencies: &buffa::RepeatedView<'_, DependencyView<'_>>
 
 #[cfg(test)]
 mod tests {
-    use std::io;
-    use std::sync::{Arc, Mutex};
-
     use serde_json::{json, Value};
 
     use super::{rows_of_kind, TableKind};
+    use crate::test_logs;
 
-    /// Collects one test's formatted log output.
-    #[derive(Clone, Default)]
-    struct Logs(Arc<Mutex<Vec<u8>>>);
-
-    impl io::Write for Logs {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    /// Runs `rows_of_kind` under a scoped subscriber and returns the names it
-    /// kept and the lines it logged.
+    /// Runs `rows_of_kind` and returns the names it kept and the lines it logged.
     fn kept_and_logged(rows: &[Value], kind: TableKind) -> (Vec<&str>, Vec<String>) {
-        let logs = Logs::default();
-        let writer = logs.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .with_writer(move || writer.clone())
-            .with_ansi(false)
-            .without_time()
-            .finish();
-        let kept = tracing::subscriber::with_default(subscriber, || {
+        test_logs::capture(|| {
             rows_of_kind(rows, kind, "main", "default")
                 .into_iter()
                 .map(|row| row["name"].as_str().unwrap())
                 .collect()
-        });
-        let output = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
-        (kept, output.lines().map(str::to_string).collect())
+        })
     }
 
     #[test]
