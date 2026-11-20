@@ -277,6 +277,33 @@ public class HttpRetryHandlerTest {
   }
 
   @Test
+  public void testSingleAttemptPolicyRethrowsWithoutSleeping()
+      throws IOException, InterruptedException {
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder().maxAttempts(1).initDelayMs(100L).build();
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/slow")).build();
+    java.net.SocketTimeoutException timeout = new java.net.SocketTimeoutException("timed out");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenThrow(timeout);
+
+    Instant start = clock.now();
+    HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
+
+    assertThatThrownBy(
+            () -> handler.call(mockClient, mockRequest, HttpResponse.BodyHandlers.ofString()))
+        .isSameAs(timeout);
+    verify(mockClient, times(1))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    assertThat(clock.now()).isEqualTo(start);
+  }
+
+  @Test
   public void testCustomPolicyCanStopRetryingBeforeMaxAttempts()
       throws IOException, InterruptedException {
     RetryPolicy retryPolicy =

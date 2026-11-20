@@ -47,13 +47,14 @@ public interface RetryPolicy {
   Duration sleepTime(int attempt);
 
   /**
-   * Determines whether another attempt may follow the given failed attempt.
+   * Determines whether a retry is allowed for the given attempt number.
    *
-   * <p>It is only asked while fewer than {@link #maxAttempts()} attempts have been made, so a
-   * policy can use it to stop retrying earlier, for example based on the attempt number.
+   * <p>The client's retry handler asks it after an attempt fails, and only while fewer than {@link
+   * #maxAttempts()} attempts have been made, so a policy can return {@code false} to stop retrying
+   * earlier.
    *
-   * @param attempt the number of the attempt that just failed, starting from 1
-   * @return {@code true} if another attempt may be made, {@code false} otherwise
+   * @param attempt the attempt number, starting from 1
+   * @return {@code true} if a retry is allowed for this attempt, {@code false} otherwise
    */
   boolean allowRetry(int attempt);
 }

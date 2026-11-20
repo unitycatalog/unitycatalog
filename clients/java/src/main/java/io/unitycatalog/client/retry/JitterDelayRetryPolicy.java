@@ -67,7 +67,7 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
   /**
    * Calculates the sleep time before the next retry attempt using exponential backoff with jitter.
    *
-   * @param attempt the current attempt number (1-indexed)
+   * @param attempt the number of the attempt that just failed (1-indexed)
    * @return the duration to sleep before retrying
    */
   @Override
@@ -79,14 +79,14 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
   }
 
   /**
-   * Determines whether another attempt may follow the given failed attempt.
+   * Determines whether a retry should be attempted based on the current attempt number.
    *
-   * @param attempt the number of the attempt that just failed (1-indexed)
-   * @return true while fewer than {@link #maxAttempts()} attempts have been made
+   * @param attempt the current attempt number (1-indexed)
+   * @return true if retry is allowed, false otherwise
    */
   @Override
   public boolean allowRetry(int attempt) {
-    return attempt < maxAttempts;
+    return attempt <= maxAttempts;
   }
 
   /**
