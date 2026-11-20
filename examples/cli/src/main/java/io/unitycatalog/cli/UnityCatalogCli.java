@@ -11,6 +11,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -20,6 +21,8 @@ import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.core.config.Configurator;
 
 public class UnityCatalogCli {
+  private static final String UC_BASE_PATH = "/api/2.1/unity-catalog";
+  private static final String CONTROL_BASE_PATH = "/api/1.0/unity-control";
 
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/cli.log4j2.properties");
@@ -125,7 +128,7 @@ public class UnityCatalogCli {
       String command = subArgs[0];
       switch (command) {
         case CliUtils.AUTH:
-          apiClient.setBasePath("/api/1.0/unity-control");
+          apiClient.updateBaseUri(getControlClient(cmd).getBaseUri());
           AuthCli.handle(cmd, apiClient);
           break;
         case CliUtils.CATALOG:
@@ -259,6 +262,7 @@ public class UnityCatalogCli {
       apiClient.setPort(uri.getPort());
     }
     apiClient.setScheme(uri.getScheme());
+    apiClient.setBasePath(getServerPath(uri) + UC_BASE_PATH);
     String customAuthToken = loadProperty(CliUtils.AUTH_TOKEN, cmd);
     if (!customAuthToken.isEmpty()) {
       apiClient.setRequestInterceptor(
@@ -286,6 +290,7 @@ public class UnityCatalogCli {
       controlClient.setPort(uri.getPort());
     }
     controlClient.setScheme(uri.getScheme());
+    controlClient.setBasePath(getServerPath(uri) + CONTROL_BASE_PATH);
     String customAuthToken = loadProperty(CliUtils.AUTH_TOKEN, cmd);
     if (!customAuthToken.isEmpty()) {
       controlClient.setRequestInterceptor(
@@ -294,5 +299,16 @@ public class UnityCatalogCli {
           });
     }
     return controlClient;
+  }
+
+  /**
+   * Returns the path of the server URL without trailing slashes, so that a server behind a gateway
+   * path such as {@code https://gateway.example.com/uc} is reached at {@code /uc/api/...}.
+   *
+   * @param uri the server URL
+   * @return the raw path, which is empty when the URL has none
+   */
+  private static String getServerPath(URI uri) {
+    return Objects.requireNonNullElse(uri.getRawPath(), "").replaceAll("/+$", "");
   }
 }
