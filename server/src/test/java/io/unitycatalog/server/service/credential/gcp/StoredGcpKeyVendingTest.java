@@ -2,7 +2,6 @@ package io.unitycatalog.server.service.credential.gcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.client.ApiException;
@@ -94,10 +93,6 @@ public class StoredGcpKeyVendingTest extends BaseCRUDTest {
   @BeforeEach
   @Override
   public void setUp() {
-    // TODO(#2169): an encrypted key does not fit MySQL's tinytext column until it is widened.
-    assumeFalse(
-        String.valueOf(System.getenv("UC_TEST_DATABASE")).startsWith("MYSQL"),
-        "the credential column is too small on MySQL until #2169");
     super.setUp();
     var apiClient = TestUtils.createApiClient(serverConfig);
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient);
