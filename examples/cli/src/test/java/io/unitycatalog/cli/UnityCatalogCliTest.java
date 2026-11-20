@@ -2,6 +2,7 @@ package io.unitycatalog.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -22,6 +23,7 @@ public class UnityCatalogCliTest {
   private HttpServer server;
   private String responseBody;
   private final List<String> requestPaths = new CopyOnWriteArrayList<>();
+  private final List<String> authorizationHeaders = new CopyOnWriteArrayList<>();
 
   @BeforeEach
   public void setUp() throws IOException {
@@ -30,6 +32,8 @@ public class UnityCatalogCliTest {
         "/",
         exchange -> {
           requestPaths.add(exchange.getRequestURI().getRawPath());
+          authorizationHeaders.add(
+              String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().set("Content-Type", "application/json");
           exchange.sendResponseHeaders(200, body.length);
@@ -52,7 +56,15 @@ public class UnityCatalogCliTest {
         Arguments.of("/uc", "/uc"),
         Arguments.of("/uc/", "/uc"),
         Arguments.of("/gateway/uc//", "/gateway/uc"),
-        Arguments.of("/my%20gateway", "/my%20gateway"));
+        Arguments.of("/my%20gateway", "/my%20gateway"),
+        Arguments.of("/api/2.1/unity-catalog", ""),
+        Arguments.of("/api/2.1/unity-catalog/", ""),
+        Arguments.of("/api/1.0/unity-control", ""),
+        Arguments.of("/api/1.0/unity-control/", ""),
+        Arguments.of("/uc/api/2.1/unity-catalog", "/uc"),
+        Arguments.of("/uc//api/1.0/unity-control/", "/uc"),
+        Arguments.of("/api/2.1/unity-catalog/uc", "/api/2.1/unity-catalog/uc"),
+        Arguments.of("/api/2.1", "/api/2.1"));
   }
 
   @ParameterizedTest
@@ -61,6 +73,7 @@ public class UnityCatalogCliTest {
     responseBody = "{\"catalogs\":[]}";
     runCli(serverPath, "catalog", "list");
     assertThat(requestPaths).containsExactly(expectedPrefix + "/api/2.1/unity-catalog/catalogs");
+    assertThat(authorizationHeaders).containsExactly("Bearer test-token");
   }
 
   @ParameterizedTest
@@ -69,20 +82,24 @@ public class UnityCatalogCliTest {
     responseBody = "{\"Resources\":[]}";
     runCli(serverPath, "user", "list");
     assertThat(requestPaths).containsExactly(expectedPrefix + "/api/1.0/unity-control/scim2/Users");
+    assertThat(authorizationHeaders).containsExactly("Bearer test-token");
   }
 
   @ParameterizedTest
   @MethodSource("serverPaths")
   public void testAuthLoginKeepsServerPath(String serverPath, String expectedPrefix) {
     responseBody = "{\"access_token\":\"exchanged-token\"}";
-    runCli(serverPath, "auth", "login", "--identity_token", "identity-token");
+    JsonNode output = runCli(serverPath, "auth", "login", "--identity_token", "identity-token");
     assertThat(requestPaths).containsExactly(expectedPrefix + "/api/1.0/unity-control/auth/tokens");
+    assertThat(output.get("access_token").asText()).isEqualTo("exchanged-token");
   }
 
-  private void runCli(String serverPath, String... args) {
+  private JsonNode runCli(String serverPath, String... args) {
     String serverUrl = "http://127.0.0.1:" + server.getAddress().getPort() + serverPath;
-    TestUtils.executeCliCommand(
-        Stream.concat(Stream.of("--server", serverUrl, "--output", "json"), Stream.of(args))
+    return TestUtils.executeCliCommand(
+        Stream.concat(
+                Stream.of("--server", serverUrl, "--auth_token", "test-token", "--output", "json"),
+                Stream.of(args))
             .toList());
   }
 }
