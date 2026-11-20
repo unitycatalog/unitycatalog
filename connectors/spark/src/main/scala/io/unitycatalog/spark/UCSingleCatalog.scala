@@ -1255,10 +1255,18 @@ private[spark] class UCProxy(
       if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
       column
     }
-    val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
+    val dataSourceFormat = convertDatasourceFormat(format)
+    // Spark also passes each OPTIONS entry without the `option.` prefix, so OPTIONS (comment '#')
+    // arrives as the table comment unless a COMMENT clause replaced it. For non-Delta tables,
+    // which split options from properties the same way on load, a comment equal to the option is
+    // that copy.
+    val comment = Option(properties.get(TableCatalog.PROP_COMMENT)).filterNot { c =>
+      dataSourceFormat != DataSourceFormat.DELTA &&
+        c == properties.get(TableCatalog.OPTION_PREFIX + TableCatalog.PROP_COMMENT)
+    }
     comment.foreach(createTable.setComment(_))
     createTable.setColumns(columns)
-    createTable.setDataSourceFormat(convertDatasourceFormat(format))
+    createTable.setDataSourceFormat(dataSourceFormat)
     // Drop V2 reserved keys, vended fs.* credentials, and Spark Hive-metastore schema JSON.
     // Same deny-list as createView; see UCTableProperties.shouldPersistProperty.
     val propertiesToServer = properties.view
