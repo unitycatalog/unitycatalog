@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -30,18 +31,38 @@ import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
+import org.apache.iceberg.MetadataUpdate;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
+import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
+import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.rest.Endpoint;
+import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
+import org.apache.iceberg.types.Types;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentCaptor;
 
 public class IcebergRestCatalogServiceTest {
+
+  private static final String TABLE_LOCATION = "s3://bucket/table";
+
+  private static final Schema SCHEMA =
+      new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
 
   private final UnityCatalogAuthorizer authorizer = mock();
   private final Repositories repositories = mock();
@@ -50,6 +71,7 @@ public class IcebergRestCatalogServiceTest {
   private final ServerProperties serverProperties = mock();
   private final TableRepository tableRepository = mock();
   private final TableConfigService tableConfigService = mock();
+  private final MetadataService metadataService = mock();
   private IcebergRestCatalogService service;
 
   @BeforeEach
@@ -63,11 +85,7 @@ public class IcebergRestCatalogServiceTest {
     when(repositories.getSessionFactory()).thenReturn(mock(SessionFactory.class));
     service =
         new IcebergRestCatalogService(
-            authorizer,
-            tableConfigService,
-            mock(MetadataService.class),
-            repositories,
-            serverProperties);
+            authorizer, tableConfigService, metadataService, repositories, serverProperties);
   }
 
   @Test
@@ -275,5 +293,157 @@ public class IcebergRestCatalogServiceTest {
     assertThatThrownBy(() -> service.loadCredentials("cat", "ns", "tbl"))
         .isInstanceOf(NoSuchTableException.class)
         .hasMessageContaining("ns.tbl");
+  }
+
+  /** Failures a table commit raises before or within a transaction that is rolled back. */
+  static Stream<Arguments> rejectedCommitFailures() {
+    return Stream.of(
+            ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+            ErrorCode.TABLE_NOT_FOUND,
+            ErrorCode.SCHEMA_NOT_FOUND,
+            ErrorCode.CATALOG_NOT_FOUND,
+            ErrorCode.INVALID_ARGUMENT)
+        .map(code -> Arguments.of(new BaseException(code, "rejected")));
+  }
+
+  /** Failures a table create raises before or within a transaction that is rolled back. */
+  static Stream<Arguments> rejectedCreateFailures() {
+    return Stream.of(
+            ErrorCode.TABLE_ALREADY_EXISTS,
+            ErrorCode.SCHEMA_NOT_FOUND,
+            ErrorCode.CATALOG_NOT_FOUND,
+            ErrorCode.INVALID_ARGUMENT,
+            ErrorCode.FAILED_PRECONDITION)
+        .map(code -> Arguments.of(new BaseException(code, "rejected")));
+  }
+
+  /**
+   * Failures after which the database may hold the new metadata location: a commit that failed in
+   * flight is wrapped as INTERNAL, and a session close failing after the commit is thrown as-is.
+   */
+  static Stream<Arguments> unknownOutcomeFailures() {
+    return Stream.of(
+        Arguments.of(new BaseException(ErrorCode.INTERNAL, "connection lost during commit")),
+        Arguments.of(new IllegalStateException("session close failed after commit")));
+  }
+
+  @ParameterizedTest
+  @MethodSource("rejectedCommitFailures")
+  public void updateTableDeletesTheNewMetadataFileWhenTheCommitIsRejected(
+      RuntimeException failure) {
+    NormalizedURL written = failUpdateTable(failure);
+
+    verify(metadataService).deleteTableMetadata(written, NormalizedURL.from(TABLE_LOCATION));
+  }
+
+  @ParameterizedTest
+  @MethodSource("unknownOutcomeFailures")
+  public void updateTableKeepsTheNewMetadataFileWhenTheCommitOutcomeIsUnknown(
+      RuntimeException failure) {
+    failUpdateTable(failure);
+
+    verify(metadataService, never()).deleteTableMetadata(any(), any());
+  }
+
+  @ParameterizedTest
+  @MethodSource("rejectedCreateFailures")
+  public void createTableDeletesTheFirstMetadataFileWhenTheCreateIsRejected(
+      RuntimeException failure) {
+    NormalizedURL written = failCreateTable(failure);
+
+    verify(metadataService).deleteTableMetadata(written, NormalizedURL.from(TABLE_LOCATION));
+  }
+
+  @ParameterizedTest
+  @MethodSource("unknownOutcomeFailures")
+  public void createTableKeepsTheFirstMetadataFileWhenTheCreateOutcomeIsUnknown(
+      RuntimeException failure) {
+    failCreateTable(failure);
+
+    verify(metadataService, never()).deleteTableMetadata(any(), any());
+  }
+
+  @Test
+  public void stagedCreateCommitDeletesTheFirstMetadataFileWhenTheTableAlreadyExists() {
+    BaseException exists = new BaseException(ErrorCode.TABLE_ALREADY_EXISTS, "exists");
+    when(tableRepository.createTableForIceberg(any(), any())).thenThrow(exists);
+
+    assertThatThrownBy(() -> service.updateTable("cat", "ns", "tbl", stagedCreateCommit()))
+        .isInstanceOf(CommitFailedException.class)
+        .hasMessage("Requirement failed: table already exists: ns.tbl");
+    NormalizedURL written = writtenMetadataLocation();
+    verify(metadataService).deleteTableMetadata(written, NormalizedURL.from(TABLE_LOCATION));
+  }
+
+  @Test
+  public void stagedCreateCommitKeepsTheFirstMetadataFileWhenTheCreateOutcomeIsUnknown() {
+    BaseException unknown = new BaseException(ErrorCode.INTERNAL, "connection lost during commit");
+    when(tableRepository.createTableForIceberg(any(), any())).thenThrow(unknown);
+
+    assertThatThrownBy(() -> service.updateTable("cat", "ns", "tbl", stagedCreateCommit()))
+        .isSameAs(unknown);
+    assertThat(writtenMetadataLocation().toString()).startsWith(TABLE_LOCATION + "/metadata/");
+    verify(metadataService, never()).deleteTableMetadata(any(), any());
+  }
+
+  /** The commit an Iceberg client sends to finish a staged create of an external table. */
+  private static UpdateTableRequest stagedCreateCommit() {
+    TableMetadata staged =
+        TableMetadata.newTableMetadata(
+            SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of());
+    return new UpdateTableRequest(
+        List.of(new UpdateRequirement.AssertTableDoesNotExist()), staged.changes());
+  }
+
+  /**
+   * Commits a property change to a table whose metadata pointer swap fails with {@code failure},
+   * checks that the failure reaches the caller unchanged, and returns the metadata file written.
+   */
+  private NormalizedURL failUpdateTable(RuntimeException failure) {
+    String currentLocation =
+        TABLE_LOCATION + "/metadata/00001-" + UUID.randomUUID() + ".metadata.json";
+    TableMetadata base =
+        TableMetadata.newTableMetadata(
+            SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of());
+    when(tableRepository.getNativeIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                UUID.randomUUID(), DataSourceFormat.ICEBERG, currentLocation, TABLE_LOCATION));
+    when(metadataService.readTableMetadata(any(), any())).thenReturn(base);
+    doThrow(failure)
+        .when(tableRepository)
+        .commitIcebergTable(
+            eq("cat"), eq("ns"), eq("tbl"), eq(currentLocation), any(), any(), any());
+    UpdateTableRequest request =
+        new UpdateTableRequest(
+            List.of(new UpdateRequirement.AssertTableUUID(base.uuid())),
+            List.of(new MetadataUpdate.SetProperties(Map.of("k", "v"))));
+
+    assertThatThrownBy(() -> service.updateTable("cat", "ns", "tbl", request)).isSameAs(failure);
+    return writtenMetadataLocation();
+  }
+
+  /**
+   * Creates an external table whose registration fails with {@code failure}, checks that the
+   * failure reaches the caller unchanged, and returns the metadata file written.
+   */
+  private NormalizedURL failCreateTable(RuntimeException failure) {
+    when(tableRepository.createTableForIceberg(any(), any())).thenThrow(failure);
+    CreateTableRequest request =
+        CreateTableRequest.builder()
+            .withName("tbl")
+            .withSchema(SCHEMA)
+            .withLocation(TABLE_LOCATION)
+            .build();
+
+    assertThatThrownBy(() -> service.createTable("cat", "ns", request)).isSameAs(failure);
+    return writtenMetadataLocation();
+  }
+
+  private NormalizedURL writtenMetadataLocation() {
+    ArgumentCaptor<NormalizedURL> written = ArgumentCaptor.forClass(NormalizedURL.class);
+    verify(metadataService)
+        .writeTableMetadata(any(), written.capture(), eq(NormalizedURL.from(TABLE_LOCATION)));
+    return written.getValue();
   }
 }

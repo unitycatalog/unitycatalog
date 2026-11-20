@@ -621,7 +621,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     try {
       tableInfo = tableRepository.createTableForIceberg(createTable, metadataLocation);
     } catch (RuntimeException e) {
-      metadataService.deleteTableMetadata(metadataLocation, tableLocation);
+      deleteMetadataIfRejected(e, metadataLocation, tableLocation);
       if (fromCommit
           && e instanceof BaseException baseException
           && baseException.getErrorCode() == ErrorCode.TABLE_ALREADY_EXISTS) {
@@ -718,9 +718,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           IcebergSchemaConverter.toColumnInfos(updated.schema()),
           updated.properties());
     } catch (RuntimeException e) {
-      // The metadata file was written before the swap, so any failure (a lost commit race or an
-      // unexpected error) leaves it orphaned unless we clean it up.
-      metadataService.deleteTableMetadata(newMetadataLocation, tableLocation);
+      deleteMetadataIfRejected(e, newMetadataLocation, tableLocation);
       throw e;
     }
 
@@ -730,6 +728,31 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             tableConfigService.getTableConfig(
                 tableLocation, READ_WRITE, credentialsEndpoint(catalog, namespace, table)))
         .build();
+  }
+
+  /**
+   * Deletes the metadata file a failed commit wrote, but only when the failure means the commit did
+   * not happen: a 4xx {@link BaseException}, which the repository raises before or within the
+   * transaction it rolls back. Any other failure, such as a lost connection during the database
+   * commit or a session close failing after it, may have stored this file as the table's metadata
+   * location, so the file is kept: deleting it would leave the table unreadable. Such a failure
+   * reaches the client as a 5xx, which an Iceberg client reads on a commit as an unknown outcome.
+   *
+   * @param failure the exception the repository write threw
+   * @param metadataLocation the metadata file written for the failed commit
+   * @param tableLocation the table location the file must be under
+   */
+  private void deleteMetadataIfRejected(
+      RuntimeException failure, NormalizedURL metadataLocation, NormalizedURL tableLocation) {
+    if (failure instanceof BaseException baseException
+        && baseException.getErrorCode().getHttpStatus().isClientError()) {
+      metadataService.deleteTableMetadata(metadataLocation, tableLocation);
+      return;
+    }
+    LOGGER.warn(
+        "Keeping Iceberg metadata file {}: the commit that wrote it may have succeeded ({})",
+        metadataLocation,
+        failure.toString());
   }
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
