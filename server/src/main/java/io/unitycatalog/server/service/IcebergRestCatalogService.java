@@ -912,7 +912,10 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     ViewMetadataService store = viewMetadataService();
     TableRepository.IcebergViewState state =
         tableRepository.getIcebergViewState(catalog, namespace, view);
-    return viewResponse(store.read(state.viewId().toString(), state.metadataLocation()));
+    return viewResponse(
+        state.metadataLocation() == null
+            ? store.readNative(state.view())
+            : store.read(state.view().getTableId(), state.metadataLocation()));
   }
 
   private ViewMetadataService viewMetadataService() {

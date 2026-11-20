@@ -4,11 +4,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.unitycatalog.server.delta.model.DeltaArrayType;
+import io.unitycatalog.server.delta.model.DeltaDataType;
+import io.unitycatalog.server.delta.model.DeltaDecimalType;
+import io.unitycatalog.server.delta.model.DeltaMapType;
+import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
+import io.unitycatalog.server.utils.ColumnUtils;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.exceptions.BadRequestException;
@@ -16,9 +26,9 @@ import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 
 /**
- * Converts an Iceberg schema into Unity Catalog {@link ColumnInfo}s so tables created through the
- * Iceberg REST catalog are browsable through the UC API and UI. The Iceberg metadata file remains
- * the source of truth for Iceberg clients; this conversion only feeds UC's own column listing.
+ * Converts between Iceberg schemas and Unity Catalog {@link ColumnInfo}s. Iceberg table metadata
+ * remains authoritative for table clients; its conversion feeds UC's column listing. Native view
+ * snapshots derive their schemas from the canonical UC columns.
  *
  * <p>{@code type_json} is rendered in the Spark StructField JSON shape that UC stores for all other
  * formats (see {@code ColumnUtils.validateTypeJson}).
@@ -50,6 +60,90 @@ public final class IcebergSchemaConverter {
       columns.add(column);
     }
     return columns;
+  }
+
+  /** Native views have no stored Iceberg field IDs; assign stable IDs in column order. */
+  static Schema toIcebergSchema(List<ColumnInfo> columns) {
+    AtomicInteger ids = new AtomicInteger();
+    List<Types.NestedField> fields = new ArrayList<>();
+    var ordered = columns.stream().sorted(Comparator.comparing(ColumnInfo::getPosition)).toList();
+    var names = new HashSet<String>();
+    for (int position = 0; position < ordered.size(); position++) {
+      ColumnInfo column = ordered.get(position);
+      if (column.getPosition() != position || !names.add(column.getName())) {
+        throw new BadRequestException(
+            "Native view column order or name is invalid: %s", column.getName());
+      }
+      try {
+        DeltaStructField field = ColumnUtils.toStructField(column);
+        int id = ids.incrementAndGet();
+        fields.add(
+            Types.NestedField.of(
+                id,
+                !Boolean.FALSE.equals(field.getNullable()),
+                field.getName(),
+                toIcebergType(field.getType(), ids),
+                column.getComment()));
+      } catch (IllegalStateException | IllegalArgumentException e) {
+        throw new BadRequestException(
+            e, "Native view column cannot be represented in Iceberg: %s", column.getName());
+      }
+    }
+    return new Schema(fields);
+  }
+
+  private static Type toIcebergType(DeltaDataType type, AtomicInteger ids) {
+    if (type instanceof DeltaDecimalType decimal) {
+      return Types.DecimalType.of(decimal.getPrecision(), decimal.getScale());
+    }
+    if (type instanceof DeltaStructType struct) {
+      List<Types.NestedField> fields = new ArrayList<>();
+      for (DeltaStructField field : struct.getFields()) {
+        int id = ids.incrementAndGet();
+        Object comment = field.getMetadata() == null ? null : field.getMetadata().get("comment");
+        fields.add(
+            Types.NestedField.of(
+                id,
+                !Boolean.FALSE.equals(field.getNullable()),
+                field.getName(),
+                toIcebergType(field.getType(), ids),
+                comment instanceof String text ? text : null));
+      }
+      return Types.StructType.of(fields);
+    }
+    if (type instanceof DeltaArrayType array) {
+      int id = ids.incrementAndGet();
+      Type element = toIcebergType(array.getElementType(), ids);
+      return Boolean.FALSE.equals(array.getContainsNull())
+          ? Types.ListType.ofRequired(id, element)
+          : Types.ListType.ofOptional(id, element);
+    }
+    if (type instanceof DeltaMapType map) {
+      int keyId = ids.incrementAndGet();
+      int valueId = ids.incrementAndGet();
+      Type key = toIcebergType(map.getKeyType(), ids);
+      Type value = toIcebergType(map.getValueType(), ids);
+      return Boolean.FALSE.equals(map.getValueContainsNull())
+          ? Types.MapType.ofRequired(keyId, valueId, key, value)
+          : Types.MapType.ofOptional(keyId, valueId, key, value);
+    }
+    if (type == null) {
+      throw new BadRequestException("Missing native view column type");
+    }
+    return switch (type.getType()) {
+      case "boolean" -> Types.BooleanType.get();
+      case "integer", "int" -> Types.IntegerType.get();
+      case "long" -> Types.LongType.get();
+      case "float" -> Types.FloatType.get();
+      case "double" -> Types.DoubleType.get();
+      case "date" -> Types.DateType.get();
+      case "timestamp" -> Types.TimestampType.withZone();
+      case "timestamp_ntz" -> Types.TimestampType.withoutZone();
+      case "string" -> Types.StringType.get();
+      case "binary" -> Types.BinaryType.get();
+      case "variant" -> Types.VariantType.get();
+      default -> throw new BadRequestException("Unsupported native view type: %s", type.getType());
+    };
   }
 
   private static ObjectNode structFieldJson(Types.NestedField field) {

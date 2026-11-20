@@ -73,8 +73,8 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 
 | Method | Path                                                         | Operation  | Description                    |
 |--------|--------------------------------------------------------------|------------|--------------------------------|
-| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `loadView` | Load an IRC-created view |
-| HEAD   | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `viewExists` | Check an IRC-created view's existence |
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `loadView` | Load an IRC-created or supported native UC view |
+| HEAD   | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `viewExists` | Check an ordinary view's existence |
 | POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/views` | `createView` | Create a Spark SQL view |
 | DELETE | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `dropView` | Drop an IRC-created view |
 

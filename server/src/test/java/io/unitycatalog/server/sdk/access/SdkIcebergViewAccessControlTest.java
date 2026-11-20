@@ -3,11 +3,13 @@ package io.unitycatalog.server.sdk.access;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.IcebergViewTestUtils;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestUtils;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.types.Types;
@@ -60,5 +62,31 @@ public class SdkIcebergViewAccessControlTest extends SdkAccessControlBaseCRUDTes
     assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, "base_table"), 403);
     owner.dropView(catalog, namespace, "v");
     assertThat(owner.viewExists(catalog, namespace, "v")).isFalse();
+
+    var nativeApi =
+        new TablesApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));
+    String nativeName = "native_view";
+    String nativeFullName = catalog + "." + namespace + "." + nativeName;
+    var nativeView =
+        nativeApi.createTable(
+            IcebergViewTestUtils.nativeRequest(
+                catalog,
+                namespace,
+                nativeName,
+                "select id from " + catalog + "." + namespace + ".base_table"));
+    assertIcebergApiException(() -> reader.loadView(catalog, namespace, nativeName), 403);
+    grantPermissions(REGULAR_1, SecurableType.TABLE, nativeFullName, Privileges.READ_METADATA);
+    var response = reader.loadView(catalog, namespace, nativeName);
+    assertThat(response.metadata().uuid()).isEqualTo(nativeView.getTableId());
+    assertThat(response.config()).isEmpty();
+    assertThat(reader.viewExists(catalog, namespace, nativeName)).isTrue();
+    assertIcebergApiException(() -> reader.dropView(catalog, namespace, nativeName), 403);
+    assertIcebergApiException(() -> owner.dropView(catalog, namespace, nativeName), 404);
+    assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, nativeName), 403);
+    grantPermissions(REGULAR_1, SecurableType.TABLE, nativeFullName, Privileges.SELECT);
+    assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, nativeName), 404);
+    assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, "base_table"), 403);
+    assertThat(nativeApi.getTable(nativeFullName, true, false, false)).isEqualTo(nativeView);
+    nativeApi.deleteTable(nativeFullName);
   }
 }

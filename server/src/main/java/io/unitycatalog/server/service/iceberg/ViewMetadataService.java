@@ -1,12 +1,17 @@
 package io.unitycatalog.server.service.iceberg;
 
+import com.google.common.hash.Hashing;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TableInfo;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.List;
@@ -105,6 +110,41 @@ public final class ViewMetadataService {
     return properties;
   }
 
+  /** Materialize a reusable native snapshot without changing the canonical view or its pointer. */
+  public ViewMetadata readNative(TableInfo info) {
+    Path directory = directory(info.getTableId());
+    String location = directory.toUri().toString();
+    if (!location.endsWith("/")) {
+      location += "/";
+    }
+    ViewMetadata metadata = NativeViewMetadata.from(info, location);
+    String json = ViewMetadataParser.toJson(metadata);
+    String digest = Hashing.sha256().hashString(json, StandardCharsets.UTF_8).toString();
+    Path file = directory.resolve("native-" + digest + ".metadata.json");
+    try {
+      if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+        prepareDirectory(directory);
+        Path temporary = directory.resolve(UUID.randomUUID() + ".tmp");
+        Files.writeString(temporary, json, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        // Readers see a complete snapshot. Concurrent writers publish identical bytes at this path.
+        try {
+          Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
+        } catch (FileAlreadyExistsException e) {
+          // Some providers refuse to replace a snapshot another reader just published.
+          Files.deleteIfExists(temporary);
+        }
+      }
+      ViewMetadata loaded = read(info.getTableId(), file.toUri().toString());
+      if (!json.equals(Files.readString(file))) {
+        throw new BaseException(
+            ErrorCode.INTERNAL, "Native view metadata snapshot is inconsistent");
+      }
+      return loaded;
+    } catch (IOException | UncheckedIOException | IllegalArgumentException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Could not materialize native view metadata", e);
+    }
+  }
+
   private Path directory(String uuid) {
     return root.resolve(UUID.fromString(uuid).toString());
   }
@@ -113,11 +153,7 @@ public final class ViewMetadataService {
     Path directory = directory(metadata.uuid());
     Path file = directory.resolve(UUID.randomUUID() + ".metadata.json");
     try {
-      Files.createDirectories(directory);
-      // The root is trusted administrator configuration. Reject links in its descendants.
-      if (Files.isSymbolicLink(directory)) {
-        throw new IOException("View metadata directory is a symbolic link");
-      }
+      prepareDirectory(directory);
       Files.writeString(
           file,
           ViewMetadataParser.toJson(metadata),
@@ -126,6 +162,14 @@ public final class ViewMetadataService {
       return ViewMetadataParser.fromJson(file.toUri().toString(), Files.readString(file));
     } catch (IOException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Could not persist view metadata", e);
+    }
+  }
+
+  private static void prepareDirectory(Path directory) throws IOException {
+    Files.createDirectories(directory);
+    // The root is trusted administrator configuration. Reject links in its descendants.
+    if (Files.isSymbolicLink(directory)) {
+      throw new IOException("View metadata directory is a symbolic link");
     }
   }
 
