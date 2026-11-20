@@ -18,7 +18,10 @@ from unitycatalog.ai.test_utils.client_utils import (
     requires_databricks,
     set_default_client,
 )
-from unitycatalog.ai.test_utils.function_utils import create_function_and_cleanup
+from unitycatalog.ai.test_utils.function_utils import (
+    create_function_and_cleanup,
+    mock_schema_with_inaccessible_function,
+)
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
@@ -357,3 +360,13 @@ def test_uc_function_to_anthropic_tool_permission_denied(filter_accessible_funct
                 function_name="code",
                 filter_accessible_functions=filter_accessible_functions,
             )
+
+
+def test_toolkit_with_wildcard_skips_inaccessible_functions():
+    client = get_client()
+    with mock_schema_with_inaccessible_function(client):
+        toolkit = UCFunctionToolkit(
+            function_names=["catalog.schema.*"], client=client, filter_accessible_functions=True
+        )
+
+    assert [tool.name for tool in toolkit.tools] == ["catalog__schema__accessible"]
