@@ -471,7 +471,8 @@ The following steps allow you to test user and admin authentication to your loca
 
 `bin/uc-admin-token` prints an admin token signed with the server's key. Like the server, it reads `etc/conf` in
 the current directory and the `UC_` environment variables, so run it from the directory you start the server in, with
-the same environment; the server does not write the token to a file. The token does not expire, so treat it like the key itself. The following command uses it to view the user list.
+the same environment; the server does not write the token to a file. The token does not expire, so treat it like the
+key itself. The following command uses it to view the user list.
 
 ```sh
 bin/uc --auth_token "$(bin/uc-admin-token)" user list

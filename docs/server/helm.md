@@ -162,6 +162,13 @@ server:
     name: uc-token-signing-key
 ```
 
+To get an admin token signed with that key, for example to create the first users, run `bin/uc-admin-token` in the
+server container:
+
+```sh
+kubectl exec --namespace unitycatalog deploy/unitycatalog-server -c server -- bin/uc-admin-token
+```
+
 ## Upgrade and uninstall
 
 To upgrade, read the release notes, scale the server to 0 replicas (`kubectl scale deployment` with the chart's

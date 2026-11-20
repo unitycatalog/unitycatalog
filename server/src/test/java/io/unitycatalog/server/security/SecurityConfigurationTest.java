@@ -1,9 +1,15 @@
 package io.unitycatalog.server.security;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -11,6 +17,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -83,6 +90,16 @@ class SecurityConfigurationTest {
     SecurityConfiguration generated = new SecurityConfiguration(configurationFolder);
     assertThat(SecurityConfiguration.loadExisting(noSettings, configurationFolder).rsaPrivateKey())
         .isEqualTo(generated.rsaPrivateKey());
+
+    // The command prints only the token, and the server's key verifies it.
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    AdminTokenCommand.run(
+        noSettings, configurationFolder, new PrintStream(out, true, StandardCharsets.UTF_8));
+    List<String> lines = out.toString(StandardCharsets.UTF_8).lines().toList();
+    assertThat(lines).hasSize(1);
+    DecodedJWT token =
+        JWT.require(generated.algorithmRSA()).withIssuer(INTERNAL).build().verify(lines.get(0));
+    assertThat(token.getClaim(JwtClaim.SUBJECT.key()).asString()).isEqualTo("admin");
   }
 
   @Test

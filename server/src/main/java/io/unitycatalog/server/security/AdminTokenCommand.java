@@ -3,6 +3,7 @@ package io.unitycatalog.server.security;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.security.SecurityContext.Issuers;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.apache.logging.log4j.Level;
@@ -27,12 +28,23 @@ public final class AdminTokenCommand {
     } else {
       Configurator.setRootLevel(Level.OFF);
     }
+    try {
+      run(
+          new ServerProperties(UnityCatalogServer.SERVER_PROPERTIES_FILE),
+          Path.of("etc", "conf"),
+          System.out);
+    } catch (IllegalStateException e) {
+      System.err.println("uc-admin-token: " + e.getMessage());
+      System.exit(1);
+    }
+  }
+
+  // Prints one admin token, signed with the key the server uses, to out.
+  static void run(ServerProperties serverProperties, Path configurationFolder, PrintStream out) {
     // Only reads the key: a missing key is an error here, not a reason to generate one.
     SecurityConfiguration securityConfiguration =
-        SecurityConfiguration.loadExisting(
-            new ServerProperties(UnityCatalogServer.SERVER_PROPERTIES_FILE),
-            Path.of("etc", "conf"));
-    System.out.println(
+        SecurityConfiguration.loadExisting(serverProperties, configurationFolder);
+    out.println(
         SecurityContext.createServiceToken(
             securityConfiguration.algorithmRSA(), "server", Issuers.INTERNAL));
   }
