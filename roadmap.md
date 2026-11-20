@@ -1,810 +1,132 @@
 # Unity Catalog Roadmap
 
-This document outlines the roadmap for the Unity Catalog open source project. As always,
+This document outlines the roadmap for the Unity Catalog project. As always,
 features may move in/out of milestones pending available resources, priorities, and community discussions.
 
-## 0.6+ Release priorities
+## Release priorities
 
-### View support
+### 0.8: S3-compatible storage, identity, and authorization
 
-Views provide governed, reusable definitions over tables.
-We will start with supporting basic Spark SQL views and then progress toward broader engine interoperability.
+We plan to add S3-compatible external locations with scoped, short-lived credential vending,
+GCP storage, and modular OAuth/OIDC integration.
+Identity and authorization work includes groups and group grants, ownership transfer,
+BROWSE, MANAGE, READ METADATA, WRITE VOLUME, CREATE MODEL VERSION, and consistent
+authorization checks across supported operations. We also plan to add pluggable
+authorization with OPA and refresh the catalog browsing and editing UI.
 
-### Full Iceberg REST Catalog support
+### Beyond 0.8: Catalog interoperability, production operation, and migration
 
-The Iceberg REST Catalog provides an open interface for engines and tools to discover and access Iceberg tables. We will continue to strengthen interoperability through this interface, including Delta Uniform table access and Iceberg table lifecycle support, so more engines can access data registered in Unity Catalog through open standards.
-
-### S3-compatible storage
-
-S3-compatible storage support will allow Unity Catalog deployments to use object stores that expose an S3-compatible API. This allows Unity Catalog to be deployed across a broader range of on-prem and cloud environments.
-
-### Production hardening
-
-Production hardening focuses on the reliability and operational maturity needed for broader production deployments.
-The roadmap includes monitoring and telemetry, database schema upgrades, server-side storage credential and FileIO caching, and managed table and volume lifecycle support.
-
+We plan to add Iceberg REST view lifecycle support, service principals, tags on catalogs,
+schemas and tables, Open Sharing server integration, and lineage integration with OpenLineage.
+We also plan to add Hive Metastore bulk migration tooling, register/unregister APIs for tables,
+and Azure storage. Production work includes
+deployment and upgrade guidance, backend database and upgrade testing, and validation of
+multi-instance operation, recovery and scale.
 
 > **Note:** The projected roadmap is tentative and may change. For details of what shipped in each release, see the [Unity Catalog release notes](https://github.com/unitycatalog/unitycatalog/releases).
 
 ## Full roadmap
 
-<table>
-  <tr>
-    <td><b>Feature</b></td>
-    <td><b>Area</b></td>
-    <td><b>v0.3</b></td>
-    <td><b>v0.4</b></td>
-    <td><b>v0.5</b></td>
-    <td><b>v0.6</b></td>
-    <td><b>v0.7</b></td>
-    <td><b>v0.8+</b></td>
-  </tr>
-  <!-- Core Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Core</td>
-  </tr>
-  <tr>
-    <td>Catalog</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Schema</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Managed location in catalog</td>
-    <td>API + Server</td>
-    <td></td>
-    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Managed location in schema</td>
-    <td>API + Server</td>
-    <td></td>
-    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Credential</td>
-    <td>API + Server</td>
-    <td align="center">🛠️</td>
-    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>External Location</td>
-    <td>API + Server</td>
-    <td align="center">🛠️</td>
-    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Multi-tenancy</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-<tr>
-    <td>S3-compatible storage</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <!-- Identity & Authentication Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Identity & Authentication</td>
-  </tr>
-  <tr>
-    <td>Local identity management (user)</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Group management</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Support for Machine identities (SPs)</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>SCIM to support identity sync from IdP  (users and groups)</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>OAuth/OIDC for Users</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>OAuth/OIDC for Services</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>OAuth client-side support</td>
-    <td>Spark integration</td>
-    <td></td>
-    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>SAML authentication support</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <!-- Access Control & Governance Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Access Control & Governance</td>
-  </tr>
-    <tr>
-    <td>Support for change of ownership</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Add permission/privilege support for MODIFY, CREATE_X, BROWSE</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Add remaining permissions/privileges (MANAGE etc)</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Temporary credential vending for tables</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Temporary credential vending for volumes</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Temporary credential vending for models</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Basic grants</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Auditing</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>SQL DCL changes</td>
-    <td>Spark Integration</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>RBAC</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>Row level filters</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>Column level masks</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>ABAC</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>Lineage</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <!-- Server production-readiness (support running as a HMS replacement) Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Server production-readiness (support running as a HMS replacement)</td>
-  </tr>
-    <tr><td>Monitoring and Telemetry</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr><td>Database schema upgrades</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Change events</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>Server-side storage credential and FileIO caching</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Managed tables and volumes lifecycle</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <!-- Tables Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Tables</td>
-  </tr>
-  <tr>
-    <td rowspan="3">External table reads & writes</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Spark integration</td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Delta integration</td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td rowspan="2">Managed Delta table reads</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Delta+Spark integration</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr><td rowspan="3">Managed Delta tables creates+writes with catalog-managed commits</td>
-    <td>API + Server</td>
-    <td></td>
-    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Delta-Spark integration</td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Delta Kernel integration</td>
-    <td></td>
-    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td rowspan="2">Delta Uniform tables with read as Iceberg via Iceberg REST API</td>
-    <td>API + Server</td>
-    <td align="center">🛠️</td>
-    <td align="center">🛠️</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Delta integration</td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr><td>Iceberg tables with create+read+write</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Multi-engine data types for column definitions</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <!-- Views Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Views</td>
-  </tr>
-    <tr>
-    <td>Basic Spark SQL flavor views</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Multi-dialect views</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Iceberg view support</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Materialized views</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-    <tr><td>Metric views</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Streaming tables</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-    <tr>
-    <td>Shallow clones</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <!-- Non-tabular and AI assets Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Non-tabular and AI assets</td>
-  </tr>
-  <tr>
-    <td rowspan="3">Functions (SQL UDFs, Python UDFs)</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>ML integrations with advanced python SDK</td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Spark integration</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Multi-engine functions (SQL)</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>Remote functions</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td rowspan="2">External volumes</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Spark integration</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td rowspan="2">Managed volumes</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Spark integration</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td rowspan="3">Models and model versions</td>
-    <td>API + Server</td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>MLflow integration</td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-    <tr>
-    <td>Spark integration</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <tr>
-    <td>Features tables</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>Data monitors</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <!-- Sharing Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Sharing</td>
-  </tr>
-    <tr><td>Open Sharing</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-      <tr>
-    <td>Shares</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-      <tr>
-    <td>Recipients</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-      <tr>
-    <td>Providers</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-  <!-- Federation Section -->
-  <tr>
-    <td colspan="8" bgcolor="grey" align="center">Federation</td>
-  </tr>
-  <tr>
-    <td>Connections</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>Foreign objects (catalogs, schemas, tables)</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
-  </tr>
-    <tr>
-    <td>Support for different data sources: JDBC, Iceberg REST, HMS</td>
-    <td>API + Server</td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-  </tr>
-</table>
+The matrix is cumulative. Checkmarks in future columns indicate planned scope.
+Releases through 0.5 are consolidated; 0.6, 0.7, and 0.8 remain separate.
+Beyond 0.8 combines later plans and unassigned features without assigning a release.
+
+| Feature | Area | Through v0.5 | v0.6 | v0.7 | v0.8 (planned) | Beyond 0.8 |
+| --- | --- | :---: | :---: | :---: | :---: | :---: |
+| **Core** |  |  |  |  |  |  |
+| Catalog | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Schema | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Managed location in catalog | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Managed location in schema | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Credential | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| External Location | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| AWS storage | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| GCP storage | API + Server | _ | _ | _ | ✓ | ✓ |
+| Azure storage | API + Server | _ | _ | _ | _ | ✓ |
+| Multi-tenancy | API + Server | _ | _ | _ | _ | ✓ |
+| S3-compatible storage | API + Server | _ | _ | _ | ✓ | ✓ |
+| Refreshed catalog UI | UI | _ | _ | _ | ✓ | ✓ |
+| **Identity & Authentication** |  |  |  |  |  |  |
+| Local identity management (user) | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Group management | API + Server | _ | _ | _ | ✓ | ✓ |
+| Support for Machine identities (SPs) | API + Server | _ | _ | _ | _ | ✓ |
+| SCIM user provisioning | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SCIM group provisioning | API + Server | _ | _ | _ | _ | _ |
+| OAuth/OIDC for Users | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| OAuth/OIDC for Services | API + Server | _ | _ | _ | _ | ✓ |
+| OAuth client-side support | Spark integration | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SAML authentication support | API + Server | _ | _ | _ | _ | _ |
+| Pluggable authorization / OPA | API + Server | _ | _ | _ | ✓ | ✓ |
+| **Access Control & Governance** |  |  |  |  |  |  |
+| Support for change of ownership | API + Server | _ | _ | _ | ✓ | ✓ |
+| MODIFY and core CREATE_\* privileges | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| BROWSE | API + Server | _ | _ | _ | ✓ | ✓ |
+| Expanded privileges | API + Server | _ | _ | _ | ✓ | ✓ |
+| Temporary credential vending for tables | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Temporary credential vending for volumes | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Temporary credential vending for models | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Basic grants | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Auditing | API + Server | _ | _ | _ | _ | ✓ |
+| SQL DCL changes | Spark Integration | _ | _ | _ | _ | _ |
+| RBAC | API + Server | _ | _ | _ | _ | _ |
+| Row level filters | API + Server | _ | _ | _ | _ | _ |
+| Column level masks | API + Server | _ | _ | _ | _ | _ |
+| ABAC | API + Server | _ | _ | _ | _ | _ |
+| Lineage integration with OpenLineage | API + Server | _ | _ | _ | _ | ✓ |
+| **Production operation and migration** |  |  |  |  |  |  |
+| Monitoring and Telemetry | API + Server | _ | _ | ✓ | ✓ | ✓ |
+| Database schema upgrades | API + Server | _ | _ | _ | _ | ✓ |
+| Change events | API + Server | _ | _ | _ | _ | _ |
+| Server-side storage credential and FileIO caching | API + Server | _ | _ | _ | _ | ✓ |
+| Driver-side credential caching across queries | Hadoop / Spark integration | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Managed tables and volumes lifecycle | API + Server | _ | _ | ✓ | ✓ | ✓ |
+| Production operation and upgrade validation | Server / deployment | _ | _ | _ | _ | ✓ |
+| Hive Metastore bulk migration tooling | Migration tooling | _ | _ | _ | _ | ✓ |
+| **Tables** |  |  |  |  |  |  |
+| External table reads & writes | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| External table reads & writes | Spark integration | ✓ | ✓ | ✓ | ✓ | ✓ |
+| External table reads & writes | Delta integration | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Register/unregister APIs for tables | API + Server | _ | _ | _ | _ | ✓ |
+| Managed Delta table reads | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Managed Delta table reads | Delta+Spark integration | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Managed Delta tables creates+writes with catalog-managed commits | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Managed Delta tables creates+writes with catalog-managed commits | Delta-Spark integration | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Managed Delta tables creates+writes with catalog-managed commits | Delta Kernel integration | _ | _ | _ | _ | ✓ |
+| Delta Uniform tables with read as Iceberg via Iceberg REST API | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Delta Uniform tables with read as Iceberg via Iceberg REST API | Delta integration | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Iceberg tables with create+read+write | API + Server | _ | _ | ✓ | ✓ | ✓ |
+| Multi-engine data types for column definitions | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Streaming tables | API + Server | _ | _ | _ | _ | _ |
+| Shallow clones | API + Server | _ | _ | _ | _ | ✓ |
+| **Views** |  |  |  |  |  |  |
+| Basic Spark SQL flavor views | API + Server | _ | ✓ | ✓ | ✓ | ✓ |
+| Multi-dialect views | API + Server | _ | _ | _ | _ | ✓ |
+| Iceberg view support | API + Server | _ | _ | _ | _ | ✓ |
+| Materialized views | API + Server | _ | _ | _ | _ | _ |
+| Metric views | API + Server | _ | ✓ | ✓ | ✓ | ✓ |
+| **Non-tabular and AI assets** |  |  |  |  |  |  |
+| Skills | API + Server | _ | _ | _ | _ | ✓ |
+| Object tags | API + Server | _ | _ | _ | _ | ✓ |
+| Functions (SQL UDFs, Python UDFs) | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Functions (SQL UDFs, Python UDFs) | ML integrations with advanced python SDK | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Functions (SQL UDFs, Python UDFs) | Spark integration | _ | _ | _ | _ | ✓ |
+| Multi-engine functions (SQL) | API + Server | _ | _ | _ | _ | _ |
+| Remote functions | API + Server | _ | _ | _ | _ | _ |
+| External volumes | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| External volumes | Spark integration | _ | _ | _ | _ | ✓ |
+| Managed volumes | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Managed volumes | Spark integration | _ | _ | _ | _ | ✓ |
+| Models and model versions | API + Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Models and model versions | MLflow integration | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Models and model versions | Spark integration | _ | _ | _ | _ | ✓ |
+| Features tables | API + Server | _ | _ | _ | _ | _ |
+| Data monitors | API + Server | _ | _ | _ | _ | _ |
+| **Sharing** |  |  |  |  |  |  |
+| Open Sharing | API + Server | _ | _ | _ | _ | ✓ |
+| Shares | API + Server | _ | _ | _ | _ | ✓ |
+| Recipients | API + Server | _ | _ | _ | _ | ✓ |
+| Providers | API + Server | _ | _ | _ | _ | ✓ |
+| **Federation** |  |  |  |  |  |  |
+| Connections | API + Server | _ | _ | _ | _ | _ |
+| Foreign objects (catalogs, schemas, tables) | API + Server | _ | _ | _ | _ | _ |
+| Support for different data sources: JDBC, Iceberg REST, HMS | API + Server | _ | _ | _ | _ | ✓ |
