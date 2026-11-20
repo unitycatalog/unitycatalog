@@ -4,7 +4,14 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
@@ -13,6 +20,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -22,10 +30,13 @@ import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class JCasbinAuthorizerTest {
   private UnityCatalogAuthorizer authenticator;
   private HibernateConfigurator hibernateConfigurator;
+  private ServerProperties serverProperties;
   @TempDatabase private TestDatabase testDatabase;
 
   @BeforeEach
@@ -34,7 +45,7 @@ public class JCasbinAuthorizerTest {
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
     // Single-instance tests do not need background polling.
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
-    ServerProperties serverProperties = new ServerProperties(properties);
+    serverProperties = new ServerProperties(properties);
     hibernateConfigurator = testDatabase.hibernateConfigurator();
     authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
   }
@@ -103,6 +114,51 @@ public class JCasbinAuthorizerTest {
                   ? " ON casbin_rule"
                   : ""));
       connection.commit();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void failedStartupClosesConnectionAndPreservesIndexError(boolean closeFails) throws Exception {
+    SQLException indexError = new SQLException("index creation failed");
+    SQLException closeError = new SQLException("connection close failed");
+    try (Connection realConnection = hibernateConfigurator.getDataSource().getConnection();
+        Statement realStatement = realConnection.createStatement()) {
+      realStatement.executeUpdate(
+          "DROP INDEX idx_casbin_rule_resource"
+              + (realConnection.getMetaData().getDatabaseProductName().equals("MySQL")
+                  ? " ON casbin_rule"
+                  : ""));
+      realConnection.commit();
+      Statement statement = mock(Statement.class, delegatesTo(realStatement));
+      doThrow(indexError)
+          .when(statement)
+          .executeUpdate("CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2)");
+      Connection connection = mock(Connection.class, delegatesTo(realConnection));
+      doReturn(statement).when(connection).createStatement();
+      doAnswer(
+              invocation -> {
+                realConnection.close();
+                if (closeFails) {
+                  throw closeError;
+                }
+                return null;
+              })
+          .when(connection)
+          .close();
+      HikariDataSource dataSource =
+          mock(HikariDataSource.class, delegatesTo(hibernateConfigurator.getDataSource()));
+      doReturn(connection).when(dataSource).getConnection();
+      HibernateConfigurator config =
+          mock(HibernateConfigurator.class, delegatesTo(hibernateConfigurator));
+      doReturn(dataSource).when(config).getDataSource();
+
+      assertThatThrownBy(() -> new JCasbinAuthorizer(config, serverProperties))
+          .isSameAs(indexError);
+      verify(connection).close();
+      assertThat(realConnection.isClosed()).isTrue();
+      assertThat(indexError.getSuppressed())
+          .containsExactly(closeFails ? new Throwable[] {closeError} : new Throwable[0]);
     }
   }
 
