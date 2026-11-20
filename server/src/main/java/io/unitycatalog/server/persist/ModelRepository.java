@@ -258,6 +258,10 @@ public class ModelRepository {
         registeredModelInfoDAO.setSchemaId(schemaInfoDAO.getId());
         registeredModelInfoDAO.setMaxVersionNumber(0L);
         session.persist(registeredModelInfoDAO);
+        repositories
+            .getOwnershipRepository()
+            .initializeOwner(
+                session, registeredModelInfoDAO.getId(), callerId, schemaInfoDAO.getId());
         FileOperations.createStorageLocationDir(storageLocation);
         tx.commit();
       } catch (RuntimeException e) {
@@ -375,13 +379,20 @@ public class ModelRepository {
 
   public RegisteredModelInfo updateRegisteredModel(
       String fullName, UpdateRegisteredModel updateRegisteredModel) {
+    return updateRegisteredModel(fullName, updateRegisteredModel, () -> {});
+  }
+
+  public RegisteredModelInfo updateRegisteredModel(
+      String fullName, UpdateRegisteredModel updateRegisteredModel, Runnable beforeCommit) {
     if (updateRegisteredModel.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateRegisteredModel.getNewName());
     }
     if (fullName == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No three tier full name specified.");
     }
-    if (updateRegisteredModel.getNewName() == null && updateRegisteredModel.getComment() == null) {
+    if (updateRegisteredModel.getNewName() == null
+        && updateRegisteredModel.getComment() == null
+        && updateRegisteredModel.getOwner() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
     }
 
@@ -415,6 +426,16 @@ public class ModelRepository {
             findRegisteredModel(session, catalogName, schemaName, registeredModelName);
         if (origRegisteredModelInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + fullName);
+        }
+        if (updateRegisteredModel.getOwner() != null) {
+          origRegisteredModelInfoDAO.setOwner(
+              repositories
+                  .getOwnershipRepository()
+                  .updateOwner(
+                      session,
+                      origRegisteredModelInfoDAO,
+                      updateRegisteredModel.getOwner(),
+                      beforeCommit));
         }
         if (updateRegisteredModel.getNewName() != null) {
           origRegisteredModelInfoDAO.setName(updateRegisteredModel.getNewName());

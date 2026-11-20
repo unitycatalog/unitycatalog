@@ -130,7 +130,7 @@ No authorization required
 
 Update a Volume
 
-    Updates the specified volume under the specified parent catalog and schema.  Currently only the name or the comment of the volume could be updated. 
+    Updates the specified volume under the specified parent catalog and schema.  You can update the volume&#39;s name, comment, or owner. 
 
 ### Parameters
 

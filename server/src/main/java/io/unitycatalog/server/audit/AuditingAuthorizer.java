@@ -104,6 +104,16 @@ final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   @Override
+  public void loadOwner(UUID resource) {
+    delegate.loadOwner(resource);
+  }
+
+  @Override
+  public void reloadAuthorizations() {
+    delegate.reloadAuthorizations();
+  }
+
+  @Override
   public void close() throws Exception {
     if (delegate instanceof AutoCloseable closeable) {
       closeable.close();

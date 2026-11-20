@@ -809,11 +809,11 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             createCleanupTask(externalLocationRoot + "/second"));
 
     for (UUID taskId : taskIds) {
-      assertPendingCleanupDenied(
+      assertPendingCleanupRefused(
           () ->
               externalLocationOperations.deleteExternalLocation(
                   externalLocationName, Optional.of(false)));
-      assertPendingCleanupDenied(
+      assertPendingCleanupRefused(
           () ->
               externalLocationOperations.updateExternalLocation(
                   externalLocationName, new UpdateExternalLocation().url(anotherTestUrl())));
@@ -842,7 +842,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
                 .getUrl())
         .isEqualTo(anotherTestUrl());
     createCleanupTask(anotherTestUrl() + "/fourth");
-    assertPendingCleanupDenied(
+    assertPendingCleanupRefused(
         () ->
             externalLocationOperations.deleteExternalLocation(
                 externalLocationName, Optional.of(false)));
@@ -862,20 +862,20 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             .storageLocation(root + "/volume"));
     createCleanupTask(root + "/cleanup");
 
-    assertPendingCleanupDenied(
+    assertPendingCleanupRefused(
         () ->
             externalLocationOperations.deleteExternalLocation(
                 EXTERNAL_LOCATION_NAME, Optional.of(false)));
-    assertPendingCleanupDenied(
+    assertPendingCleanupRefused(
         () ->
             externalLocationOperations.updateExternalLocation(
                 EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(anotherTestUrl())));
   }
 
-  private void assertPendingCleanupDenied(Executable action) {
+  private void assertPendingCleanupRefused(Executable action) {
     assertApiException(
         action,
-        ErrorCode.PERMISSION_DENIED,
+        ErrorCode.FAILED_PRECONDITION,
         "Input path overlaps pending storage cleanup. Set force to true to skip this check.");
   }
 

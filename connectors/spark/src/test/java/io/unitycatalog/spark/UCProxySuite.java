@@ -5,27 +5,37 @@ import static io.unitycatalog.spark.UCProxyTestFixture.NAMESPACE;
 import static io.unitycatalog.spark.UCProxyTestFixture.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ListSchemasResponse;
 import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.spark.utils.OptionsUtil;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.catalog.CatalogTable;
+import org.apache.spark.sql.connector.catalog.DelegatingCatalogExtension;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.Table;
@@ -38,7 +48,9 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import scala.Option;
 import scala.jdk.javaapi.CollectionConverters;
@@ -553,5 +565,121 @@ public class UCProxySuite {
             Map.of("header", "true", "sep", "|", "Mode", "FAILFAST"));
     assertThat(CollectionConverters.asJava(table.properties()))
         .containsExactlyInAnyOrderEntriesOf(Map.of("sep", ",", "mode", "FAILFAST"));
+  }
+
+  // -- relation cache tests --
+
+  /**
+   * Spark caches the relation it resolves for a non-Delta table under the table's name, so DROP and
+   * CREATE in this session, and REFRESH TABLE after another client moved the table, must clear that
+   * entry, or the session keeps reading the files at the table's previous location. UC is faked by
+   * a map that the test edits directly to stand for another client. The mixed-case name checks the
+   * entry is found under the name as UC spells it, not a lowercased one.
+   */
+  @ParameterizedTest
+  @CsvSource({
+    "spark_catalog, t",
+    "spark_catalog, MixedCase_T",
+    CATALOG_NAME + ", t",
+    CATALOG_NAME + ", MixedCase_T"
+  })
+  public void testReadFollowsTableRecreatedAtAnotherLocation(
+      String catalogName, String table, @TempDir Path dir) throws Exception {
+    UCProxyTestFixture fixture = new UCProxyTestFixture().build(catalogName);
+    Map<String, TableInfo> tables = new HashMap<>();
+    fakeTableStore(fixture.mockTablesApi, tables);
+    String tableName = String.join(".", catalogName, SCHEMA_NAME, table);
+    String catalogConf = "spark.sql.catalog." + catalogName;
+    SparkSession.clearActiveSession();
+    SparkSession.clearDefaultSession();
+    SparkSession spark =
+        SparkSession.builder()
+            .master("local[1]")
+            .config(catalogConf, UCSingleCatalog.class.getName())
+            .config(catalogConf + "." + OptionsUtil.URI, "http://localhost:8080")
+            .config(catalogConf + "." + OptionsUtil.TOKEN, "token")
+            // Delta's own UC client would load tables from the server instead of the fake below.
+            .config(catalogConf + "." + OptionsUtil.DELTA_API_ENABLED, "false")
+            .getOrCreate();
+    try {
+      routeToProxy(spark, catalogName, (UCProxy) fixture.proxy);
+      String createSql = "CREATE TABLE " + tableName + " (id INT) USING PARQUET LOCATION '%s'";
+
+      spark.sql(String.format(createSql, writeId(spark, dir, 0)));
+      assertThat(readId(spark, tableName)).isEqualTo(0);
+
+      spark.sql("DROP TABLE " + tableName);
+      tables.put(tableName, parquetTable(catalogName, table, writeId(spark, dir, 1)));
+      assertThat(readId(spark, tableName)).isEqualTo(1);
+
+      tables.remove(tableName);
+      spark.sql(String.format(createSql, writeId(spark, dir, 2)));
+      assertThat(readId(spark, tableName)).isEqualTo(2);
+
+      tables.put(tableName, parquetTable(catalogName, table, writeId(spark, dir, 3)));
+      spark.sql("REFRESH TABLE " + tableName);
+      assertThat(readId(spark, tableName)).isEqualTo(3);
+    } finally {
+      spark.stop();
+    }
+  }
+
+  private static void fakeTableStore(TablesApi tablesApi, Map<String, TableInfo> tables)
+      throws ApiException {
+    when(tablesApi.getTable(anyString(), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenAnswer(
+            invocation -> {
+              TableInfo table = tables.get(invocation.<String>getArgument(0));
+              if (table == null) {
+                throw new ApiException(404, "not found");
+              }
+              return table;
+            });
+    when(tablesApi.createTable(any()))
+        .thenAnswer(
+            invocation -> {
+              CreateTable create = invocation.getArgument(0);
+              TableInfo table =
+                  parquetTable(
+                      create.getCatalogName(), create.getName(), create.getStorageLocation());
+              tables.put(
+                  String.join(
+                      ".", create.getCatalogName(), create.getSchemaName(), create.getName()),
+                  table);
+              return table;
+            });
+    when(tablesApi.deleteTable(anyString()))
+        .thenAnswer(invocation -> tables.remove(invocation.<String>getArgument(0)));
+  }
+
+  /** Points the session's {@link UCSingleCatalog}, through its Delta catalog, at {@code proxy}. */
+  private static void routeToProxy(SparkSession spark, String catalogName, UCProxy proxy) {
+    UCSingleCatalog catalog =
+        (UCSingleCatalog) spark.sessionState().catalogManager().catalog(catalogName);
+    catalog.ucProxy_$eq(proxy);
+    ((DelegatingCatalogExtension) catalog.delegate()).setDelegateCatalog(proxy);
+  }
+
+  private static TableInfo parquetTable(String catalogName, String table, String location) {
+    return new TableInfo()
+        .catalogName(catalogName)
+        .schemaName(SCHEMA_NAME)
+        .name(table)
+        .tableId("table-id-" + table)
+        .tableType(TableType.EXTERNAL)
+        .dataSourceFormat(DataSourceFormat.PARQUET)
+        .storageLocation(location)
+        .columns(List.of(intColumn("id", 0, null)));
+  }
+
+  /** Writes a Parquet file holding only {@code id} to a new directory and returns its URI. */
+  private static String writeId(SparkSession spark, Path dir, int id) {
+    String location = dir.resolve("id" + id).toUri().toString();
+    spark.sql("SELECT " + id + " AS id").write().parquet(location);
+    return location;
+  }
+
+  private static int readId(SparkSession spark, String tableName) {
+    return spark.sql("SELECT id FROM " + tableName).head().getInt(0);
   }
 }

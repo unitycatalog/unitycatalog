@@ -14,6 +14,7 @@ import io.delta.kernel.data.FilteredColumnarBatch;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.defaults.internal.data.DefaultColumnarBatch;
 import io.delta.kernel.engine.Engine;
+import io.delta.kernel.exceptions.TableNotFoundException;
 import io.delta.kernel.types.ByteType;
 import io.delta.kernel.types.DataType;
 import io.delta.kernel.types.DoubleType;
@@ -28,10 +29,8 @@ import io.delta.kernel.utils.CloseableIterable;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.DataFileStatus;
 import io.unitycatalog.cli.UnityCatalogCli;
-import io.unitycatalog.cli.utils.Constants;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -61,34 +60,34 @@ public class DeltaKernelWriteUtils {
       StructType schema = DeltaKernelUtils.getSchema(columns);
       URI tablePathUri = URI.create(tablePath);
       Engine engine = DeltaKernelUtils.getEngine(tablePathUri, temporaryCredentials);
-      boolean createVsUpdate = true;
-      if (tablePathUri.getScheme().equals(Constants.URI_SCHEME_FILE)) {
-        createVsUpdate = !(new File(tablePathUri).isDirectory());
-      }
       writeSampleDataToExistingDeltaTable(
-          engine, DeltaKernelUtils.substituteSchemeForS3(tablePath), schema, createVsUpdate);
+          engine, DeltaKernelUtils.substituteSchemeForS3(tablePath), schema);
       return "Table written to successfully at: " + tablePath;
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to create delta table", e);
     }
   }
 
+  /**
+   * Appends sample data to the Delta table at the given path. If the path has no Delta log yet, the
+   * table is created with the given schema in the same commit.
+   */
   public static void writeSampleDataToExistingDeltaTable(
-      Engine engine, String tablePath, StructType tableSchema, boolean createVsUpdate)
-      throws IOException {
+      Engine engine, String tablePath, StructType tableSchema) throws IOException {
     // Create a `Table` object with the given destination table path
     Table table = Table.forPath(engine, tablePath);
+    boolean isNewTable = isNewTable(engine, table);
     // Create a transaction builder to build the transaction
     TransactionBuilder txnBuilder =
         table.createTransactionBuilder(
             engine,
             UnityCatalogCli.class.toString(), /* engineInfo */
-            createVsUpdate ? Operation.CREATE_TABLE : Operation.WRITE);
+            isNewTable ? Operation.CREATE_TABLE : Operation.WRITE);
     // Set the schema of the new table on the transaction builder
     // txnBuilder = txnBuilder.withSchema(engine, tableSchema);
 
     // Set the schema of the new table on the transaction builder
-    if (createVsUpdate) {
+    if (isNewTable) {
       txnBuilder = txnBuilder.withSchema(engine, tableSchema);
     }
     // Build the transaction
@@ -140,6 +139,15 @@ public class DeltaKernelWriteUtils {
       System.out.println("Table written to successfully at: " + tablePath);
     } else {
       throw new RuntimeException("Table writing failed");
+    }
+  }
+
+  private static boolean isNewTable(Engine engine, Table table) {
+    try {
+      table.getLatestSnapshot(engine);
+      return false;
+    } catch (TableNotFoundException e) {
+      return true;
     }
   }
 

@@ -27,8 +27,7 @@ describe("ucCall", () => {
     const arg = call.mock.calls[0][0];
     expect(arg.method).toBe("GET");
     expect(arg.path).toBe("/api/2.1/unity-catalog/catalogs");
-    // The transport sends the token as an Authorization header instead.
-    expect(arg.token).toBeUndefined();
+    expect(arg).not.toHaveProperty("token");
     // Empty query values are dropped.
     expect(arg.query).toEqual([{ key: "catalog_name", value: "main" }]);
     expect(arg.jsonBody).toBe("");

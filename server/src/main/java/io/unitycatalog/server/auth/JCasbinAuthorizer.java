@@ -1,5 +1,8 @@
 package io.unitycatalog.server.auth;
 
+import dev.failsafe.ExecutionContext;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -9,6 +12,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +28,8 @@ import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
 import org.casbin.jcasbin.main.SyncedEnforcer;
 import org.casbin.jcasbin.model.Model;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,10 +60,12 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   private final AtomicReference<SyncedEnforcer> currentEnforcer = new AtomicReference<>();
   final ReadWriteLock reloadLock = new ReentrantReadWriteLock();
   private final JDBCAdapter adapter;
+  private final SessionFactory sessionFactory;
   private final String modelText;
   private final CasbinPolicyRefresher refresher;
 
   private final boolean refreshEnabled;
+  private volatile boolean reloadRequired;
 
   private static final int PRINCIPAL_INDEX = 0;
   private static final int RESOURCE_INDEX = 1;
@@ -70,7 +78,16 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   public JCasbinAuthorizer(
       HibernateConfigurator hibernateConfigurator, ServerProperties serverProperties)
       throws Exception {
-    this.adapter = new JDBCAdapter(autocommitOnCheckout(hibernateConfigurator.getDataSource()));
+    this.adapter =
+        new JDBCAdapter(autocommitOnCheckout(hibernateConfigurator.getDataSource())) {
+          @Override
+          protected void retry(ExecutionContext<Void> context) throws SQLException {
+            // The adapter replaces this connection without returning it to the pool.
+            conn.close();
+            super.retry(context);
+          }
+        };
+    this.sessionFactory = hibernateConfigurator.getSessionFactory();
 
     InputStream modelStream = this.getClass().getResourceAsStream("/jcasbin_auth_model.conf");
     this.modelText = IOUtils.toString(modelStream, StandardCharsets.UTF_8);
@@ -130,6 +147,58 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   /**
+   * Replaces native OWNER grants in the caller's transaction and returns the removed owners. The
+   * caller must reload the live authorizer after commit.
+   */
+  public static List<UUID> replaceOwner(Session session, UUID resource, UUID newOwner) {
+    // A locking read sees the latest committed owners under MySQL REPEATABLE READ too.
+    List<UUID> oldOwners =
+        session
+            .createNativeQuery(
+                "SELECT v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND"
+                    + " v2 = :owner FOR UPDATE",
+                String.class)
+            .setParameter("resource", resource.toString())
+            .setParameter("owner", Privileges.OWNER.getValue())
+            .getResultList()
+            .stream()
+            .map(UUID::fromString)
+            .toList();
+    // The JDBC adapter commits on a separate connection. Use this transaction for both writes.
+    session
+        .createNativeMutationQuery(
+            "DELETE FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND v2 = :owner")
+        .setParameter("resource", resource.toString())
+        .setParameter("owner", Privileges.OWNER.getValue())
+        .executeUpdate();
+    addOwner(session, resource, newOwner);
+    return oldOwners;
+  }
+
+  /** Saves an OWNER grant in the caller's transaction. */
+  public static void addOwner(Session session, UUID resource, UUID newOwner) {
+    session
+        .createNativeMutationQuery(
+            "INSERT INTO casbin_rule (ptype, v0, v1, v2) VALUES ('p', :principal, :resource,"
+                + " :owner)")
+        .setParameter("principal", newOwner.toString())
+        .setParameter("resource", resource.toString())
+        .setParameter("owner", Privileges.OWNER.getValue())
+        .executeUpdate();
+  }
+
+  /** Saves the parent link in the transaction that creates the child. */
+  public static void addHierarchyChild(Session session, UUID parent, UUID child) {
+    session
+        .createNativeMutationQuery(
+            "INSERT INTO casbin_rule (ptype, v0, v1) VALUES (:ptype, :parent, :child)")
+        .setParameter("ptype", HIERARCHY_POLICY)
+        .setParameter("parent", parent.toString())
+        .setParameter("child", child.toString())
+        .executeUpdate();
+  }
+
+  /**
    * Rebuilds policy from {@code casbin_rule} on a new enforcer and swaps it in. Holds the exclusive
    * lock for the whole load so local grants are not applied to the outgoing instance.
    */
@@ -137,22 +206,111 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     reloadLock.writeLock().lock();
     try {
       currentEnforcer.set(newEnforcer());
+      reloadRequired = false;
+    } finally {
+      reloadLock.writeLock().unlock();
+    }
+  }
+
+  @Override
+  public void loadOwner(UUID resource) {
+    reloadLock.writeLock().lock();
+    try {
+      if (reloadRequired) {
+        reloadAuthorizations();
+        return;
+      }
+      // Read under the reload lock so a delayed create cannot restore a transferred owner.
+      List<String> owners =
+          sessionFactory.fromSession(
+              session ->
+                  session
+                      .createNativeQuery(
+                          "SELECT v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND"
+                              + " v2 = :owner",
+                          String.class)
+                      .setParameter("resource", resource.toString())
+                      .setParameter("owner", Privileges.OWNER.getValue())
+                      .getResultList());
+      List<String> parents =
+          sessionFactory.fromSession(
+              session ->
+                  session
+                      .createNativeQuery(
+                          "SELECT v0 FROM casbin_rule WHERE ptype = :ptype AND v1 = :resource",
+                          String.class)
+                      .setParameter("ptype", HIERARCHY_POLICY)
+                      .setParameter("resource", resource.toString())
+                      .getResultList());
+      SyncedEnforcer enforcer = currentEnforcer.get();
+      enforcer.enableAutoSave(false);
+      try {
+        owners.forEach(
+            owner -> enforcer.addPolicy(owner, resource.toString(), Privileges.OWNER.getValue()));
+        parents.forEach(
+            parent ->
+                enforcer.addNamedGroupingPolicy(HIERARCHY_POLICY, parent, resource.toString()));
+      } finally {
+        enforcer.enableAutoSave(true);
+      }
+    } catch (RuntimeException | Error e) {
+      // The resource committed, so later requests must be able to recover its saved policy.
+      reloadRequired = true;
+      throw new BaseException(ErrorCode.UNAVAILABLE, "Authorization policy must be reloaded.", e);
     } finally {
       reloadLock.writeLock().unlock();
     }
   }
 
   /**
-   * Runs a policy mutation on the live enforcer.
+   * Reloads this instance's policy after an ownership update. On failure, permission checks deny
+   * every user, including metastore admins, until a reload succeeds. A denied request retries the
+   * reload even when policy refresh is disabled. Native grant changes and permission listings also
+   * retry the reload. The caller receives the failure even if the ownership update already
+   * committed.
+   */
+  @Override
+  public void reloadAuthorizations() {
+    reloadLock.writeLock().lock();
+    try {
+      try {
+        currentEnforcer.set(newEnforcer());
+        reloadRequired = false;
+      } catch (RuntimeException | Error e) {
+        // A committed transfer must not retain the previous owner's access after a failed reload.
+        Model model = new Model();
+        model.loadModelFromText(modelText);
+        SyncedEnforcer denying = new SyncedEnforcer(model);
+        denying.setAdapter(adapter);
+        denying.enableAutoSave(true);
+        currentEnforcer.set(denying);
+        reloadRequired = true;
+        LOGGER.error("Could not reload policy after ownership transfer; access is denied", e);
+        throw new BaseException(ErrorCode.UNAVAILABLE, "Authorization policy must be reloaded.", e);
+      }
+    } finally {
+      reloadLock.writeLock().unlock();
+    }
+  }
+
+  /**
+   * Runs an operation on a fully loaded live policy.
    *
    * <p>Takes the <em>read</em> side of {@code reloadLock} on purpose: many grants may proceed
    * together (SyncedEnforcer still serializes mutations on one instance), while reload takes the
    * write side so a mutation cannot land on an enforcer that is about to be discarded. The lock
    * names refer to the live-enforcer pointer, not to Casbin read vs write.
    */
-  private <T> T mutate(Function<SyncedEnforcer, T> action) {
+  private <T> T withPolicy(Function<SyncedEnforcer, T> action) {
+    if (reloadRequired) {
+      // Recover native grants even when OPA handles permission decisions.
+      refreshAuthorizations(System.nanoTime());
+    }
     reloadLock.readLock().lock();
     try {
+      if (reloadRequired) {
+        throw new BaseException(ErrorCode.UNAVAILABLE, "Authorization policy must be reloaded.");
+      }
       return action.apply(currentEnforcer.get());
     } finally {
       reloadLock.readLock().unlock();
@@ -161,40 +319,41 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   @Override
   public boolean grantAuthorization(UUID principal, UUID resource, Privileges action) {
-    return mutate(e -> e.addPolicy(principal.toString(), resource.toString(), action.toString()));
+    return withPolicy(
+        e -> e.addPolicy(principal.toString(), resource.toString(), action.toString()));
   }
 
   @Override
   public boolean revokeAuthorization(UUID principal, UUID resource, Privileges action) {
-    return mutate(
+    return withPolicy(
         e -> e.removePolicy(principal.toString(), resource.toString(), action.toString()));
   }
 
   @Override
   public boolean clearAuthorizationsForPrincipal(UUID principal) {
-    return mutate(e -> e.removeFilteredPolicy(PRINCIPAL_INDEX, principal.toString()));
+    return withPolicy(e -> e.removeFilteredPolicy(PRINCIPAL_INDEX, principal.toString()));
   }
 
   @Override
   public boolean clearAuthorizationsForResource(UUID resource) {
-    return mutate(e -> e.removeFilteredPolicy(RESOURCE_INDEX, resource.toString()));
+    return withPolicy(e -> e.removeFilteredPolicy(RESOURCE_INDEX, resource.toString()));
   }
 
   @Override
   public boolean addHierarchyChild(UUID parent, UUID child) {
-    return mutate(
+    return withPolicy(
         e -> e.addNamedGroupingPolicy(HIERARCHY_POLICY, parent.toString(), child.toString()));
   }
 
   @Override
   public boolean removeHierarchyChild(UUID parent, UUID child) {
-    return mutate(
+    return withPolicy(
         e -> e.removeNamedGroupingPolicy(HIERARCHY_POLICY, parent.toString(), child.toString()));
   }
 
   @Override
   public boolean removeHierarchyChildren(UUID resource) {
-    return mutate(
+    return withPolicy(
         e ->
             e.removeFilteredNamedGroupingPolicy(
                 HIERARCHY_POLICY, HIERARCHY_PARENT_INDEX, resource.toString()));
@@ -203,10 +362,10 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   @Override
   public UUID getHierarchyParent(UUID resource) {
     List<List<String>> policy =
-        currentEnforcer
-            .get()
-            .getFilteredNamedGroupingPolicy(
-                HIERARCHY_POLICY, HIERARCHY_CHILD_INDEX, resource.toString());
+        withPolicy(
+            e ->
+                e.getFilteredNamedGroupingPolicy(
+                    HIERARCHY_POLICY, HIERARCHY_CHILD_INDEX, resource.toString()));
     if (policy.isEmpty() || policy.get(0).isEmpty()) {
       return null;
     }
@@ -244,9 +403,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   @Override
   public List<Privileges> listAuthorizations(UUID principal, UUID resource) {
     List<List<String>> list =
-        currentEnforcer
-            .get()
-            .getPermissionsForUserInDomain(principal.toString(), resource.toString());
+        withPolicy(e -> e.getPermissionsForUserInDomain(principal.toString(), resource.toString()));
     return list.stream()
         .map(l -> l.get(PRIVILEGE_INDEX))
         .map(Privileges::fromValue)
@@ -255,7 +412,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   @Override
   public Map<UUID, List<Privileges>> listAuthorizations(UUID resource) {
-    return currentEnforcer.get().getFilteredPolicy(RESOURCE_INDEX, resource.toString()).stream()
+    return withPolicy(e -> e.getFilteredPolicy(RESOURCE_INDEX, resource.toString())).stream()
         .collect(
             Collectors.groupingBy(
                 l -> UUID.fromString(l.get(PRINCIPAL_INDEX)),
@@ -269,10 +426,26 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
    */
   @Override
   public boolean refreshAuthorizations(long operationStartNanos) {
-    if (!refreshEnabled) {
-      return false;
+    try {
+      if (reloadRequired) {
+        reloadLock.writeLock().lock();
+        try {
+          if (reloadRequired) {
+            reloadAuthorizations();
+          }
+          return true;
+        } finally {
+          reloadLock.writeLock().unlock();
+        }
+      }
+      if (!refreshEnabled) {
+        return false;
+      }
+      return refresher.checkAndReloadAfter(operationStartNanos);
+    } catch (RuntimeException | Error e) {
+      // The JDBC adapter throws Error after SQL retries fail.
+      throw new BaseException(ErrorCode.UNAVAILABLE, "Authorization policy must be reloaded.", e);
     }
-    return refresher.checkAndReloadAfter(operationStartNanos);
   }
 
   @Override

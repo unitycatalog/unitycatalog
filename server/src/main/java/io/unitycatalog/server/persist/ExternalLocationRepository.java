@@ -122,6 +122,9 @@ public class ExternalLocationRepository {
                   .createdBy(callerId)
                   .build();
           session.persist(externalLocationDAO);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, externalLocationDAO.getId(), callerId);
           LOGGER.info("External location added: {}", externalLocationDAO.getName());
           return externalLocationDAO.toExternalLocationInfo(credentialDAO.getName());
         },
@@ -208,11 +211,16 @@ public class ExternalLocationRepository {
    * @throws BaseException with NOT_FOUND if the external location doesn't exist
    * @throws BaseException with INVALID_ARGUMENT if the URL change is refused because the location
    *     is in use, or the new URL is invalid or overlaps another external location
-   * @throws BaseException with PERMISSION_DENIED if the URL change is refused because a storage
-   *     cleanup is pending under the current URL
+   * @throws BaseException with FAILED_PRECONDITION if the URL change is refused because a storage
+   *     cleanup is pending at, above, or under the current URL
    */
   public ExternalLocationInfo updateExternalLocation(
       String name, UpdateExternalLocation updateExternalLocation) {
+    return updateExternalLocation(name, updateExternalLocation, () -> {});
+  }
+
+  public ExternalLocationInfo updateExternalLocation(
+      String name, UpdateExternalLocation updateExternalLocation, Runnable beforeCommit) {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
     return TransactionManager.executeWithTransaction(
@@ -222,6 +230,17 @@ public class ExternalLocationRepository {
           ExternalLocationDAO existingLocation = getExternalLocationDAOForUpdate(session, name);
           if (existingLocation == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
+          }
+
+          if (updateExternalLocation.getOwner() != null) {
+            existingLocation.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(
+                        session,
+                        existingLocation,
+                        updateExternalLocation.getOwner(),
+                        beforeCommit));
           }
 
           // Update fields if provided
@@ -303,8 +322,8 @@ public class ExternalLocationRepository {
    * @throws BaseException with NOT_FOUND if the external location doesn't exist
    * @throws BaseException with INVALID_ARGUMENT if the external location is in use and force is
    *     false
-   * @throws BaseException with PERMISSION_DENIED if a storage cleanup is pending under the external
-   *     location and force is false
+   * @throws BaseException with FAILED_PRECONDITION if a storage cleanup is pending at, above, or
+   *     under the external location's URL and force is false
    */
   public ExternalLocationDAO deleteExternalLocation(String name, boolean force) {
     return TransactionManager.executeWithTransaction(

@@ -49,6 +49,14 @@ def is_base64_encoded(s: str) -> bool:
         return False
 
 
+def parse_iso_datetime(value: str) -> datetime.datetime:
+    """
+    Parse an ISO 8601 datetime string. A trailing "Z" means UTC, which
+    `datetime.fromisoformat` accepts only from Python 3.11.
+    """
+    return datetime.datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+
+
 def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
     """
     Validate the parameter against the parameter info.
@@ -60,7 +68,7 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
     """
     if is_time_type(column_type) and isinstance(param, str):
         try:
-            datetime.datetime.fromisoformat(param)
+            parse_iso_datetime(param)
         except ValueError as e:
             raise ValueError(f"Invalid datetime string: {param}, expecting ISO format.") from e
     elif column_type == "INTERVAL":

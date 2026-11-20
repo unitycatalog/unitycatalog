@@ -13,9 +13,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.DynamicUpdate;
 
 // Hibernate annotations
 @Entity
+@DynamicUpdate
 @Table(
     name = "uc_registered_models",
     indexes = {

@@ -27,7 +27,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.catalyst.TableIdentifier
+import org.apache.spark.sql.catalyst.{QualifiedTableName, TableIdentifier}
 import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException, TableAlreadyExistsException, ViewAlreadyExistsException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
@@ -562,6 +562,8 @@ class UCSingleCatalog
   }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
+
+  override def invalidateTable(ident: Identifier): Unit = delegate.invalidateTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
     throw new UnsupportedOperationException("Renaming a table is not supported yet")
@@ -1235,6 +1237,7 @@ private[spark] class UCProxy(
       case e: ApiException if e.getCode == 409 =>
         throw new TableAlreadyExistsException(ident)
     }
+    invalidateTable(ident)
     loadTable(ident)
   }
 
@@ -1324,7 +1327,29 @@ private[spark] class UCProxy(
     // `deleteTable` returns the (empty) response body, not an HTTP status; a real failure throws
     // ApiException. Issue the delete for its side effect and report success.
     tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    invalidateTable(ident)
     true
+  }
+
+  /**
+   * Drops the relation Spark caches for a table this catalog loads as a [[V1Table]], so the next
+   * read uses the table's current location. Spark caches that relation under the table's name and,
+   * unlike for its built-in session catalog, never drops it when a catalog plugin drops, creates
+   * or refreshes the table. Only the active session's entry is dropped: another session that read
+   * the table keeps reading its old location until it refreshes the table.
+   */
+  override def invalidateTable(ident: Identifier): Unit = {
+    if (UCSingleCatalog.isAddressableTableName(ident)) {
+      SparkSession.getActiveSession match {
+        case Some(spark) =>
+          // Must match the identifier `loadV1Table` builds, which Spark keys the relation by.
+          spark.sessionState.catalog.invalidateCachedTable(
+            QualifiedTableName(name(), ident.namespace().head, ident.name()))
+        case None =>
+          logWarning(
+            s"No active SparkSession, so the cached relation of table $ident was not invalidated.")
+      }
+    }
   }
 
   // UC OSS does not currently expose a rename endpoint for tables or views; stub until UC adds

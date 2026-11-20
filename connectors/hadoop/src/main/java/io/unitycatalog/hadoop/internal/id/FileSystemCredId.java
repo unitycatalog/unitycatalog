@@ -28,6 +28,10 @@ import org.apache.hadoop.security.UserGroupInformation;
  * the table load did not route, the engine signs with its own keys, which may differ per Hadoop
  * user, so the calling user is part of it too.
  *
+ * <p>A fixed credential, vended without renewal, is part of the identity too, also as a hash: a
+ * filesystem keeps the credential it was created with, so a later table load that vends a new
+ * credential gets its own filesystem rather than one whose credential may have expired.
+ *
  * <p><b>Internal API — not for external use. May change without notice.</b>
  */
 public final class FileSystemCredId {
@@ -41,13 +45,20 @@ public final class FileSystemCredId {
   // The calling Hadoop user for a vend without keys, compared as Hadoop's own file system cache
   // does: two users of one name with different credentials stay apart. Otherwise null.
   private final UserGroupInformation user;
+  // A hash of the fixed credential the table load vended, or empty.
+  private final String fixedCredential;
 
   private FileSystemCredId(
-      CredId credId, String prefix, String s3Storage, UserGroupInformation user) {
+      CredId credId,
+      String prefix,
+      String s3Storage,
+      UserGroupInformation user,
+      String fixedCredential) {
     this.credId = credId;
     this.prefix = prefix;
     this.s3Storage = s3Storage;
     this.user = user;
+    this.fixedCredential = fixedCredential;
   }
 
   /**
@@ -58,7 +69,7 @@ public final class FileSystemCredId {
   public static FileSystemCredId create(Configuration conf) {
     CredId credId = CredId.create(conf);
     String prefix = getCredPrefix(conf);
-    return new FileSystemCredId(credId, prefix, vendedStorage(conf), null);
+    return new FileSystemCredId(credId, prefix, vendedStorage(conf), null, "");
   }
 
   /**
@@ -81,7 +92,11 @@ public final class FileSystemCredId {
     // the S3A settings do not show, such as a provider that reads the user's own keys.
     boolean isSignedByTheEngine = isS3(uri) && !hasVendedKeys(conf, uri);
     return new FileSystemCredId(
-        credId, prefix, s3Storage(conf, uri), isSignedByTheEngine ? currentUser() : null);
+        credId,
+        prefix,
+        s3Storage(conf, uri),
+        isSignedByTheEngine ? currentUser() : null,
+        conf.get(UCHadoopConfConstants.UC_FIXED_CREDENTIAL_ID_KEY, ""));
   }
 
   /**
@@ -163,12 +178,13 @@ public final class FileSystemCredId {
     return Objects.equals(credId, that.credId)
         && Objects.equals(prefix, that.prefix)
         && s3Storage.equals(that.s3Storage)
-        && Objects.equals(user, that.user);
+        && Objects.equals(user, that.user)
+        && fixedCredential.equals(that.fixedCredential);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(credId, prefix, s3Storage, user);
+    return Objects.hash(credId, prefix, s3Storage, user, fixedCredential);
   }
 
   @Override

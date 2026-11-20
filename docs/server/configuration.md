@@ -74,6 +74,9 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.iceberg-table.enabled`: Turns on the write endpoints of the [Iceberg REST catalog](../usage/api/iceberg.md),
+    such as creating, committing to, renaming and dropping tables. Defaults to `true`. Set it to `false` to reject
+    namespace and table changes through the Iceberg REST catalog. Tables that were already created stay readable.
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
@@ -240,8 +243,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   local `file:` storage vends no credential, so it has no `CLEANUP` record.
 - `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
   changed.
-- `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG`, or `OWNER` for the
-  ownership grant made when an object is created.
+- `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG` or `OWNER`.
+  Creation records an `OWNER` grant. Ownership transfer records `OWNER` revokes and the new grant.
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
   that request. It is absent on records not made while serving a request: `CLEANUP` records and
   `system:server` records.

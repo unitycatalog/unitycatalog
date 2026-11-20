@@ -5,6 +5,7 @@ import static io.unitycatalog.server.utils.TestUtils.assertDeltaApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.MediaType;
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.SchemasApi;
@@ -32,7 +34,9 @@ import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateTable;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -49,8 +53,16 @@ import lombok.SneakyThrows;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.types.Types;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.event.service.spi.EventListenerRegistry;
+import org.hibernate.event.spi.EventType;
+import org.hibernate.event.spi.PostCommitUpdateEventListener;
+import org.hibernate.event.spi.PostUpdateEvent;
+import org.hibernate.persister.entity.EntityPersister;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
@@ -81,6 +93,7 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.setProperty(Property.AUTHORIZATION_PROVIDER.getKey(), "opa");
+    serverProperties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     serverProperties.setProperty(
         Property.OPA_DECISION_URL.getKey(),
         "http://" + OPA.getHost() + ":" + OPA.getMappedPort(8181) + "/v1/data/uc/authz");
@@ -152,6 +165,92 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
         .containsExactly(table.getTableId());
     policyGrants.removeIf(grant -> grant.get("privilege").equals("SELECT"));
     updateGrants();
+    assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null, null));
+
+    String bobId = createTestUser(BOB).getId();
+    adminTables.updateTable(fullName, new UpdateTable().owner(BOB));
+    assertOwnerGrants(table.getTableId(), bobId);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void nativeGrantsRecoverAfterFailedOwnerReload(boolean listFirst) throws Exception {
+    String bobId = createTestUser(BOB).getId();
+    TableInfo table =
+        adminTables.createTable(
+            externalTable(
+                "reload_recovery", testDirectoryRoot.resolve("recovery").toUri().toString()));
+    String fullName = TestUtils.SCHEMA_FULL_NAME + "." + table.getName();
+    grantPermissions(ALICE, SecurableType.TABLE, fullName, Privileges.SELECT);
+    var sessions = hibernateConfigurator.getSessionFactory();
+    sessions
+        .unwrap(SessionFactoryImplementor.class)
+        .getServiceRegistry()
+        .getService(EventListenerRegistry.class)
+        .appendListeners(
+            EventType.POST_COMMIT_UPDATE,
+            new PostCommitUpdateEventListener() {
+              @Override
+              public void onPostUpdate(PostUpdateEvent event) {
+                if (event.getEntity() instanceof TableInfoDAO updated
+                    && updated.getId().toString().equals(table.getTableId())) {
+                  // Make only the post-commit reload fail; the transfer must already be saved.
+                  sessions.inTransaction(
+                      session ->
+                          session
+                              .createNativeMutationQuery(
+                                  "ALTER TABLE casbin_rule RENAME TO unavailable_policy")
+                              .executeUpdate());
+                }
+              }
+
+              @Override
+              public void onPostUpdateCommitFailed(PostUpdateEvent event) {}
+
+              @Override
+              public boolean requiresPostCommitHandling(EntityPersister persister) {
+                return persister.getMappedClass() == TableInfoDAO.class;
+              }
+            });
+    try {
+      assertThatExceptionOfType(ApiException.class)
+          .isThrownBy(() -> adminTables.updateTable(fullName, new UpdateTable().owner(BOB)))
+          .extracting(ApiException::getCode)
+          .isEqualTo(ErrorCode.UNAVAILABLE.getHttpStatus().code());
+      assertThat(adminTables.getTable(fullName, null, null, null).getOwner()).isEqualTo(BOB);
+      assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null, null));
+      assertApiException(
+          () -> grantsApi.get(SecurableType.TABLE, fullName, null),
+          ErrorCode.UNAVAILABLE,
+          "Authorization policy must be reloaded.");
+      assertApiException(
+          () -> grantPermissions(ALICE, SecurableType.TABLE, fullName, Privileges.MODIFY),
+          ErrorCode.UNAVAILABLE,
+          "Authorization policy must be reloaded.");
+    } finally {
+      sessions.inTransaction(
+          session ->
+              session
+                  .createNativeMutationQuery("ALTER TABLE unavailable_policy RENAME TO casbin_rule")
+                  .executeUpdate());
+    }
+    if (listFirst) {
+      assertThat(grantsApi.get(SecurableType.TABLE, fullName, null).getPrivilegeAssignments())
+          .anySatisfy(
+              assignment -> {
+                assertThat(assignment.getPrincipal()).isEqualTo(ALICE);
+                assertThat(assignment.getPrivileges()).containsExactly(Privilege.SELECT);
+              });
+    }
+    grantPermissions(ALICE, SecurableType.TABLE, fullName, Privileges.MODIFY);
+    assertThat(grantsApi.get(SecurableType.TABLE, fullName, null).getPrivilegeAssignments())
+        .anySatisfy(
+            assignment -> {
+              assertThat(assignment.getPrincipal()).isEqualTo(ALICE);
+              assertThat(assignment.getPrivileges())
+                  .containsExactlyInAnyOrder(Privilege.SELECT, Privilege.MODIFY);
+            });
+    assertOwnerGrants(table.getTableId(), bobId);
     assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null, null));
   }
 

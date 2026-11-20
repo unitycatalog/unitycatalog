@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +10,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     param_info_to_pydantic_type,
     process_function_names,
+    to_tool_call_parameters,
 )
 from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
@@ -166,10 +166,9 @@ class UCFunctionToolkit(BaseModel):
         schema_data = UCFunctionToolkit.convert_to_dspy_schema(function_info, strict=True)
 
         def func(**kwargs: Any) -> str:
-            args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,
-                parameters=args_json,
+                parameters=to_tool_call_parameters(kwargs),
                 enable_retriever_tracing=mlflow_tracing_enabled("dspy"),
             )
             return result.to_json()

@@ -20,6 +20,14 @@ public final class AuthorizeExpressions {
 
   private AuthorizeExpressions() {}
 
+  /** Metastore admins can transfer ownership without permission to change other metadata. */
+  public static final String UPDATE_OWNER =
+      """
+      #owner != null && #new_name == null && #comment == null &&
+      (#properties == null || #properties.isEmpty()) &&
+      #authorize(#principal, #metastore, OWNER)
+      """;
+
   /** Catalog BROWSE permits discovery of the catalog and its descendants without usage grants. */
   public static final String BROWSE_CATALOG = "#authorize(#principal, #catalog, BROWSE)";
 
@@ -196,7 +204,8 @@ public final class AuthorizeExpressions {
    * Authorization policy for deleting a table, shared by the UC REST, UC Delta API, and Iceberg
    * REST delete endpoints. Metastore admin alone is intentionally not sufficient -- the caller must
    * hold OWNER/MANAGE in the catalog / schema / table hierarchy, with usage above that scope. Table
-   * grant updates also reuse this policy.
+   * ownership and grant updates also reuse this policy; the ownership PATCH adds a separate
+   * metastore-admin alternative.
    */
   public static final String DELETE_TABLE =
       """

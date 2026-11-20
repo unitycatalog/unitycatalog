@@ -34,20 +34,25 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.Environment;
 import org.hibernate.cfg.JdbcSettings;
+import org.hibernate.cfg.SchemaToolingSettings;
 import org.hibernate.service.ServiceRegistry;
+import org.hibernate.tool.schema.Action;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,6 +82,9 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
+    requireSchemaFromConnection(hibernateProperties);
+    requireNoSchemaChanges(settingsHibernateReads(hibernateProperties));
+    requireNamedMemoryDatabase(hibernateProperties);
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
@@ -113,6 +121,78 @@ public class HibernateConfigurator implements AutoCloseable {
                 + " and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).");
       }
     }
+  }
+
+  /**
+   * An H2 in-memory URL without a name ({@code jdbc:h2:mem:} or {@code jdbc:h2:.}) gives every
+   * connection its own empty database, so the server would not see the schema that was set up.
+   * Refuses it.
+   */
+  private static void requireNamedMemoryDatabase(Properties hibernateProperties) {
+    for (String key : urlSettings(hibernateProperties)) {
+      String url = hibernateProperties.getProperty(key);
+      String h2 = h2Url(url);
+      if (h2 != null && h2.matches("jdbc:h2:(mem:|\\.)(;.*)?")) {
+        throw new IllegalArgumentException(
+            "The in-memory H2 URL "
+                + url
+                + " has no database name, so every connection gets its own empty database. Name"
+                + " it: jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1");
+      }
+    }
+  }
+
+  /**
+   * The settings that can give the pool its JDBC URL: {@code hibernate.connection.url}, and the URL
+   * property of a data source class ({@code hibernate.hikari.dataSource.URL} or {@code .url}).
+   */
+  public static List<String> urlSettings(Properties hibernateProperties) {
+    return hibernateProperties.stringPropertyNames().stream()
+        .filter(
+            key ->
+                key.equals("hibernate.connection.url")
+                    || (key.startsWith(HIKARI_DATA_SOURCE)
+                        && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("url")))
+        .sorted()
+        .toList();
+  }
+
+  private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
+
+  /**
+   * The schema steps own the schema. Refuses every Hibernate schema action but none, validate too,
+   * before the pool or the session factory exists.
+   */
+  private static void requireNoSchemaChanges(Map<Object, Object> settings) {
+    settings.forEach(
+        (name, value) -> {
+          if (isSchemaAction(name) && !isNone(value)) {
+            throw new IllegalStateException(
+                name
+                    + "="
+                    + value
+                    + " is not supported: the schema steps manage the schema. Set it to none.");
+          }
+        });
+  }
+
+  /**
+   * A schema action setting, or its form for one contributor ({@code hibernate.hbm2ddl.auto.orm}).
+   */
+  private static boolean isSchemaAction(Object name) {
+    return name instanceof String setting
+        && Stream.of(
+                SchemaToolingSettings.HBM2DDL_AUTO,
+                SchemaToolingSettings.JAKARTA_HBM2DDL_DATABASE_ACTION,
+                SchemaToolingSettings.HBM2DDL_DATABASE_ACTION)
+            .anyMatch(action -> setting.equals(action) || setting.startsWith(action + "."));
+  }
+
+  /** Hibernate takes an {@link Action} or its name, and reads an empty value as none. */
+  private static boolean isNone(Object value) {
+    return value instanceof Action action
+        ? action == Action.NONE
+        : value.toString().isBlank() || "none".equalsIgnoreCase(value.toString().trim());
   }
 
   /**
@@ -265,10 +345,7 @@ public class HibernateConfigurator implements AutoCloseable {
     Properties hibernateProperties = new Properties();
     if (!hibernatePropertiesPath.toFile().exists()) {
       LOGGER.warn("Hibernate properties file not found: {}", hibernatePropertiesPath);
-      hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-      hibernateProperties.setProperty(
-          "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
+      useOwnTestDatabase(hibernateProperties);
     } else {
       try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
@@ -280,13 +357,48 @@ public class HibernateConfigurator implements AutoCloseable {
         hibernateProperties, serverProperties.getEnv(DB_PASSWORD_KEY), hibernatePropertiesPath);
 
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
-      hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-      hibernateProperties.setProperty(
-          "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+      useOwnTestDatabase(hibernateProperties);
       LOGGER.debug("Hibernate configuration set for testing");
     }
-    return hibernateProperties;
+    return withSchemaUpdatesOff(hibernateProperties);
+  }
+
+  private static final String OWN_TEST_DATABASE_URL = "unitycatalog.ownTestDatabaseUrl";
+
+  /**
+   * Points {@code properties} at a new in-memory H2 database with a name of its own, so that two
+   * servers in one JVM never share one, and records its URL for {@link #ownTestDatabaseUrl}.
+   */
+  private static void useOwnTestDatabase(Properties properties) {
+    String url = "jdbc:h2:mem:testdb-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1";
+    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    properties.setProperty("hibernate.connection.url", url);
+    properties.setProperty(OWN_TEST_DATABASE_URL, url);
+  }
+
+  /**
+   * The in-memory database that {@link #setupHibernateProperties} chose for {@code properties}
+   * itself, or {@code null} when the configuration names the database. Only a database chosen here
+   * is the server's to drop.
+   */
+  public static String ownTestDatabaseUrl(Properties properties) {
+    return properties.getProperty(OWN_TEST_DATABASE_URL);
+  }
+
+  /**
+   * Flyway owns the schema, so Hibernate never changes it, even if an old {@code
+   * etc/conf/hibernate.properties} still says {@code update}.
+   */
+  static Properties withSchemaUpdatesOff(Properties properties) {
+    String auto = properties.getProperty("hibernate.hbm2ddl.auto");
+    if (auto != null && !isNone(auto)) {
+      LOGGER.warn(
+          "Ignoring hibernate.hbm2ddl.auto={}: the schema is managed by the schema migration"
+              + " steps.",
+          auto);
+    }
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
+    return properties;
   }
 
   /**

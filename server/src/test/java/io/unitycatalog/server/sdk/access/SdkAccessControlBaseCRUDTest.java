@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -44,6 +45,8 @@ import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.Email;
 import io.unitycatalog.control.model.UserResource;
+import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.access.BaseAccessControlCRUDTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -52,10 +55,12 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
@@ -438,6 +443,19 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
   @SneakyThrows
   protected TableInfo getTable(TablesApi tablesApi, String tableFullName) {
     return tablesApi.getTable(tableFullName, true, false, /* includeBrowse= */ false);
+  }
+
+  @SneakyThrows
+  protected void assertOwnerGrants(String resourceId, String ownerId) {
+    // The grant API omits OWNER. Read the server's cache without triggering a policy refresh.
+    Field authorizerField = UnityCatalogServer.class.getDeclaredField("authorizer");
+    authorizerField.setAccessible(true);
+    UnityCatalogAuthorizer authorizer =
+        (UnityCatalogAuthorizer) authorizerField.get(unityCatalogServer);
+    assertThat(authorizer.listAuthorizations(UUID.fromString(resourceId)).entrySet())
+        .filteredOn(entry -> entry.getValue().contains(Privileges.OWNER))
+        .extracting(Map.Entry::getKey)
+        .containsExactly(UUID.fromString(ownerId));
   }
 
   /** Common setup: Create standard test users (principal-1, principal-2, regular-1, regular-2). */
