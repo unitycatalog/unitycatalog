@@ -28,6 +28,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
@@ -37,6 +38,7 @@ import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
@@ -47,6 +49,7 @@ import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.time.Duration;
@@ -545,6 +548,44 @@ public class OwnershipRepositoryTest {
     authorizer.reloadAuthorizations();
     assertThat(authorizer.listAuthorizations(firstId, targetId)).containsExactly(Privileges.OWNER);
     assertThat(authorizer.listAuthorizations(secondId, targetId)).isEmpty();
+  }
+
+  @Test
+  void functionTransferKeepsProperties() {
+    UUID schemaId = UUID.randomUUID();
+    UUID functionId = UUID.randomUUID();
+    String fullName = CATALOG + ".schema.function";
+    sessionFactory.inTransaction(
+        session -> {
+          session.persist(
+              SchemaInfoDAO.builder().id(schemaId).name("schema").catalogId(resourceId).build());
+          session.persist(
+              FunctionInfoDAO.builder()
+                  .id(functionId)
+                  .name("function")
+                  .schemaId(schemaId)
+                  .owner(FIRST_OWNER)
+                  .build());
+          PropertyDAO.from(Map.of("tier", "gold", "team", "ml"), functionId, Constants.FUNCTION)
+              .forEach(session::persist);
+        });
+    authorizer.grantAuthorization(firstId, functionId, Privileges.OWNER);
+    String expectedProperties = "{\"team\":\"ml\",\"tier\":\"gold\"}";
+
+    FunctionInfo updated =
+        repositories
+            .getFunctionRepository()
+            .updateFunction(fullName, new UpdateFunction().owner(SECOND_OWNER));
+
+    FunctionInfo stored = repositories.getFunctionRepository().getFunction(fullName);
+    assertThat(updated.getOwner()).isEqualTo(SECOND_OWNER);
+    assertThat(stored.getOwner()).isEqualTo(SECOND_OWNER);
+    assertThat(stored.getProperties()).isEqualTo(expectedProperties);
+    assertThat(updated.getProperties()).isEqualTo(expectedProperties);
+    authorizer.reloadAuthorizations();
+    assertThat(authorizer.listAuthorizations(firstId, functionId)).isEmpty();
+    assertThat(authorizer.listAuthorizations(secondId, functionId))
+        .containsExactly(Privileges.OWNER);
   }
 
   @ParameterizedTest
