@@ -485,15 +485,17 @@ def test_generate_function_input_params_schema_strict(type_names, strict, expect
     assert params_schema.strict is expected_strict
 
 
-def int_param(nullable: bool, parameter_default: Optional[str]) -> Dict:
+def int_param(
+    nullable: bool, parameter_default: Optional[str], name: str = "x", position: int = 0
+) -> Dict:
     return {
-        "name": "x",
+        "name": name,
         "type_text": "int",
         "type_json": json.dumps(
-            {"name": "x", "type": "integer", "nullable": nullable, "metadata": {}}
+            {"name": name, "type": "integer", "nullable": nullable, "metadata": {}}
         ),
         "type_name": "INT",
-        "position": 0,
+        "position": position,
         "parameter_type": "PARAM",
         "parameter_default": parameter_default,
     }
@@ -530,6 +532,22 @@ def test_generate_function_input_params_schema_param_with_default_is_optional(
     assert "required" not in schema
     assert schema["properties"]["x"]["default"] == expected_default
     assert model().x == expected_default
+
+
+def test_generate_function_input_params_schema_mixes_required_and_default_params():
+    function_info = generate_function_info(
+        [
+            int_param(False, parameter_default=None, name="a", position=0),
+            int_param(True, parameter_default="5", name="b", position=1),
+        ]
+    )
+    model = generate_function_input_params_schema(function_info).pydantic_model
+    schema = model.model_json_schema()
+
+    assert schema["required"] == ["a"]
+    assert "default" not in schema["properties"]["a"]
+    assert schema["properties"]["b"]["default"] == 5
+    assert model(a=1).b == 5
 
 
 def test_param_info_to_pydantic_type_with_sql_null():
