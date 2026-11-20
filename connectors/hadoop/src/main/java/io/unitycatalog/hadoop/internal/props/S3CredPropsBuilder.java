@@ -246,7 +246,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setInitFixedCredKeys(GenericCredential cred) {
+  protected Map<String, String> initFixedCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AwsCredential,
         "Expected AwsCredential, but got %s",
@@ -255,12 +255,16 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
     if (!aws.hasKeys() || aws.s3Endpoint() != null) {
       // Only the S3 endpoint is vended, so the engine's own keys stay in place; or the keys are
       // for S3-compatible storage, set at the scope of its bucket only.
-      return;
+      return Map.of();
     }
-    set(S3A_ACCESS_KEY, aws.accessKeyId());
-    set(S3A_SECRET_KEY, aws.secretAccessKey());
-    // Empty for a key pair, so that a session token already in the configuration is not paired
-    // with the vended keys.
-    set(S3A_SESSION_TOKEN, aws.sessionToken() != null ? aws.sessionToken() : "");
+    return Map.of(
+        S3A_ACCESS_KEY,
+        aws.accessKeyId(),
+        S3A_SECRET_KEY,
+        aws.secretAccessKey(),
+        // Empty for a key pair, so that a session token already in the configuration is not
+        // paired with the vended keys.
+        S3A_SESSION_TOKEN,
+        aws.sessionToken() != null ? aws.sessionToken() : "");
   }
 }

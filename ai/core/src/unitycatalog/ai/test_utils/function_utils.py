@@ -1,5 +1,8 @@
 import asyncio
+import datetime
+import decimal
 import functools
+import json
 import logging
 import uuid
 from contextlib import contextmanager
@@ -7,12 +10,14 @@ from typing import Any, AsyncIterator, Callable, Generator, NamedTuple, Optional
 
 from databricks.sdk.service.catalog import (
     ColumnTypeName,
+    FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
 
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
+from unitycatalog.ai.test_utils.function_utils_oss import param_type_name
 
 CATALOG = "integration_testing"
 
@@ -38,6 +43,85 @@ RETRIEVER_TABLE_RETURN_PARAMS = FunctionParameterInfos(
         ),
     ]
 )
+
+ADDRESS_TYPE_JSON = {
+    "type": "struct",
+    "fields": [
+        {"name": "city", "type": "string", "nullable": False, "metadata": {}},
+        {"name": "zip", "type": "integer", "nullable": True, "metadata": {}},
+    ],
+}
+
+JSON_ARGUMENT_PARAMS = {
+    "address": ("struct<city:string,zip:int>", ADDRESS_TYPE_JSON),
+    "stops": (
+        "array<struct<city:string,zip:int>>",
+        {"type": "array", "elementType": ADDRESS_TYPE_JSON, "containsNull": False},
+    ),
+    "by_name": (
+        "map<string,struct<city:string,zip:int>>",
+        {
+            "type": "map",
+            "keyType": "string",
+            "valueType": ADDRESS_TYPE_JSON,
+            "valueContainsNull": False,
+        },
+    ),
+    "data": ("binary", "binary"),
+    "day": ("date", "date"),
+    "at": ("timestamp", "timestamp"),
+    "amount": ("decimal(10,2)", "decimal(10,2)"),
+}
+
+JSON_ARGUMENTS = {
+    "address": {"city": "Oslo", "zip": 150},
+    "stops": [{"city": "Bergen", "zip": None}, {"city": "Tromso", "zip": 9008}],
+    "by_name": {"home": {"city": "Oslo", "zip": 150}},
+    "day": "2024-01-02",
+    "at": "2024-01-02T03:04:05Z",
+    "amount": 12.5,
+}
+
+# Python values that a caller can pass in place of the JSON values in JSON_ARGUMENTS.
+NATIVE_ARGUMENTS = {
+    "day": datetime.date(2024, 1, 2),
+    "at": datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc),
+    "amount": decimal.Decimal("12.5"),
+}
+
+# Base64 text with padding, with "+" and "/", of bytes that are not UTF-8, and empty.
+BINARY_ARGUMENTS = ["aGk=", "YWJjZA==", "+/8=", "/wA=", "AAH/", ""]
+
+
+def generate_function_info_with_params(params: dict[str, tuple[str, Any]]) -> FunctionInfo:
+    """
+    Returns the FunctionInfo of the function `catalog.schema.test` with the given parameters.
+
+    Args:
+        params: The parameters by name, as (type_text, type) where type is the "type" entry
+            of the parameter's type json.
+    """
+    return FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="test",
+        full_name="catalog.schema.test",
+        comment="A test function.",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name=name,
+                    type_text=type_text,
+                    type_name=ColumnTypeName(param_type_name(type_text)),
+                    type_json=json.dumps(
+                        {"name": name, "type": type_json, "nullable": False, "metadata": {}}
+                    ),
+                    position=position,
+                )
+                for position, (name, (type_text, type_json)) in enumerate(params.items())
+            ]
+        ),
+    )
 
 
 _logger = logging.getLogger(__name__)

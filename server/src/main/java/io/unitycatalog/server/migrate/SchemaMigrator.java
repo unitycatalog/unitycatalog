@@ -29,6 +29,8 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,8 +51,9 @@ import org.slf4j.LoggerFactory;
  * up an empty database, adopts a database of the baseline release (recording step 1 without running
  * it) or of a later step (recording the steps up to it without running them) and applies the
  * pending steps, checking the schema against the steps' effect files ({@code
- * schema-effects/<database>}) before each step and at the end. On PostgreSQL and MySQL, each {@link
- * #upgradeSchema()} holds a {@link RunLock} from classifying the database to the last step.
+ * schema-effects/<database>}) before each step and at the end. Each {@link #upgradeSchema()} holds
+ * a {@link RunLock} from classifying the database to the last step: on H2, one that holds within
+ * this process.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -162,8 +165,9 @@ public final class SchemaMigrator implements AutoCloseable {
    * Runs {@code bin/start-uc-server --check-schema} (when {@code upgrade} is false) or {@code
    * --upgrade-schema} on the database that the configuration files in {@code configurationFolder}
    * set, printing what it found to {@code out}. Returns the exit code: 0 when the check or the
-   * upgrade went through, 1 otherwise, also for a configuration with nothing to upgrade: a missing
-   * configuration file or an in-memory database.
+   * upgrade went through, 1 otherwise, also for a missing configuration file. An in-memory database
+   * is set up by the server itself: the upgrade succeeds without doing anything, and the check
+   * fails.
    */
   public static int runCommand(boolean upgrade, Path configurationFolder, PrintStream out) {
     String command = "bin/start-uc-server " + (upgrade ? "--upgrade-schema" : "--check-schema");
@@ -188,9 +192,15 @@ public final class SchemaMigrator implements AutoCloseable {
       }
       try (SchemaMigrator migrator = fromHibernateProperties(hibernateProperties)) {
         if (migrator.isInMemory()) {
-          throw new IllegalStateException(
-              "The configured database is in memory, so there is nothing to check or upgrade: the"
-                  + " server sets up an in-memory database itself.");
+          // The server sets it up when it starts, so an upgrade has nothing to do and succeeds, as
+          // in a deployment that runs the upgrade before every start. A check has nothing to
+          // report on a database that does not exist yet, and so fails.
+          String message =
+              "The database is in memory: the server sets it up itself when it starts, so there is"
+                  + " nothing to "
+                  + (upgrade ? "upgrade." : "check.");
+          out.println(message);
+          return upgrade ? 0 : 1;
         }
         if (!upgrade) {
           return migrator.checkSchema(out);
@@ -213,12 +223,15 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Whether {@code url} is an in-memory H2 URL: {@code jdbc:h2:mem:}, or the unnamed {@code
-   * jdbc:h2:.}.
+   * Whether {@code url} is an in-memory H2 URL: {@code jdbc:h2:mem:}, the unnamed {@code
+   * jdbc:h2:.}, or one of H2's in-memory file systems ({@code memFS:}, {@code memLZF:}, {@code
+   * nioMemFS:}, {@code nioMemLZF:}).
    */
   private static boolean isH2InMemory(String url) {
     String h2 = HibernateConfigurator.h2Url(url);
-    return h2 != null && (h2.startsWith("jdbc:h2:mem:") || h2.matches("jdbc:h2:\\.(;.*)?"));
+    return h2 != null
+        && h2.matches(
+            "(?s)jdbc:h2:(?:mem:|memfs:|memlzf:|niomemfs:|niomemlzf:).*|jdbc:h2:\\.(?:;.*)?");
   }
 
   /**
@@ -231,13 +244,9 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   private static boolean openH2OnlyIfItExists(Properties hibernateProperties) {
     boolean h2File = false;
-    for (String key : hibernateProperties.stringPropertyNames()) {
-      boolean urlSetting =
-          key.equals("hibernate.connection.url")
-              || (key.startsWith(HIKARI_DATA_SOURCE)
-                  && key.substring(HIKARI_DATA_SOURCE.length()).equalsIgnoreCase("url"));
+    for (String key : HibernateConfigurator.urlSettings(hibernateProperties)) {
       String url = hibernateProperties.getProperty(key);
-      if (urlSetting && HibernateConfigurator.h2Url(url) != null && !isH2InMemory(url)) {
+      if (HibernateConfigurator.h2Url(url) != null && !isH2InMemory(url)) {
         hibernateProperties.setProperty(key, withIfExists(url));
         h2File = true;
       }
@@ -252,6 +261,8 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     return h2File;
   }
+
+  private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
 
   /**
    * {@code url} with {@code IFEXISTS=TRUE} as its last setting, after dropping its other {@code
@@ -287,8 +298,6 @@ public final class SchemaMigrator implements AutoCloseable {
     return url.substring(0, settings) + ";" + String.join(";", kept);
   }
 
-  private static final String HIKARI_DATA_SOURCE = "hibernate.hikari.dataSource.";
-
   /** Whether H2 failed to open {@code e}'s database because it does not exist. */
   private static boolean isH2DatabaseNotFound(Throwable e) {
     for (Throwable cause = e; cause != null; cause = cause.getCause()) {
@@ -303,17 +312,23 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */
   public boolean isInMemory() {
+    return isH2InMemory(connectionUrl());
+  }
+
+  /** The URL of the connection the pool opens. */
+  public String connectionUrl() {
     try (Connection connection = dataSource.getConnection()) {
-      return isH2InMemory(connection.getMetaData().getURL());
+      return connection.getMetaData().getURL();
     } catch (SQLException e) {
       throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
     }
   }
 
   /**
-   * H2 takes no run lock, because it opens a database file in one process. Its server mode lets
-   * several processes open the database, so they could run steps twice at once. Read from the
-   * configuration, before any connection: the connection's URL leaves {@code AUTO_SERVER} out.
+   * H2's run lock holds only within this process, because it opens a database file in one process.
+   * Its server mode lets several processes open the database, so they could run steps twice at
+   * once. Read from the configuration, before any connection: the connection's URL leaves {@code
+   * AUTO_SERVER} out.
    */
   private static void refuseH2ServerMode(HikariConfig config) {
     Properties driver = config.getDataSourceProperties();
@@ -480,8 +495,8 @@ public final class SchemaMigrator implements AutoCloseable {
    * that the step is tried again. This also sets up an empty database, and adopts a database
    * without schema history when its schema is exactly that of {@link #ADOPTED_RELEASE} (the steps
    * after the first run) or of a later step (the steps up to it are recorded without running, and
-   * the steps after it run). On PostgreSQL and MySQL, a second run at the same time waits for the
-   * first. Returns the number of steps it ran or recorded.
+   * the steps after it run). A second run at the same time waits for the first: on H2, one in this
+   * process. Returns the number of steps it ran or recorded.
    */
   public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
@@ -599,6 +614,61 @@ public final class SchemaMigrator implements AutoCloseable {
       descriptions.put(m.getVersion().getVersion(), m.getDescription());
     }
     return descriptions;
+  }
+
+  /**
+   * For server start, which changes nothing: throws unless the database is at this build's last
+   * step, Flyway's validation passes (no failed step, edited step or step missing below the
+   * recorded version), and the schema is the one the steps' effect files add up to. The message
+   * names what brings the database there. Takes no run lock.
+   */
+  public void requireCurrentSchema() {
+    SchemaState state = state();
+    refuseIfUnsupported(state);
+    if (state == SchemaState.EMPTY) {
+      throw new IllegalStateException(
+          "The database has no Unity Catalog schema yet. Set it up with bin/start-uc-server"
+              + " --upgrade-schema, then start the server.");
+    }
+    if (state != SchemaState.CURRENT) {
+      String recorded = recordedVersion();
+      throw new IllegalStateException(
+          "The database schema is at version "
+              + (recorded == null ? "none" : recorded)
+              + ", and this release needs version "
+              + latestVersion()
+              + ". Stop every server of the previous release, run bin/start-uc-server"
+              + " --upgrade-schema with this release, then start the server.");
+    }
+    requireValidHistory(false);
+    requireLastStepsSchema(", then start the server");
+  }
+
+  /**
+   * For server start, before Hibernate connects, which creates a missing H2 database file: throws
+   * when {@code hibernateProperties} names an H2 database file that does not exist, so that a
+   * mistyped path is not taken for a new database.
+   */
+  public static void requireH2DatabaseExists(Properties hibernateProperties) {
+    Properties properties = new Properties();
+    properties.putAll(hibernateProperties);
+    if (!openH2OnlyIfItExists(properties)) {
+      return;
+    }
+    try (SchemaMigrator ignored = fromHibernateProperties(properties)) {
+      // Opening it is the check.
+    } catch (RuntimeException e) {
+      if (isH2DatabaseNotFound(e)) {
+        throw new IllegalStateException(
+            "The H2 database file that hibernate.connection.url names is not found. Check the"
+                + " configuration; to set up a new database there, run bin/start-uc-server"
+                + " --upgrade-schema, then start the server. In a source checkout, the quickstart's"
+                + " sample database is built by build/sbt buildSampleDatabase (or by starting the"
+                + " server with bin/start-uc-server when build/sbt is there).",
+            e);
+      }
+      throw e;
+    }
   }
 
   /**
@@ -1036,12 +1106,12 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Throws unless Flyway's validation of the schema history passes: no failed step, no edited step
-   * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
-   * recorded version may be pending and may have failed: the upgrade runs them. A failed step that
-   * is not one of this build's pending steps, such as a newer release's, or whose script changed
-   * since it failed, is still refused: a published step is never changed, and a fix for a failed
-   * step ships as a new step.
+   * Throws unless Flyway's validation of the schema history passes: no failed step (also a newer
+   * release's), no edited step (checksum), no step missing below the recorded version. With {@code
+   * upgrading}, steps after the recorded version may be pending and may have failed: the upgrade
+   * runs them. A failed step that is not one of this build's pending steps, such as a newer
+   * release's, or whose script changed since it failed, is still refused: a published step is never
+   * changed, and a fix for a failed step ships as a new step.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
@@ -1049,9 +1119,9 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     FluentConfiguration configuration = flyway();
     Set<String> retried = upgrading ? Set.copyOf(pendingSteps()) : Set.of();
-    if (upgrading) {
-      configuration.ignoreMigrationPatterns("*:pending");
-    }
+    // Flyway ignores a newer release's steps (future) unless told otherwise. Nothing is ignored
+    // but, for an upgrade, the steps it is about to run (pending).
+    configuration.ignoreMigrationPatterns(upgrading ? "*:pending" : "");
     Flyway flyway = configuration.load();
     // Flyway reports a failed step before it compares checksums, so an edit to it goes unreported.
     Set<String> edited =
@@ -1084,7 +1154,10 @@ public final class SchemaMigrator implements AutoCloseable {
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
       throw new IllegalStateException(
-          "The database's schema history does not match this release's schema steps: " + errors);
+          "The database's schema history does not match this release's schema steps: "
+              + errors
+              // --upgrade-schema and --check-schema refuse the same history, so they are no advice.
+              + "\nRun the release that applied the steps, or restore the backup.");
     }
   }
 
@@ -1239,6 +1312,14 @@ public final class SchemaMigrator implements AutoCloseable {
           "The database schema is " + state + "; this release needs version " + latestVersion());
     }
     requireValidHistory(false);
+    requireLastStepsSchema("");
+  }
+
+  /**
+   * Throws unless the schema is the one that the steps' effect files add up to for this build's
+   * last step, naming the differences and then {@code then}.
+   */
+  private void requireLastStepsSchema(String then) {
     SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
     SchemaSnapshot expected = expected(latestVersion());
     if (!schema.equals(expected)) {
@@ -1247,7 +1328,9 @@ public final class SchemaMigrator implements AutoCloseable {
               + latestVersion()
               + ":\n"
               + differences(schema, expected)
-              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup.");
+              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup"
+              + then
+              + ".");
     }
   }
 
@@ -1405,16 +1488,28 @@ public final class SchemaMigrator implements AutoCloseable {
               "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")");
     }
 
+    /**
+     * H2 has no lock call, and only one process opens its database, so runs in this process take
+     * turns by database URL: servers on one in-memory database start in one process.
+     */
+    private static final Map<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
+
     private final DataSource dataSource;
     private final Connection connection; // null on H2
     private final String unlockSql;
+    private final ReentrantLock h2Lock; // null except on H2
     private final boolean autoCommit;
 
     private RunLock(
-        DataSource dataSource, Connection connection, String unlockSql, boolean autoCommit) {
+        DataSource dataSource,
+        Connection connection,
+        String unlockSql,
+        ReentrantLock h2Lock,
+        boolean autoCommit) {
       this.dataSource = dataSource;
       this.connection = connection;
       this.unlockSql = unlockSql;
+      this.h2Lock = h2Lock;
       this.autoCommit = autoCommit;
     }
 
@@ -1424,7 +1519,16 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
       if (kind == DatabaseKind.H2) {
-        return new RunLock(dataSource, null, null, true);
+        String url;
+        try (Connection connection = dataSource.getConnection()) {
+          url = connection.getMetaData().getURL();
+        } catch (SQLException e) {
+          throw new IllegalStateException(
+              "Could not connect to the database: " + e.getMessage(), e);
+        }
+        ReentrantLock lock = H2_LOCKS.computeIfAbsent(url, u -> new ReentrantLock());
+        lock.lock();
+        return new RunLock(dataSource, null, null, lock, true);
       }
       LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
@@ -1440,7 +1544,7 @@ public final class SchemaMigrator implements AutoCloseable {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(dataSource, connection, calls.unlock(), autoCommit);
+        return new RunLock(dataSource, connection, calls.unlock(), null, autoCommit);
       } catch (SQLException e) {
         if (connection != null) {
           restoreAutoCommit(dataSource, connection, autoCommit);
@@ -1458,6 +1562,10 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     @Override
     public void close() {
+      if (h2Lock != null) {
+        h2Lock.unlock();
+        return;
+      }
       if (connection == null) {
         return;
       }

@@ -25,6 +25,7 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.logging.RequestContextDataProvider;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.UnityCatalogRestService;
@@ -34,6 +35,11 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,7 +48,11 @@ import java.util.ServiceLoader;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.core.util.ContextDataProvider;
+import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class UnityCatalogServerTest extends BaseServerTest {
 
@@ -66,7 +76,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
   }
 
   @Test
-  public void opaRequiresAUrlAndReleasesNativeAuthorizerOnClose() {
+  public void opaRequiresAUrlAndReleasesNativeAuthorizerOnClose() throws Exception {
     ServerProperties properties = new ServerProperties(serverProperties);
     properties.set(Property.AUTHORIZATION_ENABLED, "enable");
     properties.set(Property.AUTHORIZATION_PROVIDER, "opa");
@@ -89,15 +99,176 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .serverProperties(properties)
             .hibernateConfigurator(hibernateConfigurator)
             .build();
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection()) {
+      connection.createStatement().execute("CREATE TABLE callers_table (id INT)");
+      if (!connection.getAutoCommit()) {
+        connection.commit();
+      }
+    }
     try {
       assertThat(hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections())
           .isEqualTo(connections + 1);
     } finally {
       server.close();
     }
+    // A database the caller injected stays the caller's, with its data.
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
+        Statement statement = connection.createStatement()) {
+      statement.execute("SELECT id FROM callers_table");
+      statement.execute("DROP TABLE callers_table");
+      if (!connection.getAutoCommit()) {
+        connection.commit();
+      }
+    }
     assertThat(hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections())
         .isEqualTo(connections);
     assertThat(hibernateConfigurator.getSessionFactory().isOpen()).isTrue();
+  }
+
+  /**
+   * A server that builds its own database configuration refuses an H2 file that does not exist, and
+   * does not create it.
+   */
+  @Test
+  public void startRefusesAMissingH2FileWithoutCreatingIt(@TempDir Path dir) throws Exception {
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    Files.writeString(
+        hibernateFile,
+        "hibernate.connection.driver_class=org.h2.Driver\n"
+            + "hibernate.connection.url=jdbc:h2:file:"
+            + dir.resolve("typo")
+            + "\n");
+
+    assertThatThrownBy(() -> ownedServer(new Properties(), hibernateFile))
+        .hasMessageContaining("H2 database file that hibernate.connection.url names is not found");
+
+    try (var files = Files.list(dir)) {
+      assertThat(files).containsExactly(hibernateFile);
+    }
+  }
+
+  /**
+   * An in-memory test database lasts as long as its server, whether server.env=test or a missing
+   * hibernate.properties chose it. A server's database is its own: closing one server leaves
+   * another that is running with its tables.
+   */
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void closingAServerDropsItsOwnInMemoryTestDatabaseOnly(
+      boolean serverEnvTest, @TempDir Path dir) throws Exception {
+    Properties properties = new Properties();
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    if (serverEnvTest) {
+      properties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    }
+
+    UnityCatalogServer first = ownedServer(properties, hibernateFile);
+    String firstUrl = databaseUrl(first);
+    try (UnityCatalogServer second = ownedServer(properties, hibernateFile)) {
+      assertThat(databaseUrl(second)).isNotEqualTo(firstUrl);
+      try (Connection connection = DriverManager.getConnection(firstUrl, "", "")) {
+        connection.createStatement().execute("CREATE TABLE first_servers_data (id INT)");
+      }
+      first.close();
+
+      // The database itself is gone, not only its tables.
+      assertThatThrownBy(() -> DriverManager.getConnection(firstUrl + ";IFEXISTS=TRUE", "", ""))
+          .hasMessageContaining("not found");
+      assertThat(tableCount(databaseUrl(second), "UC_CATALOGS")).isOne();
+    }
+  }
+
+  /** A database that the configuration names is never dropped: another server may use it. */
+  @Test
+  public void closingAServerLeavesAConfiguredInMemoryDatabaseAlone(@TempDir Path dir)
+      throws Exception {
+    String url = "jdbc:h2:mem:configured;DB_CLOSE_DELAY=-1";
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    Files.writeString(
+        hibernateFile,
+        "hibernate.connection.driver_class=org.h2.Driver\nhibernate.connection.url=" + url + "\n");
+
+    ownedServer(new Properties(), hibernateFile).close();
+
+    assertThat(tableCount(url, "UC_CATALOGS")).isOne();
+  }
+
+  private static String databaseUrl(UnityCatalogServer server) {
+    return server
+        .hibernateConfigurator()
+        .getHibernateProperties()
+        .getProperty("hibernate.connection.url");
+  }
+
+  private static int tableCount(String url, String table) throws Exception {
+    try (Connection connection = DriverManager.getConnection(url, "", "");
+        ResultSet tables =
+            connection
+                .createStatement()
+                .executeQuery(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '"
+                        + table
+                        + "'")) {
+      tables.next();
+      return tables.getInt(1);
+    }
+  }
+
+  /**
+   * Whether the database is in memory is decided from the connection the pool opens. A data source
+   * class's file URL wins over a leftover in-memory {@code hibernate.connection.url}, and closing
+   * the server, after a start or a refused start, leaves that file database alone.
+   */
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void closingAServerLeavesAFileDatabaseAloneWhenAnotherUrlSettingIsInMemory(
+      boolean schemaSetUp, @TempDir Path dir) throws Exception {
+    Path hibernateFile = dir.resolve("hibernate.properties");
+    String fileUrl = "jdbc:h2:file:" + dir.resolve("db");
+    Files.writeString(
+        hibernateFile,
+        "hibernate.hikari.dataSourceClassName=org.h2.jdbcx.JdbcDataSource\n"
+            + "hibernate.hikari.dataSource.url="
+            + fileUrl
+            + "\n"
+            + "hibernate.connection.url=jdbc:h2:mem:leftover;DB_CLOSE_DELAY=-1\n");
+    try (Connection connection = DriverManager.getConnection(fileUrl, "", "");
+        Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE kept_data (id INT)");
+      statement.execute("INSERT INTO kept_data VALUES (1)");
+    }
+    if (schemaSetUp) {
+      JdbcDataSource dataSource = new JdbcDataSource();
+      dataSource.setURL(fileUrl);
+      new SchemaMigrator(dataSource).upgradeSchema();
+    }
+
+    if (schemaSetUp) {
+      ownedServer(new Properties(), hibernateFile).close();
+    } else {
+      assertThatThrownBy(() -> ownedServer(new Properties(), hibernateFile))
+          .hasMessageContaining("no Unity Catalog schema");
+    }
+
+    try (Connection connection = DriverManager.getConnection(fileUrl, "", "");
+        ResultSet rows =
+            connection.createStatement().executeQuery("SELECT COUNT(*) FROM kept_data")) {
+      rows.next();
+      assertThat(rows.getInt(1)).isEqualTo(1);
+    }
+  }
+
+  /**
+   * A server that builds its own database configuration from {@code hibernateFile}. {@code
+   * TestServer} injects the configurator; this builds one as the launcher does.
+   */
+  private UnityCatalogServer ownedServer(Properties properties, Path hibernateFile) {
+    return UnityCatalogServer.builder()
+        .port(0)
+        .serverProperties(new ServerProperties(properties))
+        .configurationFolder(configurationFolder)
+        .hibernatePropertiesFile(hibernateFile)
+        .build();
   }
 
   @Test

@@ -5,7 +5,12 @@ import userEvent from "@testing-library/user-event";
 vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"));
 
 import { setParams } from "@/test/tanstack-router-mock";
-import { renderWithProviders, type UcHandler } from "@/test/providers";
+import {
+  renderWithProviders,
+  type RpcHandlers,
+  type UcHandler,
+} from "@/test/providers";
+import { TableType } from "@/gen/uc/v1/table_pb";
 import PermissionsPanel from "@/components/PermissionsPanel";
 import CatalogTree from "@/components/CatalogTree";
 
@@ -55,37 +60,38 @@ describe("PermissionsPanel", () => {
 });
 
 describe("CatalogTree", () => {
-  const handler: UcHandler = ({ path }) => {
-    const body = (o: unknown) => ({
-      httpStatus: 200,
-      ok: true,
-      body: JSON.stringify(o),
-    });
-    if (path === "/api/2.1/unity-catalog/catalogs")
-      return body({ catalogs: [{ name: "main" }] });
-    if (path === "/api/2.1/unity-catalog/schemas")
-      return body({ schemas: [{ name: "default" }] });
-    if (path === "/api/2.1/unity-catalog/tables")
-      return body({
-        tables: [
-          { name: "t1", table_type: "MANAGED" },
-          { name: "mv1", table_type: "METRIC_VIEW" },
-        ],
-      });
-    if (path === "/api/2.1/unity-catalog/volumes")
-      return body({ volumes: [{ name: "v1" }] });
-    if (path === "/api/2.1/unity-catalog/functions")
-      return body({ functions: [{ name: "f1" }] });
-    if (path === "/api/2.1/unity-catalog/models")
-      return body({ registered_models: [{ name: "m1" }] });
-    return { httpStatus: 404, ok: false, body: "{}" };
+  const identity = { catalogName: "main", schemaName: "default" };
+  const rpc: RpcHandlers = {
+    catalogs: { listCatalogs: () => ({ catalogs: [{ name: "main" }] }) },
+    schemas: {
+      listSchemas: () => ({ schemas: [{ ...identity, name: "default" }] }),
+    },
+    tables: {
+      listTables: () => ({
+        tables: [{ ...identity, name: "t1", tableType: TableType.MANAGED }],
+      }),
+    },
+    views: {
+      listViews: () => ({ views: [{ ...identity, name: "mv1" }] }),
+    },
+    volumes: {
+      listVolumes: () => ({ volumes: [{ ...identity, name: "v1" }] }),
+    },
+    functions: {
+      listFunctions: () => ({ functions: [{ ...identity, name: "f1" }] }),
+    },
+    models: {
+      listRegisteredModels: () => ({
+        models: [{ ...identity, name: "m1" }],
+      }),
+    },
   };
 
   it("auto-expands the active catalog/schema and lazy-loads each group", async () => {
     // Seed the route so the catalog + schema nodes open on mount and Tables
     // (defaultOpen) loads without a click.
     setParams({ catalog: "main", schema: "default" });
-    renderWithProviders(<CatalogTree />, { handler });
+    renderWithProviders(<CatalogTree />, { rpc });
 
     expect(await screen.findByText("main")).toBeInTheDocument();
     expect(await screen.findByText("default")).toBeInTheDocument();
@@ -108,11 +114,7 @@ describe("CatalogTree", () => {
 
   it("shows an empty state when there are no catalogs", async () => {
     renderWithProviders(<CatalogTree />, {
-      handler: () => ({
-        httpStatus: 200,
-        ok: true,
-        body: JSON.stringify({ catalogs: [] }),
-      }),
+      rpc: { catalogs: { listCatalogs: () => ({ catalogs: [] }) } },
     });
     expect(await screen.findByText("No catalogs.")).toBeInTheDocument();
   });
@@ -123,7 +125,7 @@ describe("CatalogTree", () => {
       schema: "default",
       view: "mv1",
     });
-    renderWithProviders(<CatalogTree />, { handler });
+    renderWithProviders(<CatalogTree />, { rpc });
 
     const link = await screen.findByRole("link", { name: /mv1/ });
     expect(link).toHaveAttribute("href", "/catalog/main/default/view/mv1");

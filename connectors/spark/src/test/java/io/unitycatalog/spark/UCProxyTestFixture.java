@@ -48,8 +48,16 @@ final class UCProxyTestFixture {
   TableCatalog proxy;
   SupportsNamespaces proxyNs;
 
-  /** Builds the proxy, initializes it, and injects the mock {@code schemasApi}. */
+  /** Builds the proxy named {@link #CATALOG_NAME}; see {@link #build(String)}. */
   UCProxyTestFixture build() throws Exception {
+    return build(CATALOG_NAME);
+  }
+
+  /**
+   * Builds the proxy, initializes it as {@code catalogName}, and injects the mock {@code
+   * schemasApi}.
+   */
+  UCProxyTestFixture build(String catalogName) throws Exception {
     ApiClient mockApiClient = mock(ApiClient.class);
     TokenProvider mockTokenProvider = mock(TokenProvider.class);
     TemporaryCredentialsApi mockTempCredApi = mock(TemporaryCredentialsApi.class);
@@ -81,7 +89,7 @@ final class UCProxyTestFixture {
     proxyObj = ctor.newInstance(args);
 
     proxy = (TableCatalog) proxyObj;
-    proxy.initialize(CATALOG_NAME, new CaseInsensitiveStringMap(Collections.emptyMap()));
+    proxy.initialize(catalogName, new CaseInsensitiveStringMap(Collections.emptyMap()));
 
     // Inject mock schemasApi (initialize() creates a real one from apiClient).
     Field schemasField = proxyClass.getDeclaredField("schemasApi");

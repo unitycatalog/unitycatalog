@@ -1,12 +1,18 @@
 use buffa::EnumValue;
-use connectrpc::{ConnectError, Limits, Router};
+use connectrpc::{ConnectError, RequestContext, Router};
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
-use crate::proto::uc::v1::{
-    dependency, ColumnInput, ColumnTypeName, DataSourceFormat, Dependency, PageRequest, Properties,
-    SchemaObjectRef, VolumeType,
+use crate::mapping;
+use crate::proto::uc::v1::__buffa::view::{
+    ColumnInputView, DependencyView, PageRequestView, PropertiesView, SchemaObjectRefView,
 };
+use crate::proto::uc::v1::{
+    dependency, CatalogServiceExt, ColumnTypeName, DataSourceFormat, FunctionServiceExt,
+    ModelServiceExt, SchemaServiceExt, TableServiceExt, TableType, UnityProxyServiceExt,
+    ViewServiceExt, VolumeServiceExt, VolumeType,
+};
+use crate::upstream::{path_segment, Upstream};
 use crate::AppState;
 
 mod catalog;
@@ -17,44 +23,147 @@ mod table;
 mod view;
 mod volume;
 
-pub(crate) fn router(state: AppState) -> Router {
-    let large_request_limits = Limits::default()
-        .with_max_request_body_size(128 * 1024 * 1024)
-        .with_max_message_size(80 * 1024 * 1024)
-        .with_element_memory_limit(96 * 1024 * 1024);
-
-    Router::new()
-        .add_service(Arc::new(catalog::CatalogRpc::new(state.clone())))
-        .add_service(Arc::new(schema::SchemaRpc::new(state.clone())))
-        .add_service(Arc::new(table::TableRpc::new(state.clone())))
-        .add_service(Arc::new(volume::VolumeRpc::new(state.clone())))
-        .add_service(Arc::new(function::FunctionRpc::new(state.clone())))
-        .add_service(Arc::new(model::ModelRpc::new(state.clone())))
-        .add_service(Arc::new(view::ViewRpc::new(state)))
-        .with_route_limits("uc.v1.FunctionService/CreateFunction", large_request_limits)
-        .with_route_limits("uc.v1.ViewService/CreateView", large_request_limits)
+pub(crate) struct UiRpc {
+    pub(crate) upstream: Upstream,
 }
 
-fn page_query(page: &PageRequest) -> Vec<(&'static str, String)> {
+impl UiRpc {
+    fn new(state: AppState) -> Self {
+        Self {
+            upstream: Upstream::new(state),
+        }
+    }
+
+    /// Reads the UC table resource at `full_name`. A resource of the other kind
+    /// is NOT_FOUND to the typed service asking for `expected`.
+    async fn get_table_resource(
+        &self,
+        ctx: &RequestContext,
+        full_name: &str,
+        expected: TableKind,
+    ) -> Result<Value, ConnectError> {
+        let value = self
+            .upstream
+            .get(ctx, &table_path(full_name), Vec::new())
+            .await?;
+        match kind_mismatch(&value, full_name, expected)? {
+            Some(message) => Err(ConnectError::not_found(message)),
+            None => Ok(value),
+        }
+    }
+
+    /// Deletes the UC table resource at `full_name` only if it is `expected`.
+    /// UC's delete takes just the name, so the kind is read first.
+    async fn delete_table_resource(
+        &self,
+        ctx: &RequestContext,
+        full_name: &str,
+        expected: TableKind,
+    ) -> Result<(), ConnectError> {
+        let path = table_path(full_name);
+        let value = self.upstream.get(ctx, &path, Vec::new()).await?;
+        if let Some(message) = kind_mismatch(&value, full_name, expected)? {
+            return Err(ConnectError::failed_precondition(format!(
+                "{message}; nothing was deleted"
+            )));
+        }
+        self.upstream.delete(ctx, &path, Vec::new()).await
+    }
+}
+
+/// Tables and metric views share UC's `/tables/{full_name}` resource; the typed
+/// table and view services each act only on their own kind.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TableKind {
+    Table,
+    MetricView,
+}
+
+impl TableKind {
+    /// Classifies a UC table resource. A reply with no known `table_type` is
+    /// an error, so an unclassified resource is never treated as a table.
+    fn of(table: &Value) -> Result<Self, ConnectError> {
+        match mapping::table_type(table.get("table_type").and_then(Value::as_str)).as_known() {
+            Some(TableType::MetricView) => Ok(Self::MetricView),
+            Some(TableType::Unspecified) | None => {
+                Err(mapping::invalid_response("missing or unknown table_type"))
+            }
+            Some(_) => Ok(Self::Table),
+        }
+    }
+
+    fn noun(self) -> &'static str {
+        match self {
+            Self::Table => "a table",
+            Self::MetricView => "a metric view",
+        }
+    }
+}
+
+fn kind_mismatch(
+    table: &Value,
+    full_name: &str,
+    expected: TableKind,
+) -> Result<Option<String>, ConnectError> {
+    let actual = TableKind::of(table)?;
+    Ok((actual != expected)
+        .then(|| format!("{full_name} is {}, not {}", actual.noun(), expected.noun())))
+}
+
+/// Keeps the rows of one kind from a UC table list; a row of unknown kind
+/// fails the whole list.
+fn rows_of_kind(rows: &[Value], kind: TableKind) -> Result<Vec<&Value>, ConnectError> {
+    let mut kept = Vec::new();
+    for row in rows {
+        if TableKind::of(row)? == kind {
+            kept.push(row);
+        }
+    }
+    Ok(kept)
+}
+
+fn table_path(full_name: &str) -> String {
+    format!("/tables/{}", path_segment(full_name))
+}
+
+pub(crate) fn router(state: AppState) -> Router {
+    let service = Arc::new(UiRpc::new(state));
+    let router = CatalogServiceExt::register(service.clone(), Router::new());
+    let router = SchemaServiceExt::register(service.clone(), router);
+    let router = TableServiceExt::register(service.clone(), router);
+    let router = VolumeServiceExt::register(service.clone(), router);
+    let router = FunctionServiceExt::register(service.clone(), router);
+    let router = ModelServiceExt::register(service.clone(), router);
+    let router = ViewServiceExt::register(service.clone(), router);
+    UnityProxyServiceExt::register(service, router)
+}
+
+fn page_query(page: &PageRequestView<'_>) -> Vec<(&'static str, String)> {
     let mut query = Vec::new();
     if let Some(max_results) = page.max_results {
         query.push(("max_results", max_results.to_string()));
     }
     if !page.page_token.is_empty() {
-        query.push(("page_token", page.page_token.clone()));
+        query.push(("page_token", page.page_token.to_string()));
     }
     query
 }
 
-fn object_full_name(reference: &SchemaObjectRef) -> String {
+fn object_full_name(reference: &SchemaObjectRefView<'_>) -> String {
     format!(
         "{}.{}.{}",
         reference.catalog_name, reference.schema_name, reference.name
     )
 }
 
-fn properties_value(values: &Properties) -> Value {
-    serde_json::to_value(&values.values).unwrap_or_else(|_| Value::Object(Default::default()))
+fn properties_value(properties: &PropertiesView<'_>) -> Value {
+    Value::Object(
+        properties
+            .values
+            .iter()
+            .map(|(key, value)| (key.to_string(), json!(value)))
+            .collect(),
+    )
 }
 
 fn data_source_format(value: EnumValue<DataSourceFormat>) -> Result<&'static str, ConnectError> {
@@ -165,7 +274,7 @@ fn scalar_type(value: EnumValue<ColumnTypeName>) -> Result<ScalarType, ConnectEr
 }
 
 fn column_value(
-    column: &ColumnInput,
+    column: &ColumnInputView<'_>,
     position: usize,
     mut metadata: Map<String, Value>,
 ) -> Result<Value, ConnectError> {
@@ -192,14 +301,14 @@ fn column_value(
     }))
 }
 
-fn dependencies_value(dependencies: &[Dependency]) -> Value {
+fn dependencies_value(dependencies: &buffa::RepeatedView<'_, DependencyView<'_>>) -> Value {
     let dependencies = dependencies
         .iter()
         .filter_map(|dependency| match dependency.target.as_ref() {
-            Some(dependency::Target::TableFullName(name)) => {
+            Some(dependency::TargetView::TableFullName(name)) => {
                 Some(json!({ "table": { "table_full_name": name } }))
             }
-            Some(dependency::Target::FunctionFullName(name)) => {
+            Some(dependency::TargetView::FunctionFullName(name)) => {
                 Some(json!({ "function": { "function_full_name": name } }))
             }
             None => None,

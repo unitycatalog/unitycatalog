@@ -99,7 +99,12 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   public HttpResponse updateCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
       UpdateCredentialRequest updateRequest) {
-    return HttpResponse.ofJson(credentialRepository.updateCredential(name, updateRequest));
+    CredentialInfo result =
+        updateWithOwnerReload(
+            updateRequest.getOwner(),
+            beforeCommit ->
+                credentialRepository.updateCredential(name, updateRequest, beforeCommit));
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{name}")

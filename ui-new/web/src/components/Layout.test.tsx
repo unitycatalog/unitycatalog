@@ -27,11 +27,9 @@ vi.mock("@/context/auth-context", () => ({
 import Layout from "@/components/Layout";
 import { renderWithProviders } from "@/test/providers";
 
-const emptyCatalogs = () => ({
-  httpStatus: 200,
-  ok: true,
-  body: JSON.stringify({ catalogs: [] }),
-});
+const emptyCatalogs = {
+  catalogs: { listCatalogs: () => ({ catalogs: [] }) },
+};
 
 describe("Layout", () => {
   it("renders the chrome, auth badge, and children", async () => {
@@ -39,7 +37,7 @@ describe("Layout", () => {
       <Layout>
         <div>page content</div>
       </Layout>,
-      { handler: emptyCatalogs },
+      { rpc: emptyCatalogs },
     );
     expect(
       screen.getByRole("img", { name: "Unity Catalog" }),
@@ -53,7 +51,7 @@ describe("Layout", () => {
   });
 
   it("logs out from the sidebar button", async () => {
-    renderWithProviders(<Layout>x</Layout>, { handler: emptyCatalogs });
+    renderWithProviders(<Layout>x</Layout>, { rpc: emptyCatalogs });
     await userEvent.click(screen.getByRole("button", { name: /^Log out$/ }));
     expect(logout).toHaveBeenCalled();
   });
@@ -70,7 +68,7 @@ describe("Layout", () => {
   });
 
   it("collapses the navigation", async () => {
-    renderWithProviders(<Layout>x</Layout>, { handler: emptyCatalogs });
+    renderWithProviders(<Layout>x</Layout>, { rpc: emptyCatalogs });
     const toggle = screen.getByRole("button", { name: /Collapse navigation/ });
     await userEvent.click(toggle);
     expect(

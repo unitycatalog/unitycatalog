@@ -2,7 +2,10 @@ package io.unitycatalog.server.migrate;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -25,6 +28,32 @@ public class SchemaGateTest {
   @TempDatabase(empty = true)
   TestDatabase db;
 
+  @TempDir Path storageRoot;
+
+  @Test
+  void refusesToStartOnADatabaseThatIsNotSetUp() {
+    assertThatThrownBy(() -> TestServer.start(db, storageRoot))
+        .hasMessageContaining("The database has no Unity Catalog schema yet")
+        .hasMessageContaining("bin/start-uc-server --upgrade-schema");
+    assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void setsUpAnInMemoryDatabaseAtStart() throws ApiException {
+    // It lasts only as long as the server, so no command can set it up before the server starts.
+    Properties inMemory = db.hibernateProperties();
+    inMemory.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    inMemory.setProperty("hibernate.connection.url", "jdbc:h2:mem:gate;DB_CLOSE_DELAY=-1");
+
+    try (TestServer server = TestServer.start(db, inMemory, storageRoot)) {
+      assertThat(
+              new CatalogsApi(server.apiClient())
+                  .listCatalogs(null, null, /* includeBrowse= */ false)
+                  .getCatalogs())
+          .isEmpty();
+    }
+  }
+
   @Test
   void upgradeSchemaCommandSetsUpTheConfiguredDatabase(@TempDir Path conf) throws IOException {
     writeConfiguration(conf, db.jdbcUrl());
@@ -42,14 +71,41 @@ public class SchemaGateTest {
         .isZero();
   }
 
+  /**
+   * The server sets up an in-memory database itself, so an upgrade has nothing to do and succeeds,
+   * and a check has nothing to report.
+   */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "in-memory database | jdbc:h2:mem:schema-command",
+        "unnamed in-memory database | jdbc:h2:.",
+        "in-memory file system | jdbc:h2:memFS:schema-command",
+        "compressed in-memory file system | jdbc:h2:memLZF:schema-command",
+        "NIO in-memory file system | jdbc:h2:nioMemFS:schema-command",
+        "NIO compressed in-memory file system | jdbc:h2:nioMemLZF:schema-command",
+      })
+  void schemaCommandsLeaveAnInMemoryDatabaseToTheServer(
+      String setup, String url, @TempDir Path conf) throws IOException {
+    writeConfiguration(conf, url);
+
+    for (boolean upgrade : List.of(false, true)) {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      assertThat(SchemaMigrator.runCommand(upgrade, conf, new PrintStream(out, true, UTF_8)))
+          .isEqualTo(upgrade ? 0 : 1);
+      assertThat(out.toString(UTF_8))
+          .contains("The database is in memory: the server sets it up itself when it starts")
+          .contains(upgrade ? "nothing to upgrade" : "nothing to check");
+    }
+  }
+
   @ParameterizedTest
   @CsvSource(
       delimiter = '|',
       value = {
         "server.properties missing | | not found: run bin/start-uc-server",
         "hibernate.properties missing | | not found: run bin/start-uc-server",
-        "in-memory database | jdbc:h2:mem:schema-command | is in memory",
-        "unnamed in-memory database | jdbc:h2:. | is in memory",
         "Hibernate default schema | hibernate.default_schema=uc | hibernate.default_schema is not",
         "Hibernate default catalog | hibernate.default_catalog=uc | hibernate.default_catalog is"
             + " not",

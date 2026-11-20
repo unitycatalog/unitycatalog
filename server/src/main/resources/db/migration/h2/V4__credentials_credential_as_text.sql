@@ -1,0 +1,1 @@
+-- H2 stores credentials as clob, which already fits any credential.

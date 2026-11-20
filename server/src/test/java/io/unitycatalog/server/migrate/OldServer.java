@@ -34,8 +34,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Runs a server built from a git ref (a release tag, or this commit) on a {@link TestDatabase} the
  * way an operator runs it: its shaded jar as a child process with its own {@code etc/conf} pointed
- * at the database, the hibernate.properties that every published release shipped (with {@code
- * hbm2ddl.auto=update}), and authorization on.
+ * at the database, the hibernate.properties that every published release shipped (this build
+ * ignores its {@code hbm2ddl.auto=update}), and authorization on.
  */
 final class OldServer {
 
@@ -44,7 +44,7 @@ final class OldServer {
   private static final Path JAR_CACHE =
       Path.of(System.getProperty("user.home"), ".cache", "uc-upgrade-jars");
 
-  /** The first release whose server has {@code --upgrade-schema}. */
+  /** The first release whose server has {@code --upgrade-schema} and serves only after it. */
   private static final String FIRST_UPGRADE_COMMAND_RELEASE = "0.8.0";
 
   private OldServer() {}
@@ -118,8 +118,8 @@ final class OldServer {
   /**
    * Starts release {@code tag} on {@code db} in a directory under {@code workDir}, waits until it
    * serves requests, passes {@code callback} a client authenticated as the server's admin, then
-   * stops the server. For a server from {@link #FIRST_UPGRADE_COMMAND_RELEASE} on, its {@code
-   * --upgrade-schema} runs first, as an operator runs it.
+   * stops the server. A server from {@link #FIRST_UPGRADE_COMMAND_RELEASE} on serves only a
+   * database at its schema, so its {@code --upgrade-schema} runs first, as an operator runs it.
    */
   static void run(
       String tag, TestDatabase db, Path workDir, Path storageRoot, Consumer<ApiClient> callback) {

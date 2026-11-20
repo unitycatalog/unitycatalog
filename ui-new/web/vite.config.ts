@@ -22,7 +22,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Connect RPC service routes + the runtime SPA config + health, all served
-      // by the Rust bridge. In prod the bridge serves the built SPA from one origin.
+      // by the Rust bridge. In production, the web server hosting the built SPA
+      // proxies the same routes.
       "^/(uc\\.v1\\.|config$|healthz$)": {
         target: apiTarget,
         changeOrigin: true,

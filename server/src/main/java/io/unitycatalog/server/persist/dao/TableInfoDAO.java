@@ -23,9 +23,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.DynamicUpdate;
 
 // Hibernate annotations
 @Entity
+@DynamicUpdate
 @Table(
     name = "uc_tables",
     indexes = {
@@ -170,5 +172,15 @@ public class TableInfoDAO extends IdentifiableDAO {
     setIcebergMetadataLocation(metadataLocation.toString());
     setUniformIcebergConvertedDeltaVersion(convertedDeltaVersion);
     setUniformIcebergConvertedDeltaTimestamp(new Date(convertedDeltaTimestampMs));
+  }
+
+  /**
+   * Clear all three UniForm Iceberg fields together. Delta tables only; see {@link
+   * io.unitycatalog.server.service.delta.DeltaUniformUtils#clearUnlessIcebergEnabled}.
+   */
+  public void clearUniformIcebergMetadata() {
+    setIcebergMetadataLocation(null);
+    setUniformIcebergConvertedDeltaVersion(null);
+    setUniformIcebergConvertedDeltaTimestamp(null);
   }
 }

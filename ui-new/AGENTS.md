@@ -11,7 +11,8 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
   (file-based) + TanStack Query, connect-web + connect-query.
 - `server/` — Rust axum bridge. Typed domain Connect services translate to UC
   REST; `UnityProxyService/Call` remains for control-plane endpoints. It also
-  serves `/config`, `/healthz`, and the built SPA.
+  serves `/config` and `/healthz`; Vite (development) or a separate web server
+  serves the SPA.
 - `proto/` — typed catalog-domain RPCs plus the generic control-plane proxy.
   `buf.gen.yaml` generates TS clients into `web/src/gen` (`bun run generate`
   from `web/`).
@@ -51,8 +52,8 @@ settings can differ, so UC may still reject the operation.
 ## Common tasks
 
 - Change the bridge contract: edit `proto/uc/v1/proxy.proto`, run
-  `bun run generate` in `web/`, and update the Rust `CallRequest`/`CallResponse`
-  in `server/src/proxy.rs` to match (fields use proto3 JSON camelCase).
+  `bun run generate` in `web/`, and update the generated-service implementation
+  in `server/src/proxy.rs` (fields use proto3 JSON camelCase).
 - Change a typed domain contract: edit the matching file under
   `proto/uc/v1/`, keep its `buf.validate` rules aligned with the UC API, then
   run `bun run proto:check` and `bun run generate` from `web/`. Update the translation in
@@ -67,8 +68,9 @@ The SPA uses Vitest + React Testing Library (config in `web/vitest.config.ts`,
 env `happy-dom`). Shared harness lives in `web/src/test/`:
 - `providers.tsx` — `renderWithProviders` / `renderHookWithProviders` wrap a
   QueryClient and in-memory implementations of the generic proxy and typed
-  domain services, so hooks/pages run their real query paths against canned UC
-  replies (pass a `UcHandler` keyed by method + path).
+  domain services, so hooks/pages run their real query paths. Pass `rpc`
+  (`RpcHandlers`) to answer typed service methods, and `handler` (a
+  `UcHandler` keyed by method + path) to answer `UnityProxyService/Call`.
 - `tanstack-router-mock.tsx` — a Link/useParams/useNavigate/Navigate stand-in;
   opt in per file with `vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"))`.
 - `localstorage-polyfill.ts` — the test DOM has no Web Storage; the polyfill is
@@ -76,8 +78,8 @@ env `happy-dom`). Shared harness lives in `web/src/test/`:
 
 Tests co-locate as `*.test.ts(x)` next to the code. Coverage is gated at 80%
 (generated code, vendored `components/ui`, routes, and the entry are excluded).
-When testing components that read UC data, prefer a `UcHandler` over mocking the
-hooks, so the hook + query-key wiring is exercised too.
+When testing components that read UC data, prefer these handlers over mocking
+the hooks, so the hook + query-key wiring is exercised too.
 
 ## Checks before pushing
 
