@@ -193,6 +193,21 @@ public class CachingCloudCredentialVendorTest {
         isServerAccess);
   }
 
+  private static final NormalizedURL GCS_LOC = NormalizedURL.from("gs://bucket/tableG");
+  private static final UUID GCP_KEY_ID = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+
+  /** A context for a GCP service account key credential. */
+  private static CredentialContext gcpCtx(UUID credentialId, String fingerprint) {
+    CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY);
+    when(dao.getId()).thenReturn(credentialId);
+    when(dao.getCredentialFingerprint()).thenReturn(fingerprint);
+    // As the real DAO does for a credential of another type.
+    when(dao.getAwsIamRoleResponse())
+        .thenThrow(new BaseException(ErrorCode.FAILED_PRECONDITION, "not AWS_IAM_ROLE"));
+    return CredentialContext.create(GCS_LOC, READ_ONLY, Optional.of(dao));
+  }
+
   private static String accessKey(TemporaryCredentials credentials) {
     return credentials.getAwsTempCredentials().getAccessKeyId();
   }
@@ -223,6 +238,21 @@ public class CachingCloudCredentialVendorTest {
         Arguments.of("no external ID", original, ctx("arn:role/A", null, READ_ONLY)),
         // A READ_ONLY credential must never serve a READ_WRITE request, nor the reverse.
         Arguments.of("privileges", original, ctx("arn:role/A", "external-A", READ_WRITE)),
+        // A replaced key, or another GCP credential, must not be served a token minted for the
+        // previous one.
+        // A token cached for the server's gcs.* settings must not satisfy a stored GCP credential.
+        Arguments.of(
+            "GCP credential instead of gcs.* settings",
+            perBucket("gs://bucket/tableG"),
+            gcpCtx(GCP_KEY_ID, "fingerprint-1")),
+        Arguments.of(
+            "GCP key replaced",
+            gcpCtx(GCP_KEY_ID, "fingerprint-1"),
+            gcpCtx(GCP_KEY_ID, "fingerprint-2")),
+        Arguments.of(
+            "another GCP credential",
+            gcpCtx(GCP_KEY_ID, "fingerprint-1"),
+            gcpCtx(UUID.fromString("00000000-0000-0000-0000-0000000000bb"), "fingerprint-1")),
         Arguments.of(
             "location sharing a prefix",
             perBucket("s3://bucket/data"),

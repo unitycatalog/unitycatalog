@@ -488,11 +488,11 @@ not set
 </td>
 			<td>Name of a Secret with the key that the server encrypts the secret values of storage credentials with in its database
 
-Only the experimental `s3_compatible` storage credentials need it, and only when
-`server.s3-compatible-storage.enabled` is `"true"`: setting the Secret alone leaves them
-disabled. With the flag set, the server refuses to start with a malformed key. Keep the same
-key for as long as such credentials exist: values stored with a key cannot be read with
-another. The chart passes the key to the server container as
+The `gcp_service_account_key` storage credentials and the experimental `s3_compatible` ones
+need it. `s3_compatible` also needs `server.s3-compatible-storage.enabled` to be `"true"`:
+setting the Secret alone leaves it disabled. Whenever a key is set, the server refuses to
+start with a malformed key. Keep the same key for as long as such credentials exist: values
+stored with a key cannot be read with another. The chart passes the key to the server container as
 `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY`. See
 [S3-compatible storage credentials](#s3-compatible-storage-credentials) for a complete example.
 </td>
