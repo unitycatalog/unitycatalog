@@ -1,0 +1,2 @@
+- column uc_catalogs.storage_location type=character varying size=255 nullable=YES default=null
++ column uc_catalogs.storage_location type=character varying size=2048 nullable=YES default=null
