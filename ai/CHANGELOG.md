@@ -19,6 +19,7 @@
 - Report unreadable sandbox results as failures and tidy up the memory limit docs by @maharanay22 in #2223
 - Send STRUCT and BINARY tool arguments as JSON values in every integration by @maharanay22 in #2244
 - Build Gemini and DSPy tools for functions without parameters by @maharanay22 in #2245
+- Annotate DATE, TIMESTAMP, DECIMAL and INTERVAL so get_function_as_callable and get_function_source load by @maharanay22 in #2322
 
 ## Unity Catalog AI 0.4.0
 
