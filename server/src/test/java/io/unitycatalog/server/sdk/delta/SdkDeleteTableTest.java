@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.ApiResponse;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -170,12 +171,20 @@ public class SdkDeleteTableTest extends BaseServerTest {
    * A commit that replaces the table's column and property rows while the drop waits for the table
    * lock (as Iceberg and Delta commits do) must not make the drop fail or leave rows behind.
    */
-  @Test
-  public void dropWaitingBehindARewriteDeletesTheNewColumnsAndProperties() throws Exception {
+  @ParameterizedTest
+  @EnumSource(
+      value = TableType.class,
+      names = {"EXTERNAL", "MANAGED"})
+  public void dropWaitingBehindARewriteDeletesTheNewColumnsAndProperties(TableType type)
+      throws Exception {
     TableInfo table =
         BaseTableCRUDTestEnv.createTestingTable(
-            "tbl_drop_rewrite", TableType.EXTERNAL, Optional.of("file:///tmp/uc_test/c"), tableOps);
+            "tbl_drop_rewrite",
+            type,
+            type == TableType.EXTERNAL ? Optional.of("file:///tmp/uc_test/c") : Optional.empty(),
+            tableOps);
     UUID id = UUID.fromString(table.getTableId());
+    TablesApi tablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
 
     runBlockedByHeldWrite(
         held -> {
@@ -196,10 +205,13 @@ public class SdkDeleteTableTest extends BaseServerTest {
               .forEach(held::persist);
         },
         () -> {
-          tableOps.deleteTable(TestUtils.SCHEMA_FULL_NAME + ".tbl_drop_rewrite");
+          assertThat(
+                  tablesApi
+                      .deleteTableWithHttpInfo(TestUtils.SCHEMA_FULL_NAME + ".tbl_drop_rewrite")
+                      .getStatusCode())
+              .isEqualTo(200);
           return null;
         });
-
     assertThat(columnRows(table.getTableId())).isZero();
     assertThat(propertyRows(table.getTableId())).isZero();
     try (Session session = testDatabase.sessionFactory().openSession()) {
