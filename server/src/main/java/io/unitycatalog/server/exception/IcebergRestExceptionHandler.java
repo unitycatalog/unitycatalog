@@ -59,6 +59,17 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
               message,
               new NoSuchTableException(exception, "%s", message));
     }
+    if (ctx.pathParam("view") != null
+        && (exception.getErrorCode() == ErrorCode.CATALOG_NOT_FOUND
+            || exception.getErrorCode() == ErrorCode.SCHEMA_NOT_FOUND
+            || exception.getErrorCode() == ErrorCode.TABLE_NOT_FOUND)) {
+      String message = "View does not exist: " + ctx.pathParam("view");
+      exception =
+          wrapException(
+              ErrorCode.TABLE_NOT_FOUND,
+              message,
+              new NoSuchViewException(exception, "%s", message));
+    }
     logIfServerError(ctx, httpStatus(exception), cause);
     return createErrorResponse(exception);
   }

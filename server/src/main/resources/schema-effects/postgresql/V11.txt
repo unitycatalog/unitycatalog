@@ -1,0 +1,1 @@
++ column uc_tables.iceberg_view_metadata_location type=varchar size=65535 nullable=YES default=null
