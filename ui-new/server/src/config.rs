@@ -1,5 +1,7 @@
 use std::env::VarError;
 
+use regex::Regex;
+
 /// Runtime configuration, read entirely from the environment so the same build
 /// can be pointed at any Unity Catalog server without a rebuild.
 #[derive(Clone, Debug, PartialEq)]
@@ -11,7 +13,8 @@ pub struct Config {
     /// Whether auth is enabled. Surfaced to the SPA at GET /config so it knows
     /// whether to gate behind login. When false the SPA renders directly.
     pub auth_enabled: bool,
-    /// Google Identity Services client id; empty disables the Google button.
+    /// Google OAuth client ID (`<number>-<id>.apps.googleusercontent.com`);
+    /// empty disables the Google button.
     pub google_client_id: String,
     pub okta_enabled: bool,
     pub keycloak_enabled: bool,
@@ -25,7 +28,7 @@ type Lookup<'a> = &'a dyn Fn(&str) -> Result<String, VarError>;
 /// Reads `key`. An unset or exactly empty variable is `None`, since deployment
 /// templates often render an unset value as an empty string. A whitespace-only
 /// value is kept: `PORT`, the booleans, and `UC_SERVER` reject it, and
-/// `GOOGLE_CLIENT_ID` uses it as given.
+/// `GOOGLE_CLIENT_ID` treats it as unset.
 fn env_value(env: Lookup<'_>, key: &str) -> Result<Option<String>, String> {
     match env(key) {
         Ok(value) if value.is_empty() => Ok(None),
@@ -43,16 +46,32 @@ fn env_port(env: Lookup<'_>, key: &str, default: u16) -> Result<u16, String> {
     env_value(env, key)?.map_or(Ok(default), |value| parse_port(key, &value))
 }
 
-fn env_string(env: Lookup<'_>, key: &str, default: &str) -> Result<String, String> {
-    Ok(env_value(env, key)?.unwrap_or_else(|| default.to_string()))
-}
-
-/// Like `env_string`, but a whitespace-only value is an error. A blank server
+/// Reads a string variable; a whitespace-only value is an error. A blank server
 /// URL would otherwise start the bridge and fail only on its first UC call.
 fn env_non_blank(env: Lookup<'_>, key: &str, default: &str) -> Result<String, String> {
     match env_value(env, key)? {
         Some(value) if value.trim().is_empty() => Err(format!("{key} must not be whitespace only")),
         value => Ok(value.unwrap_or_else(|| default.to_string())),
+    }
+}
+
+/// Google's published format for an OAuth client ID.
+const GOOGLE_CLIENT_ID_FORMAT: &str = r"^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$";
+
+/// Reads a Google OAuth client ID, trimmed. A blank value is unset, which turns
+/// the Google button off; any other value must match Google's format, since the
+/// SPA shows the button for any non-empty id and a malformed one fails on click.
+fn env_google_client_id(env: Lookup<'_>, key: &str) -> Result<String, String> {
+    let value = env_value(env, key)?.unwrap_or_default();
+    let value = value.trim();
+    let format = Regex::new(GOOGLE_CLIENT_ID_FORMAT).expect("the client ID format is valid");
+    if value.is_empty() || format.is_match(value) {
+        Ok(value.to_string())
+    } else {
+        Err(format!(
+            "{key} must be a Google OAuth client ID \
+             (<number>-<id>.apps.googleusercontent.com)"
+        ))
     }
 }
 
@@ -76,8 +95,8 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, String> {
 impl Config {
     /// Load configuration from the process environment. An unset or empty
     /// variable takes its default. An invalid `PORT` or boolean, a
-    /// whitespace-only `UC_SERVER`, or a value that is not valid Unicode is an
-    /// `Err` naming the variable.
+    /// whitespace-only `UC_SERVER`, a malformed `GOOGLE_CLIENT_ID`, or a value
+    /// that is not valid Unicode is an `Err` naming the variable.
     pub fn from_env() -> Result<Self, String> {
         Self::from_lookup(&|key: &str| std::env::var(key))
     }
@@ -95,7 +114,7 @@ impl Config {
             port: env_port(env, "PORT", 8081)?,
             uc_server: env_non_blank(env, "UC_SERVER", "http://localhost:8080")?,
             auth_enabled: env_bool(env, "UI_AUTH_ENABLED", false)?,
-            google_client_id: env_string(env, "GOOGLE_CLIENT_ID", "")?,
+            google_client_id: env_google_client_id(env, "GOOGLE_CLIENT_ID")?,
             okta_enabled: env_bool(env, "OKTA_AUTH_ENABLED", false)?,
             keycloak_enabled: env_bool(env, "KEYCLOAK_AUTH_ENABLED", false)?,
             allowed_origins,
@@ -119,6 +138,8 @@ mod tests {
         "KEYCLOAK_AUTH_ENABLED",
         "ALLOWED_ORIGINS",
     ];
+
+    const GOOGLE_CLIENT_ID: &str = "1234567890-abc123def456.apps.googleusercontent.com";
 
     /// Builds a config from `vars`; every other variable is unset.
     fn config(vars: &[(&str, &str)]) -> Result<Config, String> {
@@ -155,7 +176,7 @@ mod tests {
             ("PORT", "9000"),
             ("UC_SERVER", "https://uc.example.com"),
             ("UI_AUTH_ENABLED", "true"),
-            ("GOOGLE_CLIENT_ID", "client-id"),
+            ("GOOGLE_CLIENT_ID", GOOGLE_CLIENT_ID),
             ("OKTA_AUTH_ENABLED", "1"),
             ("KEYCLOAK_AUTH_ENABLED", "on"),
             ("ALLOWED_ORIGINS", "https://a.example, ,https://b.example"),
@@ -166,7 +187,7 @@ mod tests {
                 port: 9000,
                 uc_server: "https://uc.example.com".to_string(),
                 auth_enabled: true,
-                google_client_id: "client-id".to_string(),
+                google_client_id: GOOGLE_CLIENT_ID.to_string(),
                 okta_enabled: true,
                 keycloak_enabled: true,
                 allowed_origins: vec![
@@ -199,6 +220,43 @@ mod tests {
         ];
         for (key, value, error) in cases {
             assert_eq!(config(&[(key, value)]), Err(error), "{key}={value:?}");
+        }
+    }
+
+    #[test]
+    fn google_client_id_must_match_googles_format() {
+        // (value, client ID); a blank value leaves the Google button off.
+        let accepted = [
+            (" ", ""),
+            ("\t\n", ""),
+            (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID),
+            (
+                " 1234567890-abc123def456.apps.googleusercontent.com\n",
+                GOOGLE_CLIENT_ID,
+            ),
+        ];
+        for (value, client_id) in accepted {
+            let config = config(&[("GOOGLE_CLIENT_ID", value)]);
+            assert_eq!(
+                config.map(|c| c.google_client_id),
+                Ok(client_id.to_string()),
+                "{value:?}"
+            );
+        }
+        let error = "GOOGLE_CLIENT_ID must be a Google OAuth client ID \
+                     (<number>-<id>.apps.googleusercontent.com)";
+        for value in [
+            "client-id",
+            "...",
+            "abc-123.apps.googleusercontent.com",
+            "123-ABC.apps.googleusercontent.com",
+            "123.apps.googleusercontent.com",
+            "123-.apps.googleusercontent.com",
+            "123-abc.apps.googleusercontent.com.example.com",
+            "123-abc.appsXgoogleusercontent.com",
+        ] {
+            let config = config(&[("GOOGLE_CLIENT_ID", value)]);
+            assert_eq!(config, Err(error.to_string()), "{value:?}");
         }
     }
 
