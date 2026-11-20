@@ -12,6 +12,7 @@ import java.time.Duration;
  * for (int attempt = 1; attempt <= policy.maxAttempts(); attempt += 1) {
  *   try {
  *     doSomeAction();
+ *     return;
  *   } catch (Exception e) {
  *     if (isRetryable(e) && attempt < policy.maxAttempts() && policy.allowRetry(attempt)) {
  *       Thread.sleep(policy.sleepTime(attempt).toMillis());
@@ -42,7 +43,6 @@ public interface RetryPolicy {
    *
    * @param attempt the number of the attempt that just failed, from 1 to {@code maxAttempts() - 1}
    * @return the duration to sleep before the next attempt, must not be null or negative
-   * @throws IllegalArgumentException if attempt is less than 1 or greater than maxAttempts()
    */
   Duration sleepTime(int attempt);
 

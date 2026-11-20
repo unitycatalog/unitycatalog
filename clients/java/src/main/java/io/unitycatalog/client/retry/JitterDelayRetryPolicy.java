@@ -79,14 +79,14 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
   }
 
   /**
-   * Determines whether a retry should be attempted based on the current attempt number.
+   * Determines whether another attempt may follow the given failed attempt.
    *
-   * @param attempt the current attempt number (1-indexed)
-   * @return true if retry is allowed, false otherwise
+   * @param attempt the number of the attempt that just failed (1-indexed)
+   * @return true while fewer than {@link #maxAttempts()} attempts have been made
    */
   @Override
   public boolean allowRetry(int attempt) {
-    return attempt <= maxAttempts;
+    return attempt < maxAttempts;
   }
 
   /**
