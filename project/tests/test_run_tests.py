@@ -110,6 +110,24 @@ def check_cgroup_memory(run_tests) -> None:
     assert left == 6 * gib, f"expected 6 GiB left under the parent's limit, got {left}"
 
 
+def check_conf_stamps(run_tests) -> None:
+    # etc/conf at the root and in modules one and two levels deep, with a hidden file, and a
+    # subdirectory, which is not a file.
+    files = ["etc/conf/a.properties", "server/etc/conf/.hidden", "connectors/spark/etc/conf/b.json"]
+    saved = run_tests.ROOT
+    with tempfile.TemporaryDirectory() as root:
+        for name in files:
+            (Path(root) / name).parent.mkdir(parents=True, exist_ok=True)
+            (Path(root) / name).write_text("x")
+        (Path(root) / "etc" / "conf" / "subdir").mkdir()
+        run_tests.ROOT = root
+        try:
+            stamps = run_tests.conf_stamps()
+        finally:
+            run_tests.ROOT = saved
+    assert sorted(stamps) == sorted(files), f"conf_stamps() watched {sorted(stamps)}"
+
+
 def check_concurrency_limit() -> None:
     command = [str(UC_ROOT / "build" / "sbt"), "-no-colors", "-batch",
                "show Global / concurrentRestrictions"]
@@ -163,6 +181,7 @@ def main() -> None:
     check_sbt_errors_shown(run_tests)
     check_durations_file(run_tests)
     check_cgroup_memory(run_tests)
+    check_conf_stamps(run_tests)
     check_concurrency_limit()
     check_parallel_run()
     print("PASS: dev/run-tests.py validates its arguments and runs client/test in 2 test JVMs")

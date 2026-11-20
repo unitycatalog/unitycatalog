@@ -54,9 +54,17 @@ def main() -> None:
             else:
                 file.write_text(original)
 
+        tracked = repo / "etc" / "conf" / "server.properties"
+        tracked.unlink()
+        result = check(repo)
+        assert result.returncode == 1 and " D etc/conf/server.properties" in result.stdout, (
+            f"a deleted tracked file must fail:\n{result.stdout}{result.stderr}")
+        git(repo, "checkout", "--", "etc/conf/server.properties")
+
         result = check(repo)
         assert result.returncode == 0, f"the restored tree must pass:\n{result.stdout}"
-    print("PASS: check_etc_conf.sh fails on new, ignored, hidden and edited files in any etc/conf")
+    print("PASS: check_etc_conf.sh fails on new, ignored, hidden, edited and deleted files in any "
+          "etc/conf")
 
 
 if __name__ == "__main__":

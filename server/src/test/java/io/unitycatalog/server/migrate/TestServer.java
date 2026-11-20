@@ -48,11 +48,9 @@ final class TestServer implements AutoCloseable {
 
   /** The same, with the given Hibernate properties for {@code db}. */
   static TestServer start(
-      TestDatabase db,
-      Properties hibernateProperties,
-      Path storageRoot,
-      Path configurationFolder) {
-    return start(db.openHibernateConfigurator(hibernateProperties), storageRoot, configurationFolder);
+      TestDatabase db, Properties hibernateProperties, Path storageRoot, Path configurationFolder) {
+    return start(
+        db.openHibernateConfigurator(hibernateProperties), storageRoot, configurationFolder);
   }
 
   private static TestServer start(
