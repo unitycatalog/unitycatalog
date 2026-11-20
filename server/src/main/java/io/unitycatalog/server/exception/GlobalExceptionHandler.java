@@ -1,10 +1,6 @@
 package io.unitycatalog.server.exception;
 
-import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.ServiceRequestContext;
-import com.unboundid.scim2.common.exceptions.ScimException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -20,18 +16,6 @@ public class GlobalExceptionHandler extends BaseExceptionHandler {
   public static final GlobalExceptionHandler INSTANCE = new GlobalExceptionHandler();
 
   private GlobalExceptionHandler() {}
-
-  @Override
-  public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
-    // SCIM has its own error format, handle before normalization
-    if (cause instanceof Scim2RuntimeException) {
-      ScimException scimException = (ScimException) cause.getCause();
-      HttpStatus status = HttpStatus.valueOf(scimException.getScimError().getStatus());
-      logIfServerError(ctx, status, cause);
-      return HttpResponse.ofJson(status, scimException.getScimError());
-    }
-    return super.handleException(ctx, req, cause);
-  }
 
   @Override
   protected HttpResponse createErrorResponse(BaseException exception) {
