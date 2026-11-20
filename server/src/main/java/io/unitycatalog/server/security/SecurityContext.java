@@ -2,6 +2,7 @@ package io.unitycatalog.server.security;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -9,7 +10,6 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 import lombok.Getter;
-import lombok.SneakyThrows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,15 +73,23 @@ public class SecurityContext {
 
   // Earlier versions wrote an admin token that does not expire to token.txt in the configuration
   // folder, so remove that plaintext copy; bin/uc-admin-token prints an admin token when needed.
-  // Removing the file does not revoke copies; changing the signing key does.
-  @SneakyThrows
+  // Removing the file does not revoke copies; changing the signing key does. A file it cannot
+  // delete is left in place with a warning, so a configuration folder the server cannot write to
+  // does not stop startup.
   private void deleteServiceTokenFile() {
-    if (Files.deleteIfExists(serviceTokenFile)) {
+    try {
+      if (Files.deleteIfExists(serviceTokenFile)) {
+        LOGGER.warn(
+            "Deleted {}: the server no longer writes an admin token, and bin/uc-admin-token"
+                + " prints one. Copies of the deleted token stay valid until the signing key"
+                + " changes.",
+            serviceTokenFile);
+      }
+    } catch (IOException e) {
       LOGGER.warn(
-          "Deleted {}: the server no longer writes an admin token, and bin/uc-admin-token"
-              + " prints one. Copies of the deleted token stay valid until the signing key"
-              + " changes.",
-          serviceTokenFile);
+          "Cannot delete {}, which holds an admin token that does not expire; delete it: {}",
+          serviceTokenFile,
+          e.toString());
     }
   }
 }
