@@ -348,3 +348,90 @@ fn dependencies_value(dependencies: &buffa::RepeatedView<'_, DependencyView<'_>>
         .collect::<Vec<_>>();
     json!({ "dependencies": dependencies })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    use serde_json::{json, Value};
+
+    use super::{rows_of_kind, TableKind};
+
+    /// Collects one test's formatted log output.
+    #[derive(Clone, Default)]
+    struct Logs(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for Logs {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Runs `rows_of_kind` under a scoped subscriber and returns the names it
+    /// kept and the lines it logged.
+    fn kept_and_logged(rows: &[Value], kind: TableKind) -> (Vec<&str>, Vec<String>) {
+        let logs = Logs::default();
+        let writer = logs.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || writer.clone())
+            .with_ansi(false)
+            .without_time()
+            .finish();
+        let kept = tracing::subscriber::with_default(subscriber, || {
+            rows_of_kind(rows, kind, "main", "default")
+                .into_iter()
+                .map(|row| row["name"].as_str().unwrap())
+                .collect()
+        });
+        let output = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
+        (kept, output.lines().map(str::to_string).collect())
+    }
+
+    #[test]
+    fn rows_of_kind_warns_once_per_page_about_unclassified_rows() {
+        let row = |name: &str, table_type: Option<&str>| match table_type {
+            Some(table_type) => json!({"name": name, "table_type": table_type}),
+            None => json!({"name": name}),
+        };
+        let recognized = [
+            row("events", Some("MANAGED")),
+            row("metrics", Some("METRIC_VIEW")),
+        ];
+        let mut rows = recognized.to_vec();
+        rows.extend([
+            row("future", Some("SOME_NEW_TYPE")),
+            row("foreign", Some("FOREIGN")),
+            row("empty", Some("")),
+            row("untyped", None),
+        ]);
+
+        let (kept, logs) = kept_and_logged(&rows, TableKind::Table);
+        assert_eq!(kept, ["events"]);
+        assert_eq!(logs.len(), 1, "{logs:?}");
+        // The count covers every skipped row; the examples stop at three.
+        for field in [
+            "WARN",
+            "skipped listed tables with no known table_type",
+            r#"catalog="main""#,
+            r#"schema="default""#,
+            "count=4",
+            r#"examples=["future (SOME_NEW_TYPE)", "foreign (FOREIGN)", "empty ()"]"#,
+        ] {
+            assert!(
+                logs[0].contains(field),
+                "{field} missing from {:?}",
+                logs[0]
+            );
+        }
+
+        let (kept, logs) = kept_and_logged(&recognized, TableKind::MetricView);
+        assert_eq!(kept, ["metrics"]);
+        assert!(logs.is_empty(), "{logs:?}");
+    }
+}
