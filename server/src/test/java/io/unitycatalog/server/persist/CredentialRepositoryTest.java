@@ -15,6 +15,7 @@ import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
 import io.unitycatalog.server.model.ExternalLocationInfo;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.S3CompatibleRequest;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.model.UpdateExternalLocation;
@@ -238,6 +239,16 @@ class CredentialRepositoryTest {
                   .purpose(CredentialPurpose.STORAGE)
                   .s3Compatible(s3Compatible("value")));
     }
+    repositoryWithKey(key)
+        .addCredential(
+            new CreateCredentialRequest()
+                .name("c_gcp_credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServiceAccountKey(
+                    new GcpServiceAccountKeyRequest()
+                        .email("sa@project.iam.gserviceaccount.com")
+                        .privateKeyId("key-id")
+                        .privateKey(TestUtils.generatePkcs8PrivateKeyPem())));
     // An IAM role holds no secret, so it is never reported.
     repositoryWithKey(key)
         .addCredential(
@@ -248,14 +259,14 @@ class CredentialRepositoryTest {
 
     assertThat(repositoryWithKey(key).findUnreadableSecrets()).isEmpty();
     assertThat(repositoryWithKey(Optional.empty()).findUnreadableSecrets())
-        .containsOnlyKeys("a_credential", "b_credential")
+        .containsOnlyKeys("a_credential", "b_credential", "c_gcp_credential")
         .allSatisfy(
             (name, failure) ->
                 assertThat(failure.getMessage()).contains("no server.credential-encryption-key"));
     assertThat(
             repositoryWithKey(Optional.of(Base64.getEncoder().encodeToString(new byte[32])))
                 .findUnreadableSecrets())
-        .containsOnlyKeys("a_credential", "b_credential")
+        .containsOnlyKeys("a_credential", "b_credential", "c_gcp_credential")
         .allSatisfy(
             (name, failure) -> assertThat(failure.getMessage()).contains("encrypted with key"));
   }

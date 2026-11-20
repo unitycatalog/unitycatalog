@@ -33,12 +33,12 @@ import lombok.SneakyThrows;
  * binding before calling it, so only the cloud vend is skipped; the binding is re-read on every
  * request.
  *
- * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}, plus, for
- * S3-compatible storage, the storage credential's version, its S3 endpoint and region, and whether
- * the server or a client uses it. It is served until {@code min(vendTime + maxAge, credentialExpiry
- * - expiryMargin)}, where {@code vendTime} is read before the cloud call; a static credential with
- * no expiry is bounded by the max age alone. Callers always receive a copy, so they cannot change a
- * cached credential.
+ * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}, plus, for a GCP
+ * service account key, the storage credential's version, and, for S3-compatible storage, the
+ * storage credential's version, its S3 endpoint and region, and whether the server or a client uses
+ * it. It is served until {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where
+ * {@code vendTime} is read before the cloud call; a static credential with no expiry is bounded by
+ * the max age alone. Callers always receive a copy, so they cannot change a cached credential.
  *
  * <p>Each request is recorded as a hit or a miss in {@link StorageCredentialCacheMetrics}.
  */
@@ -135,13 +135,16 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   /**
    * The resolved credential binding. Changing the role or external ID of a location's credential
    * changes the key, so credentials cached under the previous binding are never reused. An {@code
-   * s3_compatible} credential is identified by the fingerprint of its stored payload instead, which
-   * every change of its key pair, endpoint or role changes. Server and client vends of such a
-   * credential can differ: without {@code assume_role}, the server gets the key pair without an
-   * expiration, and clients get only the endpoint ({@code endpoint-only}) or the key pair with a
-   * refetch time ({@code static-key}). So for every {@code s3_compatible} credential they never
-   * share an entry; {@code server.s3-compatible-storage.static-key-vending} is read once at
-   * startup, so entries never span two modes.
+   * s3_compatible} or {@code gcp_service_account_key} credential is identified by its id and the
+   * fingerprint of its stored payload instead, which every change of its key pair, endpoint, role
+   * or service account key changes.
+   *
+   * <p>Server and client vends of an {@code s3_compatible} credential can differ: without {@code
+   * assume_role}, the server gets the key pair without an expiration, and clients get only the
+   * endpoint ({@code endpoint-only}) or the key pair with a refetch time ({@code static-key}). So
+   * for every {@code s3_compatible} credential they never share an entry; {@code
+   * server.s3-compatible-storage.static-key-vending} is read once at startup, so entries never span
+   * two modes. A {@code gcp_service_account_key} credential is vended the same way to both.
    */
   private record Key(
       List<NormalizedURL> locations,
@@ -149,6 +152,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
       String roleArn,
       String externalId,
       Optional<CredentialVersion> s3CompatibleVersion,
+      Optional<CredentialVersion> gcpKeyVersion,
       Optional<String> s3Endpoint,
       Optional<String> s3Region,
       boolean isServerAccess) {
@@ -171,12 +175,18 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
               .getCredentialDAO()
               .filter(dao -> dao.getCredentialType() == CredentialType.S3_COMPATIBLE)
               .map(dao -> new CredentialVersion(dao.getId(), dao.getCredentialFingerprint()));
+      Optional<CredentialVersion> gcpKeyVersion =
+          context
+              .getCredentialDAO()
+              .filter(dao -> dao.getCredentialType() == CredentialType.GCP_SERVICE_ACCOUNT_KEY)
+              .map(dao -> new CredentialVersion(dao.getId(), dao.getCredentialFingerprint()));
       return new Key(
           context.getLocations(),
           context.getPrivileges(),
           awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(null),
           awsIamRole.map(AwsIamRoleResponse::getExternalId).orElse(null),
           s3CompatibleVersion,
+          gcpKeyVersion,
           context.getS3Endpoint(),
           context.getS3Region(),
           context.isServerAccess() && s3CompatibleVersion.isPresent());

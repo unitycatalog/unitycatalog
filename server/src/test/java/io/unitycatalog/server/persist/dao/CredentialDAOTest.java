@@ -9,16 +9,22 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.S3AssumeRole;
 import io.unitycatalog.server.model.S3CompatibleRequest;
 import io.unitycatalog.server.model.S3CompatibleResponse;
 import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.utils.TestUtils;
+import java.security.KeyPairGenerator;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 public class CredentialDAOTest {
   private static final String S3_ENDPOINT = "https://storage.example.com:9000";
@@ -67,6 +73,133 @@ public class CredentialDAOTest {
         .isNotEqualTo(CredentialDAO.builder().credential(two).build().getCredentialFingerprint());
     assertThat(s3CompatibleDao(request).getCredentialFingerprint())
         .isNotEqualTo(dao.getCredentialFingerprint());
+  }
+
+  @Test
+  public void testGcpPrivateKeyIsStoredEncryptedAndNotInResponse() throws Exception {
+    String privateKey = TestUtils.generatePkcs8PrivateKeyPem();
+    CredentialDAO dao =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("gcs")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServiceAccountKey(
+                    new GcpServiceAccountKeyRequest()
+                        .email("uc-test@my-project.iam.gserviceaccount.com")
+                        .privateKeyId("key-id-1")
+                        .privateKey(privateKey)),
+            "caller",
+            SECRET_STORE);
+
+    assertThat(dao.getGcpPrivateKey(SECRET_STORE)).isEqualTo(privateKey);
+    // What the database holds is not the key, and another key does not read it.
+    assertThat(dao.getCredentialType())
+        .isEqualTo(CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY);
+    assertThat(storedJson(dao)).doesNotContain("BEGIN").contains("\"private_key\":\"v1:");
+    EncryptedCredentialSecretStore otherKey =
+        new EncryptedCredentialSecretStore(
+            Optional.of(Base64.getEncoder().encodeToString(new byte[32])));
+    assertThatThrownBy(() -> dao.getGcpPrivateKey(otherKey)).isInstanceOf(BaseException.class);
+    // The response has the email and key id only.
+    String json = new ObjectMapper().writeValueAsString(dao.toCredentialInfo(Optional.empty()));
+    assertThat(json).doesNotContain("private_key\":").doesNotContain("BEGIN");
+    assertThat(dao.toCredentialInfo(Optional.empty()).getGcpServiceAccountKey().getPrivateKeyId())
+        .isEqualTo("key-id-1");
+  }
+
+  @Test
+  public void testGcpKeyNeedsTheServerKey() {
+    assertThatThrownBy(
+            () ->
+                CredentialDAO.from(
+                    new CreateCredentialRequest()
+                        .name("gcs")
+                        .purpose(CredentialPurpose.STORAGE)
+                        .gcpServiceAccountKey(
+                            new GcpServiceAccountKeyRequest()
+                                .email("uc-test@my-project.iam.gserviceaccount.com")
+                                .privateKeyId("key-id-1")
+                                .privateKey(TestUtils.generatePkcs8PrivateKeyPem())),
+                    "caller",
+                    new EncryptedCredentialSecretStore(Optional.empty())))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+  }
+
+  /** Keys that are not usable, built from parts so that no PEM header is a literal. */
+  static Stream<String> badGcpKeys() {
+    String begin = "-----BEGIN " + "PRIVATE" + " KEY-----\n";
+    String end = "-----END " + "PRIVATE" + " KEY-----\n";
+    return Stream.of(
+        "", "   ", "not-a-key", begin + end, begin + "AAAA\n" + end, "{\"private_key\": \"x\"}");
+  }
+
+  @ParameterizedTest
+  @MethodSource("badGcpKeys")
+  public void testBadGcpKeysAreRefusedWithoutEchoingThem(String privateKey) {
+    assertThatThrownBy(() -> gcsDao(privateKey))
+        .isInstanceOf(BaseException.class)
+        .satisfies(
+            e -> {
+              assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              // The rejected value is not part of the message.
+              if (!privateKey.isBlank()) {
+                assertThat(e.getMessage()).doesNotContain(privateKey.trim());
+              }
+            });
+  }
+
+  @Test
+  public void testGcpKeysThatAreNotRsaPkcs8AreRefused() throws Exception {
+    // Signing in with a service account key needs an RSA key in PKCS#8.
+    KeyPairGenerator ec = KeyPairGenerator.getInstance("EC");
+    ec.initialize(256);
+    String ecPem = pem("PRIVATE" + " KEY", ec.generateKeyPair().getPrivate().getEncoded());
+    assertThatThrownBy(() -> gcsDao(ecPem)).satisfies(DAO_REFUSAL);
+    // A PEM labeled as PKCS#1 ("RSA PRIVATE KEY") is refused by its label: Google issues PKCS#8.
+    KeyPairGenerator rsa = KeyPairGenerator.getInstance("RSA");
+    rsa.initialize(2048);
+    String pkcs1Pem = pem("RSA PRIVATE" + " KEY", rsa.generateKeyPair().getPrivate().getEncoded());
+    assertThatThrownBy(() -> gcsDao(pkcs1Pem)).satisfies(DAO_REFUSAL);
+  }
+
+  private static final Consumer<Throwable> DAO_REFUSAL =
+      e ->
+          assertThat(e)
+              .isInstanceOfSatisfying(
+                  BaseException.class,
+                  b -> assertThat(b.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT));
+
+  private static String pem(String label, byte[] der) {
+    return "-----BEGIN "
+        + label
+        + "-----\n"
+        + Base64.getMimeEncoder(64, "\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+            .encodeToString(der)
+        + "\n-----END "
+        + label
+        + "-----\n";
+  }
+
+  private static CredentialDAO gcsDao(String privateKey) {
+    return CredentialDAO.from(
+        new CreateCredentialRequest()
+            .name("gcs")
+            .purpose(CredentialPurpose.STORAGE)
+            .gcpServiceAccountKey(
+                new GcpServiceAccountKeyRequest()
+                    .email("uc-test@my-project.iam.gserviceaccount.com")
+                    .privateKeyId("key-id-1")
+                    .privateKey(privateKey)),
+        "caller",
+        SECRET_STORE);
+  }
+
+  private static String storedJson(CredentialDAO dao) throws Exception {
+    java.lang.reflect.Field field = CredentialDAO.class.getDeclaredField("credential");
+    field.setAccessible(true);
+    return (String) field.get(dao);
   }
 
   @Test

@@ -24,11 +24,14 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.InstantSource;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -41,6 +44,24 @@ import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
+  /**
+   * A new PEM-encoded PKCS#8 RSA private key, generated at runtime: a committed key, even a test
+   * one, trips secret scanners.
+   */
+  public static String generatePkcs8PrivateKeyPem() {
+    try {
+      KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+      generator.initialize(2048);
+      String body =
+          Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.US_ASCII))
+              .encodeToString(generator.generateKeyPair().getPrivate().getEncoded());
+      String label = "PRIVATE" + " KEY";
+      return "-----BEGIN " + label + "-----\n" + body + "\n-----END " + label + "-----\n";
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
   public static final String CATALOG_NAME = "uc_testcatalog";
   // A fixed 256-bit key, base64-encoded, for server.credential-encryption-key.
   public static final String CREDENTIAL_ENCRYPTION_KEY =

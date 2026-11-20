@@ -189,6 +189,16 @@ public class CredentialRepository {
             }
             existingCredential.setName(updateCredential.getNewName());
           }
+          // A gcp_service_account_key credential reaches only gs:// paths, so it cannot become
+          // another type; the update API has no field to change its key.
+          ValidationUtils.checkArgument(
+              existingCredential.getCredentialType()
+                      != CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY
+                  || (updateCredential.getAwsIamRole() == null
+                      && updateCredential.getS3Compatible() == null),
+              "Storage credential '%s' is a gcp_service_account_key credential, so aws_iam_role and"
+                  + " s3_compatible cannot be set on it.",
+              name);
           // Every part of a credential can change while external locations use it, including its
           // type and S3 endpoint, as long as each location stays reachable with it (s3:// only for
           // s3_compatible); the paths under those locations then reach storage the new way.
@@ -249,8 +259,8 @@ public class CredentialRepository {
   }
 
   /**
-   * Reads the stored secret of every {@code s3_compatible} credential, so that a missing or changed
-   * {@code server.credential-encryption-key} shows at startup rather than on the first request.
+   * Reads the stored secret of every credential that has one, so that a missing or changed {@code
+   * server.credential-encryption-key} shows at startup rather than on the first request.
    *
    * @return the name of each credential whose secret cannot be read, with the failure
    */
@@ -261,11 +271,19 @@ public class CredentialRepository {
           Map<String, RuntimeException> unreadable = new TreeMap<>();
           Query<CredentialDAO> query =
               session.createQuery(
-                  "FROM CredentialDAO WHERE credentialType = :type", CredentialDAO.class);
-          query.setParameter("type", CredentialDAO.CredentialType.S3_COMPATIBLE);
+                  "FROM CredentialDAO WHERE credentialType IN :types", CredentialDAO.class);
+          query.setParameterList(
+              "types",
+              List.of(
+                  CredentialDAO.CredentialType.S3_COMPATIBLE,
+                  CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY));
           for (CredentialDAO dao : query.list()) {
             try {
-              dao.getS3SecretAccessKey(secretStore);
+              if (dao.getCredentialType() == CredentialDAO.CredentialType.S3_COMPATIBLE) {
+                dao.getS3SecretAccessKey(secretStore);
+              } else {
+                dao.getGcpPrivateKey(secretStore);
+              }
             } catch (RuntimeException e) {
               unreadable.put(dao.getName(), e);
             }
