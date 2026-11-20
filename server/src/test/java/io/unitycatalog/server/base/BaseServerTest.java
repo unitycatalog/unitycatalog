@@ -52,7 +52,7 @@ public abstract class BaseServerTest {
 
   /**
    * The server's configuration folder for this test, used instead of the shared {@code etc/conf}
-   * because the server writes {@code token.txt} there on every start.
+   * because the server reads, and may generate, its signing keys there.
    */
   @TempDir protected Path configurationFolder;
 
