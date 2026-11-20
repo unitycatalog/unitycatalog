@@ -4,6 +4,7 @@ import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.mockito.Mockito.mock;
 
 import com.google.api.client.testing.http.MockHttpTransport;
 import com.google.api.client.testing.http.MockLowLevelHttpResponse;
@@ -14,6 +15,7 @@ import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -60,6 +62,22 @@ public class GcpCredentialVendorTest {
             + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
             + ".startsWith(\"%s/\")",
         bucket, escapedPath, bucket, escapedPath, escapedPath, escapedPath);
+  }
+
+  /** Vending from a stored credential comes with a later change; until then it fails closed. */
+  @Test
+  public void testStoredCredentialIsNotVendedYet() {
+    CredentialContext context =
+        CredentialContext.create(
+            NormalizedURL.from("gs://test-bucket/t"),
+            Set.of(CredentialContext.Privilege.SELECT),
+            Optional.of(mock(CredentialDAO.class)));
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class, () -> credentialVendor.vendGcpCredential(context));
+
+    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.UNIMPLEMENTED);
   }
 
   @Test
