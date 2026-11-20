@@ -119,7 +119,7 @@ client-side routes load on refresh or from a link.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `8081` | Bridge listen port (1–65535) |
-| `UC_SERVER` | `http://localhost:8080` | Unity Catalog server base URL |
+| `UC_SERVER` | `http://localhost:8080` | Unity Catalog server base URL (`http` or `https`) |
 | `UI_AUTH_ENABLED` | `false` | Gate the SPA behind login |
 | `GOOGLE_CLIENT_ID` | _(empty)_ | Google OAuth client ID (`<number>-<id>.apps.googleusercontent.com`); enables the Google sign-in button. Blank (empty or whitespace only) leaves it off |
 | `OKTA_AUTH_ENABLED` | `false` | Advertise Okta as enabled |
@@ -128,10 +128,11 @@ client-side routes load on refresh or from a link.
 
 The `*_ENABLED` variables accept `true`/`false`, `1`/`0`, `yes`/`no`, or
 `on`/`off`, ignoring case. An unset or empty variable takes its default. A
-non-empty invalid boolean or `PORT` (including whitespace only), a
-whitespace-only `UC_SERVER`, a non-blank `GOOGLE_CLIENT_ID` that does not match
-Google's client ID format, or a value that is not valid Unicode, stops the
-bridge at startup with an error naming the variable.
+non-empty invalid boolean or `PORT` (including whitespace only), a `UC_SERVER`
+that is whitespace only or not an `http` or `https` URL, a non-blank
+`GOOGLE_CLIENT_ID` that does not match Google's client ID format, or a value
+that is not valid Unicode, stops the bridge at startup with an error naming the
+variable.
 
 ## Test
 

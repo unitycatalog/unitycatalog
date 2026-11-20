@@ -46,12 +46,23 @@ fn env_port(env: Lookup<'_>, key: &str, default: u16) -> Result<u16, String> {
     env_value(env, key)?.map_or(Ok(default), |value| parse_port(key, &value))
 }
 
-/// Reads a string variable; a whitespace-only value is an error. A blank server
-/// URL would otherwise start the bridge and fail only on its first UC call.
-fn env_non_blank(env: Lookup<'_>, key: &str, default: &str) -> Result<String, String> {
-    match env_value(env, key)? {
-        Some(value) if value.trim().is_empty() => Err(format!("{key} must not be whitespace only")),
-        value => Ok(value.unwrap_or_else(|| default.to_string())),
+/// Reads a server base URL, trimmed. A whitespace-only value, or one that is not
+/// an `http` or `https` URL, is an error: it would otherwise start the bridge
+/// and fail every UC call with `unavailable`.
+fn env_server_url(env: Lookup<'_>, key: &str, default: &str) -> Result<String, String> {
+    let Some(value) = env_value(env, key)? else {
+        return Ok(default.to_string());
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(format!("{key} must not be whitespace only"));
+    }
+    // A bare `host:port` parses with `host` as its scheme, so check the scheme.
+    match reqwest::Url::parse(value) {
+        Ok(url) if matches!(url.scheme(), "http" | "https") => Ok(value.to_string()),
+        _ => Err(format!(
+            "{key} must be an http or https URL, such as {default}"
+        )),
     }
 }
 
@@ -94,9 +105,9 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, String> {
 
 impl Config {
     /// Load configuration from the process environment. An unset or empty
-    /// variable takes its default. An invalid `PORT` or boolean, a
-    /// whitespace-only `UC_SERVER`, a malformed `GOOGLE_CLIENT_ID`, or a value
-    /// that is not valid Unicode is an `Err` naming the variable.
+    /// variable takes its default. An invalid `PORT`, boolean, `UC_SERVER`, or
+    /// `GOOGLE_CLIENT_ID`, or a value that is not valid Unicode, is an `Err`
+    /// naming the variable.
     pub fn from_env() -> Result<Self, String> {
         Self::from_lookup(&|key: &str| std::env::var(key))
     }
@@ -112,7 +123,7 @@ impl Config {
             .unwrap_or_default();
         Ok(Config {
             port: env_port(env, "PORT", 8081)?,
-            uc_server: env_non_blank(env, "UC_SERVER", "http://localhost:8080")?,
+            uc_server: env_server_url(env, "UC_SERVER", "http://localhost:8080")?,
             auth_enabled: env_bool(env, "UI_AUTH_ENABLED", false)?,
             google_client_id: env_google_client_id(env, "GOOGLE_CLIENT_ID")?,
             okta_enabled: env_bool(env, "OKTA_AUTH_ENABLED", false)?,
@@ -220,6 +231,38 @@ mod tests {
         ];
         for (key, value, error) in cases {
             assert_eq!(config(&[(key, value)]), Err(error), "{key}={value:?}");
+        }
+    }
+
+    #[test]
+    fn uc_server_must_be_an_http_url() {
+        // (value, server URL)
+        let accepted = [
+            ("http://localhost:8080", "http://localhost:8080"),
+            (
+                " https://uc.example.com/uc/ \n",
+                "https://uc.example.com/uc/",
+            ),
+        ];
+        for (value, uc_server) in accepted {
+            let config = config(&[("UC_SERVER", value)]);
+            assert_eq!(
+                config.map(|c| c.uc_server),
+                Ok(uc_server.to_string()),
+                "{value:?}"
+            );
+        }
+        let error = "UC_SERVER must be an http or https URL, such as http://localhost:8080";
+        for value in [
+            "uc.example.com:8080",
+            "localhost:8080",
+            "uc.example.com",
+            "not a url",
+            "ftp://uc.example.com",
+            "http://",
+        ] {
+            let config = config(&[("UC_SERVER", value)]);
+            assert_eq!(config, Err(error.to_string()), "{value:?}");
         }
     }
 
