@@ -13,8 +13,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
+@DynamicUpdate
 @Table(name = "uc_schemas")
 // Lombok
 @Getter
@@ -27,7 +29,7 @@ public class SchemaInfoDAO extends IdentifiableDAO {
   @Column(name = "catalog_id")
   private UUID catalogId;
 
-  @Column(name = "comment")
+  @Column(name = "comment", length = 65536)
   private String comment;
 
   @Column(name = "owner")

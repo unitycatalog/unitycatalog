@@ -23,7 +23,6 @@ message MetricViewInfo {
   string full_name = 4;
   repeated ColumnInfo columns = 5;
   string view_definition = 6;
-  repeated Dependency dependencies = 7;
   string comment = 8;
   Properties properties = 9;
   AuditInfo audit = 10;
@@ -50,7 +49,7 @@ message ListViewsResponse {
   PageResponse page = 2;
 }
 
-// GetViewRequest selects a metric view.
+// GetViewRequest selects a metric view. A table at this name is NOT_FOUND.
 message GetViewRequest {
   SchemaObjectRef view = 1 [(buf.validate.field).required = true];
 }
@@ -70,9 +69,10 @@ message CreateViewRequest {
     min_items: 1
     max_items: 10000
   }];
+  // At most 1 MiB of UTF-8, a UI limit below UC's 16,777,215 characters.
   string view_definition = 3 [(buf.validate.field).string = {
     min_len: 1
-    max_len: 16777215
+    max_bytes: 1048576
   }];
   repeated Dependency dependencies = 4 [(buf.validate.field).repeated = {
     min_items: 1
@@ -87,7 +87,11 @@ message CreateViewResponse {
   MetricViewInfo view = 1 [(buf.validate.field).required = true];
 }
 
-// DeleteViewRequest deletes a metric view through the UC tables API.
+// DeleteViewRequest deletes a metric view. Tables share UC's table resource,
+// so the bridge reads the kind first; a table at this name is
+// FAILED_PRECONDITION and nothing is deleted. The read and the delete are
+// separate UC calls, so the check is best effort against a concurrent
+// drop-and-recreate.
 //
 // UC has no native table update operation, so the UI contract intentionally
 // exposes create and delete without destructive delete-and-recreate editing.

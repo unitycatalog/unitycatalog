@@ -1,17 +1,49 @@
 package io.unitycatalog.server.observability;
 
+import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariPoolMXBean;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
 import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
 import io.micrometer.core.instrument.config.MeterFilter;
+import io.micrometer.core.instrument.distribution.DistributionStatisticConfig;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /** Builds a Prometheus meter registry with standard JVM/system instrumentation. */
 public final class MetricsRegistries {
+
+  private static final String HTTP_SERVER_REQUESTS = "http.server.requests";
+  private static final String HTTP_SERVER_TOTAL_DURATION = "http.server.total.duration";
+  private static final String HTTP_SERVER_ACTIVE_REQUESTS = "http.server.active.requests";
+
+  /** The only Armeria {@code http.server.*} meters exposed; every other one is denied. */
+  private static final Set<String> EXPOSED_HTTP_SERVER_METERS =
+      Set.of(HTTP_SERVER_REQUESTS, HTTP_SERVER_TOTAL_DURATION, HTTP_SERVER_ACTIVE_REQUESTS);
+
+  /**
+   * Turns off the client-side percentiles Armeria adds to its timers by default, and the percentile
+   * histogram, so a timer exposes only {@code _count}, {@code _sum}, and {@code _max}. Such
+   * percentiles cannot be aggregated across servers and add one series per percentile. {@code _max}
+   * keeps Armeria's expiry (3 minutes) and buffer length (3), so it covers the last 6 to 9 minutes.
+   */
+  private static final MeterFilter NO_PERCENTILES =
+      new MeterFilter() {
+        @Override
+        public DistributionStatisticConfig configure(
+            Meter.Id id, DistributionStatisticConfig config) {
+          return DistributionStatisticConfig.builder()
+              .percentilesHistogram(false)
+              .percentiles()
+              .build()
+              .merge(config);
+        }
+      };
 
   private MetricsRegistries() {}
 
@@ -53,18 +85,53 @@ public final class MetricsRegistries {
 
   public static PrometheusMetrics createPrometheus() {
     PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
-    Predicate<Meter.Id> httpRequestCounter = id -> id.getName().equals("http.server.requests");
+    Predicate<Meter.Id> httpRequestCounter = id -> id.getName().equals(HTTP_SERVER_REQUESTS);
+    Predicate<Meter.Id> httpTotalDuration = id -> id.getName().equals(HTTP_SERVER_TOTAL_DURATION);
     registry
         .config()
         .meterFilter(
             MeterFilter.deny(
-                id -> id.getName().startsWith("http.server.") && !httpRequestCounter.test(id)))
-        .meterFilter(MeterFilter.forMeters(httpRequestCounter, MeterFilter.ignoreTags("result")));
+                id ->
+                    id.getName().startsWith("http.server.")
+                        && !EXPOSED_HTTP_SERVER_METERS.contains(id.getName())))
+        .meterFilter(MeterFilter.forMeters(httpRequestCounter, MeterFilter.ignoreTags("result")))
+        .meterFilter(MeterFilter.forMeters(httpTotalDuration, NO_PERCENTILES));
     new JvmMemoryMetrics().bindTo(registry);
     JvmGcMetrics jvmGcMetrics = new JvmGcMetrics();
     jvmGcMetrics.bindTo(registry);
     new JvmThreadMetrics().bindTo(registry);
     new ProcessorMetrics().bindTo(registry);
     return new PrometheusMetrics(registry, jvmGcMetrics);
+  }
+
+  /**
+   * Adds gauges for the HikariCP pool, using HikariCP's usual metric names. We use gauges and not
+   * setMetricRegistry because a pool takes a registry only once, and tests can start more than one
+   * server with the same pool.
+   */
+  public static void bindHikariPool(PrometheusMeterRegistry registry, HikariDataSource dataSource) {
+    HikariPoolMXBean pool = dataSource.getHikariPoolMXBean();
+    String poolName = dataSource.getPoolName();
+    Gauge.builder("hikaricp.connections.active", pool, HikariPoolMXBean::getActiveConnections)
+        .description("Active connections")
+        .tag("pool", poolName)
+        .register(registry);
+    Gauge.builder("hikaricp.connections.idle", pool, HikariPoolMXBean::getIdleConnections)
+        .description("Idle connections")
+        .tag("pool", poolName)
+        .register(registry);
+    Gauge.builder(
+            "hikaricp.connections.pending", pool, HikariPoolMXBean::getThreadsAwaitingConnection)
+        .description("Threads waiting for a connection")
+        .tag("pool", poolName)
+        .register(registry);
+    Gauge.builder("hikaricp.connections", pool, HikariPoolMXBean::getTotalConnections)
+        .description("Total connections")
+        .tag("pool", poolName)
+        .register(registry);
+    Gauge.builder("hikaricp.connections.max", dataSource, HikariDataSource::getMaximumPoolSize)
+        .description("Maximum connections")
+        .tag("pool", poolName)
+        .register(registry);
   }
 }

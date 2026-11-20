@@ -141,10 +141,11 @@ def kill_process(process):
         pass
 
 if __name__ == "__main__":
-    stdout, search_results = run_command_and_check_output("git status", ["h2db"])
-    if True in [f for s, f in search_results.items()]:
+    # The sample database is built, not checked in, so git can't tell whether a local copy changed.
+    if os.path.exists(os.path.join("etc", "db", "h2db.mv.db")):
         print()
-        print(">> Cannot run this with uncommitted modifications in h2db")
+        print(">> etc/db/h2db.mv.db exists and may have local changes: move it aside, and the server"
+              " start builds a fresh sample database")
         exit(1)
     server_process = start_server()
     duckdb_conn = duckdb.connect()

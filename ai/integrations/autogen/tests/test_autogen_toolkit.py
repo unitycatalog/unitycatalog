@@ -1,3 +1,6 @@
+import base64
+import datetime
+import decimal
 import json
 import os
 from importlib import metadata
@@ -12,9 +15,10 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from packaging import version
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
+from unitycatalog.ai.autogen.toolkit import UCFunctionTool, UCFunctionToolkit
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.test_utils.client_utils import (
@@ -24,13 +28,19 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
+    JSON_ARGUMENT_PARAMS,
+    JSON_ARGUMENTS,
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
     RETRIEVER_TABLE_FULL_DATA_TYPE,
     RETRIEVER_TABLE_RETURN_PARAMS,
     create_function_and_cleanup,
+    generate_function_info_with_params,
+    mock_schema_with_inaccessible_function,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
 
@@ -258,6 +268,16 @@ def test_uc_function_to_autogen_tool_permission_denied(filter_accessible_functio
             )
 
 
+def test_toolkit_with_wildcard_skips_inaccessible_functions():
+    client = get_client()
+    with mock_schema_with_inaccessible_function(client):
+        toolkit = UCFunctionToolkit(
+            function_names=["catalog.schema.*"], client=client, filter_accessible_functions=True
+        )
+
+    assert [tool.name for tool in toolkit.tools] == ["catalog__schema__accessible"]
+
+
 @pytest.mark.skipif(
     skip_mlflow_test, reason="MLflow autologging is not supported for autogen_core 0.4.0 and above."
 )
@@ -347,3 +367,121 @@ async def test_toolkit_with_invalid_function_input(dbx_client):
 
         with pytest.raises(ValueError, match="Extra inputs are not permitted"):
             await tool.run_json(invalid_inputs, CancellationToken())
+
+
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+@pytest.mark.asyncio
+async def test_tool_sends_arguments_as_json_values(function_info, encoded):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+    arguments = {**JSON_ARGUMENTS, "data": encoded}
+
+    await tool.run_json(json.loads(json.dumps(arguments)), CancellationToken())
+
+    assert client.execute_function.call_args.kwargs["parameters"] == {
+        **JSON_ARGUMENTS,
+        "data": base64.b64decode(encoded),
+    }
+
+
+def _json_argument_tool():
+    function_info = generate_function_info_with_params_oss(JSON_ARGUMENT_PARAMS)
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+    return tool, client
+
+
+@pytest.mark.parametrize("data", [b"aGk=", b"\xff\x00"])
+@pytest.mark.asyncio
+async def test_tool_keeps_native_binary_arguments(data):
+    tool, client = _json_argument_tool()
+    args = tool.args_type()(**JSON_ARGUMENTS, data=data)
+
+    await tool.run(args, CancellationToken())
+
+    assert client.execute_function.call_args.kwargs["parameters"]["data"] == data
+
+
+@pytest.mark.asyncio
+async def test_tool_sends_nested_binary_text_as_its_bytes():
+    # Only top-level BINARY values are decoded. Nested ones are still the bytes of their base64
+    # text, tracked in https://github.com/unitycatalog/unitycatalog/issues/2298.
+    function_info = generate_function_info_with_params_oss(
+        {
+            "blobs": (
+                "array<binary>",
+                {"type": "array", "elementType": "binary", "containsNull": False},
+            )
+        }
+    )
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+
+    await tool.run_json({"blobs": ["aGk="]}, CancellationToken())
+
+    assert client.execute_function.call_args.kwargs["parameters"] == {"blobs": [b"aGk="]}
+
+
+@pytest.mark.asyncio
+async def test_tool_rejects_binary_text_that_is_not_base64():
+    tool, client = _json_argument_tool()
+
+    with pytest.raises(ValidationError, match="data"):
+        await tool.run_json({**JSON_ARGUMENTS, "data": "not base64!"}, CancellationToken())
+    client.execute_function.assert_not_called()
+
+
+class NativeArgs(BaseModel):
+    span: datetime.timedelta
+    at: datetime.datetime
+    amount: decimal.Decimal
+    data: bytes
+    default_data: bytes = b"\xff\x00"
+
+
+@pytest.mark.asyncio
+async def test_tool_keeps_native_argument_values():
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    tool = UCFunctionTool(
+        name="test",
+        description="A test function.",
+        function_full_name="catalog.schema.test",
+        client=client,
+        args_type=NativeArgs,
+    )
+    args = NativeArgs(
+        span=datetime.timedelta(days=1, hours=2),
+        at=datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc),
+        amount=decimal.Decimal("12.50"),
+        data=b"aGk=",
+    )
+
+    await tool.run(args, CancellationToken())
+
+    parameters = client.execute_function.call_args.kwargs["parameters"]
+    assert parameters == {
+        "span": datetime.timedelta(days=1, hours=2),
+        "at": datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc),
+        "amount": decimal.Decimal("12.50"),
+        "data": b"aGk=",
+        "default_data": b"\xff\x00",
+    }
+    assert str(parameters["amount"]) == "12.50"

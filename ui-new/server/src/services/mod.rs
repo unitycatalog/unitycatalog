@@ -1,12 +1,18 @@
 use buffa::EnumValue;
-use connectrpc::{ConnectError, Limits, Router};
+use connectrpc::{ConnectError, RequestContext, Router};
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
-use crate::proto::uc::v1::{
-    dependency, ColumnInput, ColumnTypeName, DataSourceFormat, Dependency, PageRequest, Properties,
-    SchemaObjectRef, VolumeType,
+use crate::mapping;
+use crate::proto::uc::v1::__buffa::view::{
+    ColumnInputView, DependencyView, PageRequestView, PropertiesView, SchemaObjectRefView,
 };
+use crate::proto::uc::v1::{
+    dependency, CatalogServiceExt, ColumnTypeName, DataSourceFormat, FunctionServiceExt,
+    ModelServiceExt, SchemaServiceExt, TableServiceExt, TableType, UnityProxyServiceExt,
+    ViewServiceExt, VolumeServiceExt, VolumeType,
+};
+use crate::upstream::{path_segment, Upstream};
 use crate::AppState;
 
 mod catalog;
@@ -17,44 +23,179 @@ mod table;
 mod view;
 mod volume;
 
-pub(crate) fn router(state: AppState) -> Router {
-    let large_request_limits = Limits::default()
-        .with_max_request_body_size(128 * 1024 * 1024)
-        .with_max_message_size(80 * 1024 * 1024)
-        .with_element_memory_limit(96 * 1024 * 1024);
-
-    Router::new()
-        .add_service(Arc::new(catalog::CatalogRpc::new(state.clone())))
-        .add_service(Arc::new(schema::SchemaRpc::new(state.clone())))
-        .add_service(Arc::new(table::TableRpc::new(state.clone())))
-        .add_service(Arc::new(volume::VolumeRpc::new(state.clone())))
-        .add_service(Arc::new(function::FunctionRpc::new(state.clone())))
-        .add_service(Arc::new(model::ModelRpc::new(state.clone())))
-        .add_service(Arc::new(view::ViewRpc::new(state)))
-        .with_route_limits("uc.v1.FunctionService/CreateFunction", large_request_limits)
-        .with_route_limits("uc.v1.ViewService/CreateView", large_request_limits)
+pub(crate) struct UiRpc {
+    pub(crate) upstream: Upstream,
 }
 
-fn page_query(page: &PageRequest) -> Vec<(&'static str, String)> {
+impl UiRpc {
+    fn new(state: AppState) -> Self {
+        Self {
+            upstream: Upstream::new(state),
+        }
+    }
+
+    /// Reads the UC table resource at `full_name`. A resource of the other kind
+    /// is NOT_FOUND to the typed service asking for `expected`.
+    async fn get_table_resource(
+        &self,
+        ctx: &RequestContext,
+        full_name: &str,
+        expected: TableKind,
+    ) -> Result<Value, ConnectError> {
+        let value = self
+            .upstream
+            .get(ctx, &table_path(full_name), Vec::new())
+            .await?;
+        match kind_mismatch(&value, full_name, expected)? {
+            Some(message) => Err(ConnectError::not_found(message)),
+            None => Ok(value),
+        }
+    }
+
+    /// Deletes the UC table resource at `full_name` only if it is `expected`.
+    /// UC's delete takes just the name, so the kind is read first.
+    async fn delete_table_resource(
+        &self,
+        ctx: &RequestContext,
+        full_name: &str,
+        expected: TableKind,
+    ) -> Result<(), ConnectError> {
+        let path = table_path(full_name);
+        let value = self.upstream.get(ctx, &path, Vec::new()).await?;
+        if let Some(message) = kind_mismatch(&value, full_name, expected)? {
+            return Err(ConnectError::failed_precondition(format!(
+                "{message}; nothing was deleted"
+            )));
+        }
+        self.upstream.delete(ctx, &path, Vec::new()).await
+    }
+}
+
+/// Tables and metric views share UC's `/tables/{full_name}` resource; the typed
+/// table and view services each act only on their own kind.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TableKind {
+    Table,
+    MetricView,
+}
+
+impl TableKind {
+    /// Classifies a UC table resource; `None` when it has no known `table_type`.
+    fn of(table: &Value) -> Option<Self> {
+        match mapping::table_type(table.get("table_type").and_then(Value::as_str)).as_known() {
+            Some(TableType::MetricView) => Some(Self::MetricView),
+            Some(TableType::Unspecified) | None => None,
+            Some(_) => Some(Self::Table),
+        }
+    }
+
+    fn noun(self) -> &'static str {
+        match self {
+            Self::Table => "a table",
+            Self::MetricView => "a metric view",
+        }
+    }
+}
+
+/// Compares a single table resource's kind with `expected`:
+/// - `Ok(None)`: the kinds match.
+/// - `Ok(Some(message))`: they differ; the message names both kinds.
+/// - `Err`: the resource has no known kind (`internal`), so it is never read
+///   or deleted as a table.
+fn kind_mismatch(
+    table: &Value,
+    full_name: &str,
+    expected: TableKind,
+) -> Result<Option<String>, ConnectError> {
+    let actual = TableKind::of(table)
+        .ok_or_else(|| mapping::invalid_response("missing or unknown table_type"))?;
+    Ok((actual != expected)
+        .then(|| format!("{full_name} is {}, not {}", actual.noun(), expected.noun())))
+}
+
+/// Keeps the rows of one kind from a UC table list. Rows of no known kind are
+/// skipped rather than failing the page, so a table type added by a newer UC
+/// server does not break the list; one warning per page counts them.
+fn rows_of_kind<'a>(
+    rows: &'a [Value],
+    kind: TableKind,
+    catalog: &str,
+    schema: &str,
+) -> Vec<&'a Value> {
+    let mut kept = Vec::new();
+    let mut unclassified = Vec::new();
+    for row in rows {
+        match TableKind::of(row) {
+            Some(actual) if actual == kind => kept.push(row),
+            Some(_) => {}
+            None => unclassified.push(row),
+        }
+    }
+    if !unclassified.is_empty() {
+        let examples: Vec<_> = unclassified
+            .iter()
+            .take(3)
+            .map(|row| describe_row(row))
+            .collect();
+        tracing::warn!(
+            catalog,
+            schema,
+            count = unclassified.len(),
+            ?examples,
+            "skipped listed tables with no known table_type"
+        );
+    }
+    kept
+}
+
+/// Names a listed row and its raw `table_type` for a log line.
+fn describe_row(row: &Value) -> String {
+    let field = |key: &str| row.get(key).and_then(Value::as_str).unwrap_or("<missing>");
+    format!("{} ({})", field("name"), field("table_type"))
+}
+
+fn table_path(full_name: &str) -> String {
+    format!("/tables/{}", path_segment(full_name))
+}
+
+pub(crate) fn router(state: AppState) -> Router {
+    let service = Arc::new(UiRpc::new(state));
+    let router = CatalogServiceExt::register(service.clone(), Router::new());
+    let router = SchemaServiceExt::register(service.clone(), router);
+    let router = TableServiceExt::register(service.clone(), router);
+    let router = VolumeServiceExt::register(service.clone(), router);
+    let router = FunctionServiceExt::register(service.clone(), router);
+    let router = ModelServiceExt::register(service.clone(), router);
+    let router = ViewServiceExt::register(service.clone(), router);
+    UnityProxyServiceExt::register(service, router)
+}
+
+fn page_query(page: &PageRequestView<'_>) -> Vec<(&'static str, String)> {
     let mut query = Vec::new();
     if let Some(max_results) = page.max_results {
         query.push(("max_results", max_results.to_string()));
     }
     if !page.page_token.is_empty() {
-        query.push(("page_token", page.page_token.clone()));
+        query.push(("page_token", page.page_token.to_string()));
     }
     query
 }
 
-fn object_full_name(reference: &SchemaObjectRef) -> String {
+fn object_full_name(reference: &SchemaObjectRefView<'_>) -> String {
     format!(
         "{}.{}.{}",
         reference.catalog_name, reference.schema_name, reference.name
     )
 }
 
-fn properties_value(values: &Properties) -> Value {
-    serde_json::to_value(&values.values).unwrap_or_else(|_| Value::Object(Default::default()))
+fn properties_value(properties: &PropertiesView<'_>) -> Value {
+    Value::Object(
+        properties
+            .values
+            .iter()
+            .map(|(key, value)| (key.to_string(), json!(value)))
+            .collect(),
+    )
 }
 
 fn data_source_format(value: EnumValue<DataSourceFormat>) -> Result<&'static str, ConnectError> {
@@ -165,7 +306,7 @@ fn scalar_type(value: EnumValue<ColumnTypeName>) -> Result<ScalarType, ConnectEr
 }
 
 fn column_value(
-    column: &ColumnInput,
+    column: &ColumnInputView<'_>,
     position: usize,
     mut metadata: Map<String, Value>,
 ) -> Result<Value, ConnectError> {
@@ -192,18 +333,79 @@ fn column_value(
     }))
 }
 
-fn dependencies_value(dependencies: &[Dependency]) -> Value {
+fn dependencies_value(dependencies: &buffa::RepeatedView<'_, DependencyView<'_>>) -> Value {
     let dependencies = dependencies
         .iter()
         .filter_map(|dependency| match dependency.target.as_ref() {
-            Some(dependency::Target::TableFullName(name)) => {
+            Some(dependency::TargetView::TableFullName(name)) => {
                 Some(json!({ "table": { "table_full_name": name } }))
             }
-            Some(dependency::Target::FunctionFullName(name)) => {
+            Some(dependency::TargetView::FunctionFullName(name)) => {
                 Some(json!({ "function": { "function_full_name": name } }))
             }
             None => None,
         })
         .collect::<Vec<_>>();
     json!({ "dependencies": dependencies })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{json, Value};
+
+    use super::{rows_of_kind, TableKind};
+    use crate::test_logs;
+
+    /// Runs `rows_of_kind` and returns the names it kept and the lines it logged.
+    fn kept_and_logged(rows: &[Value], kind: TableKind) -> (Vec<&str>, Vec<String>) {
+        test_logs::capture(|| {
+            rows_of_kind(rows, kind, "main", "default")
+                .into_iter()
+                .map(|row| row["name"].as_str().unwrap())
+                .collect()
+        })
+    }
+
+    #[test]
+    fn rows_of_kind_warns_once_per_page_about_unclassified_rows() {
+        let row = |name: &str, table_type: Option<&str>| match table_type {
+            Some(table_type) => json!({"name": name, "table_type": table_type}),
+            None => json!({"name": name}),
+        };
+        let recognized = [
+            row("events", Some("MANAGED")),
+            row("metrics", Some("METRIC_VIEW")),
+        ];
+        let mut rows = recognized.to_vec();
+        rows.extend([
+            row("future", Some("SOME_NEW_TYPE")),
+            // `FOREIGN` is a Databricks Unity Catalog type outside the OSS `TableType` enum.
+            row("foreign", Some("FOREIGN")),
+            row("empty", Some("")),
+            row("untyped", None),
+        ]);
+
+        let (kept, logs) = kept_and_logged(&rows, TableKind::Table);
+        assert_eq!(kept, ["events"]);
+        assert_eq!(logs.len(), 1, "{logs:?}");
+        // The count covers every skipped row; the examples stop at three.
+        for field in [
+            "WARN",
+            "skipped listed tables with no known table_type",
+            r#"catalog="main""#,
+            r#"schema="default""#,
+            "count=4",
+            r#"examples=["future (SOME_NEW_TYPE)", "foreign (FOREIGN)", "empty ()"]"#,
+        ] {
+            assert!(
+                logs[0].contains(field),
+                "{field} missing from {:?}",
+                logs[0]
+            );
+        }
+
+        let (kept, logs) = kept_and_logged(&recognized, TableKind::MetricView);
+        assert_eq!(kept, ["metrics"]);
+        assert!(logs.is_empty(), "{logs:?}");
+    }
 }

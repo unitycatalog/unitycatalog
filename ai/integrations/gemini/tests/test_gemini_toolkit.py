@@ -26,10 +26,14 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
+    BINARY_ARGUMENTS,
     CATALOG,
     create_function_and_cleanup,
     create_table_function_and_cleanup,
+    generate_function_info_with_params,
+    mock_schema_with_inaccessible_function,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 from unitycatalog.client import FunctionInfo as OSSFunctionInfo
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
@@ -282,6 +286,16 @@ def test_uc_function_to_gemini_tool_permission_denied(filter_accessible_function
             )
 
 
+def test_toolkit_with_wildcard_skips_inaccessible_functions():
+    client = get_client()
+    with mock_schema_with_inaccessible_function(client):
+        toolkit = UCFunctionToolkit(
+            function_names=["catalog.schema.*"], client=client, filter_accessible_functions=True
+        )
+
+    assert [tool.name for tool in toolkit.tools] == ["catalog__schema__accessible"]
+
+
 @requires_databricks
 def test_gemini_tool_calling_with_trace_as_retriever():
     client = get_client()
@@ -472,6 +486,67 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
     client.execute_function.assert_called_once_with(
         function_name="catalog.schema.get_weather", parameters={}, enable_retriever_tracing=False
     )
-    assert type(response).to_dict(response)["response"]["result"] == (
-        '{"format": "SCALAR", "value": "sunny"}'
-    )
+    assert json.loads(type(response).to_dict(response)["response"]["result"]) == {
+        "format": "SCALAR",
+        "value": "sunny",
+    }
+
+
+# Unlike JSON_ARGUMENT_PARAMS, these have no DATE, TIMESTAMP or DECIMAL parameter and no nullable
+# struct field, since a Gemini function schema accepts no union type and no default. The struct
+# fields are strings because the protobuf Struct of a function call returns every number as a
+# float, so 150 would come back as 150.0, tracked in
+# https://github.com/unitycatalog/unitycatalog/issues/2308.
+PLACE_TYPE_JSON = {
+    "type": "struct",
+    "fields": [
+        {"name": "city", "type": "string", "nullable": False, "metadata": {}},
+        {"name": "country", "type": "string", "nullable": False, "metadata": {}},
+    ],
+}
+
+GEMINI_JSON_ARGUMENT_PARAMS = {
+    "address": ("struct<city:string,country:string>", PLACE_TYPE_JSON),
+    "stops": (
+        "array<struct<city:string,country:string>>",
+        {"type": "array", "elementType": PLACE_TYPE_JSON, "containsNull": False},
+    ),
+    "by_name": (
+        "map<string,struct<city:string,country:string>>",
+        {
+            "type": "map",
+            "keyType": "string",
+            "valueType": PLACE_TYPE_JSON,
+            "valueContainsNull": False,
+        },
+    ),
+    "data": ("binary", "binary"),
+}
+
+
+@pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(GEMINI_JSON_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(GEMINI_JSON_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+def test_function_call_sends_arguments_as_json_values(function_info, encoded):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    declaration = toolkit.generate_callable_tool_list()[0]
+    arguments = {
+        "address": {"city": "Oslo", "country": "NO"},
+        "stops": [{"city": "Bergen", "country": "NO"}, {"city": "Lund", "country": "SE"}],
+        "by_name": {"home": {"city": "Oslo", "country": "NO"}},
+        "data": encoded,
+    }
+
+    declaration(protos.FunctionCall(name=declaration.name, args=arguments))
+
+    assert client.execute_function.call_args.kwargs["parameters"] == arguments

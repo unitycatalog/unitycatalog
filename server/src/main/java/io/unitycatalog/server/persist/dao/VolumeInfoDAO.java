@@ -14,8 +14,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
+@DynamicUpdate
 @Table(name = "uc_volumes")
 // lombok annotations
 @Getter
@@ -28,7 +30,7 @@ public class VolumeInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
 
-  @Column(name = "comment")
+  @Column(name = "comment", length = 65536)
   private String comment;
 
   @Column(name = "storage_location")

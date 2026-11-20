@@ -4,6 +4,7 @@ import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AzureCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 
 /** Builds ABFS credential properties. */
@@ -60,12 +61,12 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setInitFixedCredKeys(GenericCredential cred) {
+  protected Map<String, String> initFixedCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AzureCredential,
         "Expected AzureCredential, but got %s",
         cred.getClass().getSimpleName());
     AzureCredential azure = (AzureCredential) cred;
-    set(ABFS_FIXED_SAS_TOKEN_KEY, azure.sasToken());
+    return Map.of(ABFS_FIXED_SAS_TOKEN_KEY, azure.sasToken());
   }
 }

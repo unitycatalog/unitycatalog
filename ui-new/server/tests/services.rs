@@ -4,15 +4,15 @@ use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
-use uc_ui_bridge::{app, AppState, Config};
+use uc_ui_bridge::{app, AppState, Config, UPSTREAM_TIMEOUT};
 use wiremock::matchers::{
     body_partial_json, header as header_match, header_exists, method, path, query_param,
     query_param_is_missing,
 };
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn build_app(uc_server: String) -> axum::Router {
-    app(AppState {
+fn test_state(uc_server: String) -> AppState {
+    AppState {
         http: reqwest::Client::new(),
         config: Arc::new(Config {
             port: 0,
@@ -22,9 +22,13 @@ fn build_app(uc_server: String) -> axum::Router {
             okta_enabled: false,
             keycloak_enabled: false,
             allowed_origins: vec![],
-            web_dist: std::path::PathBuf::from("/nonexistent-web-dist"),
         }),
-    })
+        upstream_timeout: UPSTREAM_TIMEOUT,
+    }
+}
+
+fn build_app(uc_server: String) -> axum::Router {
+    app(test_state(uc_server))
 }
 
 fn rpc_request(service: &str, method: &str, body: serde_json::Value) -> Request<Body> {
@@ -386,6 +390,89 @@ async fn create_function_uses_uc_request_envelope() {
     assert_eq!(body_json(response).await["function"]["name"], "answer");
 }
 
+/// Pads `prefix` with `fill` to exactly `bytes` UTF-8 bytes.
+fn padded(prefix: &str, bytes: usize, fill: char) -> String {
+    let text = format!(
+        "{prefix}{}",
+        fill.to_string()
+            .repeat((bytes - prefix.len()) / fill.len_utf8())
+    );
+    assert_eq!(text.len(), bytes);
+    text
+}
+
+#[tokio::test]
+async fn definitions_are_limited_to_one_mebibyte_of_utf8() {
+    const LIMIT: usize = 1024 * 1024;
+    const VIEW_YAML: &str = "dimensions:\n  - name: event_day\n    expr: event_day\n# ";
+    // (UTF-8 bytes, padding character, accepted)
+    let cases = [
+        (LIMIT, 'a', true),
+        (LIMIT + 1, 'a', false),
+        // Fewer than LIMIT characters, but more than LIMIT bytes.
+        (LIMIT + 2, 'é', false),
+        // JSON escaping doubles the request on the wire; it still fits the
+        // transport limit, so validation decides.
+        (LIMIT, '"', true),
+    ];
+
+    for (bytes, fill, accepted) in cases {
+        let uc = MockServer::start().await;
+        let object = |name: &str| serde_json::json!({"name": name, "catalog_name": "main", "schema_name": "default"});
+        for (uc_path, reply) in [
+            ("/api/2.1/unity-catalog/functions", object("f")),
+            ("/api/2.1/unity-catalog/tables", object("m")),
+        ] {
+            Mock::given(method("POST"))
+                .and(path(uc_path))
+                .respond_with(ResponseTemplate::new(200).set_body_json(reply))
+                .expect(u64::from(accepted))
+                .mount(&uc)
+                .await;
+        }
+        let app = build_app(uc.uri());
+        let reference = |name: &str| serde_json::json!({"catalogName": "main", "schemaName": "default", "name": name});
+        let requests = [
+            (
+                "FunctionService",
+                "CreateFunction",
+                serde_json::json!({
+                    "function": reference("f"),
+                    "returnType": "COLUMN_TYPE_NAME_LONG",
+                    "routineDefinition": padded("", bytes, fill)
+                }),
+            ),
+            (
+                "ViewService",
+                "CreateView",
+                serde_json::json!({
+                    "view": reference("m"),
+                    "columns": [{"name": "event_day", "typeName": "COLUMN_TYPE_NAME_DATE"}],
+                    "viewDefinition": padded(VIEW_YAML, bytes, fill),
+                    "dependencies": [{"tableFullName": "main.default.events"}]
+                }),
+            ),
+        ];
+
+        for (service, rpc, request) in requests {
+            let response = app
+                .clone()
+                .oneshot(rpc_request(service, rpc, request))
+                .await
+                .unwrap();
+            let status = response.status();
+            let json = body_json(response).await;
+            let case = format!("{service}/{rpc} with {bytes} bytes of {fill:?}");
+            if accepted {
+                assert_eq!(status, StatusCode::OK, "{case}: {json}");
+            } else {
+                assert_eq!(json["code"], "invalid_argument", "{case}: {json}");
+            }
+        }
+        uc.verify().await;
+    }
+}
+
 #[tokio::test]
 async fn list_views_returns_filtered_empty_page_with_next_token() {
     let uc = MockServer::start().await;
@@ -419,118 +506,233 @@ async fn list_views_returns_filtered_empty_page_with_next_token() {
 }
 
 #[tokio::test]
-async fn list_tables_omits_metric_views() {
-    let uc = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/api/2.1/unity-catalog/tables"))
-        .and(query_param("catalog_name", "main"))
-        .and(query_param("schema_name", "default"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "tables": [
-                {
-                    "name": "events",
-                    "catalog_name": "main",
-                    "schema_name": "default",
-                    "table_type": "MANAGED"
-                },
-                {
-                    "name": "metrics",
-                    "catalog_name": "main",
-                    "schema_name": "default",
-                    "table_type": "METRIC_VIEW"
-                }
-            ]
-        })))
-        .expect(1)
-        .mount(&uc)
-        .await;
-
-    let response = build_app(uc.uri())
-        .oneshot(rpc_request(
+async fn table_and_view_lists_keep_only_their_own_kind() {
+    // A row of no known table_type, such as a type added by a newer UC server,
+    // is skipped rather than failing the page, and the page token survives
+    // even when every row is skipped.
+    let row = |name: &str, table_type: Option<&str>| {
+        let mut row = serde_json::json!({
+            "name": name,
+            "catalog_name": "main",
+            "schema_name": "default"
+        });
+        if let Some(table_type) = table_type {
+            row["table_type"] = table_type.into();
+        }
+        row
+    };
+    let unclassified = vec![
+        row("future", Some("SOME_NEW_TYPE")),
+        // `FOREIGN` is a Databricks Unity Catalog type outside the OSS `TableType` enum.
+        row("foreign", Some("FOREIGN")),
+        row("empty", Some("")),
+        row("untyped", None),
+    ];
+    let mut mixed = vec![
+        row("events", Some("MANAGED")),
+        row("metrics", Some("METRIC_VIEW")),
+    ];
+    mixed.extend(unclassified.clone());
+    // (service, rpc, response field, UC rows, expected full names)
+    let cases = [
+        (
             "TableService",
             "ListTables",
-            serde_json::json!({
-                "schema": {"catalogName": "main", "name": "default"}
-            }),
-        ))
-        .await
-        .unwrap();
+            "tables",
+            mixed.clone(),
+            vec!["main.default.events"],
+        ),
+        (
+            "ViewService",
+            "ListViews",
+            "views",
+            mixed,
+            vec!["main.default.metrics"],
+        ),
+        (
+            "TableService",
+            "ListTables",
+            "tables",
+            unclassified.clone(),
+            vec![],
+        ),
+        ("ViewService", "ListViews", "views", unclassified, vec![]),
+    ];
+    for (index, (service, rpc, field, rows, expected)) in cases.into_iter().enumerate() {
+        let case = format!("case {index}, {rpc}");
+        let uc = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/2.1/unity-catalog/tables"))
+            .and(query_param("catalog_name", "main"))
+            .and(query_param("schema_name", "default"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "tables": rows,
+                "next_page_token": "next"
+            })))
+            .expect(1)
+            .mount(&uc)
+            .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let json = body_json(response).await;
-    let names: Vec<_> = json["tables"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|table| table["fullName"].as_str().unwrap())
-        .collect();
-    assert_eq!(names, ["main.default.events"]);
+        let response = build_app(uc.uri())
+            .oneshot(rpc_request(
+                service,
+                rpc,
+                serde_json::json!({
+                    "schema": {"catalogName": "main", "name": "default"}
+                }),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK, "{case}");
+        let json = body_json(response).await;
+        // proto3 JSON omits an empty repeated field.
+        let names: Vec<_> = json[field]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|row| row["fullName"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, expected, "{case}");
+        assert_eq!(json["page"]["nextPageToken"], "next", "{case}");
+    }
 }
 
 #[tokio::test]
-async fn delete_services_refuse_the_other_table_type() {
-    let uc = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path(
-            "/api/2.1/unity-catalog/tables/main%2Edefault%2Emetrics",
-        ))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "name": "metrics",
-            "table_type": "METRIC_VIEW"
-        })))
-        .expect(1)
-        .mount(&uc)
-        .await;
-    Mock::given(method("GET"))
-        .and(path(
-            "/api/2.1/unity-catalog/tables/main%2Edefault%2Eevents",
-        ))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "name": "events",
-            "table_type": "MANAGED"
-        })))
-        .expect(1)
-        .mount(&uc)
-        .await;
-    Mock::given(method("DELETE"))
-        .respond_with(ResponseTemplate::new(200))
-        .expect(0)
-        .mount(&uc)
-        .await;
-    let app = build_app(uc.uri());
-
-    let table_response = app
-        .clone()
-        .oneshot(rpc_request(
-            "TableService",
+async fn table_and_view_rpcs_act_only_on_their_own_kind() {
+    // Tables and metric views share UC's table resource. Each typed service reads
+    // the kind first: a get of the other kind is not found, a delete of the other
+    // kind is refused, and a resource of no known kind is an error. Only a
+    // successful read of the right kind lets a delete reach UC.
+    let unclassified = Some((
+        "internal",
+        "Invalid response from Unity Catalog server: missing or unknown table_type",
+    ));
+    // (rpc, GET status, table_type, expected refusal)
+    let cases = [
+        ("GetTable", 200, Some("MANAGED"), None),
+        ("GetTable", 200, Some("VIEW"), None),
+        ("GetView", 200, Some("METRIC_VIEW"), None),
+        ("DeleteTable", 200, Some("MANAGED"), None),
+        ("DeleteTable", 200, Some("MATERIALIZED_VIEW"), None),
+        ("DeleteView", 200, Some("METRIC_VIEW"), None),
+        (
+            "GetTable",
+            200,
+            Some("METRIC_VIEW"),
+            Some((
+                "not_found",
+                "main.default.obj is a metric view, not a table",
+            )),
+        ),
+        (
+            "GetView",
+            200,
+            Some("EXTERNAL"),
+            Some((
+                "not_found",
+                "main.default.obj is a table, not a metric view",
+            )),
+        ),
+        (
             "DeleteTable",
-            serde_json::json!({
-                "table": {"catalogName": "main", "schemaName": "default", "name": "metrics"}
-            }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(table_response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(
-        body_json(table_response).await["message"],
-        "Table not found: main.default.metrics"
-    );
-
-    let view_response = app
-        .oneshot(rpc_request(
-            "ViewService",
+            200,
+            Some("METRIC_VIEW"),
+            Some((
+                "failed_precondition",
+                "main.default.obj is a metric view, not a table; nothing was deleted",
+            )),
+        ),
+        (
             "DeleteView",
-            serde_json::json!({
-                "view": {"catalogName": "main", "schemaName": "default", "name": "events"}
-            }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(view_response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(
-        body_json(view_response).await["message"],
-        "Metric view not found: main.default.events"
-    );
+            200,
+            Some("EXTERNAL"),
+            Some((
+                "failed_precondition",
+                "main.default.obj is a table, not a metric view; nothing was deleted",
+            )),
+        ),
+        ("GetTable", 200, None, unclassified),
+        ("GetView", 200, None, unclassified),
+        ("DeleteTable", 200, None, unclassified),
+        ("DeleteView", 200, None, unclassified),
+        ("DeleteTable", 200, Some("FOREIGN"), unclassified),
+        ("DeleteView", 200, Some("FOREIGN"), unclassified),
+        (
+            "DeleteTable",
+            404,
+            None,
+            Some(("not_found", "upstream refused")),
+        ),
+        (
+            "DeleteView",
+            403,
+            None,
+            Some(("permission_denied", "upstream refused")),
+        ),
+        (
+            "DeleteTable",
+            500,
+            None,
+            Some(("internal", "upstream refused")),
+        ),
+    ];
+
+    for (rpc, status, table_type, refusal) in cases {
+        let (service, field) = if rpc.ends_with("Table") {
+            ("TableService", "table")
+        } else {
+            ("ViewService", "view")
+        };
+        let case = format!("{rpc} after a {status} GET with table_type {table_type:?}");
+        let mut reply = serde_json::json!({
+            "name": "obj",
+            "catalog_name": "main",
+            "schema_name": "default"
+        });
+        if let Some(table_type) = table_type {
+            reply["table_type"] = table_type.into();
+        }
+        if status != 200 {
+            reply = serde_json::json!({"message": "upstream refused"});
+        }
+        let uc = MockServer::start().await;
+        let resource = "/api/2.1/unity-catalog/tables/main%2Edefault%2Eobj";
+        Mock::given(method("GET"))
+            .and(path(resource))
+            .respond_with(ResponseTemplate::new(status).set_body_json(reply))
+            .expect(1)
+            .mount(&uc)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(resource))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(u64::from(rpc.starts_with("Delete") && refusal.is_none()))
+            .mount(&uc)
+            .await;
+
+        let response = build_app(uc.uri())
+            .oneshot(rpc_request(
+                service,
+                rpc,
+                serde_json::json!({
+                    field: {"catalogName": "main", "schemaName": "default", "name": "obj"}
+                }),
+            ))
+            .await
+            .unwrap();
+
+        let http_status = response.status();
+        let json = body_json(response).await;
+        match refusal {
+            None => assert_eq!(http_status, StatusCode::OK, "{case}: {json}"),
+            Some((code, message)) => {
+                assert_eq!(json["code"], code, "{case}");
+                assert_eq!(json["message"], message, "{case}");
+            }
+        }
+        uc.verify().await;
+    }
 }
 
 #[tokio::test]
@@ -556,6 +758,62 @@ async fn delete_accepts_non_json_success_body() {
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(body_json(response).await, serde_json::json!({}));
+}
+
+#[tokio::test]
+async fn malformed_uc_replies_map_to_internal() {
+    let list_tables = (
+        "TableService",
+        "ListTables",
+        serde_json::json!({"schema": {"catalogName": "main", "name": "default"}}),
+        "/api/2.1/unity-catalog/tables",
+    );
+    let get_catalog = (
+        "CatalogService",
+        "GetCatalog",
+        serde_json::json!({"catalog": {"name": "main"}}),
+        "/api/2.1/unity-catalog/catalogs/main",
+    );
+    let cases = [
+        (
+            list_tables.clone(),
+            serde_json::json!({"tables": [{
+                "catalog_name": "main",
+                "schema_name": "default",
+                "table_type": "MANAGED"
+            }]}),
+            "Invalid response from Unity Catalog server: missing or invalid name",
+        ),
+        (
+            list_tables,
+            serde_json::json!({"tables": "not a list"}),
+            "Invalid response from Unity Catalog server",
+        ),
+        (
+            get_catalog,
+            serde_json::json!({"comment": "no name"}),
+            "Invalid response from Unity Catalog server: missing or invalid name",
+        ),
+    ];
+
+    for ((service, rpc, request, uc_path), reply, message) in cases {
+        let uc = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(uc_path))
+            .respond_with(ResponseTemplate::new(200).set_body_json(reply))
+            .expect(1)
+            .mount(&uc)
+            .await;
+
+        let response = build_app(uc.uri())
+            .oneshot(rpc_request(service, rpc, request))
+            .await
+            .unwrap();
+
+        let json = body_json(response).await;
+        assert_eq!(json["code"], "internal", "{message}");
+        assert_eq!(json["message"], message);
+    }
 }
 
 #[tokio::test]
@@ -699,9 +957,9 @@ async fn unreachable_upstream_maps_to_unavailable() {
     assert_eq!(json["message"], "Unity Catalog server is unavailable");
 }
 
-#[tokio::test]
-async fn upstream_body_timeout_maps_to_deadline_exceeded() {
-    // Send the response head, then stall before the body completes.
+/// Starts a UC stand-in that sends a response head, then stalls the body for
+/// five seconds. Returns its base URL.
+async fn stalled_uc() -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -716,33 +974,41 @@ async fn upstream_body_timeout_maps_to_deadline_exceeded() {
         .unwrap();
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     });
-    let app = app(AppState {
-        http: reqwest::Client::builder()
-            .timeout(std::time::Duration::from_millis(200))
-            .build()
-            .unwrap(),
-        config: Arc::new(Config {
-            port: 0,
-            uc_server: format!("http://{address}"),
-            auth_enabled: true,
-            google_client_id: String::new(),
-            okta_enabled: false,
-            keycloak_enabled: false,
-            allowed_origins: vec![],
-            web_dist: std::path::PathBuf::from("/nonexistent-web-dist"),
-        }),
-    });
+    format!("http://{address}")
+}
 
-    let response = app
-        .oneshot(rpc_request(
+#[tokio::test]
+async fn caller_deadlines_are_capped_by_the_upstream_timeout() {
+    // A client's Connect-Timeout-Ms is clamped to the bridge's limit, the limit
+    // applies when the client sends none, and a shorter client deadline wins.
+    // Each case must end in deadline_exceeded, not when the stalled UC closes.
+    let short = std::time::Duration::from_millis(200);
+    let long = std::time::Duration::from_secs(60);
+    // (bridge limit, Connect-Timeout-Ms)
+    for (limit, client_timeout) in [(short, None), (short, Some("60000")), (long, Some("200"))] {
+        let app = app(AppState {
+            upstream_timeout: limit,
+            ..test_state(stalled_uc().await)
+        });
+        let mut request = rpc_request(
             "CatalogService",
             "GetCatalog",
             serde_json::json!({"catalog": {"name": "main"}}),
-        ))
-        .await
-        .unwrap();
+        );
+        if let Some(ms) = client_timeout {
+            request
+                .headers_mut()
+                .insert("connect-timeout-ms", ms.parse().unwrap());
+        }
 
-    assert_eq!(body_json(response).await["code"], "deadline_exceeded");
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(
+            body_json(response).await["code"],
+            "deadline_exceeded",
+            "limit {limit:?}, Connect-Timeout-Ms {client_timeout:?}"
+        );
+    }
 }
 
 struct UcCall {

@@ -8,11 +8,15 @@ import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.client.model.FunctionParameterInfo;
 import io.unitycatalog.client.model.FunctionParameterInfos;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -72,6 +76,10 @@ public class PythonInvokerTest {
             "trailing statement at column 0 after an indented body",
             "    b = a + 1\n    return b\nraise ValueError('x')",
             "IndentationError: unexpected indent"),
+        Arguments.of(
+            "else at column 0 after an indented body",
+            "    return a\nelse:\n    return 0",
+            "IndentationError: unexpected indent"),
         Arguments.of("empty body", "", "SyntaxError: the routine definition has no statements"),
         Arguments.of(
             "comment-only body",
@@ -112,7 +120,15 @@ public class PythonInvokerTest {
         Arguments.of(
             "cut inside a UTF-8 character",
             "'\\u00e9'.encode() * 3000 + b'x'",
-            "..." + "é".repeat(2047) + "x"));
+            "..." + "é".repeat(2047) + "x"),
+        Arguments.of(
+            "cut inside a 3-byte UTF-8 character",
+            "'\\u20ac'.encode() * 3000 + b'xx'",
+            "..." + "€".repeat(1364) + "xx"),
+        Arguments.of(
+            "cut inside a 4-byte UTF-8 character",
+            "'\\U0001f600'.encode() * 3000 + b'x'",
+            "..." + "😀".repeat(1023) + "x"));
   }
 
   @ParameterizedTest(name = "{0}")
@@ -131,6 +147,43 @@ public class PythonInvokerTest {
     String body = "import sys\nsys.stderr.write('x' * 1000000)\nreturn a";
     assertThat(PythonInvoker.invokePython(intFunction(body), PYTHON_ENGINE, "5").strip())
         .isEqualTo("5");
+  }
+
+  @Test
+  public void testCallsLeaveNoErrorOutputFile(@TempDir Path tempDir)
+      throws IOException, ApiException {
+    PythonInvoker.invokePython(intFunction("return a"), PYTHON_ENGINE, tempDir, "5");
+    assertThatThrownBy(
+            () ->
+                PythonInvoker.invokePython(
+                    intFunction("raise ValueError('x')"), PYTHON_ENGINE, tempDir, "5"))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("ValueError: x");
+
+    try (Stream<Path> files = Files.list(tempDir)) {
+      assertThat(files).isEmpty();
+    }
+  }
+
+  @Test
+  public void testCallUsesTheGivenTempDir(@TempDir Path tempDir) {
+    Path missing = tempDir.resolve("missing");
+
+    assertThatThrownBy(
+            () -> PythonInvoker.invokePython(intFunction("return a"), PYTHON_ENGINE, missing, "5"))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining(missing.toString());
+  }
+
+  @Test
+  public void testDeleteQuietlyDoesNotThrowWhenTheDeleteFails(@TempDir Path tempDir)
+      throws IOException {
+    Path directory = Files.createDirectory(tempDir.resolve("not-empty"));
+    Files.writeString(directory.resolve("file"), "x");
+
+    PythonInvoker.deleteQuietly(directory);
+
+    assertThat(directory).exists();
   }
 
   private static FunctionInfo intFunction(String body) {

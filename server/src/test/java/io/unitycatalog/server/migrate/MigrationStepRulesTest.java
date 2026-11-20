@@ -23,11 +23,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.expression.StringValue;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.operators.relational.InExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.alter.AlterOperation;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
+import net.sf.jsqlparser.statement.create.table.CheckConstraint;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
 import org.junit.jupiter.api.Test;
@@ -47,11 +53,13 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial) whose
  *       PostgreSQL index entry, INCLUDE columns too, fits 2,704 bytes, add a column (NOT NULL only
  *       with a literal DEFAULT, without a key or CHECK rule), change a column's type (each index on
- *       the column still fitting an index entry), or drop its NOT NULL.
+ *       the column still fitting an index entry), drop its NOT NULL, or, on PostgreSQL, replace a
+ *       column's CHECK of its values with one that keeps them all, or read an {@code oid} column's
+ *       large objects as text, the one change rows can fail ({@link #readsLargeObjectsAsText}).
  *   <li>A type change widens the column, keeps its default, collation and enum or set members, and
  *       no change makes an existing nullable column NOT NULL ({@link #typeChangesWiden}). Adding a
- *       Java enum constant is supported on MySQL and H2, where the type holds the members; on
- *       PostgreSQL it means replacing a CHECK constraint, which no allowed change does yet.
+ *       Java enum constant changes the type on MySQL and H2, where the type holds the members; on
+ *       PostgreSQL it replaces the column's CHECK constraint ({@link #enumCheckRefusal}).
  *   <li>Each step has an effect file that lists its change ({@link #eachStepHasItsEffectFile}).
  *   <li>Every step exists for all three databases, as a versioned SQL file.
  * </ul>
@@ -102,10 +110,13 @@ public class MigrationStepRulesTest {
           DatabaseKind.POSTGRESQL,
           Map.of(
               "varchar", Set.of("text"),
+              // An oid column holds large object ids; only readsLargeObjectsAsText changes it.
+              "oid", Set.of("text"),
               "int2", Set.of("int4", "int8"),
               "int4", Set.of("int8")),
           DatabaseKind.MYSQL,
           Map.of(
+              "tinytext", Set.of("text", "mediumtext", "longtext"),
               "varchar", Set.of("text", "mediumtext", "longtext"),
               "text", Set.of("mediumtext", "longtext"),
               "mediumtext", Set.of("longtext"),
@@ -202,8 +213,9 @@ public class MigrationStepRulesTest {
             "Each step after the first holds one statement that creates a table, creates a plain"
                 + " index on columns short enough for an index entry, adds a column (NOT NULL only"
                 + " with a literal DEFAULT, without a key or CHECK rule), changes a column's type"
-                + " (each index on it still short enough) or drops its NOT NULL. Other changes are"
-                + " not supported yet; see refusal() in this test")
+                + " (each index on it still short enough), drops its NOT NULL, or replaces a"
+                + " PostgreSQL CHECK of a column's values with one that keeps them. Other changes"
+                + " are not supported yet; see refusal() in this test")
         .isEmpty();
   }
 
@@ -276,10 +288,49 @@ public class MigrationStepRulesTest {
         "MYSQL|CREATE FULLTEXT INDEX i ON t (c)|creates a fulltext index",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE text|",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE int USING c::int|is not an allowed change",
+        // Large objects read as text: only on an oid column, and only as UTF-8. A plain type change
+        // of an oid column would keep the ids as values.
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN lo TYPE text|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN \"lo\" TYPE text|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE \"t\" ALTER COLUMN lo TYPE text|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE \"t\" ALTER COLUMN \"lo\" TYPE text USING"
+            + " convert_from(lo_get(\"lo\"), 'UTF8')|",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN lo TYPE text USING convert_from(lo_get(lo),"
+            + " 'UTF8')|",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE text USING convert_from(lo_get(c), 'UTF8')|is"
+            + " not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN lo TYPE text USING convert_from(lo_get(lo),"
+            + " 'LATIN1')|is not an allowed change",
+        "MYSQL|ALTER TABLE t ALTER COLUMN lo TYPE text USING convert_from(lo_get(lo), 'UTF8')|is"
+            + " not an allowed change",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c DROP NOT NULL|",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c SET NOT NULL|is not an allowed change",
         "POSTGRESQL|ALTER TABLE t ADD UNIQUE (c)|is not an allowed change",
         "POSTGRESQL|ALTER TABLE t ADD CONSTRAINT k CHECK (c > 0)|is not an allowed change",
+        // A Java enum constant: PostgreSQL replaces the CHECK of the column's values in one
+        // statement, keeping every value it had (one value, or a list).
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_c_check, ADD CONSTRAINT t_c_check CHECK (c IN"
+            + " ('A', 'B'))|",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_a_check, ADD CONSTRAINT t_a_check CHECK (a IN"
+            + " ('X', 'Y', 'Z'))|",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_a_check, ADD CONSTRAINT t_a_check CHECK (a IN"
+            + " ('X', 'Z'))|drops the values [Y] from the CHECK on t.a",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_b_check, ADD CONSTRAINT t_b_check CHECK (b IN"
+            + " ('X'))|replaces a CHECK on t.b, which has no CHECK of its values before the step",
+        // Only the column's own CHECK can be dropped: not the primary key, or another column's.
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_pkey, ADD CONSTRAINT t_pkey CHECK (c IN ('A',"
+            + " 'B'))|drops constraint t_pkey, not the CHECK of t.c (t_c_check)",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_a_check, ADD CONSTRAINT t_a_check CHECK (c IN"
+            + " ('A', 'B'))|drops constraint t_a_check, not the CHECK of t.c (t_c_check)",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_c_check, ADD CONSTRAINT j CHECK (c IN ('A',"
+            + " 'B'))|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_c_check, ADD CONSTRAINT t_c_check CHECK (c NOT"
+            + " IN ('B'))|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_c_check, ADD CONSTRAINT t_c_check CHECK (c >"
+            + " 0)|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t DROP CONSTRAINT t_c_check|is not an allowed change",
+        "MYSQL|ALTER TABLE t DROP CONSTRAINT t_c_check, ADD CONSTRAINT t_c_check CHECK (c IN ('A',"
+            + " 'B'))|is not an allowed change",
         "POSTGRESQL|ALTER TABLE t DROP COLUMN c|is not an allowed change",
         "H2|ALTER TABLE t ALTER COLUMN c CLOB|",
         "MYSQL|ALTER TABLE t ALTER COLUMN c TYPE text|is not an allowed change",
@@ -293,6 +344,7 @@ public class MigrationStepRulesTest {
         new SchemaSnapshot(
             List.of(
                 "column t.c type=varchar size=255 nullable=YES default=null",
+                "column t.lo type=oid size=10 nullable=YES default=null",
                 "column t.long type=varchar size=65535 nullable=YES default=null",
                 "column t.body type=text size=2147483647 nullable=YES default=null",
                 "column t.a type=varchar size=600 nullable=YES default=null",
@@ -308,7 +360,10 @@ public class MigrationStepRulesTest {
                 "column t.big type=int8 size=19 nullable=YES default=null",
                 "column t.c630 type=varchar size=630 nullable=YES default=null",
                 "column t.bin type=binary varying size=100 nullable=YES default=null",
-                "column t.binbig type=binary varying size=100000 nullable=YES default=null"));
+                "column t.binbig type=binary varying size=100000 nullable=YES default=null",
+                "check t (((c)::text = 'A'::text))",
+                "check t (((a)::text = ANY ((ARRAY['X'::character varying, 'Y'::character"
+                    + " varying])::text[])))"));
     assertThat(refusalOfSent(sql, kind, false, before)).isEqualTo(refusal);
   }
 
@@ -651,6 +706,11 @@ public class MigrationStepRulesTest {
     if (firstStep) {
       return "the first step only creates tables and indexes";
     }
+    if (statement instanceof Alter alter
+        && kind == DatabaseKind.POSTGRESQL
+        && alter.getAlterExpressions().size() == 2) {
+      return enumCheckRefusal(alter, before);
+    }
     if (!(statement instanceof Alter alter) || alter.getAlterExpressions().size() != 1) {
       return "is not an allowed change";
     }
@@ -661,7 +721,11 @@ public class MigrationStepRulesTest {
           case ADD -> NEW_COLUMN.matcher(columnSpecs(change)).matches();
           // PostgreSQL and H2: ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE <type>, or
           // ALTER TABLE t ALTER COLUMN c DROP NOT NULL
-          case ALTER -> kind != DatabaseKind.MYSQL && (changesType(change) || dropsNotNull(change));
+          case ALTER ->
+              kind != DatabaseKind.MYSQL
+                  && (changesType(change) && !isLargeObjectColumn(kind, alter, change, before)
+                      || dropsNotNull(change)
+                      || readsLargeObjectsAsText(kind, alter, change, before));
           // MySQL: ALTER TABLE t MODIFY c <type> [NULL | NOT NULL] [DEFAULT x] [COLLATE x], which
           // must restate the column's default and collation (typeChangesWiden checks they stay)
           case MODIFY ->
@@ -669,6 +733,83 @@ public class MigrationStepRulesTest {
           default -> false;
         };
     return allowed ? null : "is not an allowed change";
+  }
+
+  /** A PostgreSQL CHECK of one column's values, as the snapshot reads it, with one or more. */
+  private static final Pattern ENUM_CHECK =
+      Pattern.compile(
+          "\\(+(\\w+)\\)::text = (?:'[^']*'::text|ANY \\(\\(ARRAY\\[.*\\]\\)::text\\[\\]\\))\\)+");
+
+  private static final Pattern ENUM_CHECK_VALUE = Pattern.compile("'([^']*)'::");
+
+  /**
+   * PostgreSQL holds a Java enum's constants in a CHECK of the column's values, so adding one
+   * replaces that CHECK, in one statement so that the table is never without it: {@code ALTER TABLE
+   * t DROP CONSTRAINT t_c_check, ADD CONSTRAINT t_c_check CHECK (c IN ('A', 'B'))}. Rows already
+   * there pass it, since it keeps every value the column's CHECK allowed before the step.
+   *
+   * @param alter a PostgreSQL statement with two changes
+   * @param before the schema before the step
+   * @return why the step may not send {@code alter}, or null when it may
+   */
+  private static String enumCheckRefusal(Alter alter, SchemaSnapshot before) {
+    AlterExpression drop = alter.getAlterExpressions().get(0);
+    AlterExpression add = alter.getAlterExpressions().get(1);
+    if (drop.getOperation() != AlterOperation.DROP
+        || drop.getConstraintName() == null
+        || add.getOperation() != AlterOperation.ADD
+        || !(add.getIndex() instanceof CheckConstraint check)
+        || !drop.getConstraintName().equals(check.getName())
+        || !(check.getExpression() instanceof InExpression in)
+        || in.isNot()
+        || !(in.getLeftExpression() instanceof Column column)
+        || !(in.getRightExpression() instanceof ExpressionList<?> list)
+        || !list.stream().allMatch(StringValue.class::isInstance)) {
+      return "is not an allowed change";
+    }
+    Set<String> values = new HashSet<>();
+    list.forEach(value -> values.add(((StringValue) value).getValue()));
+    String table = alter.getTable().getName().toLowerCase(Locale.ROOT);
+    String name = column.getColumnName().toLowerCase(Locale.ROOT);
+    // The snapshot has no constraint names, so the name ties the dropped constraint to the column's
+    // CHECK: PostgreSQL names a column's CHECK <table>_<column>_check, as in the baseline. Any
+    // other
+    // constraint, such as the primary key, is not dropped this way.
+    String checkName = table + "_" + name + "_check";
+    if (!drop.getConstraintName().equalsIgnoreCase(checkName)) {
+      return "drops constraint "
+          + drop.getConstraintName()
+          + ", not the CHECK of "
+          + table
+          + "."
+          + name
+          + " ("
+          + checkName
+          + ")";
+    }
+    String prefix = "check " + table + " ";
+    for (String entry : before.entries()) {
+      Matcher clause =
+          ENUM_CHECK.matcher(entry.substring(Math.min(prefix.length(), entry.length())));
+      if (!entry.startsWith(prefix) || !clause.matches() || !clause.group(1).equals(name)) {
+        continue;
+      }
+      Set<String> dropped = new TreeSet<>();
+      Matcher value = ENUM_CHECK_VALUE.matcher(clause.group());
+      while (value.find()) {
+        if (!values.contains(value.group(1))) {
+          dropped.add(value.group(1));
+        }
+      }
+      return dropped.isEmpty()
+          ? null
+          : "drops the values " + dropped + " from the CHECK on " + table + "." + name;
+    }
+    return "replaces a CHECK on "
+        + table
+        + "."
+        + name
+        + ", which has no CHECK of its values before the step";
   }
 
   /**
@@ -896,6 +1037,41 @@ public class MigrationStepRulesTest {
   private static boolean changesType(AlterExpression change) {
     return columnSpecs(change).isEmpty()
         && change.getColDataTypeList().get(0).getUsingExpression() == null;
+  }
+
+  /**
+   * PostgreSQL's {@code ALTER TABLE t ALTER COLUMN c TYPE text USING convert_from(lo_get(c),
+   * 'UTF8')} on an {@code oid} column, which replaces each large object id with the object's text.
+   * Unlike the other changes, rows can fail it (a missing large object, or one that is not UTF-8),
+   * so only this exact form is allowed; {@code docs/server/upgrades.md} says how to recover.
+   */
+  private static boolean readsLargeObjectsAsText(
+      DatabaseKind kind, Alter alter, AlterExpression change, SchemaSnapshot before) {
+    if (!isLargeObjectColumn(kind, alter, change, before)) {
+      return false;
+    }
+    AlterExpression.ColumnDataType column = change.getColDataTypeList().get(0);
+    String name = unquoted(column.getColumnName());
+    return column.getColDataType().getDataType().equalsIgnoreCase("text")
+        && column.getUsingExpression() != null
+        && unquoted(column.getUsingExpression().toString().replace(" ", ""))
+            .equals("convert_from(lo_get(" + name + "),'utf8')");
+  }
+
+  /**
+   * Whether {@code change} changes a PostgreSQL {@code oid} column, which holds large object ids:
+   * any other type change would keep the ids as values, so only {@link #readsLargeObjectsAsText}
+   * may change it.
+   */
+  private static boolean isLargeObjectColumn(
+      DatabaseKind kind, Alter alter, AlterExpression change, SchemaSnapshot before) {
+    if (kind != DatabaseKind.POSTGRESQL || !columnSpecs(change).isEmpty()) {
+      return false;
+    }
+    String table = unquoted(alter.getTable().getName());
+    String name = unquoted(change.getColDataTypeList().get(0).getColumnName());
+    return before.entries().stream()
+        .anyMatch(entry -> entry.startsWith("column " + table + "." + name + " type=oid "));
   }
 
   private static boolean dropsNotNull(AlterExpression change) {

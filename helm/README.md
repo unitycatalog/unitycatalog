@@ -47,6 +47,27 @@ server:
       server.audit.sink: io.unitycatalog.server.audit.FileAuditSink
 ```
 
+## S3-compatible storage credentials
+The experimental `s3_compatible` storage credentials need both the server flag and a key that the
+server encrypts their secret values with in its database. Create the key once and keep it for as
+long as such credentials exist:
+
+```sh
+kubectl create secret generic uc-credential-encryption \
+  --from-literal=encryptionKey="$(openssl rand -base64 32)"
+```
+
+Then set both values:
+
+```yaml
+server:
+  credentialEncryptionKeySecret:
+    name: uc-credential-encryption
+  config:
+    extraProperties:
+      server.s3-compatible-storage.enabled: "true"
+```
+
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
 
@@ -252,7 +273,7 @@ false
 </td>
 			<td>Enable httpRoute for the server
 
-[Kubernetes docs](https://gateway-api.sigs.k8s.io/api-types/httproute/)
+[Kubernetes docs](https://gateway-api.sigs.k8s.io/reference/api-types/httproute/)
 </td>
 		</tr>
 		<tr>
@@ -378,10 +399,12 @@ server.port=8080
 ...other config properties...
 ```
 
-Do not put secrets here: the chart passes the S3 and ADLS secrets to the server as environment
-variables, and a secret in `server.properties` is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`,
-`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated
-too: the server reads `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment.
+Do not put secrets here: the chart passes the S3 and ADLS secrets, and the credential
+encryption key, to the server as environment variables, and a secret in `server.properties`
+is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`, `${S3_SECRET_KEY_<n>}` or
+`${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated too: the server reads
+`UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment. For the
+encryption key, see [S3-compatible storage credentials](#s3-compatible-storage-credentials).
 </td>
 		</tr>
 		<tr>
@@ -445,6 +468,33 @@ not set
 			<td>TTL for the create users job (in seconds)
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/ttlafterfinished/)
+</td>
+		</tr>
+		<tr>
+			<td>server.credentialEncryptionKeySecret.key</td>
+			<td>string</td>
+			<td><pre lang="json">
+"encryptionKey"
+</pre>
+</td>
+			<td>Key in the Secret that holds the encryption key: 32 random bytes in base64, such as the output of `openssl rand -base64 32`</td>
+		</tr>
+		<tr>
+			<td>server.credentialEncryptionKeySecret.name</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Name of a Secret with the key that the server encrypts the secret values of storage credentials with in its database
+
+Only the experimental `s3_compatible` storage credentials need it, and only when
+`server.s3-compatible-storage.enabled` is `"true"`: setting the Secret alone leaves them
+disabled. With the flag set, the server refuses to start with a malformed key. Keep the same
+key for as long as such credentials exist: values stored with a key cannot be read with
+another. The chart passes the key to the server container as
+`UC_SERVER_CREDENTIAL_ENCRYPTION_KEY`. See
+[S3-compatible storage credentials](#s3-compatible-storage-credentials) for a complete example.
 </td>
 		</tr>
 		<tr>
@@ -807,6 +857,8 @@ not set
 			<td>Command that starts the server
 
 The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+The `upgrade-schema` init container runs the same command with the single argument
+`--upgrade-schema`.
 Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
 through its own wrapper can set it here; the wrapper must pass the arguments on to
 `./bin/start-uc-server`.
@@ -876,6 +928,10 @@ not set
 </pre>
 </td>
 			<td>List of additional init containers to be added to the server pod
+
+They run before the init container that upgrades the schema. Run a database proxy that the
+server needs here as a native sidecar (`restartPolicy: Always`), so that the upgrade can reach
+the database.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/#pod)
 </td>
@@ -1122,7 +1178,8 @@ with obsPort: httpGet `/readyz` on port obs, failureThreshold: 3; otherwise tcpS
 </td>
 			<td>Number of replicas
 
-For replica count higher than 1 - use an external database
+For replica count higher than 1 - use an external database: the chart fails to render above 1
+with the file database.
 </td>
 		</tr>
 		<tr>
@@ -1193,10 +1250,15 @@ not set
 			<td>server.deployment.updateStrategy</td>
 			<td>object</td>
 			<td><pre lang="">
-# If replicaCount: 1 and db type "file"<br>type: Recreate<br># Else<br>type: RollingUpdate
+type: Recreate
 </pre>
 </td>
 			<td>Update strategy for the deployment
+
+The default `Recreate` stops every old server pod before the new ones start. An upgrade with
+schema steps needs this: the old pods must not run on the new schema, and the new release's
+servers refuse an old schema. `RollingUpdate` keeps the old pods serving during the upgrade,
+so use it only for an upgrade without schema steps, at your own risk.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
 </td>

@@ -1,0 +1,2 @@
+- column uc_function_params.type_text type=varchar size=255 nullable=NO default=null
++ column uc_function_params.type_text type=mediumtext size=16777215 nullable=NO default=null

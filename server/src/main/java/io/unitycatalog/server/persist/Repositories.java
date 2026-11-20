@@ -26,6 +26,8 @@ public class Repositories {
   private final SessionFactory sessionFactory;
   private final ExternalLocationUtils externalLocationUtils;
   private final StorageCredentialVendor storageCredentialVendor;
+  // The vendor built here rather than injected, which the owner of this object closes.
+  private final Optional<CloudCredentialVendor> ownedCloudCredentialVendor;
   private final FileOperations fileOperations;
 
   private final CatalogRepository catalogRepository;
@@ -34,6 +36,7 @@ public class Repositories {
   private final StagingTableRepository stagingTableRepository;
   private final VolumeRepository volumeRepository;
   private final UserRepository userRepository;
+  private final OwnershipRepository ownershipRepository;
   private final MetastoreRepository metastoreRepository;
   private final FunctionRepository functionRepository;
   private final ModelRepository modelRepository;
@@ -107,14 +110,17 @@ public class Repositories {
         Objects.requireNonNullElseGet(metrics, UnityCatalogMetrics::noop);
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
-    CloudCredentialVendor resolvedCloudCredentialVendor =
+    this.ownedCloudCredentialVendor =
         cloudCredentialVendor != null
-            ? cloudCredentialVendor
-            : defaultCloudCredentialVendor(serverProperties, resolvedMetrics);
+            ? Optional.empty()
+            : Optional.of(defaultCloudCredentialVendor(serverProperties, resolvedMetrics));
+    CloudCredentialVendor resolvedCloudCredentialVendor =
+        ownedCloudCredentialVendor.orElse(cloudCredentialVendor);
     // Wrap the vendor before FileOperationsImpl captures it, so the server's own and cleanup vends
     // are audited too.
     StorageCredentialVendor vendor =
-        new StorageCredentialVendorImpl(resolvedCloudCredentialVendor, externalLocationUtils);
+        new StorageCredentialVendorImpl(
+            resolvedCloudCredentialVendor, externalLocationUtils, serverProperties);
     this.storageCredentialVendor = auditor.map(a -> a.wrap(vendor)).orElse(vendor);
     this.fileOperations =
         fileOperationsDecorator.apply(
@@ -128,6 +134,8 @@ public class Repositories {
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);
     this.userRepository = new UserRepository(this, sessionFactory);
+    this.ownershipRepository =
+        new OwnershipRepository(userRepository, serverProperties.isAuthorizationEnabled(), auditor);
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);
     this.functionRepository = new FunctionRepository(this, sessionFactory);
     this.modelRepository = new ModelRepository(this, sessionFactory, serverProperties);

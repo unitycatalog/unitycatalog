@@ -1,5 +1,6 @@
 package io.unitycatalog.spark;
 
+import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.ApiException;
@@ -24,7 +26,10 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
+import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
+import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.StagedTable;
 import org.apache.spark.sql.connector.catalog.StagingTableCatalog;
@@ -36,8 +41,14 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 /** Tests that stageCreate delegates to the underlying StagingTableCatalog. */
@@ -64,6 +75,7 @@ public class UCSingleCatalogStagingTableTest {
       Map.of(TableCatalog.PROP_PROVIDER, "delta");
   private static final String EXTERNAL_LOCATION = "file:///tmp/uc-external-table";
   private static final String MANAGED_LOCATION = "file:///tmp/uc-managed-table";
+  private static final String NEW_LOCATION = "gs://bucket/new-location";
 
   private static final class ManagedReplaceMocks {
     final TablesApi tablesApi = mock(TablesApi.class);
@@ -359,6 +371,41 @@ public class UCSingleCatalogStagingTableTest {
     verify(mockDelegate, never()).stageCreate(eq(IDENT), eq(SCHEMA), any(), any());
   }
 
+  /**
+   * UC REST rejects a taken name with 400 TABLE_ALREADY_EXISTS, and a 409 means the same. Both
+   * managed create paths must turn it into TableAlreadyExistsException, the only error CREATE TABLE
+   * IF NOT EXISTS ignores.
+   */
+  @ParameterizedTest
+  @CsvSource({"true, 400", "false, 400", "true, 409", "false, 409"})
+  public void testManagedCreateMapsTakenNameToTableAlreadyExists(boolean stageCreate, int status)
+      throws Exception {
+    TablesApi tablesApi = mock(TablesApi.class);
+    mockMissingTableLookup(tablesApi);
+    String body =
+        status == 400
+            ? "{\"error_code\":\"TABLE_ALREADY_EXISTS\",\"message\":\"Table already exists:"
+                + " table\"}"
+            : null;
+    when(tablesApi.createStagingTable(any(CreateStagingTable.class)))
+        .thenThrow(new ApiException(status, "createStagingTable call failed", null, body));
+    Map<String, String> props = Map.of(TableCatalog.PROP_PROVIDER, "delta");
+
+    assertThatThrownBy(
+            () -> {
+              if (stageCreate) {
+                catalog.stageCreate(IDENT, SCHEMA, PARTITIONS, props);
+              } else {
+                catalog.createTable(
+                    IDENT,
+                    new Column[] {Column.create("id", DataTypes.IntegerType, false)},
+                    PARTITIONS,
+                    props);
+              }
+            })
+        .isInstanceOf(TableAlreadyExistsException.class);
+  }
+
   @Test
   public void testStageCreateOrReplaceExistingManagedTableAvoidsPathBasedReplace()
       throws Exception {
@@ -370,25 +417,139 @@ public class UCSingleCatalogStagingTableTest {
     assertExistingManagedTableReplaceUsesManagedProps(false);
   }
 
-  @Test
-  public void testStageReplaceExistingManagedTableRejectsUserSpecifiedLocation() throws Exception {
-    TablesApi mockTablesApi = mockExistingTableLookup(existingManagedDeltaTableInfo());
+  static Stream<Arguments> externalReplaceParameters() {
+    return Stream.of(true, false)
+        .flatMap(
+            deltaApiReady ->
+                Stream.of("delta", "parquet")
+                    .flatMap(
+                        provider ->
+                            Stream.of(TableCatalog.PROP_LOCATION, TableCatalog.PROP_EXTERNAL)
+                                .map(clause -> Arguments.of(deltaApiReady, provider, clause))));
+  }
 
-    assertThatThrownBy(
-            () ->
-                catalog.stageReplace(
-                    IDENT,
-                    SCHEMA,
-                    PARTITIONS,
-                    Map.of(
-                        TableCatalog.PROP_PROVIDER,
-                        "delta",
-                        TableCatalog.PROP_LOCATION,
-                        "file:///tmp/other-location")))
+  /**
+   * External tables cannot be replaced, so REPLACE and CREATE OR REPLACE with LOCATION or EXTERNAL
+   * fail before UC is asked whether the table exists.
+   */
+  @ParameterizedTest(name = "deltaApiReady={0}, provider={1}, clause={2}")
+  @MethodSource("externalReplaceParameters")
+  public void testReplaceWithLocationOrExternalIsRejected(
+      boolean deltaApiReady, String provider, String clause) throws Exception {
+    setDeltaApiReady(deltaApiReady);
+    when(mockDelegate.name()).thenReturn("main");
+    TablesApi tablesApi = mock(TablesApi.class);
+    setField(catalog, "tablesApi", tablesApi);
+    Map<String, String> props =
+        Map.of(
+            TableCatalog.PROP_PROVIDER,
+            provider,
+            clause,
+            clause.equals(TableCatalog.PROP_LOCATION) ? NEW_LOCATION : "true");
+
+    String clauseName = clause.equals(TableCatalog.PROP_LOCATION) ? "LOCATION" : "EXTERNAL";
+
+    assertThatThrownBy(() -> catalog.stageCreateOrReplace(IDENT, SCHEMA, PARTITIONS, props))
         .isInstanceOf(ApiException.class)
-        .hasMessageContaining("cannot specify property 'location'");
+        .hasMessage(
+            externalReplaceError("CREATE OR REPLACE TABLE", clauseName, "main.schema.table"));
+    assertThatThrownBy(() -> catalog.stageReplace(IDENT, SCHEMA, PARTITIONS, props))
+        .isInstanceOf(ApiException.class)
+        .hasMessage(externalReplaceError("REPLACE TABLE", clauseName, "main.schema.table"));
 
-    verify(mockDelegate, never()).stageReplace(eq(IDENT), eq(SCHEMA), any(), any());
+    verifyNoInteractions(tablesApi);
+    verifyNothingStaged(IDENT);
+  }
+
+  /**
+   * Only an absolute path in the delta or iceberg namespace names a path table. parquet.`/path`, a
+   * table in a UC schema named delta, and a name that is not a valid path are UC tables.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("notPathTableParameters")
+  public void testReplaceOfANonPathTableWithLocationIsRejected(Identifier ident) throws Exception {
+    when(mockDelegate.name()).thenReturn("main");
+    Map<String, String> props =
+        Map.of(TableCatalog.PROP_PROVIDER, "delta", TableCatalog.PROP_LOCATION, NEW_LOCATION);
+    String table = "main." + ident.namespace()[0] + "." + ident.name();
+
+    assertThatThrownBy(() -> catalog.stageCreateOrReplace(ident, SCHEMA, PARTITIONS, props))
+        .isInstanceOf(ApiException.class)
+        .hasMessage(externalReplaceError("CREATE OR REPLACE TABLE", "LOCATION", table));
+    assertThatThrownBy(() -> catalog.stageReplace(ident, SCHEMA, PARTITIONS, props))
+        .isInstanceOf(ApiException.class)
+        .hasMessage(externalReplaceError("REPLACE TABLE", "LOCATION", table));
+    verifyNothingStaged(ident);
+  }
+
+  static Stream<Identifier> notPathTableParameters() {
+    return Stream.of(
+        Identifier.of(new String[] {"parquet"}, "/tmp/parquet-table"),
+        Identifier.of(new String[] {"delta"}, "table"),
+        Identifier.of(new String[] {"iceberg"}, "table"),
+        Identifier.of(new String[] {"delta"}, "ab:cd"));
+  }
+
+  private static String externalReplaceError(String operation, String clause, String table) {
+    return operation
+        + " with "
+        + clause
+        + " is not supported for "
+        + table
+        + ": external tables cannot be replaced. Use CREATE TABLE ... LOCATION for a new table,"
+        + " or drop the existing one first.";
+  }
+
+  private void verifyNothingStaged(Identifier ident) throws Exception {
+    verify(mockDelegate, never()).stageCreate(eq(ident), eq(SCHEMA), any(), any());
+    verify(mockDelegate, never()).stageReplace(eq(ident), eq(SCHEMA), any(), any());
+    verify(mockDelegate, never()).stageCreateOrReplace(eq(ident), eq(SCHEMA), any(), any());
+  }
+
+  static Stream<Arguments> pathTableParameters() {
+    return Stream.of(true, false)
+        .flatMap(
+            createOrReplace ->
+                Stream.of(
+                        Identifier.of(new String[] {"delta"}, "/tmp/delta-table"),
+                        Identifier.of(new String[] {"delta"}, "s3://bucket/delta-table"),
+                        Identifier.of(new String[] {"iceberg"}, "/tmp/iceberg-table"))
+                    .map(path -> Arguments.of(createOrReplace, path)));
+  }
+
+  @ParameterizedTest(name = "createOrReplace={0}, path={1}")
+  @MethodSource("pathTableParameters")
+  public void testReplacePathTableGoesToDelegateUnchanged(boolean createOrReplace, Identifier path)
+      throws Exception {
+    assertReplaceGoesToDelegateUnchanged(createOrReplace, path);
+  }
+
+  @ParameterizedTest(name = "createOrReplace={0}")
+  @ValueSource(booleans = {true, false})
+  public void testReplaceManagedTableGoesToDeltaApiUnchanged(boolean createOrReplace)
+      throws Exception {
+    Assumptions.assumeTrue(DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API));
+    setDeltaApiReady(true);
+    assertReplaceGoesToDelegateUnchanged(createOrReplace, IDENT);
+  }
+
+  private void assertReplaceGoesToDelegateUnchanged(boolean createOrReplace, Identifier ident)
+      throws Exception {
+    TablesApi tablesApi = mock(TablesApi.class);
+    setField(catalog, "tablesApi", tablesApi);
+    StagedTable staged = mock(StagedTable.class);
+    when(mockDelegate.stageCreateOrReplace(ident, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS))
+        .thenReturn(staged);
+    when(mockDelegate.stageReplace(ident, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS))
+        .thenReturn(staged);
+
+    StagedTable result =
+        createOrReplace
+            ? catalog.stageCreateOrReplace(ident, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS)
+            : catalog.stageReplace(ident, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS);
+
+    assertThat(result).isSameAs(staged);
+    verifyNoInteractions(tablesApi);
   }
 
   @Test
@@ -630,6 +791,11 @@ public class UCSingleCatalogStagingTableTest {
         .thenThrow(new ApiException(404, "not found"));
     setField(catalog, "tablesApi", tablesApi);
     setCatalogUri(catalog);
+  }
+
+  private void setDeltaApiReady(boolean ready) {
+    setField(catalog, "deltaCatalogLoaded", ready);
+    setField(catalog, "deltaRestApiEnabled", ready);
   }
 
   private static void setCatalogUri(UCSingleCatalog catalog) {

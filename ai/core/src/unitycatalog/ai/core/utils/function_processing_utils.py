@@ -1,4 +1,5 @@
 import ast
+import base64
 import decimal
 import inspect
 import json
@@ -8,9 +9,10 @@ import re
 from dataclasses import dataclass
 from hashlib import md5
 from io import StringIO
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Annotated, Any, Callable, Dict, List, Optional, Tuple, Union
 
-from pydantic import Field, create_model
+from pydantic import BeforeValidator, Field, create_model
+from pydantic_core import to_jsonable_python
 
 from unitycatalog.ai.core.utils.callable_utils import ServiceCredential
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
@@ -158,8 +160,9 @@ def process_function_names(
         tools_dict (Dict[str, Any]): A dictionary to store the tool instances.
         client: The client used to list functions.
         uc_function_to_tool_func (Callable): A function that converts a UC function
-            into a tool instance. This function should accept kwargs only to make
-            sure the parameters are passed correctly.
+            into a tool instance, or returns None to leave the function out, for example
+            when the client cannot access it. This function should accept kwargs only to
+            make sure the parameters are passed correctly.
         **kwargs: Additional keyword arguments to pass to the conversion function for
             tool framework-specific configuration.
     Returns:
@@ -191,9 +194,11 @@ def process_function_names(
                     # TODO: get functions in parallel
                     for f in functions:
                         if f.full_name not in tools_dict:
-                            tools_dict[f.full_name] = uc_function_to_tool_func(
+                            tool = uc_function_to_tool_func(
                                 function_name=f.full_name, client=client, **kwargs
                             )
+                            if tool:
+                                tools_dict[f.full_name] = tool
                     token = functions.token
                     if token is None:
                         break
@@ -223,6 +228,8 @@ def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> Pydant
     nullable = type_json.get("nullable")
     pydantic_type = uc_type_json_to_pydantic_type(type_json["type"], strict=strict)
     pydantic_field_type = pydantic_type.pydantic_type
+    if str(type_json["type"]).lower() == "binary":
+        pydantic_field_type = Annotated[pydantic_field_type, BeforeValidator(_decode_base64_text)]
     default = None
     description = param_info.comment or ""
     if param_info.parameter_default:
@@ -284,6 +291,28 @@ def generate_function_input_params_schema(
     model = create_model(params_name, **fields, __config__={"extra": "forbid"})
 
     return PydanticFunctionInputParams(pydantic_model=model, strict=strict)
+
+
+def _decode_base64_text(value: Any) -> Any:
+    """
+    Decodes the base64 text that an LLM sends for a BINARY parameter, so the model holds the bytes.
+    Bytes passed in are kept as they are.
+    """
+    return base64.b64decode(value, validate=True) if isinstance(value, str) else value
+
+
+def to_tool_call_parameters(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Returns the JSON values to send to `execute_function` for the arguments of a tool call. Bytes
+    become base64 text, which the function clients decode for a BINARY parameter. Other values are
+    converted with `to_jsonable_python`, falling back to their string form.
+    """
+    return {
+        name: base64.b64encode(value).decode("ascii")
+        if isinstance(value, bytes)
+        else to_jsonable_python(value, fallback=str)
+        for name, value in arguments.items()
+    }
 
 
 def supported_param_info_types():

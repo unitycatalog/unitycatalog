@@ -428,6 +428,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TableInfo'
+    patch:
+      tags:
+        - Tables
+      operationId: updateTable
+      summary: Update a table owner
+      description: Transfers ownership of a table or view to an existing user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTable'
+      responses:
+        '200':
+          description: The table owner was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
     delete:
       tags:
         - Tables
@@ -614,7 +633,7 @@ paths:
       description: |
         Updates the specified volume under the specified parent catalog and schema.
         
-        Currently only the name or the comment of the volume could be updated.
+        You can update the volume's name, comment, or owner.
       requestBody:
         content:
           application/json:
@@ -811,6 +830,25 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/FunctionInfo"
+    patch:
+      tags:
+        - Functions
+      operationId: updateFunction
+      summary: Update a function owner
+      description: Transfers ownership of a function to an existing user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFunction'
+      responses:
+        '200':
+          description: The function owner was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionInfo'
     delete:
       tags:
         - Functions
@@ -1464,11 +1502,14 @@ paths:
         Deletes the specified external location from the metastore.
         The caller must be a metastore admin, the external location owner,
         or have MANAGE on the external location.
+        Unless force is true, the deletion fails while the location is in use: a table, volume
+        or registered model is stored under it, a catalog or schema keeps its managed storage
+        under it, or a storage cleanup is pending there.
       operationId: deleteExternalLocation
       parameters:
         - name: force
           in: query
-          description: Force deletion even if there are dependent external tables or mounts.
+          description: Force deletion even if the external location is in use.
           required: false
           schema:
             type: boolean
@@ -1483,6 +1524,8 @@ paths:
         Updates an external location in the metastore.
         The caller must be a metastore admin, the external location owner,
         or have MANAGE on the external location.
+        Unless force is true, changing the url fails if the location is in use (as described for
+        deleting it), unless the new url is the same as, or a parent of, the old one.
         EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
         otherwise the request fails with `INVALID_ARGUMENT`.
       operationId: updateExternalLocation
@@ -1647,6 +1690,9 @@ components:
     UpdateVolumeRequestContent:
       type: object
       properties:
+        owner:
+          description: Username of the new owner. The user must already exist.
+          type: string
         comment:
           type: string
           maxLength: 65536
@@ -2018,6 +2064,9 @@ components:
     UpdateSchema:
       type: object
       properties:
+        owner:
+          description: Username of the new owner. The user must already exist.
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2104,6 +2153,9 @@ components:
     UpdateCatalog:
       type: object
       properties:
+        owner:
+          description: Username of the new owner. The user must already exist.
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2197,6 +2249,22 @@ components:
           "$ref": "#/components/schemas/CreateFunction"
       required:
         - function_info
+    UpdateFunction:
+      type: object
+      properties:
+        owner:
+          description: Username of the new owner. Only a metastore admin can transfer a function to another user.
+          type: string
+      required:
+        - owner
+    UpdateTable:
+      type: object
+      properties:
+        owner:
+          description: Username of the new owner. Only a metastore admin can transfer a view to another user.
+          type: string
+      required:
+        - owner
     FunctionDependency:
       description: A function that is dependent on a SQL object.
       type: object
@@ -2681,6 +2749,9 @@ components:
     UpdateRegisteredModel:
       type: object
       properties:
+        owner:
+          description: Username of the new owner. Only a metastore admin can transfer a model to another user.
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2996,7 +3067,7 @@ components:
           description: Comment associated with the credential.
           type: string
         owner:
-          description: Username of current owner of credential.
+          description: Username of the new owner. The user must already exist.
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
@@ -3211,11 +3282,14 @@ components:
           description: User-provided free-form text description.
           type: string
         owner:
-          description: The owner of the external location.
+          description: Username of the new owner. The user must already exist.
           type: string
         new_name:
           description: New name for the external location.
           type: string
+        force:
+          description: Force the url change even if the external location is in use.
+          type: boolean
     ListExternalLocationsResponse:
       type: object
       properties:

@@ -1,3 +1,4 @@
+import json
 import logging
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, NamedTuple
@@ -6,6 +7,7 @@ from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.client import (
     ColumnTypeName,
+    FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
@@ -30,6 +32,47 @@ RETRIEVER_TABLE_RETURN_PARAMS_OSS = FunctionParameterInfos(
         ),
     ]
 )
+
+
+def param_type_name(type_text: str) -> str:
+    """
+    Returns the type name of a parameter type text, for example "STRUCT" for "struct<a:int>".
+    """
+    return type_text.split("<")[0].split("(")[0].upper()
+
+
+def generate_function_info_with_params_oss(params: dict[str, tuple[str, Any]]) -> FunctionInfo:
+    """
+    Returns the FunctionInfo of the function `catalog.schema.test` with the given parameters.
+
+    Args:
+        params: The parameters by name, as (type_text, type) where type is the "type" entry
+            of the parameter's type json.
+    """
+    return FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="test",
+        full_name="catalog.schema.test",
+        comment="A test function.",
+        data_type="STRING",
+        full_data_type="STRING",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name=name,
+                    type_text=type_text,
+                    type_name=ColumnTypeName(param_type_name(type_text)),
+                    type_json=json.dumps(
+                        {"name": name, "type": type_json, "nullable": False, "metadata": {}}
+                    ),
+                    position=position,
+                )
+                for position, (name, (type_text, type_json)) in enumerate(params.items())
+            ]
+        ),
+    )
+
 
 _logger = logging.getLogger(__name__)
 

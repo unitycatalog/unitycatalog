@@ -40,6 +40,7 @@ from unitycatalog.ai.core.utils.type_utils import (
 )
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
+    parse_iso_datetime,
     validate_function_name_length,
 )
 from unitycatalog.client import (
@@ -1309,10 +1310,7 @@ def _convert_json_value(value: Any, column_type: Optional[str]) -> Any:
     if column_type == "DATE":
         return datetime.date.fromisoformat(value)
     if column_type in ("TIMESTAMP", "TIMESTAMP_NTZ"):
-        # NB: datetime.fromisoformat accepts a trailing "Z" only from Python 3.11
-        result = datetime.datetime.fromisoformat(
-            value[:-1] + "+00:00" if value.endswith("Z") else value
-        )
+        result = parse_iso_datetime(value)
         if column_type == "TIMESTAMP_NTZ" and result.tzinfo is not None:
             raise ValueError("TIMESTAMP_NTZ values must not have a time zone offset")
         return result

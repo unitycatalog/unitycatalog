@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -71,6 +72,9 @@ public class CliUtils {
   public static final int TABLE_WIDTH = 120;
 
   public static class CliOptions {
+    /** Optional params that change how an operation is checked, not what it changes. */
+    private static final Set<CliParams> MODIFIER_PARAMS = Set.of(CliParams.FORCE);
+
     List<CliParams> necessaryParams;
     List<CliParams> optionalParams;
 
@@ -85,6 +89,15 @@ public class CliUtils {
 
     public List<CliParams> getOptionalParams() {
       return optionalParams;
+    }
+
+    /** The optional params that change something, leaving out the modifiers. */
+    public List<CliParams> getChangeParams() {
+      return optionalParams.stream().filter(param -> !MODIFIER_PARAMS.contains(param)).toList();
+    }
+
+    public static boolean isModifier(String serverParam) {
+      return MODIFIER_PARAMS.stream().anyMatch(param -> param.getServerParam().equals(serverParam));
     }
   }
 
@@ -356,7 +369,15 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.NAME),
-                          List.of(CliParams.COMMENT, CliParams.AWS_IAM_ROLE_ARN)));
+                          List.of(
+                              CliParams.COMMENT,
+                              CliParams.AWS_IAM_ROLE_ARN,
+                              CliParams.S3_ACCESS_KEY_ID,
+                              CliParams.S3_ENDPOINT,
+                              CliParams.S3_SECRET_ACCESS_KEY,
+                              CliParams.S3_STS_ENDPOINT,
+                              CliParams.S3_ROLE_ARN,
+                              CliParams.S3_STS_REGION)));
                   put(
                       LIST,
                       new CliOptions(
@@ -367,7 +388,15 @@ public class CliUtils {
                       new CliOptions(
                           List.of(CliParams.NAME),
                           List.of(
-                              CliParams.NEW_NAME, CliParams.COMMENT, CliParams.AWS_IAM_ROLE_ARN)));
+                              CliParams.NEW_NAME,
+                              CliParams.COMMENT,
+                              CliParams.AWS_IAM_ROLE_ARN,
+                              CliParams.S3_ACCESS_KEY_ID,
+                              CliParams.S3_ENDPOINT,
+                              CliParams.S3_SECRET_ACCESS_KEY,
+                              CliParams.S3_STS_ENDPOINT,
+                              CliParams.S3_ROLE_ARN,
+                              CliParams.S3_STS_REGION)));
                   put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });
@@ -393,7 +422,8 @@ public class CliUtils {
                               CliParams.NEW_NAME,
                               CliParams.URL,
                               CliParams.CREDENTIAL_NAME,
-                              CliParams.COMMENT)));
+                              CliParams.COMMENT,
+                              CliParams.FORCE)));
                   put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });
@@ -872,11 +902,11 @@ public class CliUtils {
   }
 
   public static void validateUpdateParameters(JSONObject json, String command, String subCommand) {
-    if (json.isEmpty()) {
-      List<CliParams> optionalParams =
-          CliUtils.cliOptions.get(command).get(subCommand).getOptionalParams();
+    if (json.keySet().stream().allMatch(CliOptions::isModifier)) {
+      List<CliParams> changeParams =
+          CliUtils.cliOptions.get(command).get(subCommand).getChangeParams();
       String errorMessage = "No parameters to update, please provide one of:";
-      for (CliParams param : optionalParams) {
+      for (CliParams param : changeParams) {
         errorMessage += "\n  --" + param.val();
       }
       throw new CliException(errorMessage);

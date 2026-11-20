@@ -42,6 +42,9 @@ import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
+  // A fixed 256-bit key, base64-encoded, for server.credential-encryption-key.
+  public static final String CREDENTIAL_ENCRYPTION_KEY =
+      "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
   public static final String SCHEMA_NAME = "uc_testschema";
   public static final String CATALOG_NAME2 = "uc_testcatalog2";
   public static final String SCHEMA_NAME2 = "uc_testschema2";
@@ -64,6 +67,10 @@ public class TestUtils {
       CATALOG_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME;
   public static final String COMMENT = "test comment";
   public static final String COMMENT2 = "test comment 2";
+  // Longer than the 255 characters of a default string column
+  public static final String LONG_COMMENT = "c".repeat(300);
+  // 65536 characters of two UTF-8 bytes each, more than the 65535 bytes of a MySQL text column
+  public static final String MULTI_BYTE_LONG_COMMENT = String.valueOf((char) 0xE9).repeat(65536);
   public static final String CATALOG_NEW_NAME = "uc_newtestcatalog";
   public static final String CATALOG_NEW_COMMENT = "new test comment";
   public static final String MODEL_NEW_COMMENT = "new test model comment";

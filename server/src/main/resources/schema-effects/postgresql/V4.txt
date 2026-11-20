@@ -1,0 +1,2 @@
+- column uc_credentials.credential type=oid size=10 nullable=NO default=null
++ column uc_credentials.credential type=text size=2147483647 nullable=NO default=null

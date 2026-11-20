@@ -1,32 +1,18 @@
 use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{page_query, properties_value};
+use super::{page_query, properties_value, UiRpc};
 use crate::mapping;
 use crate::proto::uc::v1::*;
-use crate::upstream::{path_segment, Upstream};
-use crate::AppState;
-
-pub(crate) struct CatalogRpc {
-    upstream: Upstream,
-}
-
-impl CatalogRpc {
-    pub(crate) fn new(state: AppState) -> Self {
-        Self {
-            upstream: Upstream::new(state),
-        }
-    }
-}
+use crate::upstream::path_segment;
 
 #[protovalidate_buffa::connect_impl]
-impl CatalogService for CatalogRpc {
+impl CatalogService for UiRpc {
     async fn list_catalogs(
         &self,
         ctx: RequestContext,
         request: ServiceRequest<'_, ListCatalogsRequest>,
     ) -> ServiceResult<ListCatalogsResponse> {
-        let request = request.to_owned_message();
         let value = self
             .upstream
             .get(&ctx, "/catalogs", page_query(&request.page))
@@ -34,7 +20,7 @@ impl CatalogService for CatalogRpc {
         let catalogs = mapping::required_array(&value, "catalogs")?
             .iter()
             .map(mapping::catalog_summary)
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListCatalogsResponse {
             catalogs,
             page: mapping::page(&value).into(),
@@ -47,17 +33,16 @@ impl CatalogService for CatalogRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, GetCatalogRequest>,
     ) -> ServiceResult<GetCatalogResponse> {
-        let request = request.to_owned_message();
         let value = self
             .upstream
             .get(
                 &ctx,
-                &format!("/catalogs/{}", path_segment(&request.catalog.name)),
+                &format!("/catalogs/{}", path_segment(request.catalog.name)),
                 Vec::new(),
             )
             .await?;
         Ok(Response::new(GetCatalogResponse {
-            catalog: mapping::catalog_info(&value).into(),
+            catalog: mapping::catalog_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -67,7 +52,6 @@ impl CatalogService for CatalogRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, CreateCatalogRequest>,
     ) -> ServiceResult<CreateCatalogResponse> {
-        let request = request.to_owned_message();
         let mut body = Map::new();
         body.insert("name".to_string(), json!(request.name));
         if let Some(comment) = request.comment {
@@ -87,7 +71,7 @@ impl CatalogService for CatalogRpc {
             .post(&ctx, "/catalogs", Value::Object(body))
             .await?;
         Ok(Response::new(CreateCatalogResponse {
-            catalog: mapping::catalog_info(&value).into(),
+            catalog: mapping::catalog_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -97,7 +81,6 @@ impl CatalogService for CatalogRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, UpdateCatalogRequest>,
     ) -> ServiceResult<UpdateCatalogResponse> {
-        let request = request.to_owned_message();
         let mut body = Map::new();
         if let Some(comment) = request.comment {
             body.insert("comment".to_string(), json!(comment));
@@ -115,12 +98,12 @@ impl CatalogService for CatalogRpc {
             .upstream
             .patch(
                 &ctx,
-                &format!("/catalogs/{}", path_segment(&request.catalog.name)),
+                &format!("/catalogs/{}", path_segment(request.catalog.name)),
                 Value::Object(body),
             )
             .await?;
         Ok(Response::new(UpdateCatalogResponse {
-            catalog: mapping::catalog_info(&value).into(),
+            catalog: mapping::catalog_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -130,11 +113,10 @@ impl CatalogService for CatalogRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, DeleteCatalogRequest>,
     ) -> ServiceResult<DeleteCatalogResponse> {
-        let request = request.to_owned_message();
         self.upstream
             .delete(
                 &ctx,
-                &format!("/catalogs/{}", path_segment(&request.catalog.name)),
+                &format!("/catalogs/{}", path_segment(request.catalog.name)),
                 vec![("force", request.force.to_string())],
             )
             .await?;

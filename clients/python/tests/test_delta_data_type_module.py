@@ -313,10 +313,12 @@ class TestJsonRoundTrip:
     @pytest.mark.parametrize("wire", [
         "long",
         {"type": "struct"},
+        {"type": "struct", "fields": None},
+        {"type": "struct", "fields": {"name": "id"}},
         {"type": "array", "element-type": "long", "contains-null": True, "fields": []},
     ])
     def test_table_columns_rejects_non_struct(self, wire):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Expected a struct type with 'fields'"):
             DeltaStructType.from_json(json.dumps(wire))
 
 
@@ -330,6 +332,16 @@ class TestParseTypeEdgeCases:
     def test_non_str_non_dict_raises(self):
         with pytest.raises(ValueError, match="Expected str or dict"):
             _parse_type(42)
+
+    @pytest.mark.parametrize("fields", [None, {"name": "id"}])
+    def test_nested_struct_with_fields_that_are_not_a_list_raises(self, fields):
+        nested = {"type": "struct", "fields": fields}
+        column = {"name": "s", "type": nested, "nullable": True, "metadata": {}}
+        with pytest.raises(ValueError, match="Expected a list for struct 'fields'"):
+            DeltaStructType.from_json(json.dumps({"type": "struct", "fields": [column]}))
+        with pytest.raises(ValueError, match="Expected a list for struct 'fields'"):
+            DeltaDataType.from_json(
+                json.dumps({"type": "array", "element-type": nested, "contains-null": True}))
 
 
 class TestParseTypeDirect:

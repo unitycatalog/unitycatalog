@@ -80,6 +80,9 @@ public class CatalogRepository {
           PropertyDAO.from(catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
               .forEach(session::persist);
           session.persist(catalogInfoDAO);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, catalogInfoDAO.getId(), callerId);
           LOGGER.info("Added catalog: {}", catalogInfo.getName());
           return catalogInfo;
         },
@@ -143,6 +146,11 @@ public class CatalogRepository {
   }
 
   public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
+    return updateCatalog(name, updateCatalog, () -> {});
+  }
+
+  public CatalogInfo updateCatalog(
+      String name, UpdateCatalog updateCatalog, Runnable beforeCommit) {
     if (updateCatalog.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
     }
@@ -152,7 +160,14 @@ public class CatalogRepository {
         sessionFactory,
         session -> {
           CatalogInfoDAO catalogInfoDAO = getCatalogDaoOrThrow(session, name);
+          if (updateCatalog.getOwner() != null) {
+            catalogInfoDAO.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(session, catalogInfoDAO, updateCatalog.getOwner(), beforeCommit));
+          }
           if (updateCatalog.getNewName() == null
+              && updateCatalog.getOwner() == null
               && updateCatalog.getComment() == null
               && (updateCatalog.getProperties() == null
                   || updateCatalog.getProperties().isEmpty())) {

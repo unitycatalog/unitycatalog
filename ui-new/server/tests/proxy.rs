@@ -4,8 +4,10 @@ use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt; // for `oneshot`
-use uc_ui_bridge::{app, AppState, Config};
-use wiremock::matchers::{header_exists, method, path};
+use uc_ui_bridge::{app, AppState, Config, UPSTREAM_TIMEOUT};
+use wiremock::matchers::{
+    body_string, header as header_match, header_exists, method, path, query_param,
+};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn test_config(uc_server: String) -> Config {
@@ -17,8 +19,6 @@ fn test_config(uc_server: String) -> Config {
         okta_enabled: false,
         keycloak_enabled: true,
         allowed_origins: vec![],
-        // A path that certainly does not exist, so the SPA fallback stays inert.
-        web_dist: std::path::PathBuf::from("/nonexistent-web-dist"),
     }
 }
 
@@ -26,6 +26,7 @@ fn build_app(uc_server: String) -> axum::Router {
     app(AppState {
         http: reqwest::Client::new(),
         config: Arc::new(test_config(uc_server)),
+        upstream_timeout: UPSTREAM_TIMEOUT,
     })
 }
 
@@ -93,7 +94,9 @@ async fn call_maps_non_2xx_to_ok_false() {
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp).await;
     assert_eq!(json["httpStatus"], 404);
-    assert_eq!(json["ok"], false);
+    // Proto JSON omits fields holding their default value; clients decode the
+    // absent field as false.
+    assert!(json.get("ok").is_none());
 }
 
 #[tokio::test]
@@ -115,7 +118,8 @@ async fn call_forwards_cookie_auth_and_propagates_set_cookie() {
         .and(wiremock::matchers::body_string("grant_type=x"))
         .respond_with(
             ResponseTemplate::new(200)
-                .insert_header("set-cookie", "UC_SESSION=fresh; HttpOnly; Path=/")
+                .append_header("set-cookie", "UC_SESSION=fresh; HttpOnly; Path=/")
+                .append_header("set-cookie", "UC_CSRF=fresh; Path=/")
                 .set_body_string(r#"{"access_token":"t"}"#),
         )
         .mount(&uc)
@@ -142,8 +146,15 @@ async fn call_forwards_cookie_auth_and_propagates_set_cookie() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     // The bridge copied UC's Set-Cookie back onto the (same-origin) response.
-    let set_cookie = resp.headers().get(header::SET_COOKIE).unwrap();
-    assert!(set_cookie.to_str().unwrap().contains("UC_SESSION=fresh"));
+    let set_cookies: Vec<_> = resp
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .collect();
+    assert_eq!(set_cookies.len(), 2);
+    assert!(set_cookies[0].contains("UC_SESSION=fresh"));
+    assert!(set_cookies[1].contains("UC_CSRF=fresh"));
 }
 
 #[tokio::test]
@@ -159,19 +170,139 @@ async fn call_requires_path() {
 }
 
 #[tokio::test]
-async fn call_rejects_client_selected_upstream() {
-    let app = build_app("http://127.0.0.1:1".to_string());
+async fn call_forwards_query_and_defaults_the_json_content_type() {
+    let uc = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/1.0/unity-control/auth/tokens"))
+        .and(query_param("ext", "cookie"))
+        .and(header_match("content-type", "application/json"))
+        .and(body_string(r#"{"a":1}"#))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let resp = build_app(uc.uri())
+        .oneshot(call_request(serde_json::json!({
+            "method": "POST",
+            "path": "/api/1.0/unity-control/auth/tokens",
+            "query": [
+                {"key": "ext", "value": "cookie"},
+                {"key": "", "value": "dropped"}
+            ],
+            "jsonBody": "{\"a\":1}"
+        })))
+        .await
+        .unwrap();
+
+    assert_eq!(body_json(resp).await["httpStatus"], 200);
+    // The pair with an empty key never reaches UC.
+    let requests = uc.received_requests().await.unwrap();
+    assert_eq!(requests[0].url.query(), Some("ext=cookie"));
+}
+
+#[tokio::test]
+async fn call_rejects_an_invalid_method() {
+    let resp = build_app("http://127.0.0.1:1".to_string())
+        .oneshot(call_request(serde_json::json!({
+            "method": "NOT VALID",
+            "path": "/api/1.0/unity-control/scim2/Me"
+        })))
+        .await
+        .unwrap();
+    let json = body_json(resp).await;
+    assert_eq!(json["code"], "invalid_argument");
+    assert_eq!(json["message"], "method is invalid");
+}
+
+const SCIM_ME: &str = "/api/1.0/unity-control/scim2/Me";
+
+async fn call_me(app: axum::Router) -> serde_json::Value {
     let resp = app
+        .oneshot(call_request(
+            serde_json::json!({"method": "GET", "path": SCIM_ME}),
+        ))
+        .await
+        .unwrap();
+    body_json(resp).await
+}
+
+#[tokio::test]
+async fn call_maps_an_unreachable_server_to_unavailable() {
+    let json = call_me(build_app("http://127.0.0.1:1".to_string())).await;
+    assert_eq!(json["code"], "unavailable");
+}
+
+#[tokio::test]
+async fn call_maps_a_stalled_body_to_deadline_exceeded() {
+    // Send the response head, then stall before the body completes.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0; 4096];
+        let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await;
+        tokio::io::AsyncWriteExt::write_all(
+            &mut socket,
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 64\r\n\r\n{",
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    });
+    // No Connect-Timeout-Ms: the bridge's own limit applies.
+    let app = app(AppState {
+        http: reqwest::Client::new(),
+        config: Arc::new(test_config(format!("http://{address}"))),
+        upstream_timeout: std::time::Duration::from_millis(200),
+    });
+
+    assert_eq!(call_me(app).await["code"], "deadline_exceeded");
+}
+
+#[tokio::test]
+async fn call_rejects_an_oversized_response() {
+    let uc = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(SCIM_ME))
+        .respond_with(ResponseTemplate::new(200).set_body_string("x".repeat(4 * 1024 * 1024 + 1)))
+        .mount(&uc)
+        .await;
+
+    let json = call_me(build_app(uc.uri())).await;
+    assert_eq!(json["code"], "internal");
+    assert_eq!(json["message"], "Unity Catalog response is too large");
+}
+
+#[tokio::test]
+async fn call_ignores_server_url_and_token_keys_in_the_body() {
+    // CallRequest has no such fields, so the JSON decoder drops them. A client
+    // that sends them must still reach only the configured UC, and a body token
+    // must not become an Authorization header.
+    let uc = MockServer::start().await;
+    Mock::given(header_exists("authorization"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&uc)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/1.0/unity-control/scim2/Me"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let resp = build_app(uc.uri())
         .oneshot(call_request(serde_json::json!({
             "serverUrl": "http://169.254.169.254",
+            "token": "jwt",
             "method": "GET",
             "path": "/api/1.0/unity-control/scim2/Me"
         })))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    let json = body_json(resp).await;
-    assert_eq!(json["code"], "invalid_argument");
+
+    assert_eq!(body_json(resp).await["httpStatus"], 200);
 }
 
 #[tokio::test]
@@ -199,21 +330,6 @@ async fn call_does_not_add_the_csrf_header() {
         .unwrap();
 
     assert_eq!(body_json(resp).await["httpStatus"], 200);
-}
-
-#[tokio::test]
-async fn call_rejects_a_body_token() {
-    let app = build_app("http://127.0.0.1:1".to_string());
-    let resp = app
-        .oneshot(call_request(serde_json::json!({
-            "token": "jwt",
-            "method": "GET",
-            "path": "/api/1.0/unity-control/scim2/Me"
-        })))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(body_json(resp).await["code"], "invalid_argument");
 }
 
 #[tokio::test]
@@ -358,6 +474,31 @@ async fn config_reports_auth_flags() {
 }
 
 #[tokio::test]
+async fn unknown_routes_are_not_found() {
+    // The bridge no longer serves the SPA, so only RPCs, /config, and /healthz
+    // resolve.
+    for (method, uri) in [
+        ("POST", "/uc.v1.FooService/Bar"),
+        ("POST", "/uc.v1.CatalogService/Missing"),
+        ("GET", "/"),
+        ("GET", "/catalog/main"),
+    ] {
+        let resp = build_app("http://127.0.0.1:1".to_string())
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{method} {uri}");
+    }
+}
+
+#[tokio::test]
 async fn healthz_ok() {
     let app = build_app("http://127.0.0.1:1".to_string());
     let resp = app
@@ -379,6 +520,7 @@ fn cors_app() -> axum::Router {
             allowed_origins: vec!["http://localhost:5173".to_string()],
             ..test_config("http://127.0.0.1:1".to_string())
         }),
+        upstream_timeout: UPSTREAM_TIMEOUT,
     })
 }
 

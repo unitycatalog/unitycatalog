@@ -265,13 +265,14 @@ your Spark version, plus the cloud storage module that matches the Hadoop versio
 
 | Spark version | Bundled Hadoop | AWS S3 | Azure ADLSgen2 | Google Cloud Storage |
 | --- | --- | --- | --- | --- |
-| Apache Spark 4.0.x | 3.4.1 | `org.apache.hadoop:hadoop-aws:3.4.1` | `org.apache.hadoop:hadoop-azure:3.4.1` | `gcs-connector-3.0.2-shaded.jar` |
-| Apache Spark 4.1.x | 3.4.2 | `org.apache.hadoop:hadoop-aws:3.4.2` | `org.apache.hadoop:hadoop-azure:3.4.2` | `gcs-connector-3.0.2-shaded.jar` |
-| Apache Spark 4.2.x | 3.5.0 | `org.apache.hadoop:hadoop-aws:3.5.0` | `org.apache.hadoop:hadoop-azure:3.5.0` | `org.apache.hadoop:hadoop-gcp:3.5.0` |
+| Apache Spark 4.0.x | 3.4.1 | `org.apache.hadoop:hadoop-aws:3.4.1` | `org.apache.hadoop:hadoop-azure:3.4.1` | `gcs-connector-4.0.10-shaded.jar` |
+| Apache Spark 4.1.x | 3.4.2 | `org.apache.hadoop:hadoop-aws:3.4.2` | `org.apache.hadoop:hadoop-azure:3.4.2` | `gcs-connector-4.0.10-shaded.jar` |
+| Apache Spark 4.2.x | 3.5.0 | `org.apache.hadoop:hadoop-aws:3.5.0` | `org.apache.hadoop:hadoop-azure:3.5.0` | `gcs-connector-4.0.10-shaded.jar` |
 
 `hadoop-azure` requires 3.4.1 or later (see [issue #1175](https://github.com/unitycatalog/unitycatalog/issues/1175)).
-Hadoop 3.4 has no GCS module, so Spark 4.0.x and 4.1.x load the Google Cloud Storage connector with `--jars`; Spark 4.2.x
-uses Hadoop's own `hadoop-gcp` with `--packages`.
+Every Spark version loads Google's Google Cloud Storage connector with `--jars`. Hadoop 3.4 has no GCS module of its own,
+and the `hadoop-gcp` module in Hadoop 3.5 (Spark 4.2.x) cannot use the access tokens Unity Catalog vends, so Spark 4.2.x
+needs Google's connector too, with the `fs.gs.impl` settings shown below.
 
 === "AWS S3 (Spark 4.0.x)"
 
@@ -393,12 +394,14 @@ uses Hadoop's own `hadoop-gcp` with `--packages`.
 
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
-        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/4.0.10/gcs-connector-4.0.10-shaded.jar" \
         --packages "io.delta:delta-spark_4.0_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.7.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
+        --conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false" \
+        --conf "spark.hadoop.fs.gs.implicit.dir.repair.enable=false" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
@@ -414,12 +417,14 @@ uses Hadoop's own `hadoop-gcp` with `--packages`.
 
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
-        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/4.0.10/gcs-connector-4.0.10-shaded.jar" \
         --packages "io.delta:delta-spark_4.1_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.7.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
+        --conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false" \
+        --conf "spark.hadoop.fs.gs.implicit.dir.repair.enable=false" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
@@ -435,14 +440,39 @@ uses Hadoop's own `hadoop-gcp` with `--packages`.
 
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-gcp:3.5.0,io.delta:delta-spark_4.2_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.7.0" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/4.0.10/gcs-connector-4.0.10-shaded.jar" \
+        --packages "io.delta:delta-spark_4.2_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.7.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
+        --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
+        --conf "spark.hadoop.fs.gs.create.items.conflict.check.enable=false" \
+        --conf "spark.hadoop.fs.gs.hierarchical.namespace.folders.enable=false" \
+        --conf "spark.hadoop.fs.gs.implicit.dir.repair.enable=false" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
         --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
         --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
+
+!!! note "Unity Catalog Spark connector before 0.8.0"
+    Three settings of Google's connector touch more than the table's own folder, which the folder-scoped tokens Unity
+    Catalog vends cannot do, so the call fails with `403`:
+
+    - `fs.gs.hierarchical.namespace.folders.enable` reads the bucket's layout when a folder is deleted or renamed. The
+      connector turns it on itself, on every Spark version. Parquet tables fail because their commit deletes folders;
+      Delta tables do not.
+    - `fs.gs.create.items.conflict.check.enable` reads every folder above a new file or folder. Hadoop 3.5 (Spark 4.2.x)
+      turns it on. Creating a table or writing to it fails.
+    - `fs.gs.implicit.dir.repair.enable` looks up the parent folder after a folder is deleted. The connector turns it on
+      itself, and it breaks `INSERT OVERWRITE` on parquet tables.
+
+    From 0.8.0 Unity Catalog turns all three off itself, so the `--conf` lines for them in the commands above can be
+    dropped. If your credentials are broad enough for those calls (for example on a hierarchical-namespace bucket), set
+    one to `true` in your Spark config and the connector keeps your value. Hadoop 3.5's own `true` for the conflict check
+    does not count as setting it, so if you relied on that default, set the key to `true` yourself. With the hierarchical namespace setting off,
+    folder delete and rename on hierarchical-namespace buckets use the connector's non-native path; setting it to `true`
+    needs credentials that cover the bucket.
 
 ## Querying cloud paths with Unity Catalog credentials
 
@@ -483,6 +513,20 @@ SELECT 1 AS i, 'a' AS s;
 
     If Unity Catalog cannot vend for a path (not managed by UC, or no permission), Spark falls back to ambient Hadoop
     credentials already configured on the session.
+
+## Structured Streaming checkpoints
+
+Unity Catalog vends credentials for the table's own folder, and Delta uses them for the data and commits it writes
+there. The `checkpointLocation` of a streaming query is different: Spark writes its offsets and commit log there
+itself, not through the table, so Unity Catalog vends nothing for it. The Spark session needs its own access to the
+checkpoint location, for example a machine identity or an application default login (on GCS, also set
+`spark.hadoop.fs.gs.auth.type=APPLICATION_DEFAULT`). With the default renewing credentials, Unity Catalog sets its own
+auth type for each table, so that session-wide setting only applies to locations Unity Catalog does not vend for, such
+as the checkpoint.
+
+!!! warning
+    Limit that login to the checkpoint location. If it can also read the table's storage, Spark can bypass the
+    short-lived credentials Unity Catalog vends for the table.
 
 ## Using Spark SQL to query Unity Catalog schemas and tables
 
@@ -610,6 +654,12 @@ formats, such as Delta and Iceberg, keep the declared order.
 Unity Catalog itself keeps the declared column order, which is what the REST API and other engines see. For example, a
 Parquet table created with columns `(a, p, b)` and `PARTITIONED BY (p)` lists `a, p, b` through the REST API and
 `a, b, p` in Spark.
+
+`CREATE OR REPLACE TABLE` and `REPLACE TABLE` with a `LOCATION` are not supported, because Unity Catalog can only
+replace catalog-managed Delta tables and external tables cannot be replaced. `CREATE OR REPLACE TABLE` fails even when
+the table does not exist yet, and Spark rejects `REPLACE TABLE` on a missing table before it reaches Unity Catalog. The
+same applies to `createOrReplace()` and `replace()` on `df.writeTo(...)` with a `location` table property. Use
+`CREATE TABLE ... LOCATION` to create a new external table, or drop the existing table first and then create it again.
 
 ### Insert New Rows into Table
 
