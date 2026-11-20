@@ -11,10 +11,12 @@ from databricks.sdk.service.catalog import (
 )
 from pydantic import BaseModel, TypeAdapter
 
+from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.function_processing_utils import (
     FullFunctionName,
     generate_function_input_params_schema,
     param_info_to_pydantic_type,
+    process_function_names,
     process_function_parameter_defaults,
     uc_type_json_to_pydantic_type,
 )
@@ -613,3 +615,53 @@ def test_param_info_to_pydantic_type_decodes_base64_binary_in_any_case(type_name
     field_type = param_info_to_pydantic_type(param_info).pydantic_type
 
     assert TypeAdapter(field_type).validate_python("YWJjZA==") == b"abcd"
+
+
+class PagedFunctionClient:
+    def __init__(self, pages):
+        self.pages = pages
+
+    def list_functions(self, catalog, schema, max_results=None, page_token=None):
+        return self.pages[page_token]
+
+
+@pytest.mark.parametrize(
+    ("inaccessible", "expected"),
+    [
+        (
+            {"locked"},
+            {
+                "catalog.schema.first": "tool first",
+                "catalog.schema.middle": "tool middle",
+                "catalog.schema.last": "tool last",
+            },
+        ),
+        ({"first", "locked", "middle", "last"}, {}),
+    ],
+)
+def test_process_function_names_wildcard_skips_functions_without_a_tool(inaccessible, expected):
+    client = PagedFunctionClient(
+        {
+            None: PagedList(
+                [
+                    FunctionInfo(full_name=f"catalog.schema.{name}")
+                    for name in ["first", "locked", "middle"]
+                ],
+                "next",
+            ),
+            "next": PagedList([FunctionInfo(full_name="catalog.schema.last")], None),
+        }
+    )
+
+    def to_tool(*, function_name, client):
+        name = function_name.split(".")[-1]
+        return None if name in inaccessible else f"tool {name}"
+
+    tools_dict = process_function_names(
+        function_names=["catalog.schema.*"],
+        tools_dict={},
+        client=client,
+        uc_function_to_tool_func=to_tool,
+    )
+
+    assert tools_dict == expected

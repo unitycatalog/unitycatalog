@@ -1,6 +1,9 @@
 package io.unitycatalog.server.sdk.function;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.FUNCTION_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.FUNCTION_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MULTI_BYTE_LONG_COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -12,6 +15,7 @@ import io.unitycatalog.client.model.CreateFunction;
 import io.unitycatalog.client.model.CreateFunctionRequest;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.FunctionInfo;
+import io.unitycatalog.client.model.FunctionParameterInfo;
 import io.unitycatalog.client.model.FunctionParameterInfos;
 import io.unitycatalog.client.model.ListFunctionsResponse;
 import io.unitycatalog.server.base.ServerConfig;
@@ -31,11 +35,79 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
 public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
   private static final String EMOJI = "😀";
+  // Over 255 characters, like the type of a parameter that takes a record with many fields
+  private static final String LONG_STRUCT_TYPE = longStructType("field_");
+  private static final String LONG_RETURN_TYPE = longStructType("result_");
+  private static final String LONG_DEFAULT = String.valueOf((char) 0xFC).repeat(65536);
+
+  private static String longStructType(String fieldPrefix) {
+    return "STRUCT<"
+        + IntStream.range(0, 20)
+            .mapToObj(i -> fieldPrefix + i + ": ARRAY<STRING>")
+            .collect(Collectors.joining(", "))
+        + ">";
+  }
+
+  @Test
+  public void testFunctionWithLongTypesAndComments() throws ApiException {
+    createCommonResources();
+    FunctionParameterInfo parameter =
+        new FunctionParameterInfo()
+            .name("records")
+            .typeName(ColumnTypeName.STRUCT)
+            .typeText(LONG_STRUCT_TYPE)
+            .typeJson("{\"type\":\"struct\",\"fields\":[]}")
+            .comment(MULTI_BYTE_LONG_COMMENT)
+            .parameterDefault(LONG_DEFAULT)
+            .position(0);
+    FunctionParameterInfo returnParameter =
+        new FunctionParameterInfo()
+            .name("result")
+            .typeName(ColumnTypeName.STRUCT)
+            .typeText(LONG_RETURN_TYPE)
+            .typeJson("{\"type\":\"struct\",\"fields\":[]}")
+            .position(0);
+    CreateFunction createFunction =
+        new CreateFunction()
+            .name(FUNCTION_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .parameterStyle(CreateFunction.ParameterStyleEnum.S)
+            .isDeterministic(true)
+            .externalLanguage("python")
+            .dataType(ColumnTypeName.STRUCT)
+            .fullDataType(LONG_STRUCT_TYPE)
+            .isNullCall(false)
+            .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
+            .routineDefinition("return records")
+            .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
+            .specificName(FUNCTION_NAME)
+            .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
+            .inputParams(new FunctionParameterInfos().parameters(List.of(parameter)))
+            .returnParams(new FunctionParameterInfos().parameters(List.of(returnParameter)));
+    functionOperations.createFunction(new CreateFunctionRequest().functionInfo(createFunction));
+
+    FunctionInfo functionInfo = functionOperations.getFunction(FUNCTION_FULL_NAME);
+    assertThat(functionInfo.getFullDataType()).isEqualTo(LONG_STRUCT_TYPE);
+    assertThat(functionInfo.getInputParams().getParameters())
+        .singleElement()
+        .satisfies(
+            stored -> {
+              assertThat(stored.getTypeText()).isEqualTo(LONG_STRUCT_TYPE);
+              assertThat(stored.getComment()).isEqualTo(MULTI_BYTE_LONG_COMMENT);
+              assertThat(stored.getParameterDefault()).isEqualTo(LONG_DEFAULT);
+            });
+    assertThat(functionInfo.getReturnParams().getParameters())
+        .singleElement()
+        .satisfies(stored -> assertThat(stored.getTypeText()).isEqualTo(LONG_RETURN_TYPE));
+  }
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig config) {

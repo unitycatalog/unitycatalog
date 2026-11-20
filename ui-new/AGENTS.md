@@ -52,8 +52,9 @@ settings can differ, so UC may still reject the operation.
 ## Common tasks
 
 - Change the bridge contract: edit `proto/uc/v1/proxy.proto`, run
-  `bun run generate` in `web/`, and update the generated-service implementation
-  in `server/src/proxy.rs` (fields use proto3 JSON camelCase).
+  `bun run generate` in `web/`, and update the `UnityProxyService`
+  implementation in `server/src/proxy.rs`. Connect's JSON encoding uses proto3
+  JSON camelCase field names, as in the request bodies in `server/tests/proxy.rs`.
 - Change a typed domain contract: edit the matching file under
   `proto/uc/v1/`, keep its `buf.validate` rules aligned with the UC API, then
   run `bun run proto:check` and `bun run generate` from `web/`. Update the translation in
