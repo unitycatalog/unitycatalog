@@ -19,7 +19,6 @@ import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
-import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
@@ -257,8 +256,9 @@ public class FunctionRepository {
           dao.setUpdatedBy(IdentityUtils.findPrincipalEmailAddress());
           FunctionInfo result = dao.toFunctionInfo();
           addNamespaceInfo(result, parts[0], parts[1]);
-          return RepositoryUtils.attachProperties(
-              result, result.getFunctionId(), Constants.FUNCTION, session);
+          setProperties(
+              result, PropertyRepository.findProperties(session, dao.getId(), Constants.FUNCTION));
+          return result;
         },
         "Failed to update function",
         /* readOnly= */ false);

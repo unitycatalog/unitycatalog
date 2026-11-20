@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import datetime
 import decimal
 import functools
@@ -7,6 +8,7 @@ import logging
 import uuid
 from contextlib import contextmanager
 from typing import Any, AsyncIterator, Callable, Generator, NamedTuple, Optional
+from unittest import mock
 
 from databricks.sdk.service.catalog import (
     ColumnTypeName,
@@ -16,6 +18,7 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.function_utils_oss import param_type_name
 
@@ -122,6 +125,40 @@ def generate_function_info_with_params(params: dict[str, tuple[str, Any]]) -> Fu
             ]
         ),
     )
+
+
+@contextmanager
+def mock_schema_with_inaccessible_function(client: DatabricksFunctionClient):
+    """
+    Mocks `client` so that listing the functions of `catalog.schema` returns
+    `catalog.schema.inaccessible` and then `catalog.schema.accessible`, and getting
+    `catalog.schema.inaccessible` raises PermissionError like a permission denied response.
+
+    Args:
+        client: The client to mock.
+    """
+    function_info = generate_function_info_with_params({"x": ("STRING", "string")})
+    function_infos = {
+        f"catalog.schema.{name}": dataclasses.replace(
+            function_info, name=name, full_name=f"catalog.schema.{name}"
+        )
+        for name in ["inaccessible", "accessible"]
+    }
+
+    def get_function(function_name, **kwargs):
+        if function_name == "catalog.schema.inaccessible":
+            raise PermissionError(f"Permission denied: {function_name}")
+        return function_infos[function_name]
+
+    with (
+        mock.patch.object(
+            client,
+            "list_functions",
+            return_value=PagedList(list(function_infos.values()), None),
+        ),
+        mock.patch.object(client, "get_function", side_effect=get_function),
+    ):
+        yield
 
 
 _logger = logging.getLogger(__name__)

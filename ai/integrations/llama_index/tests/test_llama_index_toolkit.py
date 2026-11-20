@@ -40,6 +40,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     create_function_and_cleanup,
     create_python_function_and_cleanup,
     generate_function_info_with_params,
+    mock_schema_with_inaccessible_function,
 )
 from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 
@@ -287,7 +288,7 @@ def test_uc_function_to_llama_tool(client):
     "filter_accessible_functions",
     [True, False],
 )
-def uc_function_to_llama_tool_permission_denied(filter_accessible_functions):
+def test_uc_function_to_llama_tool_permission_denied(filter_accessible_functions):
     client = get_client()
     # Permission Error should be caught
     with mock.patch(
@@ -319,6 +320,16 @@ def uc_function_to_llama_tool_permission_denied(filter_accessible_functions):
                 function_name=f"{CATALOG}.{SCHEMA}.test",
                 filter_accessible_functions=filter_accessible_functions,
             )
+
+
+def test_toolkit_with_wildcard_skips_inaccessible_functions():
+    client = get_client()
+    with mock_schema_with_inaccessible_function(client):
+        toolkit = UCFunctionToolkit(
+            function_names=["catalog.schema.*"], client=client, filter_accessible_functions=True
+        )
+
+    assert [tool.metadata.name for tool in toolkit.tools] == ["catalog__schema__accessible"]
 
 
 def test_toolkit_with_invalid_function_input(client):
