@@ -121,7 +121,7 @@ client-side routes load on refresh or from a link.
 | `PORT` | `8081` | Bridge listen port (1–65535) |
 | `UC_SERVER` | `http://localhost:8080` | Unity Catalog server base URL (`http` or `https`, without a query or fragment) |
 | `UI_AUTH_ENABLED` | `false` | Gate the SPA behind login |
-| `GOOGLE_CLIENT_ID` | _(empty)_ | Google OAuth client ID (`<number>-<id>.apps.googleusercontent.com`); enables the Google sign-in button. Blank (empty or whitespace only) leaves it off |
+| `GOOGLE_CLIENT_ID` | _(empty)_ | Google OAuth client ID, ending in `.apps.googleusercontent.com`; enables the Google sign-in button. Blank (empty or whitespace only) leaves it off. An ID not in the usual `<number>-<id>.apps.googleusercontent.com` shape is used with a startup warning |
 | `OKTA_AUTH_ENABLED` | `false` | Advertise Okta as enabled |
 | `KEYCLOAK_AUTH_ENABLED` | `false` | Advertise Keycloak as enabled |
 | `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated, each must exactly match the browser's serialized `Origin`—no trailing slash or explicit default port; other entries are logged and skipped); empty = same-origin only |
@@ -130,9 +130,9 @@ The `*_ENABLED` variables accept `true`/`false`, `1`/`0`, `yes`/`no`, or
 `on`/`off`, ignoring case. An unset or empty variable takes its default. A
 non-empty invalid boolean or `PORT` (including whitespace only), a `UC_SERVER`
 that is whitespace only or not an `http` or `https` base URL without a query
-or fragment, a non-blank `GOOGLE_CLIENT_ID` that does not match Google's client
-ID format, or a value that is not valid Unicode, stops the bridge at startup
-with an error naming the variable.
+or fragment, a non-blank `GOOGLE_CLIENT_ID` that does not end in
+`.apps.googleusercontent.com`, or a value that is not valid Unicode, stops the
+bridge at startup with an error naming the variable.
 
 ## Test
 

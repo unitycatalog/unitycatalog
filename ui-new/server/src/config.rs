@@ -1,4 +1,5 @@
 use std::env::VarError;
+use std::sync::LazyLock;
 
 use regex::Regex;
 
@@ -13,8 +14,8 @@ pub struct Config {
     /// Whether auth is enabled. Surfaced to the SPA at GET /config so it knows
     /// whether to gate behind login. When false the SPA renders directly.
     pub auth_enabled: bool,
-    /// Google OAuth client ID (`<number>-<id>.apps.googleusercontent.com`);
-    /// empty disables the Google button.
+    /// Google OAuth client ID, ending in `.apps.googleusercontent.com`; empty
+    /// disables the Google button.
     pub google_client_id: String,
     pub okta_enabled: bool,
     pub keycloak_enabled: bool,
@@ -73,24 +74,44 @@ fn env_server_url(env: Lookup<'_>, key: &str, default: &str) -> Result<String, S
     }
 }
 
-/// Google's published format for an OAuth client ID.
-const GOOGLE_CLIENT_ID_FORMAT: &str = r"^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$";
+/// Every Google OAuth client ID ends with this.
+const GOOGLE_CLIENT_ID_SUFFIX: &str = ".apps.googleusercontent.com";
+
+/// The usual Google OAuth client ID shape, as in the example in Google's guide,
+/// `1234567890-abc123def456.apps.googleusercontent.com`
+/// (<https://developers.google.com/identity/oauth2/web/guides/get-google-api-clientid>).
+/// Google publishes no grammar for it, so a mismatch only warns.
+static GOOGLE_CLIENT_ID_SHAPE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$")
+        .expect("the client ID shape is a valid pattern")
+});
 
 /// Reads a Google OAuth client ID, trimmed. A blank value is unset, which turns
-/// the Google button off; any other value must match Google's format, since the
-/// SPA shows the button for any non-empty id and a malformed one fails on click.
+/// the Google button off. The SPA shows the button for any non-empty ID, and a
+/// malformed one fails on click, so any other value must end in
+/// `.apps.googleusercontent.com`. An ID with that suffix but an unusual shape
+/// is kept with a warning rather than stopping the bridge.
 fn env_google_client_id(env: Lookup<'_>, key: &str) -> Result<String, String> {
     let value = env_value(env, key)?.unwrap_or_default();
     let value = value.trim();
-    let format = Regex::new(GOOGLE_CLIENT_ID_FORMAT).expect("the client ID format is valid");
-    if value.is_empty() || format.is_match(value) {
-        Ok(value.to_string())
-    } else {
-        Err(format!(
-            "{key} must be a Google OAuth client ID \
-             (<number>-<id>.apps.googleusercontent.com)"
-        ))
+    if value.is_empty() {
+        return Ok(String::new());
     }
+    let has_suffix = value
+        .strip_suffix(GOOGLE_CLIENT_ID_SUFFIX)
+        .is_some_and(|prefix| !prefix.is_empty());
+    if !has_suffix {
+        return Err(format!(
+            "{key} must be a Google OAuth client ID ending in {GOOGLE_CLIENT_ID_SUFFIX}"
+        ));
+    }
+    if !GOOGLE_CLIENT_ID_SHAPE.is_match(value) {
+        tracing::warn!(
+            client_id = value,
+            "{key} is not in the usual <number>-<id>{GOOGLE_CLIENT_ID_SUFFIX} shape; using it as given"
+        );
+    }
+    Ok(value.to_string())
 }
 
 fn parse_port(key: &str, value: &str) -> Result<u16, String> {
@@ -146,6 +167,7 @@ mod tests {
     use std::ffi::OsString;
 
     use super::{parse_bool, parse_port, Config};
+    use crate::test_logs;
 
     const KEYS: [&str; 7] = [
         "PORT",
@@ -279,36 +301,49 @@ mod tests {
     }
 
     #[test]
-    fn google_client_id_must_match_googles_format() {
-        // (value, client ID); a blank value leaves the Google button off.
+    fn google_client_id_needs_the_google_suffix() {
+        // (value, warns); each is kept trimmed. A blank value leaves the Google
+        // button off, and an ID with the suffix but an unusual shape is kept
+        // with a warning.
         let accepted = [
-            (" ", ""),
-            ("\t\n", ""),
-            (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID),
+            (" ", false),
+            ("\t\n", false),
+            (GOOGLE_CLIENT_ID, false),
             (
                 " 1234567890-abc123def456.apps.googleusercontent.com\n",
-                GOOGLE_CLIENT_ID,
+                false,
             ),
+            ("abc-123.apps.googleusercontent.com", true),
+            ("123-ABC.apps.googleusercontent.com", true),
+            ("123.apps.googleusercontent.com", true),
+            ("123-.apps.googleusercontent.com", true),
         ];
-        for (value, client_id) in accepted {
-            let config = config(&[("GOOGLE_CLIENT_ID", value)]);
+        let warning = "GOOGLE_CLIENT_ID is not in the usual \
+                       <number>-<id>.apps.googleusercontent.com shape; using it as given";
+        for (value, warns) in accepted {
+            let (config, logs) = test_logs::capture(|| config(&[("GOOGLE_CLIENT_ID", value)]));
             assert_eq!(
                 config.map(|c| c.google_client_id),
-                Ok(client_id.to_string()),
+                Ok(value.trim().to_string()),
                 "{value:?}"
             );
+            assert_eq!(logs.len(), usize::from(warns), "{value:?}: {logs:?}");
+            if warns {
+                assert!(
+                    logs[0].contains("WARN") && logs[0].contains(warning),
+                    "{logs:?}"
+                );
+            }
         }
-        let error = "GOOGLE_CLIENT_ID must be a Google OAuth client ID \
-                     (<number>-<id>.apps.googleusercontent.com)";
+        let error = "GOOGLE_CLIENT_ID must be a Google OAuth client ID ending in \
+                     .apps.googleusercontent.com";
         for value in [
             "client-id",
             "...",
-            "abc-123.apps.googleusercontent.com",
-            "123-ABC.apps.googleusercontent.com",
-            "123.apps.googleusercontent.com",
-            "123-.apps.googleusercontent.com",
+            ".apps.googleusercontent.com",
             "123-abc.apps.googleusercontent.com.example.com",
             "123-abc.appsXgoogleusercontent.com",
+            "123-abc.APPS.googleusercontent.com",
         ] {
             let config = config(&[("GOOGLE_CLIENT_ID", value)]);
             assert_eq!(config, Err(error.to_string()), "{value:?}");
