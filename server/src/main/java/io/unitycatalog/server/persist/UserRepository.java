@@ -6,12 +6,9 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
-import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Predicate;
 import org.hibernate.Session;
@@ -23,8 +20,6 @@ import org.slf4j.LoggerFactory;
 public class UserRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(UserRepository.class);
   private final SessionFactory sessionFactory;
-  private static final PagedListingHelper<UserDAO> LISTING_HELPER =
-      new PagedListingHelper<>(UserDAO.class);
 
   public UserRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.sessionFactory = sessionFactory;
@@ -65,16 +60,14 @@ public class UserRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          List<User> users = new ArrayList<>();
-          String nextPageToken = null;
-          do {
-            List<UserDAO> page =
-                LISTING_HELPER.listEntity(
-                    session, Optional.empty(), Optional.ofNullable(nextPageToken), null);
-            page.stream().map(UserDAO::toUser).filter(filter).forEach(users::add);
-            nextPageToken = LISTING_HELPER.getNextPageToken(page, Optional.empty());
-          } while (nextPageToken != null);
-          return users;
+          // User names are not unique, so a name cursor would skip users that share one.
+          return session
+              .createQuery("FROM UserDAO ORDER BY name, id", UserDAO.class)
+              .getResultList()
+              .stream()
+              .map(UserDAO::toUser)
+              .filter(filter)
+              .toList();
         },
         "Failed to list users",
         /* readOnly= */ true);

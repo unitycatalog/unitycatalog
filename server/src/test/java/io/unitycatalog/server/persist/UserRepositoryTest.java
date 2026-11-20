@@ -95,6 +95,19 @@ class UserRepositoryTest {
   }
 
   @Test
+  void listUsersReturnsEveryUserWhenNamesRepeatAcrossPages() {
+    // 101 users with one name: more than the 100-row listing page, so a name cursor would drop one.
+    for (int i = 0; i < 101; i++) {
+      userRepository.createUser(
+          CreateUser.builder().name("Same Name").email("same-name-" + i + "@example.com").build());
+    }
+
+    var users = userRepository.listUsers(u -> "Same Name".equals(u.getName()));
+
+    assertThat(users).hasSize(101).extracting(u -> u.getId()).doesNotHaveDuplicates();
+  }
+
+  @Test
   void bootstrapCreatesTheAdminWhenTheLookupFindsNone() {
     UUID metastoreId = UUID.randomUUID();
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
