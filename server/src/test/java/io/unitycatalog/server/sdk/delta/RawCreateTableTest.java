@@ -131,6 +131,18 @@ public class RawCreateTableTest extends BaseCRUDTest {
         """,
         "columns.fields[0].type: Unsupported Delta primitive type: void");
 
+    // -------- column with a malformed geometry/geography type string --------
+    // Geo strings are parameterized, so they are validated by parsing, not by exact match. The
+    // error names the offending value and no internal class.
+    assertRejected(
+        staging,
+        """
+        {"name": "g", "type": "geography(OGC:CRS84, planar)", "nullable": true, "metadata": {}}\
+        """,
+        "columns.fields[0].type: Invalid geospatial type: geography(OGC:CRS84, planar). Expected"
+            + " geometry[(<crs>)] or geography[(<crs>[, <algorithm>])], for example"
+            + " geometry(OGC:CRS84) or geography(OGC:CRS84, spherical).");
+
     // -------- DeltaStructField with a blank name --------
     // Per Delta PROTOCOL.md column names must be non-empty. The validator rejects null AND
     // blank (whitespace-only) names with the same message; both flow into the DB otherwise.

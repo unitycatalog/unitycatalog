@@ -3,6 +3,7 @@ package io.unitycatalog.server.sdk.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
@@ -20,6 +21,8 @@ import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
@@ -33,6 +36,8 @@ import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -394,6 +399,68 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             .storageRoot("s3://test-bucket0/catalogs/delta-api"));
     schemaOperations.createSchema(
         new CreateSchema().name(TestUtils.SCHEMA_NAME2).catalogName(TestUtils.CATALOG_NAME2));
+  }
+
+  /**
+   * Geometry and geography columns, in every wire form, are accepted by the create path and read
+   * back unchanged, with the CRS and algorithm kept in {@code type_text} and {@code type_json}.
+   */
+  @Test
+  public void testCreateTableWithGeoColumns() throws ApiException {
+    Map<String, ColumnTypeName> expectedNames = new LinkedHashMap<>();
+    expectedNames.put("geometry", ColumnTypeName.GEOMETRY);
+    expectedNames.put("geometry(OGC:CRS84)", ColumnTypeName.GEOMETRY);
+    expectedNames.put("geography", ColumnTypeName.GEOGRAPHY);
+    expectedNames.put("geography(OGC:CRS84)", ColumnTypeName.GEOGRAPHY);
+    expectedNames.put("geography(spherical)", ColumnTypeName.GEOGRAPHY);
+    expectedNames.put("geography(OGC:CRS84, spherical)", ColumnTypeName.GEOGRAPHY);
+    List<DeltaStructField> fields = new ArrayList<>();
+    for (String wire : expectedNames.keySet()) {
+      fields.add(
+          new DeltaStructField()
+              .name("c" + fields.size())
+              .type(new DeltaPrimitiveType().type(wire))
+              .nullable(true)
+              .metadata(new DeltaStructFieldMetadata()));
+    }
+
+    DeltaStagingTableResponse staging = createStaging("tbl_geo");
+    deltaTablesApi.createTable(
+        TestUtils.CATALOG_NAME2,
+        TestUtils.SCHEMA_NAME2,
+        managedTableRequest("tbl_geo", staging)
+            .columns(new DeltaStructType().type("struct").fields(fields))
+            .domainMetadata(null));
+
+    // The UC table API returns what was written.
+    List<ColumnInfo> columns =
+        new TablesApi(TestUtils.createApiClient(serverConfig))
+            .getTable(
+                String.join(".", TestUtils.CATALOG_NAME2, TestUtils.SCHEMA_NAME2, "tbl_geo"),
+                null,
+                null,
+                /* includeBrowse= */ false)
+            .getColumns();
+    assertThat(columns).hasSize(expectedNames.size());
+    int i = 0;
+    for (Map.Entry<String, ColumnTypeName> expected : expectedNames.entrySet()) {
+      ColumnInfo column = columns.get(i++);
+      assertThat(column.getTypeName()).as(expected.getKey()).isEqualTo(expected.getValue());
+      assertThat(column.getTypeText()).as(expected.getKey()).isEqualTo(expected.getKey());
+      assertThat(column.getTypeJson())
+          .as(expected.getKey())
+          .contains("\"type\":\"" + expected.getKey() + "\"");
+    }
+
+    // The UC Delta API returns the same types.
+    assertThat(
+            deltaTablesApi
+                .loadTable(TestUtils.CATALOG_NAME2, TestUtils.SCHEMA_NAME2, "tbl_geo")
+                .getMetadata()
+                .getColumns()
+                .getFields())
+        .extracting(f -> ((DeltaPrimitiveType) f.getType()).getType())
+        .containsExactlyElementsOf(expectedNames.keySet());
   }
 
   /** Canonical (id long, amount double) columns shared across requests. */

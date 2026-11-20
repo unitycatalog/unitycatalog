@@ -4,6 +4,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.delta.kernel.internal.types.DataTypeJsonSerDe;
+import io.delta.kernel.types.GeographyType;
+import io.delta.kernel.types.GeometryType;
 import io.unitycatalog.server.delta.model.DeltaArrayType;
 import io.unitycatalog.server.delta.model.DeltaDataType;
 import io.unitycatalog.server.delta.model.DeltaDecimalType;
@@ -420,7 +424,10 @@ public class ColumnUtils {
       }
       return sb.append(">").toString();
     }
-    return getTypeText(resolveColumnTypeName(type));
+    ColumnTypeName typeName = resolveColumnTypeName(type);
+    // Geo types carry their CRS and algorithm in the string, so keep it as written.
+    boolean isGeo = typeName == ColumnTypeName.GEOMETRY || typeName == ColumnTypeName.GEOGRAPHY;
+    return isGeo ? type.getType() : getTypeText(typeName);
   }
 
   private static String extractComment(DeltaStructField field) {
@@ -438,7 +445,8 @@ public class ColumnUtils {
     if (type instanceof DeltaMapType) return ColumnTypeName.MAP;
     if (type instanceof DeltaStructType) return ColumnTypeName.STRUCT;
     // DeltaPrimitiveType: the discriminator string IS the primitive name. The accepted set is the
-    // closed list of Delta-protocol primitives -- Kernel's BasePrimitiveType registry. Reject
+    // closed list of Delta-protocol primitives -- Kernel's BasePrimitiveType registry -- plus the
+    // parameterized geometry/geography strings, which are checked by Kernel's parser below. Reject
     // with INVALID_ARGUMENT for anything else; the server-side ColumnTypeName enum has no
     // UNKNOWN_DEFAULT_OPEN_API sentinel (OpenAPI generator adds it only for clients).
     //
@@ -455,6 +463,14 @@ public class ColumnUtils {
     //     Delta clients never send "char(n)" or {"type":"udt",...}.
     //   - TABLE_TYPE: UC-internal (foreign tables); doesn't flow over the Delta wire.
     String primitive = type.getType();
+    if (isGeoType(primitive, "geometry")) {
+      validateGeoType(primitive);
+      return ColumnTypeName.GEOMETRY;
+    }
+    if (isGeoType(primitive, "geography")) {
+      validateGeoType(primitive);
+      return ColumnTypeName.GEOGRAPHY;
+    }
     return switch (primitive) {
       case "boolean" -> ColumnTypeName.BOOLEAN;
       case "byte" -> ColumnTypeName.BYTE;
@@ -473,6 +489,36 @@ public class ColumnUtils {
           throw new BaseException(
               ErrorCode.INVALID_ARGUMENT, "Unsupported Delta primitive type: " + primitive);
     };
+  }
+
+  /** True for {@code base} and its parameterized forms, e.g. {@code geometry(OGC:CRS84)}. */
+  private static boolean isGeoType(String primitive, String base) {
+    return primitive.equals(base) || primitive.startsWith(base + "(");
+  }
+
+  /**
+   * Check a {@code geometry} / {@code geography} string, with or without CRS and algorithm, by
+   * parsing it with Delta Kernel, the reference parser for the Delta type strings.
+   */
+  private static void validateGeoType(String primitive) {
+    ObjectNode field = TYPE_MAPPER.createObjectNode();
+    field.put("name", "c").put("type", primitive).put("nullable", true).putObject("metadata");
+    ObjectNode schema = TYPE_MAPPER.createObjectNode().put("type", "struct");
+    schema.putArray("fields").add(field);
+    try {
+      var parsed = DataTypeJsonSerDe.deserializeStructType(schema.toString()).at(0).getDataType();
+      if (parsed instanceof GeometryType || parsed instanceof GeographyType) {
+        return;
+      }
+    } catch (RuntimeException e) {
+      // Fall through to the error below.
+    }
+    throw new BaseException(
+        ErrorCode.INVALID_ARGUMENT,
+        "Invalid geospatial type: "
+            + primitive
+            + ". Expected geometry[(<crs>)] or geography[(<crs>[, <algorithm>])], for example"
+            + " geometry(OGC:CRS84) or geography(OGC:CRS84, spherical).");
   }
 
   /**
