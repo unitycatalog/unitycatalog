@@ -8,6 +8,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.common.util.SafeCloseable;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
@@ -19,13 +23,24 @@ import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.CredentialRepository;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.UUID;
+import java.util.function.Consumer;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -223,5 +238,67 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     CredentialInfo renamed = credentialOperations.getCredential("update_race_renamed");
     assertThat(renamed.getId()).isEqualTo(id.toString());
     assertThat(renamed.getComment()).isEqualTo(COMMENT);
+  }
+
+  /**
+   * A drop or update that cannot get the credential row lock before the lock timeout fails as
+   * UNAVAILABLE (503, retryable), not INTERNAL.
+   */
+  @Test
+  public void dropAndUpdateBlockedPastTheLockTimeoutAreUnavailable() throws Exception {
+    UUID id = UUID.fromString(createCredential("lock_timeout").getId());
+    CredentialRepository impatient =
+        repositoriesWith(
+                properties ->
+                    properties.setProperty(
+                        "hibernate.connection.url",
+                        testDatabase.jdbcUrl()
+                            + switch (SupportedDatabase.selected()) {
+                              case H2 -> ";LOCK_TIMEOUT=50";
+                              case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
+                              case MYSQL_8 -> "?sessionVariables=innodb_lock_wait_timeout=1";
+                            }))
+            .getCredentialRepository();
+    List<String> codes = new ArrayList<>();
+    try (Session held = testDatabase.sessionFactory().openSession()) {
+      Transaction transaction = held.beginTransaction();
+      TestDatabase.setColumn(held, CredentialDAO.class, id, "comment", "held comment");
+      held.flush();
+      try (SafeCloseable ignored = requestContext()) {
+        codes.add("drop=" + errorCode(() -> impatient.deleteCredential("lock_timeout", false)));
+        codes.add(
+            "update="
+                + errorCode(
+                    () ->
+                        impatient.updateCredential(
+                            "lock_timeout",
+                            new io.unitycatalog.server.model.UpdateCredentialRequest()
+                                .comment("lost"))));
+      }
+      transaction.rollback();
+    }
+    assertThat(codes).containsExactly("drop=UNAVAILABLE", "update=UNAVAILABLE");
+  }
+
+  private Repositories repositoriesWith(Consumer<Properties> settings) {
+    Properties properties = testDatabase.hibernateProperties();
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
+    settings.accept(properties);
+    return StorageCleanupTestSupport.auditedRepositories(
+        testDatabase.openHibernateConfigurator(properties).getSessionFactory(),
+        new ServerProperties(serverProperties));
+  }
+
+  private static SafeCloseable requestContext() {
+    return ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/")).push();
+  }
+
+  private static String errorCode(Runnable operation) {
+    try {
+      operation.run();
+      return "none";
+    } catch (BaseException e) {
+      return e.getErrorCode().name();
+    }
   }
 }
