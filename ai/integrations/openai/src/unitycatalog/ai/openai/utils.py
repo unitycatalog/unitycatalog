@@ -29,6 +29,7 @@ def generate_tool_call_messages(
 
     Returns:
         A list of messages containing the assistant message and the function call results.
+        The result of a function that failed is the JSON of its execution result, with the error.
     """
     client = validate_or_set_default_client(client)
     message = response.choices[choice_index].message
@@ -41,6 +42,8 @@ def generate_tool_call_messages(
             result = client.execute_function(
                 func_name, arguments, enable_retriever_tracing=mlflow_tracing_enabled("openai")
             )
+            # A success keeps its {"content": ...} shape, and a failure sends the execution
+            # result JSON so the model sees the error.
             content = (
                 result.to_json()
                 if result.error is not None

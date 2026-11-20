@@ -134,6 +134,8 @@ def generate_tool_call_messages(
 
     Returns:
         List[Dict[str, Any]]: A list of messages including tool execution results and conversation history.
+        The tool_result of a function that failed holds the JSON of its execution result, with the
+        error, and is marked with is_error.
     """
     client = validate_or_set_default_client(client)
 

@@ -147,6 +147,7 @@ def generate_tool_call_messages(
 
     Returns:
         A list of messages containing the assistant message and the function call results.
+        The result of a function that failed is the JSON of its execution result, with the error.
     """
     client = validate_or_set_default_client(client)
     if isinstance(conversation_history, dict):
