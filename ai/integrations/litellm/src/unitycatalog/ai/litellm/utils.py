@@ -59,10 +59,11 @@ class ToolCallData:
             client (BaseFunctionClient): The client to use for executing the function.
 
         Returns:
-            str: The result of the function execution.
+            str: The result of the function execution, or the JSON of the execution result,
+            including the error, if the function failed.
         """
         result = client.execute_function(self.function_name, self.arguments)
-        return str(result.value)
+        return result.to_json() if result.error is not None else str(result.value)
 
     def to_tool_result_message(self, result: str) -> dict[str, Any]:
         """
@@ -146,6 +147,7 @@ def generate_tool_call_messages(
 
     Returns:
         A list of messages containing the assistant message and the function call results.
+        The result of a function that failed is the JSON of its execution result, with the error.
     """
     client = validate_or_set_default_client(client)
     if isinstance(conversation_history, dict):
