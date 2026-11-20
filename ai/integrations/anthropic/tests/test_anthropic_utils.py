@@ -1,3 +1,4 @@
+import json
 from contextlib import nullcontext
 from unittest import mock
 from unittest.mock import Mock
@@ -12,7 +13,7 @@ from unitycatalog.ai.anthropic.utils import (
     extract_tool_call_data,
     generate_tool_call_messages,
 )
-from unitycatalog.ai.core.base import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.test_utils.client_utils import TEST_IN_DATABRICKS
 from unitycatalog.ai.test_utils.function_utils import (
@@ -26,7 +27,9 @@ from unitycatalog.ai.test_utils.function_utils import (
 @pytest.fixture
 def mock_client():
     client = Mock(spec=BaseFunctionClient)
-    client.execute_function = Mock(return_value=Mock(value="65 degrees"))
+    client.execute_function = Mock(
+        return_value=FunctionExecutionResult(format="SCALAR", value="65 degrees")
+    )
     return client
 
 
@@ -137,10 +140,49 @@ def test_generate_tool_call_messages_single_tool(
     assert isinstance(assistant_message, dict)
 
     assert tool_response_message["role"] == "user"
-    tool_message_content = tool_response_message["content"][0]
-    assert tool_message_content["type"] == "tool_result"
-    assert tool_message_content["tool_use_id"] == "toolu_01A09q90qw90lq917835lq9"
-    assert tool_message_content["content"] == "65 degrees"
+    assert tool_response_message["content"] == [
+        {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01A09q90qw90lq917835lq9",
+            "content": "65 degrees",
+        }
+    ]
+
+
+def test_tool_call_data_execute_reports_function_error(mock_client):
+    mock_client.execute_function.return_value = FunctionExecutionResult(
+        error="ValueError: date is in the past"
+    )
+    tool_call = ToolCallData(
+        function_name="catalog.schema.get_weather",
+        arguments={},
+        tool_use_id="toolu_01A09q90qw90lq917835lq9",
+    )
+
+    assert tool_call.execute(mock_client) == json.dumps(
+        {"error": "ValueError: date is in the past"}
+    )
+
+
+def test_generate_tool_call_messages_reports_function_error(
+    mock_message_single_tool, mock_client, dummy_history
+):
+    mock_client.execute_function.return_value = FunctionExecutionResult(
+        error="ValueError: date is in the past"
+    )
+
+    *_, tool_response_message = generate_tool_call_messages(
+        response=mock_message_single_tool, conversation_history=dummy_history, client=mock_client
+    )
+
+    assert tool_response_message["content"] == [
+        {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01A09q90qw90lq917835lq9",
+            "content": json.dumps({"error": "ValueError: date is in the past"}),
+            "is_error": True,
+        }
+    ]
 
 
 def test_generate_tool_call_messages_multiple_tools(

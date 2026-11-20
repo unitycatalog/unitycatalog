@@ -161,7 +161,7 @@ Once the answer has been returned, you can construct the response payload for th
 # Create a message containing the result of the function call
 function_call_result_message = {
     "role": "tool",
-    "content": json.dumps({"content": result.value}),
+    "content": result.to_json() if result.error else json.dumps({"content": result.value}),
     "tool_call_id": tool_call.id,
 }
 assistant_message = response.choices[0].message.to_dict()
