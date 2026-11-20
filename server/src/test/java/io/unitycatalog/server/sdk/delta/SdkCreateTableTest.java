@@ -1,8 +1,10 @@
 package io.unitycatalog.server.sdk.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
@@ -20,6 +22,8 @@ import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
@@ -394,6 +398,59 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             .storageRoot("s3://test-bucket0/catalogs/delta-api"));
     schemaOperations.createSchema(
         new CreateSchema().name(TestUtils.SCHEMA_NAME2).catalogName(TestUtils.CATALOG_NAME2));
+  }
+
+  /** A void column (Spark's NullType) is stored as NULL, with its nested form kept in type_json. */
+  @Test
+  public void testCreateTableWithVoidColumns() throws ApiException {
+    DeltaStructType nested =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    voidField("n").type(new DeltaPrimitiveType().type("void")),
+                    new DeltaStructField()
+                        .name("i")
+                        .type(new DeltaPrimitiveType().type("integer"))
+                        .nullable(true)
+                        .metadata(new DeltaStructFieldMetadata())));
+    DeltaStructType schema =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    simpleSchema().getFields().get(0),
+                    voidField("v").type(new DeltaPrimitiveType().type("void")),
+                    voidField("s").type(nested)));
+    DeltaStagingTableResponse staging = createStaging("tbl_void");
+    deltaTablesApi.createTable(
+        TestUtils.CATALOG_NAME2,
+        TestUtils.SCHEMA_NAME2,
+        managedTableRequest("tbl_void", staging).columns(schema).domainMetadata(null));
+
+    List<ColumnInfo> columns =
+        new TablesApi(TestUtils.createApiClient(serverConfig))
+            .getTable(
+                String.join(".", TestUtils.CATALOG_NAME2, TestUtils.SCHEMA_NAME2, "tbl_void"),
+                null,
+                null,
+                /* includeBrowse= */ false)
+            .getColumns();
+    assertThat(columns)
+        .extracting(ColumnInfo::getName, ColumnInfo::getTypeName, ColumnInfo::getTypeText)
+        .containsExactly(
+            tuple("id", ColumnTypeName.LONG, "bigint"),
+            tuple("v", ColumnTypeName.NULL, "void"),
+            tuple("s", ColumnTypeName.STRUCT, "struct<n:void,i:int>"));
+    assertThat(columns.get(1).getTypeJson()).contains("\"type\":\"void\"");
+    assertThat(columns.get(2).getTypeJson()).contains("{\"name\":\"n\",\"type\":\"void\"");
+  }
+
+  private static DeltaStructField voidField(String name) {
+    return new DeltaStructField()
+        .name(name)
+        .nullable(true)
+        .metadata(new DeltaStructFieldMetadata());
   }
 
   /** Canonical (id long, amount double) columns shared across requests. */

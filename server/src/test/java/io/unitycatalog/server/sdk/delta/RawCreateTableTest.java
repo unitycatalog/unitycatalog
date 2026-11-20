@@ -119,17 +119,16 @@ public class RawCreateTableTest extends BaseCRUDTest {
 
     // -------- column with an unsupported primitive type --------
     // Pins that primitive type names go through validatePrimitiveType -> resolveColumnTypeName
-    // at the API boundary. "void" is Spark's NullType wire form, which Delta rejects on read;
-    // PR #1524 hardened the closely-related Spark-connector type_json path, so we mirror that
-    // rejection on the UC Delta API create-table path with a raw-HTTP test. The validator
-    // prefixes the resolver's error with the field path so the message follows the same shape
-    // as every other validation error in this file.
+    // at the API boundary. PR #1524 hardened the closely-related Spark-connector type_json path,
+    // so we mirror that rejection on the UC Delta API create-table path with a raw-HTTP test. The
+    // validator prefixes the resolver's error with the field path so the message follows the same
+    // shape as every other validation error in this file.
     assertRejected(
         staging,
         """
-        {"name": "x", "type": "void", "nullable": false, "metadata": {}}\
+        {"name": "x", "type": "hyperdecimal", "nullable": false, "metadata": {}}\
         """,
-        "columns.fields[0].type: Unsupported Delta primitive type: void");
+        "columns.fields[0].type: Unsupported Delta primitive type: hyperdecimal");
 
     // -------- DeltaStructField with a blank name --------
     // Per Delta PROTOCOL.md column names must be non-empty. The validator rejects null AND
