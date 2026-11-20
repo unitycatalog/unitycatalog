@@ -322,6 +322,39 @@ public class GcpCredentialVendorTest {
   }
 
   @Test
+  public void testInvalidRequestFromTheTokenServiceIsABadLocation() {
+    BaseException error =
+        GcpCredentialVendor.storedKeyError(
+            new IOException("Error code invalid_request: the access boundary is too large"));
+
+    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  /** A stored key that cannot be decrypted names nothing of the credential to whoever asks. */
+  @Test
+  public void testUndecryptableStoredKeyIsNotNamedInTheError() {
+    CredentialContext context = contextWithStoredKey();
+    EncryptedCredentialSecretStore otherKey =
+        new EncryptedCredentialSecretStore(
+            Optional.of(java.util.Base64.getEncoder().encodeToString(new byte[32])));
+    GcpCredentialVendor vendor =
+        new GcpCredentialVendor(
+            new ServerProperties(new Properties()),
+            otherKey,
+            key ->
+                c -> {
+                  throw new IllegalStateException("must not sign in with an unreadable key");
+                });
+
+    BaseException error =
+        catchThrowableOfType(BaseException.class, () -> vendor.vendGcpCredential(context));
+
+    assertThat(error.getMessage())
+        .contains("Contact the server administrator")
+        .doesNotContain("gcs_credential");
+  }
+
+  @Test
   public void testStoredKeyWhenGoogleCannotBeReached() throws Exception {
     MockHttpTransport unreachable =
         new MockHttpTransport() {
