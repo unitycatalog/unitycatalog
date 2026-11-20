@@ -2472,6 +2472,10 @@ class FakeParam:
         ("INTERVAL YEAR", "interval year"),
         ("INTERVAL", "datetime.timedelta"),
         ("CHAR(5)", "str"),
+        ("char(10)", "str"),
+        ("STRING COLLATE UTF8_BINARY", "str"),
+        ("ARRAY<STRING COLLATE UTF8_LCASE>", "list[str]"),
+        ("MAP<STRING, CHAR(3)>", "dict[str, str]"),
         ("ARRAY<TIMESTAMP>", "list[datetime.datetime]"),
         ("ARRAY<DECIMAL(10,2)>", "list[Decimal]"),
         ("map<string,date>", "dict[str, datetime.date]"),
@@ -2645,7 +2649,7 @@ def test_dynamically_construct_python_function_indentation(input_body, expected_
 
 
 @pytest.mark.parametrize(
-    ("params", "return_type", "expected_head"),
+    ("params", "return_type", "expected_head", "expected_returns"),
     [
         (
             {"day": ("DATE", "date"), "amount": ("DECIMAL(10,2)", "decimal(10,2)")},
@@ -2657,28 +2661,38 @@ def test_dynamically_construct_python_function_indentation(input_body, expected_
                 "",
                 "def test(day: datetime.date, amount: Decimal) -> str:",
             ],
+            "str",
         ),
         (
             {"count": ("LONG", "long")},
             "DATE",
             ["import datetime", "", "", "def test(count: int) -> datetime.date:"],
+            "datetime.date",
         ),
         (
             {"count": ("LONG", "long")},
             "DECIMAL(10,2)",
             ["from decimal import Decimal", "", "", "def test(count: int) -> Decimal:"],
+            "Decimal",
         ),
-        ({"count": ("LONG", "long")}, "STRING", ["def test(count: int) -> str:"]),
+        ({"count": ("LONG", "long")}, "STRING", ["def test(count: int) -> str:"], "str"),
         (
             {"stamps": ("ARRAY<TIMESTAMP>", "array<timestamp>")},
             "STRING",
             ["import datetime", "", "", "def test(stamps: list[datetime.datetime]) -> str:"],
+            "str",
         ),
-        ({"code": ("CHAR(5)", "char(5)")}, "STRING", ["def test(code: str) -> str:"]),
+        ({"code": ("CHAR(5)", "char(5)")}, "CHAR(5)", ["def test(code: str) -> str:"], "str"),
+        (
+            {"name": ("STRING COLLATE UTF8_BINARY", "string collate utf8_binary")},
+            "STRING COLLATE UTF8_LCASE",
+            ["def test(name: str) -> str:"],
+            "str",
+        ),
     ],
 )
 def test_reconstructed_source_starts_with_the_imports_its_annotations_need(
-    params, return_type, expected_head
+    params, return_type, expected_head, expected_returns
 ):
     function_info = generate_function_info_with_params_oss(
         params, routine_definition="return None", full_data_type=return_type
@@ -2690,16 +2704,7 @@ def test_reconstructed_source_starts_with_the_imports_its_annotations_need(
 
     assert source.splitlines()[: len(expected_head)] == expected_head
     assert namespace["test"](*(None for _ in params)) is None
-
-
-def test_reconstructed_docstring_returns_the_new_annotation():
-    function_info = generate_function_info_with_params_oss(
-        {"count": ("LONG", "long")}, routine_definition="return None", full_data_type="DATE"
-    )
-
-    source = dynamically_construct_python_function(function_info)
-
-    assert "    Returns:\n        datetime.date\n" in source
+    assert namespace["test"].__doc__.split("Returns:", 1)[1].strip() == expected_returns
 
 
 def test_year_month_interval_still_fails_to_load():
