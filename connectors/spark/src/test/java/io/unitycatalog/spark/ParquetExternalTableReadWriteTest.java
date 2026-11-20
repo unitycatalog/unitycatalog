@@ -13,9 +13,13 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
+import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
+import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataType;
+import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.MetadataBuilder;
 import org.apache.spark.sql.types.StructField;
@@ -68,6 +72,41 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
     assertThat(tableInfo.getColumns()).hasSize(7);
 
     assertThat(sql("SELECT * FROM %s", fullTableName)).isEmpty();
+  }
+
+  /**
+   * UC REST answers a create on a taken name with 400 TABLE_ALREADY_EXISTS, which the catalog must
+   * raise as TableAlreadyExistsException so CREATE TABLE IF NOT EXISTS can ignore it. SQL can't
+   * show this, because Spark checks that the table exists before it calls the catalog. Delta tables
+   * are created by Delta's own command, so only the non-Delta path reaches this mapping.
+   */
+  @Test
+  public void testCreateTableOnTakenNameThrowsTableAlreadyExists() throws ApiException {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    TableSetupOptions options =
+        new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE);
+    String location = getLocation(options);
+    sql(options.createExternalTableSql(location));
+    TableCatalog catalog =
+        (TableCatalog) session.sessionState().catalogManager().catalog(CATALOG_NAME);
+    String otherLocation =
+        getLocation(
+            new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(ANOTHER_TEST_TABLE));
+
+    assertThatThrownBy(
+            () ->
+                catalog.createTable(
+                    Identifier.of(new String[] {SCHEMA_NAME}, TEST_TABLE),
+                    new Column[] {Column.create("i", DataTypes.IntegerType)},
+                    new Transform[0],
+                    Map.of(
+                        TableCatalog.PROP_PROVIDER,
+                        "parquet",
+                        TableCatalog.PROP_LOCATION,
+                        otherLocation)))
+        .isInstanceOf(TableAlreadyExistsException.class);
+    assertThat(tableOperations.getTable(options.fullTableName()).getStorageLocation())
+        .isEqualTo(location);
   }
 
   @Test
