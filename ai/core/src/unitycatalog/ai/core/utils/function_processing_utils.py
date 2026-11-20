@@ -160,8 +160,9 @@ def process_function_names(
         tools_dict (Dict[str, Any]): A dictionary to store the tool instances.
         client: The client used to list functions.
         uc_function_to_tool_func (Callable): A function that converts a UC function
-            into a tool instance. This function should accept kwargs only to make
-            sure the parameters are passed correctly.
+            into a tool instance, or returns None to leave the function out, for example
+            when the client cannot access it. This function should accept kwargs only to
+            make sure the parameters are passed correctly.
         **kwargs: Additional keyword arguments to pass to the conversion function for
             tool framework-specific configuration.
     Returns:
@@ -193,9 +194,11 @@ def process_function_names(
                     # TODO: get functions in parallel
                     for f in functions:
                         if f.full_name not in tools_dict:
-                            tools_dict[f.full_name] = uc_function_to_tool_func(
+                            tool = uc_function_to_tool_func(
                                 function_name=f.full_name, client=client, **kwargs
                             )
+                            if tool:
+                                tools_dict[f.full_name] = tool
                     token = functions.token
                     if token is None:
                         break

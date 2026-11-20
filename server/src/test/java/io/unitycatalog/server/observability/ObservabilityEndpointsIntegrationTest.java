@@ -217,6 +217,23 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
             "uc_storage_cleanup_attempts_total{resource_type=\"staging_table\",result=\"failure\"}"
                 + " 0.0",
             "http_server_requests_total");
+    // Each pool gauge needs a sample line with a real value. A name check alone would also match
+    // the # HELP and # TYPE lines.
+    List<String> poolSamples =
+        response.body().lines().filter(line -> line.startsWith("hikaricp_connections")).toList();
+    for (String name :
+        List.of(
+            "hikaricp_connections_active",
+            "hikaricp_connections_idle",
+            "hikaricp_connections_pending",
+            "hikaricp_connections",
+            "hikaricp_connections_max")) {
+      assertThat(poolSamples)
+          .as(name)
+          .anyMatch(line -> line.startsWith(name + "{pool=") && !line.endsWith(" NaN"));
+    }
+    assertThat(poolSamples)
+        .anyMatch(line -> line.startsWith("hikaricp_connections_max{") && !line.endsWith(" 0.0"));
     List<String> httpServerLines =
         response.body().lines().filter(line -> line.startsWith("http_server_")).toList();
     assertThat(httpServerLines)

@@ -10,6 +10,8 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,7 +38,9 @@ import java.util.Map;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
+import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.catalyst.catalog.CatalogTable;
+import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.catalog.DelegatingCatalogExtension;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
@@ -71,6 +75,9 @@ import scala.jdk.javaapi.CollectionConverters;
  * SchemaOperationsTest#testListSchemasPagination}.
  */
 public class UCProxySuite {
+
+  private static final Map<String, String> PARQUET_AT_LOCATION =
+      Map.of(TableCatalog.PROP_PROVIDER, "parquet", TableCatalog.PROP_LOCATION, "/tmp/uc-proxy/t1");
 
   private TablesApi mockTablesApi;
   private SchemasApi mockSchemasApi;
@@ -570,6 +577,77 @@ public class UCProxySuite {
         .containsExactlyInAnyOrderEntriesOf(Map.of("sep", ",", "mode", "FAILFAST"));
   }
 
+  // -- create conflict tests --
+
+  /**
+   * UC REST rejects a taken table name with 400 TABLE_ALREADY_EXISTS, for example when another
+   * writer creates the table after Spark's existence check, or when a view holds the name. CREATE
+   * TABLE IF NOT EXISTS must then do nothing, and a plain CREATE TABLE must fail as already exists.
+   */
+  @Test
+  public void testCreateTableOnTakenNameHonorsIfNotExists(@TempDir Path dir) throws Exception {
+    when(mockTablesApi.getTable(anyString(), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenThrow(new ApiException(404, "not found"));
+    when(mockTablesApi.createTable(any()))
+        .thenThrow(
+            badRequest(
+                "{\"error_code\":\"TABLE_ALREADY_EXISTS\",\"message\":\"Table already exists:"
+                    + " test_catalog.test_schema.t1\"}"));
+    SparkSession spark = sessionWithCatalog(CATALOG_NAME);
+    try {
+      routeToProxy(spark, CATALOG_NAME, (UCProxy) proxy);
+      String createSql =
+          "CREATE TABLE %s test_catalog.test_schema.t1 (c STRING) USING PARQUET LOCATION '"
+              + dir.toUri()
+              + "'";
+
+      spark.sql(String.format(createSql, "IF NOT EXISTS"));
+      assertThatThrownBy(() -> spark.sql(String.format(createSql, "")))
+          .isInstanceOf(TableAlreadyExistsException.class);
+      verify(mockTablesApi, times(2)).createTable(any());
+    } finally {
+      spark.stop();
+    }
+  }
+
+  @Test
+  public void testCreateTableKeepsOtherBadRequestErrors() throws Exception {
+    Identifier ident = Identifier.of(NAMESPACE, "t1");
+    Column[] columns = {Column.create("c", DataTypes.StringType)};
+    for (String body :
+        Arrays.asList(
+            null,
+            "",
+            "Bad Request",
+            "{\"error_code\":\"INVALID_ARGUMENT\",\"message\":\"Invalid name:"
+                + " TABLE_ALREADY_EXISTS\"}")) {
+      ApiException error = badRequest(body);
+      doThrow(error).when(mockTablesApi).createTable(any());
+
+      assertThatThrownBy(
+              () -> proxy.createTable(ident, columns, new Transform[0], PARQUET_AT_LOCATION))
+          .isSameAs(error);
+    }
+  }
+
+  @Test
+  public void testCreateTableMapsConflictStatusToTableAlreadyExists() throws Exception {
+    when(mockTablesApi.createTable(any())).thenThrow(new ApiException(409, "conflict"));
+
+    assertThatThrownBy(
+            () ->
+                proxy.createTable(
+                    Identifier.of(NAMESPACE, "t1"),
+                    new Column[] {Column.create("c", DataTypes.StringType)},
+                    new Transform[0],
+                    PARQUET_AT_LOCATION))
+        .isInstanceOf(TableAlreadyExistsException.class);
+  }
+
+  private static ApiException badRequest(String body) {
+    return new ApiException(400, "Bad Request", null, body);
+  }
+
   // -- relation cache tests --
 
   /**
@@ -592,8 +670,9 @@ public class UCProxySuite {
     Map<String, TableInfo> tables = new HashMap<>();
     fakeTableStore(fixture.mockTablesApi, tables);
     String tableName = String.join(".", catalogName, SCHEMA_NAME, table);
-    SparkSession spark = startSession(catalogName, (UCProxy) fixture.proxy);
+    SparkSession spark = sessionWithCatalog(catalogName);
     try {
+      routeToProxy(spark, catalogName, (UCProxy) fixture.proxy);
       String createSql = "CREATE TABLE " + tableName + " (id INT) USING PARQUET LOCATION '%s'";
 
       spark.sql(String.format(createSql, writeId(spark, dir, 0)));
@@ -627,8 +706,9 @@ public class UCProxySuite {
     fakeTableStore(mockTablesApi, new HashMap<>());
     String optionOnly = String.join(".", CATALOG_NAME, SCHEMA_NAME, "option_only");
     String withComment = String.join(".", CATALOG_NAME, SCHEMA_NAME, "with_comment");
-    SparkSession spark = startSession(CATALOG_NAME, (UCProxy) proxy);
+    SparkSession spark = sessionWithCatalog(CATALOG_NAME);
     try {
+      routeToProxy(spark, CATALOG_NAME, (UCProxy) proxy);
       spark.sql(
           String.format(
               "CREATE TABLE %s (s STRING, i INT) USING CSV OPTIONS (comment '#') LOCATION '%s'",
@@ -718,28 +798,27 @@ public class UCProxySuite {
         .thenAnswer(invocation -> tables.remove(invocation.<String>getArgument(0)));
   }
 
-  /**
-   * Starts a session whose {@link UCSingleCatalog} named {@code catalogName} reaches UC only
-   * through {@code proxy}, by way of its Delta catalog.
-   */
-  private static SparkSession startSession(String catalogName, UCProxy proxy) {
-    String catalogConf = "spark.sql.catalog." + catalogName;
+  /** Builds a new session, never another test's, with {@code catalogName} as a UC catalog. */
+  private static SparkSession sessionWithCatalog(String catalogName) {
     SparkSession.clearActiveSession();
     SparkSession.clearDefaultSession();
-    SparkSession spark =
-        SparkSession.builder()
-            .master("local[1]")
-            .config(catalogConf, UCSingleCatalog.class.getName())
-            .config(catalogConf + "." + OptionsUtil.URI, "http://localhost:8080")
-            .config(catalogConf + "." + OptionsUtil.TOKEN, "token")
-            // Delta's own UC client would load tables from the server instead of the fake proxy.
-            .config(catalogConf + "." + OptionsUtil.DELTA_API_ENABLED, "false")
-            .getOrCreate();
+    String catalogConf = "spark.sql.catalog." + catalogName;
+    return SparkSession.builder()
+        .master("local[1]")
+        .config(catalogConf, UCSingleCatalog.class.getName())
+        .config(catalogConf + "." + OptionsUtil.URI, "http://localhost:8080")
+        .config(catalogConf + "." + OptionsUtil.TOKEN, "token")
+        // Delta's own UC client would load tables from the server instead of the fake proxy.
+        .config(catalogConf + "." + OptionsUtil.DELTA_API_ENABLED, "false")
+        .getOrCreate();
+  }
+
+  /** Points the session's {@link UCSingleCatalog}, through its Delta catalog, at {@code proxy}. */
+  private static void routeToProxy(SparkSession spark, String catalogName, UCProxy proxy) {
     UCSingleCatalog catalog =
         (UCSingleCatalog) spark.sessionState().catalogManager().catalog(catalogName);
     catalog.ucProxy_$eq(proxy);
     ((DelegatingCatalogExtension) catalog.delegate()).setDelegateCatalog(proxy);
-    return spark;
   }
 
   private static TableInfo parquetTable(String catalogName, String table, String location) {
