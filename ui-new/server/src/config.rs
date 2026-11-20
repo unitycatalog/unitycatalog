@@ -47,8 +47,9 @@ fn env_port(env: Lookup<'_>, key: &str, default: u16) -> Result<u16, String> {
 }
 
 /// Reads a server base URL, trimmed. A whitespace-only value, or one that is not
-/// an `http` or `https` URL, is an error: it would otherwise start the bridge
-/// and fail every UC call with `unavailable`.
+/// an `http` or `https` base URL, is an error: it would otherwise start the
+/// bridge and fail every UC call with `unavailable`. Request paths are appended
+/// to the value, so a query or fragment would swallow them.
 fn env_server_url(env: Lookup<'_>, key: &str, default: &str) -> Result<String, String> {
     let Some(value) = env_value(env, key)? else {
         return Ok(default.to_string());
@@ -59,9 +60,15 @@ fn env_server_url(env: Lookup<'_>, key: &str, default: &str) -> Result<String, S
     }
     // A bare `host:port` parses with `host` as its scheme, so check the scheme.
     match reqwest::Url::parse(value) {
-        Ok(url) if matches!(url.scheme(), "http" | "https") => Ok(value.to_string()),
+        Ok(url)
+            if matches!(url.scheme(), "http" | "https")
+                && url.query().is_none()
+                && url.fragment().is_none() =>
+        {
+            Ok(value.to_string())
+        }
         _ => Err(format!(
-            "{key} must be an http or https URL, such as {default}"
+            "{key} must be an http or https base URL without a query or fragment, such as {default}"
         )),
     }
 }
@@ -252,7 +259,8 @@ mod tests {
                 "{value:?}"
             );
         }
-        let error = "UC_SERVER must be an http or https URL, such as http://localhost:8080";
+        let error = "UC_SERVER must be an http or https base URL without a query or fragment, \
+                     such as http://localhost:8080";
         for value in [
             "uc.example.com:8080",
             "localhost:8080",
@@ -260,6 +268,10 @@ mod tests {
             "not a url",
             "ftp://uc.example.com",
             "http://",
+            "http://uc:8080/?x=1",
+            "http://uc:8080?",
+            "http://uc:8080#frag",
+            "http://uc:8080/uc#",
         ] {
             let config = config(&[("UC_SERVER", value)]);
             assert_eq!(config, Err(error.to_string()), "{value:?}");
