@@ -7,13 +7,28 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.common.util.SafeCloseable;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.audit.CapturingAuditSink;
+import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.model.UpdateCatalog;
+import io.unitycatalog.server.model.UpdateSchema;
+import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.observability.UcMetric;
 import io.unitycatalog.server.observability.UcMetricConstants;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
@@ -22,12 +37,15 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.time.Duration;
+import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -181,6 +199,88 @@ class RepositoriesTest {
 
     // Even with the cache enabled, an injected vendor is not wrapped: every request reaches it.
     verify(injected, times(2)).vendCredential(any());
+  }
+
+  /** Every catalog, schema and table read that returns the API model carries its properties. */
+  @Test
+  void catalogSchemaAndTableReadsAttachTheirProperties() {
+    UUID catalogId = UUID.randomUUID();
+    UUID schemaId = UUID.randomUUID();
+    UUID tableId = UUID.randomUUID();
+    Map<String, String> catalogProperties = Map.of("level", "catalog", "tier", "gold");
+    Map<String, String> schemaProperties = Map.of("level", "schema");
+    Map<String, String> tableProperties = Map.of("level", "table", "team", "ml");
+    sessionFactory.inTransaction(
+        session -> {
+          session.persist(
+              UserDAO.builder()
+                  .id(UUID.randomUUID())
+                  .name("owner@localhost")
+                  .email("owner@localhost")
+                  .state("ENABLED")
+                  .createdAt(new Date())
+                  .build());
+          session.persist(
+              CatalogInfoDAO.builder().id(catalogId).name("cat").createdAt(new Date()).build());
+          session.persist(
+              SchemaInfoDAO.builder()
+                  .id(schemaId)
+                  .name("sch")
+                  .catalogId(catalogId)
+                  .createdAt(new Date())
+                  .build());
+          session.persist(
+              TableInfoDAO.builder()
+                  .id(tableId)
+                  .name("tbl")
+                  .schemaId(schemaId)
+                  .type("EXTERNAL")
+                  .dataSourceFormat("DELTA")
+                  .url("s3://bucket/tbl")
+                  .createdAt(new Date())
+                  .build());
+          PropertyDAO.from(catalogProperties, catalogId, Constants.CATALOG)
+              .forEach(session::persist);
+          PropertyDAO.from(schemaProperties, schemaId, Constants.SCHEMA).forEach(session::persist);
+          PropertyDAO.from(tableProperties, tableId, Constants.TABLE).forEach(session::persist);
+        });
+    Repositories repositories = new Repositories(sessionFactory, serverProperties);
+    CatalogRepository catalogs = repositories.getCatalogRepository();
+    SchemaRepository schemas = repositories.getSchemaRepository();
+    TableRepository tables = repositories.getTableRepository();
+
+    try (SafeCloseable ignored =
+        ServiceRequestContext.of(HttpRequest.of(HttpMethod.PATCH, "/")).push()) {
+      assertThat(
+              List.of(
+                  catalogs.getCatalog("cat"),
+                  catalogs.listCatalogs(Optional.empty(), Optional.empty()).getCatalogs().get(0),
+                  catalogs.updateCatalog("cat", new UpdateCatalog()),
+                  catalogs.updateCatalog("cat", new UpdateCatalog().comment("changed"))))
+          .extracting(CatalogInfo::getProperties)
+          .containsOnly(catalogProperties);
+      assertThat(
+              List.of(
+                  schemas.getSchema("cat.sch"),
+                  schemas
+                      .listSchemas("cat", Optional.empty(), Optional.empty())
+                      .getSchemas()
+                      .get(0),
+                  schemas.updateSchema("cat.sch", new UpdateSchema()),
+                  schemas.updateSchema("cat.sch", new UpdateSchema().comment("changed"))))
+          .extracting(SchemaInfo::getProperties)
+          .containsOnly(schemaProperties);
+      assertThat(
+              List.of(
+                  tables.getTable("cat.sch.tbl"),
+                  tables.updateTable(
+                      "cat.sch.tbl",
+                      new UpdateTable().owner("owner@localhost"),
+                      /* canTransferViewToRecipient= */ false,
+                      () -> {})))
+          .extracting(TableInfo::getProperties)
+          .containsOnly(tableProperties);
+    }
   }
 
   /** Test wrapper that records its delegate; methods forward, but the tests only check identity. */
