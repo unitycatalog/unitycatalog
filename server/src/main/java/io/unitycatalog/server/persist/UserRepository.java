@@ -8,9 +8,12 @@ import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -55,19 +58,38 @@ public class UserRepository {
         /* readOnly= */ false);
   }
 
-  /** Lists every user the filter accepts. The SCIM filter runs in memory, so all users are read. */
-  public List<User> listUsers(Predicate<User> filter) {
+  /** One page of the users a filter accepts, and how many users it accepts in all. */
+  public record UserPage(List<User> users, int totalMatches) {}
+
+  /**
+   * Lists the users the filter accepts, ordered by name and id, keeping only the page that starts
+   * after {@code skip} matches and holds at most {@code limit}. The SCIM filter runs in memory, so
+   * every user is scanned to count the matches, but only the page is held.
+   */
+  public UserPage listUsers(Predicate<User> filter, int skip, int limit) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
+          List<User> page = new ArrayList<>();
+          int matches = 0;
           // User names are not unique, so a name cursor would skip users that share one.
-          return session
-              .createQuery("FROM UserDAO ORDER BY name, id", UserDAO.class)
-              .getResultList()
-              .stream()
-              .map(UserDAO::toUser)
-              .filter(filter)
-              .toList();
+          try (Stream<UserDAO> daos =
+              session.createQuery("FROM UserDAO ORDER BY name, id", UserDAO.class).stream()) {
+            for (Iterator<UserDAO> it = daos.iterator(); it.hasNext(); ) {
+              UserDAO dao = it.next();
+              User user = dao.toUser();
+              // Release the entity so the session does not grow with the number of users.
+              session.detach(dao);
+              if (!filter.test(user)) {
+                continue;
+              }
+              if (matches >= skip && page.size() < limit) {
+                page.add(user);
+              }
+              matches++;
+            }
+          }
+          return new UserPage(page, matches);
         },
         "Failed to list users",
         /* readOnly= */ true);

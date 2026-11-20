@@ -41,6 +41,7 @@ import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.UserRepository.UserPage;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
@@ -102,15 +103,14 @@ public class Scim2UserService implements ScimService {
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
     // totalResults is the number of matches, so the page is cut after matching (RFC 7644 3.4.2).
-    List<User> matches =
-        userRepository.listUsers(m -> match(filterEvaluator, userFilter, asUserResource(m)));
     int firstIndex = Math.max(startIndex.orElse(1), 1);
+    UserPage matches =
+        userRepository.listUsers(
+            m -> match(filterEvaluator, userFilter, asUserResource(m)),
+            firstIndex - 1,
+            Math.max(count.orElse(50), 0));
     List<UserResource> userResourcesList =
-        matches.stream()
-            .skip(firstIndex - 1)
-            .limit(Math.max(count.orElse(50), 0))
-            .map(Scim2Utils::asUserResource)
-            .toList();
+        matches.users().stream().map(Scim2Utils::asUserResource).toList();
 
     Meta meta = new Meta();
     meta.setCreated(Calendar.getInstance());
@@ -118,7 +118,8 @@ public class Scim2UserService implements ScimService {
     meta.setResourceType("User");
 
     ListResponse<UserResource> userResources =
-        new ListResponse<>(matches.size(), userResourcesList, firstIndex, userResourcesList.size());
+        new ListResponse<>(
+            matches.totalMatches(), userResourcesList, firstIndex, userResourcesList.size());
     userResources.setMeta(meta);
 
     return userResources;

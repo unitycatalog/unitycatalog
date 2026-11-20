@@ -102,9 +102,19 @@ class UserRepositoryTest {
           CreateUser.builder().name("Same Name").email("same-name-" + i + "@example.com").build());
     }
 
-    var users = userRepository.listUsers(u -> "Same Name".equals(u.getName()));
+    var page = userRepository.listUsers(u -> "Same Name".equals(u.getName()), 0, Integer.MAX_VALUE);
 
-    assertThat(users).hasSize(101).extracting(u -> u.getId()).doesNotHaveDuplicates();
+    assertThat(page.users()).hasSize(101).extracting(u -> u.getId()).doesNotHaveDuplicates();
+    assertThat(page.totalMatches()).isEqualTo(101);
+
+    // A small page still reports every match, and the next page continues without a gap.
+    var first = userRepository.listUsers(u -> "Same Name".equals(u.getName()), 99, 5);
+    assertThat(first.users()).hasSize(2);
+    assertThat(first.totalMatches()).isEqualTo(101);
+    assertThat(first.users())
+        .extracting(u -> u.getId())
+        .containsExactlyElementsOf(
+            page.users().subList(99, 101).stream().map(u -> u.getId()).toList());
   }
 
   @Test
