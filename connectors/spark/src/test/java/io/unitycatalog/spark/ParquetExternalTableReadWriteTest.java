@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.TableInfo;
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -90,8 +91,13 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
     TableCatalog catalog =
         (TableCatalog) session.sessionState().catalogManager().catalog(CATALOG_NAME);
     String otherLocation =
-        getLocation(
-            new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(ANOTHER_TEST_TABLE));
+        new File(
+                getLocation(
+                    new TableSetupOptions()
+                        .setCatalogName(CATALOG_NAME)
+                        .setTableName(ANOTHER_TEST_TABLE)))
+            .toURI()
+            .toString();
 
     assertThatThrownBy(
             () ->
