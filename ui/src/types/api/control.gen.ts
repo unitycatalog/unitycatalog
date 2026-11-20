@@ -117,8 +117,10 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Revoke access token cookie
-     * @description Revokes the access token cookie.
+     * Log out and revoke the access token
+     * @description Revokes the presented access token and clears the UC_TOKEN cookie if present.
+     *     Revoked access tokens are rejected by authentication and token exchange.
+     *     The server's SERVICE token is not revoked.
      *
      */
     post: operations['logout'];
