@@ -11,6 +11,7 @@ from typing import Any, AsyncIterator, Callable, Generator, NamedTuple, Optional
 from databricks.sdk.service.catalog import (
     ColumnTypeName,
     FunctionInfo,
+    FunctionInfoRoutineBody,
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
@@ -93,14 +94,30 @@ NATIVE_ARGUMENTS = {
 BINARY_ARGUMENTS = ["aGk=", "YWJjZA==", "+/8=", "/wA=", "AAH/", ""]
 
 
-def generate_function_info_with_params(params: dict[str, tuple[str, Any]]) -> FunctionInfo:
+def generate_function_info_with_params(
+    params: dict[str, tuple[str, Any]],
+    routine_definition: Optional[str] = None,
+    full_data_type: str = "string",
+) -> FunctionInfo:
     """
     Returns the FunctionInfo of the function `catalog.schema.test` with the given parameters.
 
     Args:
         params: The parameters by name, as (type_text, type) where type is the "type" entry
             of the parameter's type json.
+        routine_definition: The body of an EXTERNAL Python function, or None for no body.
+        full_data_type: The return type text of a function that has a body.
     """
+    body = (
+        {}
+        if routine_definition is None
+        else {
+            "routine_body": FunctionInfoRoutineBody.EXTERNAL,
+            "routine_definition": routine_definition,
+            "data_type": ColumnTypeName(param_type_name(full_data_type)),
+            "full_data_type": full_data_type,
+        }
+    )
     return FunctionInfo(
         catalog_name="catalog",
         schema_name="schema",
@@ -121,6 +138,7 @@ def generate_function_info_with_params(params: dict[str, tuple[str, Any]]) -> Fu
                 for position, (name, (type_text, type_json)) in enumerate(params.items())
             ]
         ),
+        **body,
     )
 
 

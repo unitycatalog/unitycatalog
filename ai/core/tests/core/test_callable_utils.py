@@ -38,6 +38,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     async_int_gen,
     run_sync,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 from unitycatalog.client.models import FunctionInfo, FunctionParameterInfo, FunctionParameterInfos
 
 # ---------------------------
@@ -2458,7 +2459,18 @@ class FakeParam:
         ("ARRAY<INT>", "list[int]"),
         ("MAP<STRING, ARRAY<STRING>>", "dict[str, list[str]]"),
         ("MAP<STRING, MAP<STRING, DOUBLE>>", "dict[str, dict[str, float]]"),
-        ("MAP<STRING, DECIMAL(38, 18)>", "dict[str, decimal(38, 18)]"),
+        ("MAP<STRING, DECIMAL(38, 18)>", "dict[str, Decimal]"),
+        ("DATE", "datetime.date"),
+        ("timestamp", "datetime.datetime"),
+        ("TIMESTAMP_NTZ", "datetime.datetime"),
+        ("DECIMAL(38, 18)", "Decimal"),
+        ("decimal(10,2)", "Decimal"),
+        ("INTERVAL DAY TO SECOND", "datetime.timedelta"),
+        ("interval hour to second", "datetime.timedelta"),
+        ("INTERVAL YEAR TO MONTH", "interval year to month"),
+        ("interval month", "interval month"),
+        ("ARRAY<DECIMAL(10,2)>", "list[Decimal]"),
+        ("map<string,date>", "dict[str, datetime.date]"),
         ("STRUCT<field1:INT, field2:STRING>", "dict"),
     ],
 )
@@ -2626,6 +2638,48 @@ def test_dynamically_construct_python_function_indentation(input_body, expected_
     reconstructed = dynamically_construct_python_function(dummy)
     expected_def = build_expected_definition("test_func", input_body, "Test function")
     assert reconstructed == expected_def, f"Expected:\n{expected_def}\nGot:\n{reconstructed}"
+
+
+@pytest.mark.parametrize(
+    ("params", "return_type", "expected_head"),
+    [
+        (
+            {"day": ("DATE", "date"), "amount": ("DECIMAL(10,2)", "decimal(10,2)")},
+            "STRING",
+            [
+                "import datetime",
+                "from decimal import Decimal",
+                "",
+                "",
+                "def test(day: datetime.date, amount: Decimal) -> str:",
+            ],
+        ),
+        (
+            {"count": ("LONG", "long")},
+            "DATE",
+            ["import datetime", "", "", "def test(count: int) -> datetime.date:"],
+        ),
+        (
+            {"count": ("LONG", "long")},
+            "DECIMAL(10,2)",
+            ["from decimal import Decimal", "", "", "def test(count: int) -> Decimal:"],
+        ),
+        ({"count": ("LONG", "long")}, "STRING", ["def test(count: int) -> str:"]),
+    ],
+)
+def test_reconstructed_source_starts_with_the_imports_its_annotations_need(
+    params, return_type, expected_head
+):
+    function_info = generate_function_info_with_params_oss(
+        params, routine_definition="return None", full_data_type=return_type
+    )
+
+    source = dynamically_construct_python_function(function_info)
+    namespace = {}
+    exec(compile(source, "<source>", "exec"), namespace)
+
+    assert source.splitlines()[: len(expected_head)] == expected_head
+    assert namespace["test"](*(None for _ in params)) is None
 
 
 # ---------------------------

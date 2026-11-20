@@ -559,8 +559,7 @@ The returned value from the `get_function_source` API will be the same as the or
 
 - `tuple` types will be cast to `list` due to the inability to express a Python `tuple` within Unity Catalog
 - The docstring of the original function will be stripped out. Unity Catalog persists the docstring information in the logged function and it is available in the return of the `get_function` API call if needed.
-- Collection types for open source Unity Catalog will only capture the outer type (i.e., `list` or `dict`) as inner collection type metadata is not preserved
-within the `FunctionInfo` object. In Databricks, full typing is supported for collecitons.
+- `DATE` parameters are annotated as `datetime.date`, `TIMESTAMP` and `TIMESTAMP_NTZ` as `datetime.datetime`, day-time `INTERVAL` as `datetime.timedelta` and `DECIMAL` as `Decimal`, also inside `ARRAY` and `MAP` types and in the return type. The definition then starts with the `import datetime` or `from decimal import Decimal` statement that these annotations need, so it can be run on its own.
 
 The result of calling the `get_function_source` API on the `sample_python_func` registered function will be (when printed):
 
