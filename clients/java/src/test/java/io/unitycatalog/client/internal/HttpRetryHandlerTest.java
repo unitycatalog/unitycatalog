@@ -251,6 +251,74 @@ public class HttpRetryHandlerTest {
   }
 
   @Test
+  public void testSingleAttemptPolicyDoesNotSleep() throws IOException, InterruptedException {
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder().maxAttempts(1).initDelayMs(100L).build();
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/unavailable")).build();
+    HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenReturn(response503);
+
+    Instant start = clock.now();
+    HttpResponse<String> result =
+        new HttpRetryHandler(retryPolicy, clock)
+            .call(mockClient, mockRequest, HttpResponse.BodyHandlers.ofString());
+
+    verify(mockClient, times(1))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    assertThat(result.statusCode()).isEqualTo(503);
+    assertThat(clock.now()).isEqualTo(start);
+  }
+
+  @Test
+  public void testCustomPolicyCanStopRetryingBeforeMaxAttempts()
+      throws IOException, InterruptedException {
+    RetryPolicy retryPolicy =
+        new RetryPolicy() {
+          @Override
+          public int maxAttempts() {
+            return 5;
+          }
+
+          @Override
+          public Duration sleepTime(int attempt) {
+            return Duration.ofMillis(100);
+          }
+
+          @Override
+          public boolean allowRetry(int attempt) {
+            return attempt < 2;
+          }
+        };
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/unavailable")).build();
+    HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenReturn(response503);
+
+    Instant start = clock.now();
+    HttpResponse<String> result =
+        new HttpRetryHandler(retryPolicy, clock)
+            .call(mockClient, mockRequest, HttpResponse.BodyHandlers.ofString());
+
+    verify(mockClient, times(2))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    assertThat(result.statusCode()).isEqualTo(503);
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(100)));
+  }
+
+  @Test
   public void testRetriesExhaustedOnRecoverableExceptionStillThrows() {
     // Regression guard: when every attempt throws a recoverable IOException, the handler
     // should still propagate the original exception (not swallow it into a response).

@@ -9,11 +9,11 @@ import java.time.Duration;
  *
  * <pre>{@code
  * RetryPolicy policy = JitterDelayRetryPolicy.builder().build();
- * for(int attempt = 1; policy.allowRetry(attempt); attempt +=1) {
+ * for (int attempt = 1; attempt <= policy.maxAttempts(); attempt += 1) {
  *   try {
  *     doSomeAction();
  *   } catch (Exception e) {
- *     if (isRetryable(e) && attempt < policy.maxAttempts()) {
+ *     if (isRetryable(e) && attempt < policy.maxAttempts() && policy.allowRetry(attempt)) {
  *       Thread.sleep(policy.sleepTime(attempt).toMillis());
  *     } else {
  *       throw e;
@@ -34,27 +34,26 @@ public interface RetryPolicy {
   int maxAttempts();
 
   /**
-   * Calculates the sleep duration before the specified retry attempt.
+   * Calculates the sleep duration before the attempt that follows the given failed attempt.
    *
    * <p>This method determines how long to wait before making the next retry attempt. Different
    * implementations may use different strategies such as constant delay, linear backoff, or
    * exponential backoff.
    *
-   * @param attempt the current retry attempt number, starting from 1 for the first retry
-   * @return the duration to sleep before this retry attempt, must not be null or negative
+   * @param attempt the number of the attempt that just failed, from 1 to {@code maxAttempts() - 1}
+   * @return the duration to sleep before the next attempt, must not be null or negative
    * @throws IllegalArgumentException if attempt is less than 1 or greater than maxAttempts()
    */
   Duration sleepTime(int attempt);
 
   /**
-   * Determines whether a retry should be allowed for the given attempt number.
+   * Determines whether another attempt may follow the given failed attempt.
    *
-   * <p>This method is invoked to check if another retry attempt should be made based on the current
-   * attempt number and the policy's configuration. Typically, returns {@code false} when the
-   * attempt number exceeds {@link #maxAttempts()}.
+   * <p>It is only asked while fewer than {@link #maxAttempts()} attempts have been made, so a
+   * policy can use it to stop retrying earlier, for example based on the attempt number.
    *
-   * @param attempt the current retry attempt number, starting from 1 for the first retry
-   * @return {@code true} if a retry is allowed for this attempt, {@code false} otherwise
+   * @param attempt the number of the attempt that just failed, starting from 1
+   * @return {@code true} if another attempt may be made, {@code false} otherwise
    */
   boolean allowRetry(int attempt);
 }
