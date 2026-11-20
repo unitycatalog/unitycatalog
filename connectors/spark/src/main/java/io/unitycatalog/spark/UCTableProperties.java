@@ -93,15 +93,16 @@ public class UCTableProperties {
 
   /**
    * Keys that must not be forwarded on {@code createTable} / {@code createView}. Reserved V2 fields
-   * are first-class columns on the UC payload; {@code fs.*} is session-scoped credential config;
-   * Spark datasource schema JSON duplicates {@code uc_columns} and overflows varchar(255).
+   * are first-class columns on the UC payload, but an {@code option.} key of the same name, such as
+   * the CSV {@code comment} option, is a reader and writer option and is kept; {@code fs.*} is
+   * session-scoped credential config; Spark datasource schema JSON duplicates {@code uc_columns}
+   * and overflows varchar(255).
    */
   public static boolean shouldPersistProperty(String key) {
-    String bare = withoutOptionPrefix(key);
-    if (V2_TABLE_PROPERTIES.contains(bare)) {
+    if (V2_TABLE_PROPERTIES.contains(key)) {
       return false;
     }
-    if (bare.startsWith("fs.")) {
+    if (withoutOptionPrefix(key).startsWith("fs.")) {
       return false;
     }
     return !isSparkDatasourceSchemaProperty(key);

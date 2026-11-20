@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class UCTablePropertiesTest {
 
@@ -39,14 +41,25 @@ public class UCTablePropertiesTest {
     assertThat(UCTableProperties.isSparkDatasourceSchemaProperty("user.custom")).isFalse();
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "comment",
+        "collation",
+        "external",
+        "is_managed_location",
+        "location",
+        "owner",
+        "provider",
+        "table_type"
+      })
+  public void shouldPersistProperty_dropsReservedKeyButKeepsOptionOfTheSameName(String key) {
+    assertThat(UCTableProperties.shouldPersistProperty(key)).isFalse();
+    assertThat(UCTableProperties.shouldPersistProperty("option." + key)).isTrue();
+  }
+
   @Test
-  public void shouldPersistProperty_dropsReservedCredentialsAndSchemaKeys() {
-    assertThat(UCTableProperties.shouldPersistProperty(TableCatalog.PROP_PROVIDER)).isFalse();
-    assertThat(UCTableProperties.shouldPersistProperty(TableCatalog.PROP_LOCATION)).isFalse();
-    assertThat(
-            UCTableProperties.shouldPersistProperty(
-                TableCatalog.OPTION_PREFIX + TableCatalog.PROP_PROVIDER))
-        .isFalse();
+  public void shouldPersistProperty_dropsCredentialsAndSchemaKeys() {
     assertThat(UCTableProperties.shouldPersistProperty("fs.s3a.session.token")).isFalse();
     assertThat(
             UCTableProperties.shouldPersistProperty(
