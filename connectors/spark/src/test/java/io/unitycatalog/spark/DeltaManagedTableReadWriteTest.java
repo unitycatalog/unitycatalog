@@ -11,15 +11,19 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.connector.catalog.TableChange;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -303,6 +307,44 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                 "REPLACE TABLE %s USING DELTA AS SELECT 1 AS i, 2 AS extra_col", fullTableName),
             String.format(
                 "CREATE OR REPLACE TABLE %s (i INT, extra_col INT) USING DELTA", fullTableName)));
+  }
+
+  @Test
+  public void testAlterTableRenameWithPropertyDoesNotPartiallyCommit(@TempDir Path tempDir)
+      throws Exception {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    String path = tempDir.resolve("rename_with_property").toString();
+    String tableName = String.format("delta.`%s`", path);
+    sql(new TableSetupOptions().createDeltaPathTableSql(path));
+    assertThat(sql("SHOW TBLPROPERTIES %s", tableName))
+        .noneMatch(
+            row ->
+                row.getString(0).equals("delta.columnMapping.mode")
+                    && !row.getString(1).equals("none"));
+
+    UCSingleCatalog catalog =
+        (UCSingleCatalog) session.sessionState().catalogManager().catalog(SPARK_CATALOG);
+    Identifier ident = Identifier.of(new String[] {"delta"}, path);
+    Throwable failure =
+        catchThrowable(
+            () ->
+                catalog.alterTable(
+                    ident,
+                    new TableChange[] {
+                      TableChange.setProperty("delta.appendOnly", "true"),
+                      TableChange.renameColumn(new String[] {"s"}, "full_name")
+                    }));
+
+    assertThat(failure).isNotNull();
+    assertThat(sql("SHOW TBLPROPERTIES %s", tableName))
+        .noneMatch(
+            row -> row.getString(0).equals("delta.appendOnly") && row.getString(1).equals("true"));
+    assertThat(session.table(tableName).schema().fieldNames())
+        .contains("s")
+        .doesNotContain("full_name");
+    assertThat(failure)
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("RENAME COLUMN must be issued as its own ALTER TABLE statement");
   }
 
   @Test

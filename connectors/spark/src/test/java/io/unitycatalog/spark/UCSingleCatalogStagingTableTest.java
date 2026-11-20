@@ -185,6 +185,20 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
+  public void testAlterTableRejectsRenameCombinedWithOtherChanges() throws Exception {
+    TableChange property = TableChange.setProperty("delta.appendOnly", "true");
+    TableChange rename = TableChange.renameColumn(new String[] {"s"}, "full_name");
+
+    for (TableChange[] changes :
+        new TableChange[][] {{property, rename}, {rename, property}, {rename, rename}}) {
+      assertThatThrownBy(() -> catalog.alterTable(IDENT, changes))
+          .isInstanceOf(UnsupportedOperationException.class)
+          .hasMessageContaining("RENAME COLUMN must be issued as its own ALTER TABLE statement");
+      verify(mockDelegate, never()).alterTable(IDENT, changes);
+    }
+  }
+
+  @Test
   public void testStageCreateFailsWhenDelegateIsNotStagingCatalog() {
     UCSingleCatalog nonStagingCatalog = new UCSingleCatalog();
     setDelegate(nonStagingCatalog, mock(TableCatalog.class));

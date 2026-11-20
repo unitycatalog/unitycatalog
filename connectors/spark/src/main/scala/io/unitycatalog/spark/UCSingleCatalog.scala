@@ -558,6 +558,11 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
+    if (changes.size > 1 && changes.exists(_.isInstanceOf[TableChange.RenameColumn])) {
+      throw new UnsupportedOperationException(
+        "RENAME COLUMN must be issued as its own ALTER TABLE statement, " +
+          "not combined with other changes")
+    }
     delegate.alterTable(ident, changes: _*)
   }
 
