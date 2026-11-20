@@ -219,8 +219,8 @@ public class HttpRetryHandlerTest {
     RetryPolicy retryPolicy =
         JitterDelayRetryPolicy.builder()
             .maxAttempts(3)
-            .initDelayMs(10L)
-            .delayMultiplier(1.0)
+            .initDelayMs(100L)
+            .delayMultiplier(2.0)
             .delayJitterFactor(0.0)
             .build();
 
@@ -235,6 +235,7 @@ public class HttpRetryHandlerTest {
             ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenReturn(response429);
 
+    Instant start = clock.now();
     HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
@@ -245,6 +246,8 @@ public class HttpRetryHandlerTest {
     assertThat(result.statusCode()).isEqualTo(429);
     // Body from the original response survives the retry loop.
     assertThat(result.body()).isEqualTo("Rate limit body");
+    // Only the 2 retries sleep (100ms + 200ms), not the final failed attempt.
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(300)));
   }
 
   @Test
@@ -274,8 +277,11 @@ public class HttpRetryHandlerTest {
       throw new RuntimeException(e);
     }
 
+    Instant start = clock.now();
     HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
     assertThatThrownBy(() -> handler.call(mockClient, mockRequest, bodyHandler)).isSameAs(timeout);
+    // Only the single retry sleeps, not the final failed attempt.
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(10)));
   }
 
   @Test

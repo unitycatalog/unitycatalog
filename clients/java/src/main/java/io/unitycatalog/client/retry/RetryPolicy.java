@@ -13,7 +13,7 @@ import java.time.Duration;
  *   try {
  *     doSomeAction();
  *   } catch (Exception e) {
- *     if (isRetryable(e)){
+ *     if (isRetryable(e) && attempt < policy.maxAttempts()) {
  *       Thread.sleep(policy.sleepTime(attempt).toMillis());
  *     } else {
  *       throw e;
@@ -24,13 +24,12 @@ import java.time.Duration;
  */
 public interface RetryPolicy {
   /**
-   * Returns the maximum number of retry attempts allowed by this policy.
+   * Returns the maximum number of attempts allowed by this policy.
    *
-   * <p>This value determines the upper bound on retry attempts. A return value of 0 means no
-   * retries will be attempted (only the initial attempt), while a positive value indicates the
-   * maximum number of additional attempts after the initial failure.
+   * <p>This value is the total number of attempts, including the initial one, so a value of 1 means
+   * no retries. No backoff is slept after the last attempt.
    *
-   * @return the maximum number of retry attempts, must be non-negative
+   * @return the maximum number of attempts, must be positive
    */
   int maxAttempts();
 

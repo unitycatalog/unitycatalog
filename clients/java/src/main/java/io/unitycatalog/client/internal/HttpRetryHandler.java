@@ -52,7 +52,7 @@ class HttpRetryHandler {
         shouldRetry = isCausedByRecoverableEx(e);
       }
 
-      if (shouldRetry && retryPolicy.allowRetry(attempt)) {
+      if (shouldRetry && attempt < retryPolicy.maxAttempts() && retryPolicy.allowRetry(attempt)) {
         try {
           clock.sleep(retryPolicy.sleepTime(attempt));
         } catch (InterruptedException interrupted) {
