@@ -124,8 +124,8 @@ def _session_loop(rest_client) -> Optional[asyncio.AbstractEventLoop]:
 
 def _run_on_new_thread(function: Callable[[], Any]) -> concurrent.futures.Future:
     """
-    Runs `function` on a thread of its own rather than on an executor, which may be busy, or shut
-    down when this runs at exit.
+    Runs `function` on a thread of its own rather than on an executor, whose workers may all be
+    busy.
     """
     future = concurrent.futures.Future()
     # A running future can't be cancelled, so cancelling a caller that waits for it doesn't make
@@ -274,22 +274,20 @@ class _SingleLoopRESTClient:
 
     async def _close_replaced(self):
         """
-        Closes the replaced session on the loop it is bound to, since closing its connections from
-        another loop fails. A session that is not bound to a loop, or whose loop is closed, has no
-        connections that can still be closed, so it is closed here.
+        Closes the replaced session on the loop it is bound to when that loop is running, since
+        closing its connections from another loop fails. Otherwise it is closed here: that works for
+        an unused session and for one on a closed loop, while closing connections that are still
+        open on a stopped loop fails, and the error is logged.
         """
         replaced = self._replaced_rest_client
         owner = _session_loop(replaced)
-        if owner is None or owner.is_closed():
-            await replaced.close()
-        elif owner.is_running():
-            # Not waited for: a request made on that loop meanwhile blocks it on the lock held here.
+        if owner is not None and owner.is_running():
+            # Not waited for, since the caller may be running on that loop.
             asyncio.run_coroutine_threadsafe(replaced.close(), owner).add_done_callback(
                 _log_failed_close
             )
         else:
-            close = partial(owner.run_until_complete, replaced.close())
-            await asyncio.wrap_future(_run_on_new_thread(close))
+            await replaced.close()
 
 
 class UnitycatalogClient:

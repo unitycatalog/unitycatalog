@@ -3070,7 +3070,7 @@ async def test_close_closes_the_original_session_on_its_own_loop(
         await eventually(
             lambda: session is None or session.closed, "the original session was not closed"
         )
-        if used and owner != "closed":
+        if used and owner == "running":
             await eventually(
                 lambda: KeepAliveNotFoundHandler.closed_ports
                 == KeepAliveNotFoundHandler.client_ports,
@@ -3080,8 +3080,47 @@ async def test_close_closes_the_original_session_on_its_own_loop(
         if thread.is_alive():
             loop.call_soon_threadsafe(loop.stop)
             thread.join(30)
+        elif not loop.is_closed():
+            await asyncio.to_thread(loop.run_until_complete, asyncio.sleep(0.1))
         loop.close()
-    assert client_errors(caplog) == []
+    errors = client_errors(caplog)
+    if used and owner == "stopped":
+        assert len(errors) == 1
+        assert errors[0].startswith("Error while closing ApiClient: ")
+        assert "attached to a different loop" in errors[0]
+    else:
+        assert errors == []
+    await assert_session_closed(client)
+
+
+@pytest.mark.asyncio
+async def test_close_does_not_run_tasks_waiting_on_a_stopped_loop(not_found_server):
+    async def build_api_client():
+        return ApiClient(configuration=Configuration(host=not_found_server))
+
+    loop = asyncio.new_event_loop()
+    api_client = await asyncio.to_thread(loop.run_until_complete, build_api_client())
+    client = UnitycatalogFunctionClient(api_client=api_client)
+    calls_started = threading.Event()
+
+    async def call_client():
+        calls_started.set()
+        await client.delete_function_async("catalog.schema.missing")
+
+    waiting = loop.create_task(call_client())
+    try:
+        closing = threading.Thread(target=client.close, daemon=True)
+        closing.start()
+        await asyncio.to_thread(closing.join, 10)
+        assert not closing.is_alive(), "close hung"
+        assert not calls_started.is_set()
+    finally:
+        if not loop.is_running():
+            waiting.cancel()
+            await asyncio.to_thread(
+                loop.run_until_complete, asyncio.gather(waiting, return_exceptions=True)
+            )
+            loop.close()
     await assert_session_closed(client)
 
 
