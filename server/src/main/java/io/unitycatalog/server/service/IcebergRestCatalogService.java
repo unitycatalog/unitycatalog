@@ -33,6 +33,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.CreateTable;
@@ -707,6 +708,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             .discardChanges()
             .withMetadataLocation(MetadataService.toIcebergMetadataLocation(newMetadataLocation))
             .build();
+    List<ColumnInfo> columns = IcebergSchemaConverter.toColumnInfos(updated.schema());
     metadataService.writeTableMetadata(updated, newMetadataLocation, tableLocation);
     try {
       tableRepository.commitIcebergTable(
@@ -715,7 +717,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           table,
           metadataLocation.toString(),
           newMetadataLocation,
-          IcebergSchemaConverter.toColumnInfos(updated.schema()),
+          columns,
           updated.properties());
     } catch (RuntimeException e) {
       deleteMetadataIfRejected(e, newMetadataLocation, tableLocation);
@@ -736,7 +738,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
    * transaction it rolls back. Any other failure, such as a lost connection during the database
    * commit or a session close failing after it, may have stored this file as the table's metadata
    * location, so the file is kept: deleting it would leave the table unreadable. Such a failure
-   * reaches the client as a 5xx, which an Iceberg client reads on a commit as an unknown outcome.
+   * typically reaches the client as a 5xx, which an Iceberg client reads on a commit as an unknown
+   * outcome.
    *
    * @param failure the exception the repository write threw
    * @param metadataLocation the metadata file written for the failed commit

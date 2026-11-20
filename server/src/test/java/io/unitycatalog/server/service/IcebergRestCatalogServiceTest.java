@@ -41,6 +41,7 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
+import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.rest.Endpoint;
@@ -375,15 +376,49 @@ public class IcebergRestCatalogServiceTest {
     verify(metadataService).deleteTableMetadata(written, NormalizedURL.from(TABLE_LOCATION));
   }
 
-  @Test
-  public void stagedCreateCommitKeepsTheFirstMetadataFileWhenTheCreateOutcomeIsUnknown() {
-    BaseException unknown = new BaseException(ErrorCode.INTERNAL, "connection lost during commit");
-    when(tableRepository.createTableForIceberg(any(), any())).thenThrow(unknown);
+  @ParameterizedTest
+  @MethodSource("unknownOutcomeFailures")
+  public void stagedCreateCommitKeepsTheFirstMetadataFileWhenTheCreateOutcomeIsUnknown(
+      RuntimeException failure) {
+    when(tableRepository.createTableForIceberg(any(), any())).thenThrow(failure);
 
     assertThatThrownBy(() -> service.updateTable("cat", "ns", "tbl", stagedCreateCommit()))
-        .isSameAs(unknown);
+        .isSameAs(failure);
     assertThat(writtenMetadataLocation().toString()).startsWith(TABLE_LOCATION + "/metadata/");
     verify(metadataService, never()).deleteTableMetadata(any(), any());
+  }
+
+  @Test
+  public void updateTableWithAnUnsupportedColumnTypeWritesNoMetadataFile() {
+    TableMetadata base =
+        TableMetadata.newTableMetadata(
+            SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of());
+    when(tableRepository.getNativeIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                UUID.randomUUID(),
+                DataSourceFormat.ICEBERG,
+                TABLE_LOCATION + "/metadata/00001-" + UUID.randomUUID() + ".metadata.json",
+                TABLE_LOCATION));
+    when(metadataService.readTableMetadata(any(), any())).thenReturn(base);
+    Schema withTimeColumn =
+        new Schema(
+            Types.NestedField.required(1, "id", Types.LongType.get()),
+            Types.NestedField.optional(2, "at", Types.TimeType.get()));
+    UpdateTableRequest request =
+        new UpdateTableRequest(
+            List.of(new UpdateRequirement.AssertTableUUID(base.uuid())),
+            List.of(
+                new MetadataUpdate.AddSchema(withTimeColumn),
+                new MetadataUpdate.SetCurrentSchema(-1)));
+
+    assertThatThrownBy(() -> service.updateTable("cat", "ns", "tbl", request))
+        .isInstanceOf(BadRequestException.class)
+        .hasMessage("Iceberg type TIME is not supported by Unity Catalog");
+    verify(metadataService, never()).writeTableMetadata(any(), any(), any());
+    verify(metadataService, never()).deleteTableMetadata(any(), any());
+    verify(tableRepository, never())
+        .commitIcebergTable(any(), any(), any(), any(), any(), any(), any());
   }
 
   /** The commit an Iceberg client sends to finish a staged create of an external table. */
