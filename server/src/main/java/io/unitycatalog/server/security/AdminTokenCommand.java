@@ -33,8 +33,10 @@ public final class AdminTokenCommand {
           new ServerProperties(UnityCatalogServer.SERVER_PROPERTIES_FILE),
           Path.of("etc", "conf"),
           System.out);
-    } catch (IllegalStateException e) {
-      System.err.println("uc-admin-token: " + e.getMessage());
+    } catch (Exception e) {
+      // One line, not a stack trace: a missing key, or one this user cannot read.
+      System.err.println(
+          "uc-admin-token: " + (e instanceof IllegalStateException ? e.getMessage() : e));
       System.exit(1);
     }
   }

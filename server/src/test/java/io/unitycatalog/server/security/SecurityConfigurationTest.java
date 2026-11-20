@@ -8,6 +8,7 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -80,7 +81,8 @@ class SecurityConfigurationTest {
   @Test
   void loadsAnExistingKeyWithoutGeneratingOne() throws Exception {
     ServerProperties noSettings = new ServerProperties(new Properties());
-    assertThatThrownBy(() -> SecurityConfiguration.loadExisting(noSettings, configurationFolder))
+    PrintStream discard = new PrintStream(OutputStream.nullOutputStream());
+    assertThatThrownBy(() -> AdminTokenCommand.run(noSettings, configurationFolder, discard))
         .hasMessageContaining("No token signing key file at");
     try (var files = Files.list(configurationFolder)) {
       assertThat(files).isEmpty();
