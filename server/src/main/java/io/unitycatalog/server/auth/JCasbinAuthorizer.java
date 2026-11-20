@@ -7,12 +7,16 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
+import jakarta.persistence.Tuple;
 import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +76,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   private static final int PRIVILEGE_INDEX = 2;
 
   private static final String HIERARCHY_POLICY = "g2";
+  private static final String OWNER_LOOKUP_INDEX = "idx_casbin_rule_resource";
   private static final int HIERARCHY_PARENT_INDEX = 0;
   private static final int HIERARCHY_CHILD_INDEX = 1;
 
@@ -80,6 +85,21 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
       throws Exception {
     this.adapter =
         new JDBCAdapter(autocommitOnCheckout(hibernateConfigurator.getDataSource())) {
+          @Override
+          protected void migrate() throws SQLException {
+            try {
+              super.migrate();
+              ensureOwnerLookupIndex(conn);
+            } catch (SQLException | RuntimeException e) {
+              try {
+                conn.close();
+              } catch (SQLException closeError) {
+                e.addSuppressed(closeError);
+              }
+              throw e;
+            }
+          }
+
           @Override
           protected void retry(ExecutionContext<Void> context) throws SQLException {
             // The adapter replaces this connection without returning it to the pool.
@@ -107,6 +127,37 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
               + " instance will not be seen by this one, so running more than one instance against"
               + " this database is unsafe.");
     }
+  }
+
+  /** The adapter owns casbin_rule outside the Unity Catalog schema migrations. */
+  private static void ensureOwnerLookupIndex(Connection connection) throws SQLException {
+    if (hasOwnerLookupIndex(connection)) {
+      return;
+    }
+    try (Statement statement = connection.createStatement()) {
+      statement.executeUpdate(
+          "CREATE INDEX " + OWNER_LOOKUP_INDEX + " ON casbin_rule (ptype, v1, v2)");
+    } catch (SQLException e) {
+      // Another server may have created the index after the metadata check.
+      if (!hasOwnerLookupIndex(connection)) {
+        throw e;
+      }
+    }
+  }
+
+  private static boolean hasOwnerLookupIndex(Connection connection) throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String table = metadata.storesUpperCaseIdentifiers() ? "CASBIN_RULE" : "casbin_rule";
+    try (ResultSet indexes =
+        metadata.getIndexInfo(
+            connection.getCatalog(), connection.getSchema(), table, false, false)) {
+      while (indexes.next()) {
+        if (OWNER_LOOKUP_INDEX.equalsIgnoreCase(indexes.getString("INDEX_NAME"))) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -152,27 +203,24 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
    */
   public static List<UUID> replaceOwner(Session session, UUID resource, UUID newOwner) {
     // A locking read sees the latest committed owners under MySQL REPEATABLE READ too.
-    List<UUID> oldOwners =
+    List<Tuple> owners =
         session
             .createNativeQuery(
-                "SELECT v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND"
+                "SELECT id, v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND"
                     + " v2 = :owner FOR UPDATE",
-                String.class)
+                Tuple.class)
             .setParameter("resource", resource.toString())
             .setParameter("owner", Privileges.OWNER.getValue())
-            .getResultList()
-            .stream()
-            .map(UUID::fromString)
-            .toList();
+            .getResultList();
     // The JDBC adapter commits on a separate connection. Use this transaction for both writes.
-    session
-        .createNativeMutationQuery(
-            "DELETE FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND v2 = :owner")
-        .setParameter("resource", resource.toString())
-        .setParameter("owner", Privileges.OWNER.getValue())
-        .executeUpdate();
+    for (Tuple owner : owners) {
+      session
+          .createNativeMutationQuery("DELETE FROM casbin_rule WHERE id = :id")
+          .setParameter("id", owner.get("id", Number.class).longValue())
+          .executeUpdate();
+    }
     addOwner(session, resource, newOwner);
-    return oldOwners;
+    return owners.stream().map(owner -> UUID.fromString(owner.get("v0", String.class))).toList();
   }
 
   /** Saves an OWNER grant in the caller's transaction. */
