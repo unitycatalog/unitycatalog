@@ -9,10 +9,13 @@ import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.O
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.POLICY_STATEMENT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
 import java.util.List;
@@ -133,18 +136,50 @@ public class AwsPolicyGeneratorTest {
 
   @Test
   public void testPolicyLeavesOrdinaryPathUnchanged() throws Exception {
-    String policy =
-        AwsPolicyGenerator.generatePolicy(
-            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+    // Valid bucket names that are not valid host names, such as data.2024 or my_bucket, too.
+    for (String bucket : List.of("my-bucket", "data.2024", "my_bucket")) {
+      String policy =
+          AwsPolicyGenerator.generatePolicy(
+              Set.of(SELECT), List.of(NormalizedURL.from("s3://" + bucket + "/path1/table1")));
 
-    JsonNode node = JSON_MAPPER.readTree(policy);
-    assertThat(node.get("Statement").get(0).get("Resource"))
-        .map(JsonNode::asText)
-        .containsExactly(
-            "arn:aws:s3:::my-bucket/path1/table1/*", "arn:aws:s3:::my-bucket/path1/table1");
-    assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
-        .map(JsonNode::asText)
-        .containsExactly("path1/table1", "path1/table1/", "path1/table1/*");
+      JsonNode node = JSON_MAPPER.readTree(policy);
+      assertThat(node.get("Statement").get(0).get("Resource"))
+          .as(bucket)
+          .map(JsonNode::asText)
+          .containsExactly(
+              "arn:aws:s3:::" + bucket + "/path1/table1/*",
+              "arn:aws:s3:::" + bucket + "/path1/table1");
+      assertThat(node.get("Statement").get(1).get("Resource"))
+          .as(bucket)
+          .map(JsonNode::asText)
+          .containsExactly("arn:aws:s3:::" + bucket);
+      assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
+          .as(bucket)
+          .map(JsonNode::asText)
+          .containsExactly("path1/table1", "path1/table1/", "path1/table1/*");
+    }
+    // An authority that is no bucket name, such as a wildcard that would name every bucket, an
+    // escape, user info or a port, is refused rather than written into the policy's ARNs.
+    for (String location :
+        List.of(
+            "s3://*/p",
+            "s3://prod-*/p",
+            "s3://%2A/p",
+            "s3://%62ucket/p",
+            "s3://user@bucket/p",
+            "s3://bucket:80/p")) {
+      // Built outside the assertion, so only generating the policy can throw; next to a valid
+      // location, which does not hide the invalid one.
+      NormalizedURL valid = NormalizedURL.from("s3://valid/p");
+      NormalizedURL invalid = NormalizedURL.from(location);
+      assertThatThrownBy(
+              () -> AwsPolicyGenerator.generatePolicy(Set.of(SELECT), List.of(valid, invalid)))
+          .as(location)
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+          .hasMessageContaining(invalid.toString());
+    }
   }
 
   @Test
