@@ -1116,6 +1116,17 @@ def _split_generic_types(s: str) -> list[str]:
     return parts
 
 
+def _python_type_annotation(python_type: type) -> str:
+    """
+    Returns the annotation of a Python type in a reconstructed function. Types of the `datetime`
+    module are qualified and `Decimal` is not, the same as in the `repr` of their values, so the
+    definition needs only `import datetime` and `from decimal import Decimal`.
+    """
+    if python_type.__module__ == "datetime":
+        return f"datetime.{python_type.__name__}"
+    return python_type.__name__
+
+
 def _parse_sql_data_type(type_str: str) -> str:
     """
     Convert a full SQL type string (e.g. "MAP<STRING, ARRAY<STRING>>")
@@ -1124,10 +1135,14 @@ def _parse_sql_data_type(type_str: str) -> str:
     type_str = type_str.strip()
 
     if "<" not in type_str:
-        if mapped := SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(type_str.upper()):
-            return mapped[0].__name__ if isinstance(mapped, tuple) else mapped.__name__
-        else:
+        base_type = _base_type_name(type_str.upper())
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(base_type)
+        # Only a day-time interval is a `datetime.timedelta`, not a year-month interval.
+        if mapped is None or (
+            base_type == "INTERVAL" and re.search(r"\b(YEAR|MONTH)\b", type_str.upper())
+        ):
             return type_str.lower()
+        return _python_type_annotation(mapped[0] if isinstance(mapped, tuple) else mapped)
 
     outer, inner = type_str.split("<", 1)
     outer = outer.strip().upper()
@@ -1274,6 +1289,19 @@ def _parse_routine_definition(routine_definition: str) -> str:
     return "\n".join(normalized_lines)
 
 
+def _signature_imports(annotations: list[str]) -> str:
+    """
+    Returns the import statements that the annotations of a signature need.
+    """
+    annotation_text = " ".join(annotations)
+    imports = ""
+    if "datetime." in annotation_text:
+        imports += "import datetime\n"
+    if "Decimal" in annotation_text:
+        imports += "from decimal import Decimal\n"
+    return imports
+
+
 def dynamically_construct_python_function(
     function_info: "FunctionInfo",
 ) -> str:
@@ -1286,7 +1314,8 @@ def dynamically_construct_python_function(
         function_info: The FunctionInfo object containing the function metadata.
 
     Returns:
-        The re-constructed function definition as a string.
+        The re-constructed function definition as a string, preceded by the imports that its
+        annotations need.
     """
     if isinstance(function_info.routine_body, str):
         function_type = function_info.routine_body
@@ -1299,13 +1328,18 @@ def dynamically_construct_python_function(
         )
 
     param_names = []
+    param_types = []
     if function_info.input_params and function_info.input_params.parameters:
         for param in function_info.input_params.parameters:
             param_type = _parse_sql_data_type(param.type_text)
+            param_types.append(param_type)
             param_names.append(f"{param.name}: {param_type}")
     return_type = _parse_sql_data_type(function_info.full_data_type)
     function_head = f"{function_info.name}({', '.join(param_names)}) -> {return_type}"
-    func_def = f"def {function_head}:\n"
+    func_def = _signature_imports([*param_types, return_type])
+    if func_def:
+        func_def += "\n\n"
+    func_def += f"def {function_head}:\n"
 
     docstring = _reconstruct_docstring(function_info)
     if docstring:
