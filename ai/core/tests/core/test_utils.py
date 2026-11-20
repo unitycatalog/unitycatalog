@@ -9,7 +9,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.function_processing_utils import (
@@ -210,7 +210,7 @@ def generate_function_info(parameters: List[Dict], catalog="catalog", schema="sc
                     }
                 ]
             ),
-            [{"b": [100] * 10}, {}, {"b": None}],
+            [{"b": [100] * 10}, {"b": None}],
         ),
         (
             generate_function_info(
@@ -228,7 +228,7 @@ def generate_function_info(parameters: List[Dict], catalog="catalog", schema="sc
                     }
                 ]
             ),
-            [{"c": b"binary"}, {"c": "aGVsbG8="}, {}],
+            [{"c": b"binary"}, {"c": "aGVsbG8="}],
         ),
         (
             generate_function_info(
@@ -423,7 +423,6 @@ def generate_function_info(parameters: List[Dict], catalog="catalog", schema="sc
                     "q": [["a", "b"], ["c"], ["d", None], None],
                     "r": "123",
                 },
-                {},
             ],
         ),
     ],
@@ -484,6 +483,71 @@ def test_generate_function_input_params_schema_strict(type_names, strict, expect
     )
     params_schema = generate_function_input_params_schema(function_info, strict=strict)
     assert params_schema.strict is expected_strict
+
+
+def int_param(
+    nullable: bool, parameter_default: Optional[str], name: str = "x", position: int = 0
+) -> Dict:
+    return {
+        "name": name,
+        "type_text": "int",
+        "type_json": json.dumps(
+            {"name": name, "type": "integer", "nullable": nullable, "metadata": {}}
+        ),
+        "type_name": "INT",
+        "position": position,
+        "parameter_type": "PARAM",
+        "parameter_default": parameter_default,
+    }
+
+
+@pytest.mark.parametrize("nullable", [False, True])
+def test_generate_function_input_params_schema_param_without_default_is_required(nullable):
+    function_info = generate_function_info([int_param(nullable, parameter_default=None)])
+    model = generate_function_input_params_schema(function_info).pydantic_model
+    schema = model.model_json_schema()
+
+    assert schema["required"] == ["x"]
+    assert "default" not in schema["properties"]["x"]
+    with pytest.raises(ValidationError) as exc_info:
+        model()
+    assert [(e["type"], e["loc"]) for e in exc_info.value.errors()] == [("missing", ("x",))]
+
+
+@pytest.mark.parametrize(
+    ("nullable", "parameter_default", "expected_default"),
+    [
+        (False, "7", 7),
+        (True, "5", 5),
+        (True, "NULL", None),
+    ],
+)
+def test_generate_function_input_params_schema_param_with_default_is_optional(
+    nullable, parameter_default, expected_default
+):
+    function_info = generate_function_info([int_param(nullable, parameter_default)])
+    model = generate_function_input_params_schema(function_info).pydantic_model
+    schema = model.model_json_schema()
+
+    assert "required" not in schema
+    assert schema["properties"]["x"]["default"] == expected_default
+    assert model().x == expected_default
+
+
+def test_generate_function_input_params_schema_mixes_required_and_default_params():
+    function_info = generate_function_info(
+        [
+            int_param(False, parameter_default=None, name="a", position=0),
+            int_param(True, parameter_default="5", name="b", position=1),
+        ]
+    )
+    model = generate_function_input_params_schema(function_info).pydantic_model
+    schema = model.model_json_schema()
+
+    assert schema["required"] == ["a"]
+    assert "default" not in schema["properties"]["a"]
+    assert schema["properties"]["b"]["default"] == 5
+    assert model(a=1).b == 5
 
 
 def test_param_info_to_pydantic_type_with_sql_null():
