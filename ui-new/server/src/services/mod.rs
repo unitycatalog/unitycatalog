@@ -80,15 +80,12 @@ enum TableKind {
 }
 
 impl TableKind {
-    /// Classifies a UC table resource. A reply with no known `table_type` is
-    /// an error, so an unclassified resource is never treated as a table.
-    fn of(table: &Value) -> Result<Self, ConnectError> {
+    /// Classifies a UC table resource; `None` when it has no known `table_type`.
+    fn of(table: &Value) -> Option<Self> {
         match mapping::table_type(table.get("table_type").and_then(Value::as_str)).as_known() {
-            Some(TableType::MetricView) => Ok(Self::MetricView),
-            Some(TableType::Unspecified) | None => {
-                Err(mapping::invalid_response("missing or unknown table_type"))
-            }
-            Some(_) => Ok(Self::Table),
+            Some(TableType::MetricView) => Some(Self::MetricView),
+            Some(TableType::Unspecified) | None => None,
+            Some(_) => Some(Self::Table),
         }
     }
 
@@ -100,26 +97,61 @@ impl TableKind {
     }
 }
 
+/// Compares a single table resource's kind with `expected`:
+/// - `Ok(None)`: the kinds match.
+/// - `Ok(Some(message))`: they differ; the message names both kinds.
+/// - `Err`: the resource has no known kind (`internal`), so it is never read
+///   or deleted as a table.
 fn kind_mismatch(
     table: &Value,
     full_name: &str,
     expected: TableKind,
 ) -> Result<Option<String>, ConnectError> {
-    let actual = TableKind::of(table)?;
+    let actual = TableKind::of(table)
+        .ok_or_else(|| mapping::invalid_response("missing or unknown table_type"))?;
     Ok((actual != expected)
         .then(|| format!("{full_name} is {}, not {}", actual.noun(), expected.noun())))
 }
 
-/// Keeps the rows of one kind from a UC table list; a row of unknown kind
-/// fails the whole list.
-fn rows_of_kind(rows: &[Value], kind: TableKind) -> Result<Vec<&Value>, ConnectError> {
+/// Keeps the rows of one kind from a UC table list. Rows of no known kind are
+/// skipped rather than failing the page, so a table type added by a newer UC
+/// server does not break the list; one warning per page counts them.
+fn rows_of_kind<'a>(
+    rows: &'a [Value],
+    kind: TableKind,
+    catalog: &str,
+    schema: &str,
+) -> Vec<&'a Value> {
     let mut kept = Vec::new();
+    let mut unclassified = Vec::new();
     for row in rows {
-        if TableKind::of(row)? == kind {
-            kept.push(row);
+        match TableKind::of(row) {
+            Some(actual) if actual == kind => kept.push(row),
+            Some(_) => {}
+            None => unclassified.push(row),
         }
     }
-    Ok(kept)
+    if !unclassified.is_empty() {
+        let examples: Vec<_> = unclassified
+            .iter()
+            .take(3)
+            .map(|row| describe_row(row))
+            .collect();
+        tracing::warn!(
+            catalog,
+            schema,
+            count = unclassified.len(),
+            ?examples,
+            "skipped listed tables with no known table_type"
+        );
+    }
+    kept
+}
+
+/// Names a listed row and its raw `table_type` for a log line.
+fn describe_row(row: &Value) -> String {
+    let field = |key: &str| row.get(key).and_then(Value::as_str).unwrap_or("<missing>");
+    format!("{} ({})", field("name"), field("table_type"))
 }
 
 fn table_path(full_name: &str) -> String {
@@ -315,4 +347,65 @@ fn dependencies_value(dependencies: &buffa::RepeatedView<'_, DependencyView<'_>>
         })
         .collect::<Vec<_>>();
     json!({ "dependencies": dependencies })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{json, Value};
+
+    use super::{rows_of_kind, TableKind};
+    use crate::test_logs;
+
+    /// Runs `rows_of_kind` and returns the names it kept and the lines it logged.
+    fn kept_and_logged(rows: &[Value], kind: TableKind) -> (Vec<&str>, Vec<String>) {
+        test_logs::capture(|| {
+            rows_of_kind(rows, kind, "main", "default")
+                .into_iter()
+                .map(|row| row["name"].as_str().unwrap())
+                .collect()
+        })
+    }
+
+    #[test]
+    fn rows_of_kind_warns_once_per_page_about_unclassified_rows() {
+        let row = |name: &str, table_type: Option<&str>| match table_type {
+            Some(table_type) => json!({"name": name, "table_type": table_type}),
+            None => json!({"name": name}),
+        };
+        let recognized = [
+            row("events", Some("MANAGED")),
+            row("metrics", Some("METRIC_VIEW")),
+        ];
+        let mut rows = recognized.to_vec();
+        rows.extend([
+            row("future", Some("SOME_NEW_TYPE")),
+            // `FOREIGN` is a Databricks Unity Catalog type outside the OSS `TableType` enum.
+            row("foreign", Some("FOREIGN")),
+            row("empty", Some("")),
+            row("untyped", None),
+        ]);
+
+        let (kept, logs) = kept_and_logged(&rows, TableKind::Table);
+        assert_eq!(kept, ["events"]);
+        assert_eq!(logs.len(), 1, "{logs:?}");
+        // The count covers every skipped row; the examples stop at three.
+        for field in [
+            "WARN",
+            "skipped listed tables with no known table_type",
+            r#"catalog="main""#,
+            r#"schema="default""#,
+            "count=4",
+            r#"examples=["future (SOME_NEW_TYPE)", "foreign (FOREIGN)", "empty ()"]"#,
+        ] {
+            assert!(
+                logs[0].contains(field),
+                "{field} missing from {:?}",
+                logs[0]
+            );
+        }
+
+        let (kept, logs) = kept_and_logged(&recognized, TableKind::MetricView);
+        assert_eq!(kept, ["metrics"]);
+        assert!(logs.is_empty(), "{logs:?}");
+    }
 }
