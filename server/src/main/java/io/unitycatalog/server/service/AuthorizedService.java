@@ -5,6 +5,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.auth.decorator.ResultFilter;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
+import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
@@ -12,10 +13,10 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.DeletedResource;
-import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -32,6 +33,7 @@ public abstract class AuthorizedService {
   protected final KeyMapper keyMapper;
   protected final ServerProperties serverProperties;
   private final MetastoreRepository metastoreRepository;
+  private final UnityAccessEvaluator accessEvaluator;
 
   @SneakyThrows
   protected AuthorizedService(
@@ -43,6 +45,8 @@ public abstract class AuthorizedService {
     this.keyMapper = repositories.getKeyMapper();
     this.serverProperties = serverProperties;
     this.metastoreRepository = repositories.getMetastoreRepository();
+    this.accessEvaluator =
+        new UnityAccessEvaluator(authorizer, serverProperties.isStrictPrivilegeChecksEnabled());
   }
 
   /** Views, functions, and models can be transferred to another user only by a metastore admin. */
@@ -58,11 +62,11 @@ public abstract class AuthorizedService {
     return newOwner == null
         || !serverProperties.isAuthorizationEnabled()
         || newOwner.equals(IdentityUtils.findPrincipalEmailAddress())
-        || authorizer.authorize(
+        || accessEvaluator.evaluate(
             userRepository.findPrincipalId(),
-            SecurableType.METASTORE,
-            metastoreRepository.getMetastoreId(),
-            Privileges.OWNER);
+            "#authorize(#principal, #metastore, OWNER)",
+            Map.of(SecurableType.METASTORE, metastoreRepository.getMetastoreId()),
+            Map.of());
   }
 
   /** Reloads after a commit attempt, including an uncertain commit or failed session cleanup. */

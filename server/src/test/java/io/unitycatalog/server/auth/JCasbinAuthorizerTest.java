@@ -73,6 +73,40 @@ public class JCasbinAuthorizerTest {
   }
 
   @Test
+  void startupIndexesExistingOwnerPolicies() throws Exception {
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    authenticator.grantAuthorization(principal, resource, Privileges.OWNER);
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
+        var statement = connection.createStatement()) {
+      String drop = "DROP INDEX idx_casbin_rule_resource";
+      if (connection.getMetaData().getDatabaseProductName().equals("MySQL")) {
+        drop += " ON casbin_rule";
+      }
+      statement.executeUpdate(drop);
+      connection.commit();
+    }
+    Properties properties = new Properties();
+    properties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
+    try (JCasbinAuthorizer restarted =
+        new JCasbinAuthorizer(hibernateConfigurator, new ServerProperties(properties))) {
+      assertThat(restarted.listAuthorizations(principal, resource))
+          .containsExactly(Privileges.OWNER);
+    }
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
+        var statement = connection.createStatement()) {
+      // Dropping the index proves that startup recreated it on the existing policy table.
+      statement.executeUpdate(
+          "DROP INDEX idx_casbin_rule_resource"
+              + (connection.getMetaData().getDatabaseProductName().equals("MySQL")
+                  ? " ON casbin_rule"
+                  : ""));
+      connection.commit();
+    }
+  }
+
+  @Test
   void loadsOnlyCommittedCreationPoliciesWithoutWritingThem() {
     UUID resource = UUID.randomUUID();
     UUID parent = UUID.randomUUID();
