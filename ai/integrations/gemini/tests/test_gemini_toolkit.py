@@ -17,7 +17,7 @@ from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
-from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
+from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit, _restore_integers
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     client,  # noqa: F401
@@ -619,3 +619,68 @@ def test_function_call_sends_integer_arguments_as_int(function_info, arguments, 
 
     parameters = client.execute_function.call_args.kwargs["parameters"]
     assert json.dumps(parameters, sort_keys=True) == json.dumps(expected, sort_keys=True)
+
+
+@pytest.mark.parametrize(
+    "type_json",
+    [
+        '{"type": "long"}',
+        '{"name": "other", "type": "long", "nullable": false, "metadata": {}}',
+    ],
+    ids=["no-embedded-name", "different-embedded-name"],
+)
+def test_function_call_sends_integer_argument_by_parameter_name(type_json):
+    function_info = generate_function_info_with_params_oss({"n": ("long", "long")})
+    function_info.input_params.parameters[0].type_json = type_json
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    declaration = toolkit.generate_callable_tool_list()[0]
+
+    declaration(protos.FunctionCall(name=declaration.name, args={"n": 2}))
+
+    assert repr(client.execute_function.call_args.kwargs["parameters"]) == repr({"n": 2})
+
+
+INT_STRUCT_TYPE_JSON = {
+    "type": "struct",
+    "fields": [{"name": "x", "type": "integer", "nullable": False, "metadata": {}}],
+}
+
+
+@pytest.mark.parametrize(
+    ("value", "uc_type_json", "expected"),
+    [
+        (
+            [{"x": 1.0}, {"x": 2.0}],
+            {"type": "array", "elementType": INT_STRUCT_TYPE_JSON, "containsNull": False},
+            [{"x": 1}, {"x": 2}],
+        ),
+        (
+            {"a": [1.0, 2.0]},
+            {
+                "type": "map",
+                "keyType": "string",
+                "valueType": {"type": "array", "elementType": "long", "containsNull": True},
+                "valueContainsNull": False,
+            },
+            {"a": [1, 2]},
+        ),
+        ({"x": 1.0, "extra": 3.0}, INT_STRUCT_TYPE_JSON, {"x": 1, "extra": 3.0}),
+        ("1", "int", "1"),
+        ([1.0], INT_STRUCT_TYPE_JSON, [1.0]),
+        ({"a": 1.0}, {"type": "array", "elementType": "int", "containsNull": False}, {"a": 1.0}),
+    ],
+    ids=[
+        "array-of-structs",
+        "map-of-arrays",
+        "unknown-struct-key",
+        "string-for-int",
+        "list-for-struct",
+        "dict-for-array",
+    ],
+)
+def test_restore_integers(value, uc_type_json, expected):
+    assert repr(_restore_integers(value, uc_type_json)) == repr(expected)

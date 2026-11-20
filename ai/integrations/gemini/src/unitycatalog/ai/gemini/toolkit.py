@@ -38,6 +38,8 @@ def _function_call_value_to_python(value: Any) -> Any:
     return str(value)
 
 
+# Built from the mapping the function clients validate arguments against, so both agree on which
+# types need an int.
 _INTEGER_TYPE_NAMES = frozenset(
     name for name, python_type in UC_TYPE_JSON_MAPPING.items() if python_type is int
 )
@@ -226,7 +228,10 @@ class UCFunctionToolkit(BaseModel):
         param_infos = function_info.input_params.parameters if function_info.input_params else []
         params_type_json = {
             "type": "struct",
-            "fields": [json.loads(param_info.type_json) for param_info in param_infos],
+            "fields": [
+                {"name": param_info.name, "type": json.loads(param_info.type_json)["type"]}
+                for param_info in param_infos
+            ],
         }
 
         def func(**kwargs: Any) -> str:
