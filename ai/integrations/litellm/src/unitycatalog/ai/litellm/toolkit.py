@@ -52,6 +52,7 @@ class UCFunctionToolkit(BaseModel):
             function_names=self.function_names,
             tools_dict=self.tools_dict,
             client=self.client,
+            filter_accessible_functions=self.filter_accessible_functions,
             uc_function_to_tool_func=self.uc_function_to_litellm_tool,
         )
 

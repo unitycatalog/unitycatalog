@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,64 @@ public class JCasbinAuthorizerTest {
 
     authenticator.grantAuthorization(principal, resource, action);
     assertThat(authenticator.authorize(principal, METASTORE, resource, action)).isTrue();
+  }
+
+  @Test
+  void loadsOnlyCommittedCreationPoliciesWithoutWritingThem() {
+    UUID resource = UUID.randomUUID();
+    UUID parent = UUID.randomUUID();
+    UUID previousOwner = UUID.randomUUID();
+    UUID currentOwner = UUID.randomUUID();
+    UUID otherResource = UUID.randomUUID();
+    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
+    authenticator.grantAuthorization(previousOwner, resource, Privileges.READ_METADATA);
+    sessionFactory.inTransaction(
+        session -> {
+          JCasbinAuthorizer.replaceOwner(session, resource, previousOwner);
+          JCasbinAuthorizer.replaceOwner(session, resource, currentOwner);
+          JCasbinAuthorizer.replaceOwner(session, otherResource, previousOwner);
+          JCasbinAuthorizer.addHierarchyChild(session, parent, resource);
+          JCasbinAuthorizer.addHierarchyChild(session, UUID.randomUUID(), otherResource);
+        });
+    List<Long> storedIds =
+        sessionFactory.fromSession(
+            session ->
+                session
+                    .createNativeQuery("SELECT id FROM casbin_rule ORDER BY id", Long.class)
+                    .getResultList());
+
+    assertThat(authenticator.getHierarchyParent(resource)).isNull();
+    authenticator.loadOwner(resource);
+    authenticator.loadOwner(UUID.randomUUID());
+
+    assertThat(authenticator.getHierarchyParent(resource)).isEqualTo(parent);
+    assertThat(authenticator.getHierarchyParent(otherResource)).isNull();
+    assertThat(authenticator.addHierarchyChild(parent, resource)).isFalse();
+    assertThat(authenticator.listAuthorizations(currentOwner, resource))
+        .containsExactly(Privileges.OWNER);
+    assertThat(authenticator.listAuthorizations(previousOwner, resource))
+        .containsExactly(Privileges.READ_METADATA);
+    assertThat(authenticator.listAuthorizations(previousOwner, otherResource)).isEmpty();
+    List<Long> actualIds =
+        sessionFactory.fromSession(
+            session ->
+                session
+                    .createNativeQuery("SELECT id FROM casbin_rule ORDER BY id", Long.class)
+                    .getResultList());
+    assertThat(actualIds).containsExactlyElementsOf(storedIds);
+
+    authenticator.grantAuthorization(currentOwner, resource, Privileges.SELECT);
+    List<String> storedPrivileges =
+        sessionFactory.fromSession(
+            session ->
+                session
+                    .createNativeQuery(
+                        "SELECT v2 FROM casbin_rule WHERE v0 = :principal AND v1 = :resource",
+                        String.class)
+                    .setParameter("principal", currentOwner.toString())
+                    .setParameter("resource", resource.toString())
+                    .getResultList());
+    assertThat(storedPrivileges).containsExactlyInAnyOrder("OWNER", "SELECT");
   }
 
   @Test

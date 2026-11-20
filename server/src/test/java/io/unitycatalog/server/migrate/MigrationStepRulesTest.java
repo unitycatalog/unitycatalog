@@ -54,7 +54,8 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       PostgreSQL index entry, INCLUDE columns too, fits 2,704 bytes, add a column (NOT NULL only
  *       with a literal DEFAULT, without a key or CHECK rule), change a column's type (each index on
  *       the column still fitting an index entry), drop its NOT NULL, or, on PostgreSQL, replace a
- *       column's CHECK of its values with one that keeps them all.
+ *       column's CHECK of its values with one that keeps them all, or read an {@code oid} column's
+ *       large objects as text, the one change rows can fail ({@link #readsLargeObjectsAsText}).
  *   <li>A type change widens the column, keeps its default, collation and enum or set members, and
  *       no change makes an existing nullable column NOT NULL ({@link #typeChangesWiden}). Adding a
  *       Java enum constant changes the type on MySQL and H2, where the type holds the members; on
@@ -109,10 +110,13 @@ public class MigrationStepRulesTest {
           DatabaseKind.POSTGRESQL,
           Map.of(
               "varchar", Set.of("text"),
+              // An oid column holds large object ids; only readsLargeObjectsAsText changes it.
+              "oid", Set.of("text"),
               "int2", Set.of("int4", "int8"),
               "int4", Set.of("int8")),
           DatabaseKind.MYSQL,
           Map.of(
+              "tinytext", Set.of("text", "mediumtext", "longtext"),
               "varchar", Set.of("text", "mediumtext", "longtext"),
               "text", Set.of("mediumtext", "longtext"),
               "mediumtext", Set.of("longtext"),
@@ -284,6 +288,21 @@ public class MigrationStepRulesTest {
         "MYSQL|CREATE FULLTEXT INDEX i ON t (c)|creates a fulltext index",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE text|",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE int USING c::int|is not an allowed change",
+        // Large objects read as text: only on an oid column, and only as UTF-8. A plain type change
+        // of an oid column would keep the ids as values.
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN lo TYPE text|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN \"lo\" TYPE text|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE \"t\" ALTER COLUMN lo TYPE text|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE \"t\" ALTER COLUMN \"lo\" TYPE text USING"
+            + " convert_from(lo_get(\"lo\"), 'UTF8')|",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN lo TYPE text USING convert_from(lo_get(lo),"
+            + " 'UTF8')|",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE text USING convert_from(lo_get(c), 'UTF8')|is"
+            + " not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN lo TYPE text USING convert_from(lo_get(lo),"
+            + " 'LATIN1')|is not an allowed change",
+        "MYSQL|ALTER TABLE t ALTER COLUMN lo TYPE text USING convert_from(lo_get(lo), 'UTF8')|is"
+            + " not an allowed change",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c DROP NOT NULL|",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c SET NOT NULL|is not an allowed change",
         "POSTGRESQL|ALTER TABLE t ADD UNIQUE (c)|is not an allowed change",
@@ -325,6 +344,7 @@ public class MigrationStepRulesTest {
         new SchemaSnapshot(
             List.of(
                 "column t.c type=varchar size=255 nullable=YES default=null",
+                "column t.lo type=oid size=10 nullable=YES default=null",
                 "column t.long type=varchar size=65535 nullable=YES default=null",
                 "column t.body type=text size=2147483647 nullable=YES default=null",
                 "column t.a type=varchar size=600 nullable=YES default=null",
@@ -701,7 +721,11 @@ public class MigrationStepRulesTest {
           case ADD -> NEW_COLUMN.matcher(columnSpecs(change)).matches();
           // PostgreSQL and H2: ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE <type>, or
           // ALTER TABLE t ALTER COLUMN c DROP NOT NULL
-          case ALTER -> kind != DatabaseKind.MYSQL && (changesType(change) || dropsNotNull(change));
+          case ALTER ->
+              kind != DatabaseKind.MYSQL
+                  && (changesType(change) && !isLargeObjectColumn(kind, alter, change, before)
+                      || dropsNotNull(change)
+                      || readsLargeObjectsAsText(kind, alter, change, before));
           // MySQL: ALTER TABLE t MODIFY c <type> [NULL | NOT NULL] [DEFAULT x] [COLLATE x], which
           // must restate the column's default and collation (typeChangesWiden checks they stay)
           case MODIFY ->
@@ -1013,6 +1037,41 @@ public class MigrationStepRulesTest {
   private static boolean changesType(AlterExpression change) {
     return columnSpecs(change).isEmpty()
         && change.getColDataTypeList().get(0).getUsingExpression() == null;
+  }
+
+  /**
+   * PostgreSQL's {@code ALTER TABLE t ALTER COLUMN c TYPE text USING convert_from(lo_get(c),
+   * 'UTF8')} on an {@code oid} column, which replaces each large object id with the object's text.
+   * Unlike the other changes, rows can fail it (a missing large object, or one that is not UTF-8),
+   * so only this exact form is allowed; {@code docs/server/upgrades.md} says how to recover.
+   */
+  private static boolean readsLargeObjectsAsText(
+      DatabaseKind kind, Alter alter, AlterExpression change, SchemaSnapshot before) {
+    if (!isLargeObjectColumn(kind, alter, change, before)) {
+      return false;
+    }
+    AlterExpression.ColumnDataType column = change.getColDataTypeList().get(0);
+    String name = unquoted(column.getColumnName());
+    return column.getColDataType().getDataType().equalsIgnoreCase("text")
+        && column.getUsingExpression() != null
+        && unquoted(column.getUsingExpression().toString().replace(" ", ""))
+            .equals("convert_from(lo_get(" + name + "),'utf8')");
+  }
+
+  /**
+   * Whether {@code change} changes a PostgreSQL {@code oid} column, which holds large object ids:
+   * any other type change would keep the ids as values, so only {@link #readsLargeObjectsAsText}
+   * may change it.
+   */
+  private static boolean isLargeObjectColumn(
+      DatabaseKind kind, Alter alter, AlterExpression change, SchemaSnapshot before) {
+    if (kind != DatabaseKind.POSTGRESQL || !columnSpecs(change).isEmpty()) {
+      return false;
+    }
+    String table = unquoted(alter.getTable().getName());
+    String name = unquoted(change.getColDataTypeList().get(0).getColumnName());
+    return before.entries().stream()
+        .anyMatch(entry -> entry.startsWith("column " + table + "." + name + " type=oid "));
   }
 
   private static boolean dropsNotNull(AlterExpression change) {

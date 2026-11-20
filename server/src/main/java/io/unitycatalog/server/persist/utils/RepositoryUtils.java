@@ -209,11 +209,11 @@ public class RepositoryUtils {
   }
 
   /**
-   * Runs a locking read; a lock timeout or deadlock victim becomes {@code UNAVAILABLE} (503): the
-   * row was not changed, and the request can be retried. The Iceberg REST spec lists 503, not 409,
-   * for drop table, and the Iceberg client reads a 409 on drop as "already exists".
+   * Runs a locking operation; a lock timeout or deadlock victim becomes {@code UNAVAILABLE} (503).
+   * The caller must roll back its transaction before retrying. The Iceberg REST spec lists 503, not
+   * 409, for drop table, and the Iceberg client reads a 409 on drop as "already exists".
    */
-  private static <R> R unavailableOnLockFailure(String description, Supplier<R> lockingRead) {
+  public static <R> R unavailableOnLockFailure(String description, Supplier<R> lockingRead) {
     try {
       return lockingRead.get();
     } catch (RuntimeException e) {

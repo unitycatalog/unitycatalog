@@ -19,6 +19,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -143,6 +144,20 @@ public final class Auditor implements AutoCloseable {
                 .resourceId(resourceId)
                 .privilege(privilege == null ? null : privilege.getValue())
                 .build());
+  }
+
+  /** Records the removed OWNER grants and the new OWNER grant only after commit. */
+  public void recordOwnershipTransfer(
+      Session session, UUID resourceId, List<UUID> oldOwners, UUID newOwnerId) {
+    afterCommit(
+        session,
+        () -> {
+          oldOwners.forEach(
+              principal ->
+                  recordPermission(
+                      AuditRecord.Action.REVOKE, principal, resourceId, Privileges.OWNER));
+          recordPermission(AuditRecord.Action.GRANT, newOwnerId, resourceId, Privileges.OWNER);
+        });
   }
 
   void recordQueueCleanup(UUID resourceId, String location) {

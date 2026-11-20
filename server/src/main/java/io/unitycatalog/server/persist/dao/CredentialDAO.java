@@ -23,7 +23,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -39,16 +38,18 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.DynamicUpdate;
 
 /**
  * Data Access Object for storing cloud provider credentials in Unity Catalog. The credential
- * payload is stored as a JSON blob in the {@code credential} column, with the {@code
- * credentialType} discriminator indicating how to deserialize it.
+ * payload is stored as JSON text in the {@code credential} column, with the {@code credentialType}
+ * discriminator indicating how to deserialize it.
  *
  * @see CredentialService
  * @see AwsCredentialVendor
  */
 @Entity
+@DynamicUpdate
 @Table(name = "uc_credentials")
 // Lombok
 @Getter
@@ -59,8 +60,8 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class CredentialDAO extends IdentifiableDAO {
   private static ObjectMapper objectMapper = new ObjectMapper();
-  // Write-only request field of s3_compatible: stored in the blob next to the S3CompatibleResponse
-  // fields and dropped when the blob is read back as a response.
+  // Write-only request field of s3_compatible: stored in the JSON next to the S3CompatibleResponse
+  // fields and dropped when the JSON is read back as a response.
   private static final String SECRET_ACCESS_KEY_FIELD = "secret_access_key";
 
   public enum CredentialType {
@@ -75,8 +76,8 @@ public class CredentialDAO extends IdentifiableDAO {
   @Setter(AccessLevel.NONE)
   private CredentialType credentialType;
 
-  @Lob
-  @Column(name = "credential", nullable = false)
+  // Text, not a large object; the length makes it mediumtext rather than tinytext on MySQL.
+  @Column(name = "credential", nullable = false, length = 16777215)
   // No direct access from outside
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
@@ -211,10 +212,6 @@ public class CredentialDAO extends IdentifiableDAO {
   /**
    * Validates an {@code s3_compatible} credential and stores it, replacing the stored credential;
    * its {@code secret_access_key} goes through {@code secretStore}, bound to this credential's id.
-   *
-   * <p>TODO(#2169): on MySQL, {@code credential} is {@code tinytext} (255 bytes) until #2169 widens
-   * it, which an {@code s3_compatible} credential with {@code assume_role} and real endpoints
-   * usually exceeds.
    *
    * @param s3Compatible the credential to store
    * @param secretStore keeps its {@code secret_access_key}

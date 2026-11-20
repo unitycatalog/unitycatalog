@@ -78,6 +78,7 @@ public class CredentialRepository {
                 "Storage credential already exists: " + createCredentialRequest.getName());
           }
           session.persist(dao);
+          repositories.getOwnershipRepository().initializeOwner(session, dao.getId(), callerId);
           LOGGER.info("Added storage credential: {}", dao.getName());
           return dao.toCredentialInfo(getAwsS3MasterRoleArn());
         },
@@ -150,6 +151,11 @@ public class CredentialRepository {
   }
 
   public CredentialInfo updateCredential(String name, UpdateCredentialRequest updateCredential) {
+    return updateCredential(name, updateCredential, () -> {});
+  }
+
+  public CredentialInfo updateCredential(
+      String name, UpdateCredentialRequest updateCredential, Runnable beforeCommit) {
     ValidationUtils.checkArgument(
         updateCredential.getAwsIamRole() == null || updateCredential.getS3Compatible() == null,
         "Specify only one of aws_iam_role and s3_compatible.");
@@ -163,6 +169,14 @@ public class CredentialRepository {
           CredentialDAO existingCredential = getCredentialDAOForUpdate(session, name);
           if (existingCredential == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
+          }
+
+          if (updateCredential.getOwner() != null) {
+            existingCredential.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(
+                        session, existingCredential, updateCredential.getOwner(), beforeCommit));
           }
 
           // Update fields if provided

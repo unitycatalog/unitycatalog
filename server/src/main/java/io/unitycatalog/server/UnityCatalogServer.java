@@ -381,6 +381,7 @@ public class UnityCatalogServer implements AutoCloseable {
     // This server owns the registry and releases its JVM/GC binders on close().
     metrics = MetricsRegistries.createPrometheus();
     PrometheusMeterRegistry meterRegistry = metrics.registry();
+    MetricsRegistries.bindHikariPool(meterRegistry, hibernateConfigurator.getDataSource());
     armeriaServerBuilder.observabilityService(
         "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
 
