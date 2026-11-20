@@ -14,6 +14,7 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.ResponseHeaders;
+import com.linecorp.armeria.common.ResponseHeadersBuilder;
 import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.Get;
@@ -83,6 +84,7 @@ import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
@@ -377,15 +379,27 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     }
     boolean refsOnly = refsOnly(snapshots);
     Set<CredentialContext.Privilege> credentialPrivileges = getLoadCredentialPrivileges(state);
+    NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
+    Map<String, String> config =
+        credentialPrivileges.isEmpty()
+            ? Map.of()
+            : tableConfigService.getTableConfig(
+                tableLocation,
+                credentialPrivileges,
+                credentialsEndpoint(catalog, namespace, table));
+    // The tag names the metadata version, not the storage settings in the config. For S3-compatible
+    // storage those can change without a new version (the credential's keys or its endpoint), and
+    // a client cannot pick them up otherwise (the refresh endpoint renews keys, never the
+    // endpoint), so such a response carries no tag and is always sent in full.
+    boolean isConditional = !config.containsKey(S3FileIOProperties.ENDPOINT);
 
     // A caller holding this tag already has what this request would return, so answer it without
     // reading the metadata file at all.
     String etag = metadataETag(state.metadataLocation(), refsOnly, credentialPrivileges);
-    if (holdsETag(ifNoneMatch, etag)) {
+    if (isConditional && holdsETag(ifNoneMatch, etag)) {
       return HttpResult.of(ResponseHeaders.of(HttpStatus.NOT_MODIFIED, HttpHeaderNames.ETAG, etag));
     }
 
-    NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
     TableMetadata tableMetadata =
         metadataService.readTableMetadata(
             NormalizedURL.from(state.metadataLocation()), tableLocation);
@@ -396,19 +410,13 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
               .suppressHistoricalSnapshots()
               .build();
     }
-    Map<String, String> config =
-        credentialPrivileges.isEmpty()
-            ? Map.of()
-            : tableConfigService.getTableConfig(
-                tableLocation,
-                credentialPrivileges,
-                credentialsEndpoint(catalog, namespace, table));
-
+    ResponseHeadersBuilder headers =
+        ResponseHeaders.builder(HttpStatus.OK).contentType(MediaType.JSON);
+    if (isConditional) {
+      headers.add(HttpHeaderNames.ETAG, etag);
+    }
     return HttpResult.of(
-        ResponseHeaders.builder(HttpStatus.OK)
-            .contentType(MediaType.JSON)
-            .add(HttpHeaderNames.ETAG, etag)
-            .build(),
+        headers.build(),
         LoadTableResponse.builder().withTableMetadata(tableMetadata).addAllConfig(config).build());
   }
 

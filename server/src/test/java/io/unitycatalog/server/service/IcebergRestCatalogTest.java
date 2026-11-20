@@ -2,6 +2,9 @@ package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
@@ -34,6 +37,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -75,6 +79,7 @@ import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
@@ -138,6 +143,14 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   // hand-built HTTP. Tests that assert HTTP-level behavior (status/headers, invalid input, unrouted
   // paths) keep using the raw {@code client} below.
   private IcebergRestClient icebergClient;
+  // Lets a test have the server's FileIO config name an S3 endpoint, as S3-compatible storage does.
+  private FileOperations fileOperations;
+
+  @Override
+  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
+    this.fileOperations = spy(fileOperations);
+    return this.fileOperations;
+  }
 
   @BeforeEach
   public void setUp() {
@@ -1796,6 +1809,18 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // Released Iceberg clients keep response headers in a map keyed by the name as received and
     // look this one up as "ETag", so the name has to reach the wire spelled that way.
     assertThat(responseHead(tablePath)).contains("ETag: W/\"");
+
+    // On S3-compatible storage the keys or the endpoint in the config can change without a new
+    // metadata version, and a client cannot pick them up otherwise: no tag, and always the full
+    // response, even for a caller holding the tag from before.
+    String heldETag = reloaded.headers().get(HttpHeaderNames.ETAG);
+    doReturn(Map.of(S3FileIOProperties.ENDPOINT, "http://storage.example.com:9000"))
+        .when(fileOperations)
+        .getFileIOConfig(any(), any(), any());
+    AggregatedHttpResponse fromS3Compatible = conditionalGet(tablePath, heldETag);
+    assertThat(fromS3Compatible.status().code()).isEqualTo(200);
+    assertThat(fromS3Compatible.headers().get(HttpHeaderNames.ETAG)).isNull();
+    assertThat(fromS3Compatible.contentUtf8()).contains("http://storage.example.com:9000");
   }
 
   /**
