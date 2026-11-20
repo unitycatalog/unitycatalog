@@ -1,6 +1,5 @@
 package io.unitycatalog.server.service.credential;
 
-import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
@@ -135,7 +134,13 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
    */
   private boolean isEndpointOnlyForClient(
       Optional<CredentialDAO> credentialDAO, CredentialUse use) {
-    return use.getPurpose() == Purpose.CLIENT
+    // A switch, so that a new purpose has to decide whether it is a client.
+    boolean isClient =
+        switch (use.getPurpose()) {
+          case CLIENT -> true;
+          case SERVER, CLEANUP -> false;
+        };
+    return isClient
         && staticKeyVending == S3CompatibleStaticKeyVending.ENDPOINT_ONLY
         && credentialDAO
             .filter(dao -> dao.getCredentialType() == CredentialType.S3_COMPATIBLE)

@@ -107,6 +107,10 @@ public class CloudCredentialVendorTest {
     lenient()
         .when(s3BucketRegions.getS3CompatibleRegion(any(), any()))
         .thenReturn(DISCOVERED_REGION);
+    // The server's default mode for key pairs.
+    lenient()
+        .when(serverProperties.getS3CompatibleStaticKeyVending())
+        .thenReturn(S3CompatibleStaticKeyVending.ENDPOINT_ONLY);
   }
 
   private TemporaryCredentials vendCredential(
@@ -513,9 +517,8 @@ public class CloudCredentialVendorTest {
     ArgumentCaptor<AwsCredentialsProvider> providerCaptor =
         ArgumentCaptor.forClass(AwsCredentialsProvider.class);
 
-    // A credential with assume_role always vends sessions, whatever the mode for key pairs.
-    when(serverProperties.getS3CompatibleStaticKeyVending())
-        .thenReturn(S3CompatibleStaticKeyVending.STATIC_KEY);
+    // A credential with assume_role vends sessions to clients even in the default endpoint-only
+    // mode, which holds back only key pairs.
     try (MockedStatic<StsClient> mockedStsClient = Mockito.mockStatic(StsClient.class)) {
       mockedStsClient.when(StsClient::builder).thenReturn(mockBuilder);
       credentialsOperations =

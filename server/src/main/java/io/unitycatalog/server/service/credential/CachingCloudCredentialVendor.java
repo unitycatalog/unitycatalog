@@ -34,11 +34,12 @@ import lombok.SneakyThrows;
  * request.
  *
  * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}, plus, for
- * S3-compatible storage, the storage credential's version, its S3 endpoint and region, and whether
- * the server or a client uses it. It is served until {@code min(vendTime + maxAge, credentialExpiry
- * - expiryMargin)}, where {@code vendTime} is read before the cloud call; a static credential with
- * no expiry is bounded by the max age alone. Callers always receive a copy, so they cannot change a
- * cached credential.
+ * S3-compatible storage, the storage credential's version and its S3 endpoint and region. The
+ * server and clients share an entry: what a client receives of it is decided after the cache, in
+ * {@link StorageCredentialVendorImpl}. It is served until {@code min(vendTime + maxAge,
+ * credentialExpiry - expiryMargin)}, where {@code vendTime} is read before the cloud call; a static
+ * credential with no expiry is bounded by the max age alone. Callers always receive a copy, so they
+ * cannot change a cached credential.
  *
  * <p>Each request is recorded as a hit or a miss in {@link StorageCredentialCacheMetrics}.
  */
