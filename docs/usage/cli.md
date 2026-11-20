@@ -65,6 +65,30 @@ storage access role trust in `unity_catalog_iam_arn`, additionally with an `exte
 trust relationship must check. Please refer to [Deploy for AWS](../server/aws.md) on how to properly
 configure both roles to make it working.
 
+Here's how to store a Google Cloud service account key as a Credential:
+
+```sh
+bin/uc credential create \
+  --name <name> # (1) \
+  --gcp_service_account_key_file /path/to/key.json # (2)
+```
+
+1. `name`: The name of the Credential.
+2. `gcp_service_account_key_file`: The JSON key file of the service account. Its `client_email`,
+   `private_key_id` and `private_key` are sent to the server.
+
+The server stores the `private_key` encrypted, so it needs the key set in the
+`UC_SERVER_CREDENTIAL_ENCRYPTION_KEY` environment variable (32 random bytes in base64, such as the
+output of `openssl rand -base64 32`); without it the request fails. Use the same key on every server
+instance and keep it as long as the credentials exist. The `private_key` is never returned: `get`
+and `list` show only the `email` and `private_key_id`.
+
+An external location that uses a Google Cloud Storage credential must be a `gs://` path.
+
+For now this only stores the key and binds external locations to it. Getting temporary access tokens
+from the stored credential is not supported yet: a request for access under such a location fails
+with `UNIMPLEMENTED`.
+
 ### List Credentials
 
 Here's how to list Credentials contained in a Unity Catalog instance.

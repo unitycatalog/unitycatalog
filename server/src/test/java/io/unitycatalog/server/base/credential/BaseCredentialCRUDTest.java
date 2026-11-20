@@ -15,15 +15,19 @@ import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
+import io.unitycatalog.client.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.client.model.S3AssumeRole;
 import io.unitycatalog.client.model.S3CompatibleRequest;
 import io.unitycatalog.client.model.S3CompatibleResponse;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
+import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -124,9 +128,10 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
         List.of(
             new InvalidCreate(
                 request(keyPair()).awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)),
-                "Specify only one of aws_iam_role and s3_compatible."),
+                "Specify exactly one of aws_iam_role, s3_compatible and gcp_service_account_key."),
             new InvalidCreate(
-                request(null), "Specify exactly one of aws_iam_role and s3_compatible."),
+                request(null),
+                "Specify exactly one of aws_iam_role, s3_compatible and gcp_service_account_key."),
             new InvalidCreate(
                 request(
                     keyPair()
@@ -303,6 +308,124 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     assertThat(updated.getS3Compatible().getAssumeRole().getRoleArn()).isEqualTo(updatedArn);
     assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(updated);
     credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.empty());
+  }
+
+  @Test
+  public void testGcpServiceAccountKeyCredential() throws ApiException {
+    String privateKey = TestUtils.generatePkcs8PrivateKeyPem();
+    String missing = "gcp_service_account_key.%s is required.";
+    List<InvalidCreate> invalidCreates =
+        List.of(
+            new InvalidCreate(
+                gcpRequest(privateKey).awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)),
+                "Specify exactly one of aws_iam_role, s3_compatible and gcp_service_account_key."),
+            new InvalidCreate(gcpRequest(privateKey, " "), String.format(missing, "email")),
+            new InvalidCreate(
+                gcpRequest(privateKey).gcpServiceAccountKey(gcpKey(privateKey).privateKeyId(null)),
+                String.format(missing, "private_key_id")),
+            new InvalidCreate(
+                gcpRequest(privateKey).gcpServiceAccountKey(gcpKey(null)),
+                String.format(missing, "private_key")),
+            new InvalidCreate(
+                gcpRequest("not-a-key"),
+                "gcp_service_account_key.private_key is not a PEM-encoded PKCS#8 private key."));
+    for (InvalidCreate c : invalidCreates) {
+      assertApiException(
+          () -> credentialOperations.createCredential(c.request()),
+          ErrorCode.INVALID_ARGUMENT,
+          c.error());
+    }
+    // A rejected key is left out of the message.
+    assertThatThrownBy(() -> credentialOperations.createCredential(gcpRequest("not-a-key")))
+        .isInstanceOf(ApiException.class)
+        .extracting(e -> ((ApiException) e).getResponseBody())
+        .asString()
+        .doesNotContain("not-a-key");
+
+    // The private key is write-only: every read returns the email and key id only.
+    CredentialInfo created = credentialOperations.createCredential(gcpRequest(privateKey));
+    GcpServiceAccountKeyResponse expected =
+        new GcpServiceAccountKeyResponse().email(GCP_EMAIL).privateKeyId(GCP_PRIVATE_KEY_ID);
+    assertThat(created.getGcpServiceAccountKey()).isEqualTo(expected);
+    assertThat(created.getAwsIamRole()).isNull();
+    assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(created);
+    assertThat(credentialOperations.listCredentials(Optional.empty(), CredentialPurpose.STORAGE))
+        .contains(created);
+
+    // Its key cannot be changed through update, nor can it become another type, since its
+    // locations are gs:// paths.
+    assertApiException(
+        () ->
+            credentialOperations.updateCredential(
+                CREDENTIAL_NAME,
+                new UpdateCredentialRequest()
+                    .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN))),
+        ErrorCode.INVALID_ARGUMENT,
+        "is a gcp_service_account_key credential, so aws_iam_role and s3_compatible cannot be"
+            + " set on it.");
+    assertThat(
+            credentialOperations
+                .updateCredential(CREDENTIAL_NAME, new UpdateCredentialRequest().comment(COMMENT))
+                .getGcpServiceAccountKey())
+        .isEqualTo(expected);
+
+    // Its external locations must be gs:// paths.
+    String gsUrl = "gs://unitycatalog-test";
+    String notGs =
+        "Storage credential 'uc_testcredential' is a gcp_service_account_key credential, so its"
+            + " external locations must be gs:// paths: ";
+    assertApiException(
+        () ->
+            externalLocationOperations.createExternalLocation(
+                new CreateExternalLocation()
+                    .name(EXTERNAL_LOCATION_NAME)
+                    .url(URL)
+                    .credentialName(CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        notGs + URL);
+    externalLocationOperations.createExternalLocation(
+        new CreateExternalLocation()
+            .name(EXTERNAL_LOCATION_NAME)
+            .url(gsUrl)
+            .credentialName(CREDENTIAL_NAME));
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(URL)),
+        ErrorCode.INVALID_ARGUMENT,
+        notGs + URL);
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(gsUrl);
+    // An S3-compatible credential would strand the gs:// location, as it would an AWS one.
+    assertApiException(
+        () ->
+            credentialOperations.updateCredential(
+                CREDENTIAL_NAME, new UpdateCredentialRequest().s3Compatible(keyPair())),
+        ErrorCode.INVALID_ARGUMENT,
+        "is a gcp_service_account_key credential");
+    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME, Optional.empty());
+    credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.empty());
+  }
+
+  private static final String GCP_EMAIL = "uc-test@my-project.iam.gserviceaccount.com";
+  private static final String GCP_PRIVATE_KEY_ID = "0123456789abcdef";
+
+  private static GcpServiceAccountKeyRequest gcpKey(String privateKey) {
+    return new GcpServiceAccountKeyRequest()
+        .email(GCP_EMAIL)
+        .privateKeyId(GCP_PRIVATE_KEY_ID)
+        .privateKey(privateKey);
+  }
+
+  private static CreateCredentialRequest gcpRequest(String privateKey) {
+    return new CreateCredentialRequest()
+        .name(CREDENTIAL_NAME)
+        .purpose(CredentialPurpose.STORAGE)
+        .gcpServiceAccountKey(gcpKey(privateKey));
+  }
+
+  private static CreateCredentialRequest gcpRequest(String privateKey, String email) {
+    return gcpRequest(privateKey).gcpServiceAccountKey(gcpKey(privateKey).email(email));
   }
 
   private record InvalidCreate(CreateCredentialRequest request, String error) {}

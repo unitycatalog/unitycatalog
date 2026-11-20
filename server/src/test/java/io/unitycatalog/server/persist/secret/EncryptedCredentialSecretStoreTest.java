@@ -112,26 +112,22 @@ public class EncryptedCredentialSecretStoreTest {
   }
 
   @Test
-  public void testKeyIsReadOnlyWithS3CompatibleStorageEnabled() {
-    for (boolean enabled : List.of(true, false)) {
-      Properties properties = new Properties();
-      properties.setProperty(
-          Property.S3_COMPATIBLE_STORAGE_ENABLED.getKey(), String.valueOf(enabled));
-      properties.setProperty(Property.CREDENTIAL_ENCRYPTION_KEY.getKey(), "not base64!");
-      ServerProperties serverProperties = new ServerProperties(properties);
-      if (enabled) {
-        // A malformed key stops the server only when the feature that uses it is on.
-        assertThatThrownBy(() -> EncryptedCredentialSecretStore.from(serverProperties))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("must be 32 bytes encoded in base64");
-      } else {
-        assertThatThrownBy(
-                () -> EncryptedCredentialSecretStore.from(serverProperties).store("v", CONTEXT))
-            .isInstanceOf(BaseException.class)
-            .extracting(e -> ((BaseException) e).getErrorCode())
-            .isEqualTo(ErrorCode.FAILED_PRECONDITION);
-      }
-    }
+  public void testKeyIsReadWhenSet() {
+    Properties properties = new Properties();
+    properties.setProperty(Property.CREDENTIAL_ENCRYPTION_KEY.getKey(), "not base64!");
+    ServerProperties malformed = new ServerProperties(properties);
+    // A malformed key stops the server, whichever credential types it holds.
+    assertThatThrownBy(() -> EncryptedCredentialSecretStore.from(malformed))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("must be 32 bytes encoded in base64");
+    // Without a key the server starts, and refuses to store a secret.
+    assertThatThrownBy(
+            () ->
+                EncryptedCredentialSecretStore.from(new ServerProperties(new Properties()))
+                    .store("v", CONTEXT))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
   }
 
   @Test
