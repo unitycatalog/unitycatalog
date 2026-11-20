@@ -406,6 +406,7 @@ mod tests {
         let mut rows = recognized.to_vec();
         rows.extend([
             row("future", Some("SOME_NEW_TYPE")),
+            // `FOREIGN` is a Databricks Unity Catalog type outside the OSS `TableType` enum.
             row("foreign", Some("FOREIGN")),
             row("empty", Some("")),
             row("untyped", None),

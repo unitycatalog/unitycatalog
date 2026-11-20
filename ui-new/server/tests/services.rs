@@ -523,6 +523,7 @@ async fn table_and_view_lists_keep_only_their_own_kind() {
     };
     let unclassified = vec![
         row("future", Some("SOME_NEW_TYPE")),
+        // `FOREIGN` is a Databricks Unity Catalog type outside the OSS `TableType` enum.
         row("foreign", Some("FOREIGN")),
         row("empty", Some("")),
         row("untyped", None),
@@ -557,7 +558,8 @@ async fn table_and_view_lists_keep_only_their_own_kind() {
         ),
         ("ViewService", "ListViews", "views", unclassified, vec![]),
     ];
-    for (service, rpc, field, rows, expected) in cases {
+    for (index, (service, rpc, field, rows, expected)) in cases.into_iter().enumerate() {
+        let case = format!("case {index}, {rpc}");
         let uc = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/api/2.1/unity-catalog/tables"))
@@ -582,7 +584,7 @@ async fn table_and_view_lists_keep_only_their_own_kind() {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK, "{rpc}");
+        assert_eq!(response.status(), StatusCode::OK, "{case}");
         let json = body_json(response).await;
         // proto3 JSON omits an empty repeated field.
         let names: Vec<_> = json[field]
@@ -591,8 +593,8 @@ async fn table_and_view_lists_keep_only_their_own_kind() {
             .flatten()
             .map(|row| row["fullName"].as_str().unwrap())
             .collect();
-        assert_eq!(names, expected, "{rpc}");
-        assert_eq!(json["page"]["nextPageToken"], "next", "{rpc}");
+        assert_eq!(names, expected, "{case}");
+        assert_eq!(json["page"]["nextPageToken"], "next", "{case}");
     }
 }
 
