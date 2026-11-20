@@ -86,8 +86,8 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     TableSetupOptions options =
         new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE);
-    String location = getLocation(options);
-    sql(options.createExternalTableSql(location));
+    sql(options.createExternalTableSql(getLocation(options)));
+    String storedLocation = tableOperations.getTable(options.fullTableName()).getStorageLocation();
     TableCatalog catalog =
         (TableCatalog) session.sessionState().catalogManager().catalog(CATALOG_NAME);
     String otherLocation =
@@ -112,7 +112,7 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
                         otherLocation)))
         .isInstanceOf(TableAlreadyExistsException.class);
     assertThat(tableOperations.getTable(options.fullTableName()).getStorageLocation())
-        .isEqualTo(location);
+        .isEqualTo(storedLocation);
   }
 
   @Test
