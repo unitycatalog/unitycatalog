@@ -306,18 +306,29 @@ public class GcpCredentialVendor {
   }
 
   /**
-   * Maps a failure to get a token with a stored service account key. Google rejecting the key, for
-   * example because it was disabled or deleted, is for an administrator to fix, so the message says
-   * to replace the storage credential; it names no account or key, since whoever asks for access
-   * may not be allowed to read the credential. Any other failure, such as the network, may pass, so
-   * it is {@code UNAVAILABLE}.
+   * Maps a failure to get a token with a stored service account key:
+   *
+   * <ul>
+   *   <li>the token service rejecting the request as invalid, which is the location's doing, is
+   *       {@code INVALID_ARGUMENT};
+   *   <li>Google rejecting the key, for example because it was disabled or deleted, is for an
+   *       administrator to fix: {@code FAILED_PRECONDITION}, saying to replace the storage
+   *       credential;
+   *   <li>Google rejecting the server's timestamps, which is clock skew that no key fixes, is
+   *       {@code INTERNAL};
+   *   <li>any other failure, such as the network, may pass: {@code UNAVAILABLE}.
+   * </ul>
+   *
+   * No message names an account or key, since whoever asks for access may not be allowed to read
+   * the credential.
    */
   static BaseException storedKeyError(IOException e) {
     if (String.valueOf(e.getMessage()).startsWith("Error code invalid_request")) {
       return credentialError(e);
     }
     // Google's answer to the key is in the causes: the downscoping step reports only that it could
-    // not refresh the source credential.
+    // not refresh the source credential. The strings are the error codes and descriptions of
+    // Google's OAuth token endpoint, as google-auth puts them in its exception messages.
     String reasons = causeMessages(e);
     // invalid_grant also means the server's clock is off, which the key cannot fix.
     if (reasons.contains("Token must be a short-lived token")) {
