@@ -126,19 +126,25 @@ class GcsCredPropsTest extends CredPropsBaseTest {
    * The GCS connector resolves its credentials from the built props to the vended token and its
    * expiration, whether or not renewal is enabled, rather than to the engine's own GCS identity.
    */
-  @ParameterizedTest(name = "renew={0} credScoped={1} expiring={2}")
+  @ParameterizedTest(name = "renew={0} credScoped={1} expiring={2} sessionAuthType={3}")
   @CsvSource({
-    "false, false, false",
-    "false, false, true",
-    "true, false, false",
-    "true, false, true",
-    "false, true, true"
+    "false, false, false,",
+    "false, false, true,",
+    "true, false, false,",
+    "true, false, true,",
+    "false, true, true,",
+    "false, false, true, APPLICATION_DEFAULT",
+    "true, false, true, APPLICATION_DEFAULT"
   })
   void gcsConnectorAuthenticatesWithTheVendedToken(
-      boolean renew, boolean credScoped, boolean expiring) throws Exception {
+      boolean renew, boolean credScoped, boolean expiring, String sessionAuthType)
+      throws Exception {
     Long expiration = expiring ? VENDED_EXPIRATION_MILLIS : null;
-    GoogleCredentials credentials =
-        gcsConnectorCredentials(renew, credScoped, expiration, new Configuration(false));
+    Configuration conf = new Configuration(false);
+    if (sessionAuthType != null) {
+      conf.set("fs.gs.auth.type", sessionAuthType);
+    }
+    GoogleCredentials credentials = gcsConnectorCredentials(renew, credScoped, expiration, conf);
 
     assertThat(credentials).isInstanceOf(AccessTokenProviderCredentials.class);
     assertThat(credentials.getRequestMetadata())
@@ -158,6 +164,7 @@ class GcsCredPropsTest extends CredPropsBaseTest {
     try {
       Configuration conf = new Configuration(false);
       conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+      // Inside google-auth's expiration margin, so every request calls refresh() on the provider.
       Instant expiration = clock.now().plusSeconds(60).truncatedTo(ChronoUnit.MILLIS);
       GoogleCredentials credentials =
           gcsConnectorCredentials(false, false, expiration.toEpochMilli(), conf);

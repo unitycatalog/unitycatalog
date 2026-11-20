@@ -89,7 +89,9 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
         cred.getClass().getSimpleName());
     GcsCredential gcs = (GcsCredential) cred;
     Long expirationTime =
-        gcs.expirationTimeMillis() == null ? Long.MAX_VALUE : gcs.expirationTimeMillis();
+        gcs.expirationTimeMillis() == null
+            ? GcsFixedTokenProvider.NO_EXPIRATION_MILLIS
+            : gcs.expirationTimeMillis();
     return Map.of(
         GCS_AUTH_TYPE_KEY,
         GCS_AUTH_TYPE_ACCESS_TOKEN_PROVIDER,

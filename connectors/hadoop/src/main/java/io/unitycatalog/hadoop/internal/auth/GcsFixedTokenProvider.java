@@ -16,6 +16,7 @@ import org.apache.hadoop.conf.Configuration;
 public class GcsFixedTokenProvider implements AccessTokenProvider {
   public static final String ACCESS_TOKEN_KEY = "fs.gs.auth.access.token.credential";
   public static final String ACCESS_TOKEN_EXPIRATION_KEY = "fs.gs.auth.access.token.expiration";
+  public static final long NO_EXPIRATION_MILLIS = Long.MAX_VALUE;
 
   private Configuration conf;
   private Clock clock;
@@ -51,7 +52,7 @@ public class GcsFixedTokenProvider implements AccessTokenProvider {
     this.accessToken =
         new AccessToken(
             conf.get(ACCESS_TOKEN_KEY),
-            Instant.ofEpochMilli(conf.getLong(ACCESS_TOKEN_EXPIRATION_KEY, Long.MAX_VALUE)));
+            Instant.ofEpochMilli(conf.getLong(ACCESS_TOKEN_EXPIRATION_KEY, NO_EXPIRATION_MILLIS)));
   }
 
   @Override
