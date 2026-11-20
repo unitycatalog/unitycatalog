@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
@@ -361,7 +362,12 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     sql("ALTER TABLE %s RENAME COLUMN s TO full_name", fullTableName);
     validateRows(
         sql("SELECT i, full_name FROM %s ORDER BY i", fullTableName), Pair.of(1, "before"));
-    assertThatThrownBy(() -> sql("SELECT s FROM %s", fullTableName)).hasMessageContaining("s");
+    assertThatThrownBy(() -> sql("SELECT s FROM %s", fullTableName))
+        .isInstanceOf(AnalysisException.class)
+        .satisfies(
+            e ->
+                assertThat(((AnalysisException) e).getCondition())
+                    .isEqualTo("UNRESOLVED_COLUMN.WITH_SUGGESTION"));
   }
 
   @Test
