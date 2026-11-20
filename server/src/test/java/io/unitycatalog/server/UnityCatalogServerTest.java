@@ -296,7 +296,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
   }
 
   @Test
-  public void startupUsesTheTokenSigningKeyFileSettings() {
+  public void startupUsesTheTokenSigningKeyFileSettings() throws Exception {
     Properties properties = new Properties();
     properties.putAll(serverProperties);
     properties.setProperty("server.token-signing-private-key-file", "/no/such/private_key.pem");
@@ -308,6 +308,21 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .hibernateConfigurator(hibernateConfigurator)
                     .build())
         .hasMessageContaining("No token signing key file");
+
+    // The server creates a configuration folder that does not exist yet.
+    Path missing = configurationFolder.resolve("not-yet").resolve("conf");
+    properties.setProperty(
+        "server.token-signing-private-key-file",
+        configurationFolder.resolve("private_key.der").toString());
+    try (UnityCatalogServer server =
+        UnityCatalogServer.builder()
+            .port(0)
+            .serverProperties(new ServerProperties(properties))
+            .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(missing)
+            .build()) {
+      assertThat(missing.resolve("token.txt")).isNotEmptyFile();
+    }
   }
 
   @Test
