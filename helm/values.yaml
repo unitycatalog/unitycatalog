@@ -281,13 +281,16 @@ server:
         # @default -- ca.crt
         rootCertConfigMapKey: ca.crt
 
-      # -- (object) Postgres params
+      # -- (object) PostgreSQL JDBC URL params
       # @default -- not set
       # @raw
       #
+      # With `ssl.enabled`, the chart sets `sslmode` and `sslrootcert` from `ssl` and fails to render when they are
+      # also set here.
+      #
       # Example:
       # ```yaml
-      # params:
+      # extraParams:
       #   sslfactory: my.custom.SSLFactory
       # ```
       #

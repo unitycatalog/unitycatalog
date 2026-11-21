@@ -58,13 +58,17 @@ hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CL
 {{- end }}
 {{- end }}
 
-{{- if .Values.server.db.postgresqlConfig.extraParams }}
-{{- $params = merge $params (dict "extraParams" .Values.server.db.postgresqlConfig.extraParams) }}
+{{- range $key, $value := .Values.server.db.postgresqlConfig.extraParams }}
+{{- if hasKey $params $key }}
+{{- fail (printf "server.db.postgresqlConfig.extraParams.%s is set by server.db.postgresqlConfig.ssl: remove it from extraParams" $key) }}
+{{- end }}
+{{- $_ := set $params $key $value }}
 {{- end }}
 
 {{- $urlParamsList := list }}
+{{- /* PgJDBC form-decodes the parameter values but not their names, so only the values are escaped. */}}
 {{- range $key, $value := $params }}
-{{- $urlParamsList = append $urlParamsList (printf "%s=%s" $key $value) }}
+{{- $urlParamsList = append $urlParamsList (printf "%s=%s" $key (urlquery $value)) }}
 {{- end }}
 
 {{- $urlParams := "" }}

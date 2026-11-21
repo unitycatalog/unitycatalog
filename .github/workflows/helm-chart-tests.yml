@@ -155,6 +155,24 @@ jobs:
           grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30&sslMode=REQUIRED' <<<"$out"
           grep -qF -- '--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           grep -qF 'mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
+          # Each PostgreSQL extra parameter is a URL parameter of its own, next to the ones ssl sets, with its value
+          # encoded.
+          pg=(-f helm/ci/postgresql-values.yaml --set server.db.postgresqlConfig.ssl.enabled=true
+            --set-string server.db.postgresqlConfig.ssl.rootCert=ci-cert)
+          out="$(helm template uc helm "${pg[@]}" \
+            --set-string 'server.db.postgresqlConfig.extraParams.ApplicationName=uc ci+test' \
+            --set-string 'server.db.postgresqlConfig.extraParams.currentSchema=uc')"
+          url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
+          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?ApplicationName=uc+ci%2Btest&currentSchema=uc&sslmode=verify-full&sslrootcert=%2Fhome%2Funitycatalog%2Fetc%2Fconf%2Fdbrootca.crt' ]
+          # An extra parameter that ssl also sets fails the render. Without ssl, it is passed on.
+          if err="$(helm template uc helm "${pg[@]}" --set-string server.db.postgresqlConfig.extraParams.sslmode=disable 2>&1)"; then
+            exit 1
+          fi
+          grep -qF 'server.db.postgresqlConfig.extraParams.sslmode is set by server.db.postgresqlConfig.ssl' <<<"$err"
+          out="$(helm template uc helm -f helm/ci/postgresql-values.yaml \
+            --set-string server.db.postgresqlConfig.extraParams.sslmode=require)"
+          url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
+          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?sslmode=require' ]
           # With storage secrets too, the server container has one env list that holds both. The upgrade-schema
           # container gets the database password and the driver, but no storage secrets.
           out="$(helm template uc helm -f helm/ci/mysql-values.yaml -f helm/ci/secrets-values.yaml \

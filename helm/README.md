@@ -704,11 +704,14 @@ ucdb
 not set
 </pre>
 </td>
-			<td>Postgres params
+			<td>PostgreSQL JDBC URL params
+
+With `ssl.enabled`, the chart sets `sslmode` and `sslrootcert` from `ssl` and fails to render when they are
+also set here.
 
 Example:
 ```yaml
-params:
+extraParams:
   sslfactory: my.custom.SSLFactory
 ```
 </td>
