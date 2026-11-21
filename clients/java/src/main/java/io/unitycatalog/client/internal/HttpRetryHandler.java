@@ -18,6 +18,8 @@ class HttpRetryHandler {
   private static final Set<Class<? extends Throwable>> RECOVERABLE_EXCEPTIONS =
       Set.of(
           java.net.SocketTimeoutException.class,
+          // Only connect timeouts: a request that timed out may already have been applied.
+          java.net.http.HttpConnectTimeoutException.class,
           java.net.SocketException.class,
           java.net.UnknownHostException.class);
 
