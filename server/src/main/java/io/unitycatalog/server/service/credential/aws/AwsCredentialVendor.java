@@ -235,13 +235,11 @@ public class AwsCredentialVendor implements AutoCloseable {
                   s3Compatible.getAccessKeyId(), secretAccessKey(credentialDAO)));
       return assumeS3CompatibleRole(key, context, assumeRole.getRoleArn(), signer);
     }
-    // The key pair itself does not expire. The lifetime bounds how long the vend cache reuses it,
-    // and
-    // tells clients that renew, such as the UC Hadoop connector, when to fetch it again, so an
-    // update
-    // of the key pair reaches them; the Iceberg REST config carries no lifetime for a key pair.
-    // What
-    // a client may receive of it is decided by the caller (StorageCredentialVendorImpl).
+    // The key pair itself does not expire. The lifetime tells clients that renew, such as the UC
+    // Hadoop connector, when to fetch it again, so an update of the key pair reaches them; the
+    // Iceberg REST config carries no lifetime for a key pair. Like any expiry, it also caps reuse
+    // from the vend cache, whose max age usually ends it first. What a client may receive of it is
+    // decided by the caller (StorageCredentialVendorImpl).
     return keyPair(credentialDAO, s3Compatible)
         .expiration(Instant.now().plus(AwsCredentialGenerator.SESSION_DURATION))
         .build();

@@ -971,6 +971,34 @@ public class CloudCredentialVendorTest {
           .isEqualTo(keyPair);
     }
     verify(shared, times(1)).getS3SecretAccessKey(any());
+
+    // In endpoint-only mode the client policy applies after the cache: a client never gets the key
+    // pair that the server's vend cached, and its own requests do not go through the cache.
+    when(serverProperties.getS3CompatibleStaticKeyVending())
+        .thenReturn(S3CompatibleStaticKeyVending.ENDPOINT_ONLY);
+    CredentialDAO endpointOnly =
+        useS3Compatible(
+            new S3CompatibleRequest().accessKeyId("key-id-1").secretAccessKey("key-value-1"));
+    CachingCloudCredentialVendor cache =
+        spy(
+            new CachingCloudCredentialVendor(
+                serverProperties, new UnityCatalogMetrics(new SimpleMeterRegistry())));
+    StorageCredentialVendor endpointOnlyVendor =
+        new StorageCredentialVendorImpl(
+            cache, externalLocationUtils, serverProperties, s3BucketRegions);
+    AwsCredentials endpointAndRegion =
+        new AwsCredentials().s3Endpoint(S3_ENDPOINT).s3Region(DISCOVERED_REGION);
+    for (CredentialUse use :
+        List.of(CredentialUse.CLIENT, CredentialUse.SERVER, CredentialUse.CLIENT)) {
+      assertThat(
+              endpointOnlyVendor
+                  .vendCredential(NormalizedURL.from(COMPAT_PATH), CredentialContext.READ_ONLY, use)
+                  .getAwsTempCredentials())
+          .as(use.toString())
+          .isEqualTo(use == CredentialUse.CLIENT ? endpointAndRegion : keyPair);
+    }
+    verify(cache, times(1)).vendCredential(any());
+    verify(endpointOnly, times(1)).getS3SecretAccessKey(any());
   }
 
   @Test
