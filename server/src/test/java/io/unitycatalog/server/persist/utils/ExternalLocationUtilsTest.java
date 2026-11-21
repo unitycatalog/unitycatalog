@@ -268,6 +268,50 @@ public class ExternalLocationUtilsTest {
             });
   }
 
+  private static void assertStorageRootTooLong(Runnable action, int length, int maxLength) {
+    assertThatThrownBy(action::run)
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            exception -> {
+              assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(exception)
+                  .hasMessageStartingWith(
+                      String.format(
+                          "Storage root is %d characters long, but it can be at most %d characters",
+                          length, maxLength));
+            });
+  }
+
+  @Test
+  public void testManagedLocationsUnderTheLongestStorageRootFit() {
+    UUID id = UUID.randomUUID();
+    NormalizedURL catalogRoot = NormalizedURL.from("s3://bucket/" + "c".repeat(1930));
+    NormalizedURL catalogLocation =
+        ExternalLocationUtils.getManagedLocationForCatalog(catalogRoot, id);
+    assertThat(ExternalLocationUtils.getManagedLocationForVolume(catalogLocation, id).toString())
+        .hasSize(2048);
+    assertThat(ExternalLocationUtils.getManagedLocationForTable(catalogLocation, id).toString())
+        .hasSizeLessThan(2048);
+    assertStorageRootTooLong(
+        () ->
+            ExternalLocationUtils.getManagedLocationForCatalog(
+                NormalizedURL.from(catalogRoot + "c"), id),
+        1943,
+        1942);
+
+    NormalizedURL schemaRoot = NormalizedURL.from("s3://bucket/" + "s".repeat(1931));
+    NormalizedURL schemaLocation =
+        ExternalLocationUtils.getManagedLocationForSchema(schemaRoot, id);
+    assertThat(ExternalLocationUtils.getManagedLocationForVolume(schemaLocation, id).toString())
+        .hasSize(2048);
+    assertStorageRootTooLong(
+        () ->
+            ExternalLocationUtils.getManagedLocationForSchema(
+                NormalizedURL.from(schemaRoot + "s"), id),
+        1944,
+        1943);
+  }
+
   @Test
   public void testGetParentAndCurrentPathsList() {
     // Test S3 nested path

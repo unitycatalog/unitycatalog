@@ -805,12 +805,45 @@ public class ExternalLocationUtils {
 
   public static NormalizedURL getManagedLocationForSchema(
       NormalizedURL storageRoot, UUID schemaId) {
+    validateManagedLocationsFit(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX);
     return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX, schemaId);
   }
 
   public static NormalizedURL getManagedLocationForCatalog(
       NormalizedURL storageRoot, UUID catalogId) {
+    validateManagedLocationsFit(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX);
     return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX, catalogId);
+  }
+
+  /**
+   * Rejects a catalog or schema storage root whose managed table, staging table or volume locations
+   * would not fit in {@link Constants#MAX_STORAGE_LOCATION_LENGTH} characters.
+   */
+  private static void validateManagedLocationsFit(NormalizedURL storageRoot, String prefix) {
+    UUID anyId = new UUID(0, 0);
+    NormalizedURL containerLocation = getManagedLocationForEntity(storageRoot, prefix, anyId);
+    int longestLocation =
+        Stream.of(
+                ManagedResourceType.TABLE,
+                ManagedResourceType.STAGING_TABLE,
+                ManagedResourceType.VOLUME)
+            .mapToInt(
+                type ->
+                    getManagedLocationForEntity(containerLocation, type.pathSegment(), anyId)
+                        .toString()
+                        .length())
+            .max()
+            .getAsInt();
+    int excess = longestLocation - Constants.MAX_STORAGE_LOCATION_LENGTH;
+    if (excess > 0) {
+      int rootLength = storageRoot.toString().length();
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "Storage root is %d characters long, but it can be at most %d characters so that "
+                  + "managed table and volume locations under it fit in %d characters.",
+              rootLength, rootLength - excess, Constants.MAX_STORAGE_LOCATION_LENGTH));
+    }
   }
 
   // The following methods do not add a __unitystorage prefix because the storageRoot

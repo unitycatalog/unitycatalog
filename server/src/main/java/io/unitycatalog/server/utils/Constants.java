@@ -9,4 +9,6 @@ public class Constants {
   public static final String MANAGED_STORAGE_PREFIX = "__unitystorage";
   public static final String MANAGED_STORAGE_CATALOG_PREFIX = MANAGED_STORAGE_PREFIX + "/catalogs";
   public static final String MANAGED_STORAGE_SCHEMA_PREFIX = MANAGED_STORAGE_PREFIX + "/schemas";
+
+  public static final int MAX_STORAGE_LOCATION_LENGTH = 2048;
 }

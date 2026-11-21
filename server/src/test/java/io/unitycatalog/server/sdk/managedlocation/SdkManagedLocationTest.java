@@ -9,6 +9,7 @@ import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateModelVersion;
 import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.CreateSchema;
@@ -135,16 +136,46 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
                 .schemaName(schemaName)
                 .volumeType(VolumeType.MANAGED));
     assertThat(managed.getStorageLocation()).startsWith(parentLocation + "/volumes/");
+    assertThat(managed.getStorageLocation()).hasSize(2048);
     assertThat(volumeOperations.getVolume(managed.getFullName()).getStorageLocation())
         .isEqualTo(managed.getStorageLocation());
   }
 
   @SneakyThrows
+  private void assertManagedStagingTableUnder(String schemaName, String parentLocation) {
+    StagingTableInfo staging =
+        new TablesApi(TestUtils.createApiClient(serverConfig))
+            .createStagingTable(
+                new CreateStagingTable()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(schemaName)
+                    .name(TABLE_NAME));
+    assertThat(staging.getStagingLocation()).startsWith(parentLocation + "/tables/");
+  }
+
+  @SneakyThrows
   @Test
   public void testStoragePathsLongerThan255Characters() {
-    String catalogRoot = "s3://catalog-bucket/" + "c".repeat(1000);
-    String schemaRoot = "s3://schema-bucket/" + "s".repeat(1200);
+    // The longest roots whose managed volume locations, the longest managed child locations, are
+    // exactly 2048 characters.
+    String catalogRoot = "s3://catalog-bucket/" + "c".repeat(1922);
+    String schemaRoot = "s3://schema-bucket/" + "s".repeat(1924);
+    TestUtils.assertApiException(
+        () ->
+            catalogOperations.createCatalog(
+                new CreateCatalog().name(CATALOG_NAME).storageRoot(catalogRoot + "c")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage root is 1943 characters long, but it can be at most 1942 characters");
     createCatalog(Optional.of(catalogRoot));
+    TestUtils.assertApiException(
+        () ->
+            schemaOperations.createSchema(
+                new CreateSchema()
+                    .catalogName(CATALOG_NAME)
+                    .name(SCHEMA_NAME)
+                    .storageRoot(schemaRoot + "s")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage root is 1944 characters long, but it can be at most 1943 characters");
     createSchema(Optional.of(schemaRoot));
     assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageRoot()).isEqualTo(catalogRoot);
     assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageLocation())
@@ -156,6 +187,8 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
     schemaOperations.createSchema(new CreateSchema().catalogName(CATALOG_NAME).name(SCHEMA_NAME2));
     assertManagedVolumeUnder(SCHEMA_NAME, schemaInfo.getStorageLocation());
     assertManagedVolumeUnder(SCHEMA_NAME2, catalogInfo.getStorageLocation());
+    assertManagedStagingTableUnder(SCHEMA_NAME, schemaInfo.getStorageLocation());
+    assertManagedStagingTableUnder(SCHEMA_NAME2, catalogInfo.getStorageLocation());
 
     String externalVolumeLocation = "s3://volume-bucket/" + "v".repeat(2029);
     assertThat(externalVolumeLocation).hasSize(2048);
