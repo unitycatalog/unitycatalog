@@ -1,9 +1,12 @@
 package io.unitycatalog.server.migrate;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.security.SecurityConfiguration;
+import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.VersionUtils;
 import java.io.File;
@@ -140,7 +143,14 @@ final class OldServer {
       try {
         URI uri = URI.create("http://localhost:" + port);
         awaitServing(process, uri);
-        String token = Files.readString(conf.resolve("token.txt")).trim();
+        // Earlier releases write an admin token, which carries the key ID they check; a release
+        // that does not write one gets a token signed with its key.
+        Path tokenFile = conf.resolve("token.txt");
+        String token =
+            Files.exists(tokenFile)
+                ? Files.readString(tokenFile).trim()
+                : new SecurityContext(conf, new SecurityConfiguration(conf), "server", INTERNAL)
+                    .createServiceToken();
         callback.accept(createApiClient(new ServerConfig(uri.toString(), token)));
       } finally {
         stop(tag, process);

@@ -175,8 +175,8 @@ for field in table.metadata.columns.fields:
 ```
 
 The `Authorization` header is only needed when the server has
-[authentication](https://docs.unitycatalog.io/server/auth/) enabled, where a local server writes its admin token to
-`etc/conf/token.txt`. Leave out `header_name` and `header_value` for the local unauthenticated server used in the
+[authentication](https://docs.unitycatalog.io/server/auth/) enabled; `bin/uc-admin-token` prints an admin token for a
+local server. Leave out `header_name` and `header_value` for the local unauthenticated server used in the
 examples above. The token goes in a header because `Configuration(access_token=...)` does not send it.
 
 ## Feedback

@@ -192,6 +192,12 @@ jobs:
           grep -qF -- '- --upgrade-schema' <<<"$upgrade"
           grep -qF -- 'mountPath: /home/unitycatalog/etc/conf' <<<"$upgrade"
           grep -qF -- 'name: db-volume' <<<"$upgrade"
+          # The init container points the server at the key in the Secret mount, and the server mounts it.
+          init="$(sed -n '/^        - name: init$/,/^        - name: upgrade-schema$/p' <<<"$out")"
+          grep -qF "printf '\nserver.token-signing-private-key-file=%s\n' \"\$PRIVATE_KEY\" >> /home/unitycatalog/etc/conf/server.properties" \
+            <<<"$init"
+          server="$(sed -n '/^        - name: server$/,/^      volumes:$/p' <<<"$out")"
+          grep -A1 -- '- name: jwt-key-volume$' <<<"$server" | grep -qF 'mountPath: /home/unitycatalog/etc/confJwtKey'
           # An in-memory database keeps the init container: --upgrade-schema succeeds on it without doing anything.
           for override in 'server.env=test' 'server.env: prod'$'\n''server.env=test'; do
             out="$(helm template uc helm --show-only templates/server/deployment.yaml --set-string "server.config.override=$override")"
