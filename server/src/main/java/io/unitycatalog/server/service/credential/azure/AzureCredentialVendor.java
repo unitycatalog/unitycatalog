@@ -27,7 +27,7 @@ public class AzureCredentialVendor {
    */
   public Optional<String> limitViolation(CredentialContext ctx) {
     return StorageLimits.objectNameViolation(
-            ctx.getLocations(), "Azure blob", StorageLimits.Unit.CHARACTERS)
+            ctx.getLocations(), "Azure blob", StorageLimits.Unit.UTF16_CODE_UNITS)
         .or(() -> StorageLimits.azurePathSegmentViolation(ctx.getLocations()));
   }
 

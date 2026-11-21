@@ -30,6 +30,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.base.volume.VolumeOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -261,5 +262,77 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
                 .getModelVersion(SCHEMA_FULL_NAME + "." + MANAGED_MODEL_NAME, version.getVersion())
                 .getSource())
         .isEqualTo(modelVersionSource);
+  }
+
+  @SneakyThrows
+  @Test
+  public void testLocationsUnderAStoredLocationAreChecked() {
+    String container = "abfss://container@account.dfs.core.windows.net/";
+    createCatalog(Optional.of(container + "catalog"));
+    createSchema(Optional.empty());
+    modelOperations.createRegisteredModel(
+        new CreateRegisteredModel()
+            .name(MANAGED_MODEL_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME));
+    // Stored before these checks existed, and too long for an Azure blob under it.
+    String storedLocation = container + "s".repeat(1100);
+    setStored("CatalogInfoDAO", "storageLocation", CATALOG_NAME, storedLocation);
+    setStored("RegisteredModelInfoDAO", "url", MANAGED_MODEL_NAME, storedLocation);
+    String rejection = "Azure blob names under it are at least";
+
+    TestUtils.assertApiException(
+        () ->
+            volumeOperations.createVolume(
+                new CreateVolumeRequestContent()
+                    .name(MANAGED_VOLUME_NAME1)
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .volumeType(VolumeType.MANAGED)),
+        ErrorCode.INVALID_ARGUMENT,
+        rejection);
+    TestUtils.assertApiException(
+        () ->
+            new TablesApi(TestUtils.createApiClient(serverConfig))
+                .createStagingTable(
+                    new CreateStagingTable()
+                        .catalogName(CATALOG_NAME)
+                        .schemaName(SCHEMA_NAME)
+                        .name(TABLE_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        rejection);
+    TestUtils.assertApiException(
+        () ->
+            modelOperations.createRegisteredModel(
+                new CreateRegisteredModel()
+                    .name(MANAGED_MODEL_NAME + "2")
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        rejection);
+    TestUtils.assertApiException(
+        () ->
+            modelOperations.createModelVersion(
+                new CreateModelVersion()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .modelName(MANAGED_MODEL_NAME)
+                    .source("s3://model-bucket/source")),
+        ErrorCode.INVALID_ARGUMENT,
+        rejection);
+  }
+
+  private void setStored(String entity, String field, String name, String location) {
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session ->
+            session
+                .createMutationQuery(
+                    "UPDATE " + entity + " SET " + field + " = :location WHERE name = :name")
+                .setParameter("location", location)
+                .setParameter("name", name)
+                .executeUpdate(),
+        "Failed to store a location",
+        /* readOnly= */ false);
   }
 }

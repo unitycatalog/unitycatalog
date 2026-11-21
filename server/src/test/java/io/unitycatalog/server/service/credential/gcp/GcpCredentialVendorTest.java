@@ -19,6 +19,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.service.credential.StorageLocationValidator;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -184,7 +185,8 @@ public class GcpCredentialVendorTest {
     StorageLocationValidator validator =
         new StorageLocationValidator(
             new CloudCredentialVendor(null, null, credentialVendor),
-            (session, location) -> Optional.empty());
+            (session, location) -> Optional.empty(),
+            () -> StorageLimits.Unit.UTF16_CODE_UNITS);
     try {
       if (prefix.equals(MANAGED_STORAGE_CATALOG_PREFIX)) {
         validator.validateCatalogStorageRoot(null, root);

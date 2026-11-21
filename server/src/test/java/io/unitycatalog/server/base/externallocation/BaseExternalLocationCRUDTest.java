@@ -41,6 +41,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -343,12 +344,42 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
                 EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(longestUrl + "u")),
         ErrorCode.INVALID_ARGUMENT,
         "Storage location is too long: it is 256 characters, and the limit is 255.");
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation()
+                    .url(longestUrl + "u")
+                    .credentialName(ANOTHER_CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage location is too long: it is 256 characters, and the limit is 255.");
     assertThat(
             externalLocationOperations
                 .updateExternalLocation(
                     EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(longestUrl))
                 .getUrl())
         .isEqualTo(longestUrl);
+  }
+
+  @Test
+  public void testUrlLengthIsCountedTheWayTheDatabaseCountsIt() throws ApiException {
+    // An emoji is one character in PostgreSQL and MySQL, which count code points, and two in H2,
+    // which counts UTF-16 code units.
+    String emoji = new String(Character.toChars(0x1F600));
+    String prefix = testUrl() + "/";
+    String url = prefix + emoji.repeat(255 - prefix.length());
+    if (SupportedDatabase.selected() == SupportedDatabase.H2) {
+      assertApiException(
+          () -> create(EXTERNAL_LOCATION_NAME, url),
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "Storage location is too long: it is %d characters, and the limit is 255.",
+              url.length()));
+    } else {
+      assertThat(create(EXTERNAL_LOCATION_NAME, url).getUrl()).isEqualTo(url);
+      assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+          .isEqualTo(url);
+    }
   }
 
   @Test

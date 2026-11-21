@@ -19,7 +19,6 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
-import io.unitycatalog.server.service.credential.StorageLocationValidator;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -573,10 +572,12 @@ public class ModelRepository {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     UUID modelVersionId = UUID.randomUUID();
     if (createModelVersion.getSource() != null) {
-      StorageLocationValidator.validateLength(
-          "Model version source",
-          createModelVersion.getSource(),
-          Constants.MAX_STORAGE_LOCATION_LENGTH);
+      repositories
+          .getStorageLocationValidator()
+          .validateLength(
+              "Model version source",
+              createModelVersion.getSource(),
+              Constants.MAX_STORAGE_LOCATION_LENGTH);
     }
     String catalogName = createModelVersion.getCatalogName();
     String schemaName = createModelVersion.getSchemaName();

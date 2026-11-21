@@ -28,9 +28,11 @@ public final class StorageLimits {
    */
   public static final int MAX_AZURE_PATH_SEGMENTS = 254;
 
+  /** How the length of a name is counted. */
   public enum Unit {
     UTF8_BYTES("bytes"),
-    CHARACTERS("characters");
+    UTF16_CODE_UNITS("characters"),
+    CODE_POINTS("characters");
 
     private final String label;
 
@@ -39,7 +41,11 @@ public final class StorageLimits {
     }
 
     public int length(String name) {
-      return this == UTF8_BYTES ? name.getBytes(StandardCharsets.UTF_8).length : name.length();
+      return switch (this) {
+        case UTF8_BYTES -> name.getBytes(StandardCharsets.UTF_8).length;
+        case UTF16_CODE_UNITS -> name.length();
+        case CODE_POINTS -> name.codePointCount(0, name.length());
+      };
     }
 
     public String label() {

@@ -12,20 +12,25 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.hibernate.Session;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Rejects storage locations that their database column, or the cloud storage they are on, can't
  * hold. Cloud limits are the ones {@link CloudCredentialVendor#limitViolation} checks: object name
  * limits for objects under the location, and the limits of the credentials vended for it.
  *
- * <p>A location given in a request is checked against its column in characters, as the databases
- * count it. A location the server builds, a storage root and the managed locations under it, is
- * checked in UTF-8 bytes, which is stricter and keeps the indexed staging table location within
- * PostgreSQL's 2,704 byte index entry limit.
+ * <p>A location given in a request is checked against its column in characters, counted the way the
+ * database counts them. A location the server builds, a storage root and the managed locations
+ * under it, is checked in UTF-8 bytes, which is stricter and keeps the indexed staging table
+ * location within PostgreSQL's 2,704 byte index entry limit.
  */
 public class StorageLocationValidator {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(StorageLocationValidator.class);
 
   /** Finds the storage credential of the external location that covers a location. */
   @FunctionalInterface
@@ -48,11 +53,18 @@ public class StorageLocationValidator {
 
   private final CloudCredentialVendor cloudCredentialVendor;
   private final CredentialLookup credentialLookup;
+  private final Supplier<Unit> columnUnit;
 
+  /**
+   * @param columnUnit how the database counts the length of a varchar column
+   */
   public StorageLocationValidator(
-      CloudCredentialVendor cloudCredentialVendor, CredentialLookup credentialLookup) {
+      CloudCredentialVendor cloudCredentialVendor,
+      CredentialLookup credentialLookup,
+      Supplier<Unit> columnUnit) {
     this.cloudCredentialVendor = cloudCredentialVendor;
     this.credentialLookup = credentialLookup;
+    this.columnUnit = columnUnit;
   }
 
   /**
@@ -62,7 +74,7 @@ public class StorageLocationValidator {
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the location is too long
    */
   public void validateLocation(Session session, NormalizedURL location, int maxLength) {
-    validateLocation(location, maxLength, Unit.CHARACTERS, credentialFor(session, location));
+    validateLocation(location, maxLength, columnUnit.get(), credentialFor(session, location));
   }
 
   /**
@@ -75,7 +87,7 @@ public class StorageLocationValidator {
    */
   public void validateLocation(
       NormalizedURL location, int maxLength, Optional<CredentialDAO> credential) {
-    validateLocation(location, maxLength, Unit.CHARACTERS, Optional.of(credential));
+    validateLocation(location, maxLength, columnUnit.get(), Optional.of(credential));
   }
 
   /**
@@ -144,8 +156,8 @@ public class StorageLocationValidator {
    *
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the value is too long
    */
-  public static void validateLength(String field, String value, int maxLength) {
-    lengthViolation(value, maxLength, Unit.CHARACTERS)
+  public void validateLength(String field, String value, int maxLength) {
+    lengthViolation(value, maxLength, columnUnit.get())
         .ifPresent(
             violation -> {
               throw new BaseException(
@@ -218,6 +230,7 @@ public class StorageLocationValidator {
     try {
       return Optional.of(credentialLookup.find(session, location));
     } catch (BaseException e) {
+      LOGGER.warn("Skipping cloud limit checks for {}: credential lookup failed", location, e);
       return Optional.empty();
     }
   }

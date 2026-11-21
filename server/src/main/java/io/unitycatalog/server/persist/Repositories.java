@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist;
 
+import com.google.common.base.Suppliers;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -10,6 +11,7 @@ import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendorImpl;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.service.credential.StorageLocationValidator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Objects;
@@ -17,6 +19,8 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
+import org.hibernate.dialect.H2Dialect;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 
 /**
  * Each server instance has a set of repositories that are used to interact with the database. This
@@ -127,7 +131,8 @@ public class Repositories {
     this.storageLocationValidator =
         new StorageLocationValidator(
             resolvedCloudCredentialVendor,
-            externalLocationUtils::getExternalLocationCredentialDaoForPath);
+            externalLocationUtils::getExternalLocationCredentialDaoForPath,
+            Suppliers.memoize(() -> columnLengthUnit(sessionFactory)));
     this.fileOperations =
         fileOperationsDecorator.apply(
             new FileOperationsImpl(storageCredentialVendor, serverProperties));
@@ -162,5 +167,16 @@ public class Repositories {
     return serverProperties.isStorageCredentialCacheEnabled()
         ? new CachingCloudCredentialVendor(serverProperties, metrics)
         : new CloudCredentialVendor(serverProperties);
+  }
+
+  /**
+   * H2 counts the length of a varchar in UTF-16 code units, and PostgreSQL and MySQL (utf8mb4) in
+   * code points, so a character outside the BMP is one character there and two in H2.
+   */
+  private static StorageLimits.Unit columnLengthUnit(SessionFactory sessionFactory) {
+    return sessionFactory.unwrap(SessionFactoryImplementor.class).getJdbcServices().getDialect()
+            instanceof H2Dialect
+        ? StorageLimits.Unit.UTF16_CODE_UNITS
+        : StorageLimits.Unit.CODE_POINTS;
   }
 }

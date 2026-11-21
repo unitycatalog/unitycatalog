@@ -19,6 +19,7 @@ import io.unitycatalog.server.model.S3CompatibleRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.service.credential.StorageLimits.Unit;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
@@ -106,7 +107,8 @@ public class StorageLocationValidatorTest {
   }
 
   private StorageLocationValidator validatorFor(Optional<CredentialDAO> credential) {
-    return new StorageLocationValidator(cloudCredentialVendor, (session, location) -> credential);
+    return new StorageLocationValidator(
+        cloudCredentialVendor, (session, location) -> credential, () -> Unit.UTF16_CODE_UNITS);
   }
 
   private static Optional<BaseException> rootRejection(
@@ -390,6 +392,29 @@ public class StorageLocationValidatorTest {
   }
 
   @Test
+  public void testExplicitLocationIsCountedTheWayTheDatabaseCountsIt() {
+    // An emoji is one code point and two UTF-16 code units.
+    String emoji = new String(Character.toChars(0x1F600));
+    NormalizedURL url = NormalizedURL.from("s3://bucket/" + emoji.repeat(122));
+    StorageLocationValidator codePoints =
+        new StorageLocationValidator(
+            cloudCredentialVendor, (session, location) -> Optional.empty(), () -> Unit.CODE_POINTS);
+
+    assertThatCode(() -> codePoints.validateLocation(url, 255, Optional.empty()))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () ->
+                codePoints.validateLocation(
+                    NormalizedURL.from(url + "a".repeat(122)), 255, Optional.empty()))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Storage location is too long: it is 256 characters, and the limit is 255.");
+    assertThatThrownBy(
+            () -> validatorFor(Optional.empty()).validateLocation(url, 255, Optional.empty()))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Storage location is too long: it is 256 characters, and the limit is 255.");
+  }
+
+  @Test
   public void testManagedLocationIsCheckedInBytes() {
     StorageLocationValidator validator = validatorFor(Optional.empty());
     String bucket = "file:///tmp/";
@@ -446,7 +471,8 @@ public class StorageLocationValidatorTest {
             (session, location) -> {
               throw new BaseException(
                   ErrorCode.INTERNAL, "The storage credential no longer exists");
-            });
+            },
+            () -> Unit.UTF16_CODE_UNITS);
     NormalizedURL root = NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(600));
 
     assertThat(rootRejection(validator, root, MANAGED_STORAGE_CATALOG_PREFIX)).isEmpty();
