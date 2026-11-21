@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service.credential.gcp;
 
+import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
+import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -14,14 +16,18 @@ import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -152,6 +158,92 @@ public class GcpCredentialVendorTest {
         .hasMessageContaining("2052 characters, and the limit is 2048")
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  private boolean canVend(NormalizedURL location) {
+    try {
+      ruleFor(location.toString());
+      return true;
+    } catch (BaseException e) {
+      assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+      return false;
+    }
+  }
+
+  private Optional<BaseException> rootRejection(NormalizedURL root, String prefix) {
+    try {
+      ExternalLocationUtils.validateManagedLocationsFit(root, prefix);
+      return Optional.empty();
+    } catch (BaseException e) {
+      assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+      return Optional.of(e);
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    MANAGED_STORAGE_CATALOG_PREFIX + ", test-bucket, r",
+    MANAGED_STORAGE_SCHEMA_PREFIX + ", test-bucket, r",
+    MANAGED_STORAGE_CATALOG_PREFIX + ", test-bucket0, r",
+    MANAGED_STORAGE_SCHEMA_PREFIX + ", test-bucket0, r",
+    MANAGED_STORAGE_CATALOG_PREFIX + ", test-bucket, %22",
+    MANAGED_STORAGE_SCHEMA_PREFIX + ", test-bucket, %5C"
+  })
+  public void testGcsStorageRootIsAcceptedExactlyWhenManagedCredentialsCanBeVended(
+      String prefix, String bucket, String pathChar) {
+    UUID id = UUID.randomUUID();
+    List<Integer> acceptedLengths =
+        IntStream.rangeClosed(1, 500)
+            .filter(
+                length -> {
+                  NormalizedURL root =
+                      NormalizedURL.from("gs://" + bucket + "/" + pathChar.repeat(length));
+                  NormalizedURL container =
+                      prefix.equals(MANAGED_STORAGE_CATALOG_PREFIX)
+                          ? ExternalLocationUtils.getManagedLocationForCatalog(root, id)
+                          : ExternalLocationUtils.getManagedLocationForSchema(root, id);
+                  boolean vendable =
+                      canVend(ExternalLocationUtils.getManagedLocationForTable(container, id))
+                          && canVend(
+                              ExternalLocationUtils.getManagedLocationForVolume(container, id));
+                  boolean accepted = rootRejection(root, prefix).isEmpty();
+                  assertThat(accepted)
+                      .as("root path of %d x %s", length, pathChar)
+                      .isEqualTo(vendable);
+                  return accepted;
+                })
+            .boxed()
+            .toList();
+
+    assertThat(acceptedLengths).isNotEmpty();
+    int longestAccepted = acceptedLengths.get(acceptedLengths.size() - 1);
+    assertThat(longestAccepted).isLessThan(500);
+    assertThat(acceptedLengths).hasSize(longestAccepted);
+  }
+
+  @Test
+  public void testGcsStorageRootRejectionSaysHowMuchToShorten() {
+    String bucket = "gs://test-bucket/";
+    int longestAccepted =
+        IntStream.rangeClosed(1, 500)
+            .filter(
+                length ->
+                    rootRejection(
+                            NormalizedURL.from(bucket + "r".repeat(length)),
+                            MANAGED_STORAGE_CATALOG_PREFIX)
+                        .isEmpty())
+            .max()
+            .getAsInt();
+
+    for (int over = 1; over <= 5; over++) {
+      NormalizedURL root = NormalizedURL.from(bucket + "r".repeat(longestAccepted + over));
+      assertThat(rootRejection(root, MANAGED_STORAGE_CATALOG_PREFIX))
+          .get()
+          .extracting(Throwable::getMessage)
+          .asString()
+          .startsWith("GCS storage root is too long.")
+          .endsWith("Shorten the root path by at least " + over + " characters.");
+    }
   }
 
   @ParameterizedTest

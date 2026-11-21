@@ -28,7 +28,7 @@ public class GcpCredentialVendor {
       List.of("https://www.googleapis.com/auth/cloud-platform");
 
   // Google's limit on a credential access boundary condition.
-  static final int MAX_CONDITION_LENGTH = 2048;
+  public static final int MAX_CONDITION_LENGTH = 2048;
 
   private final Map<NormalizedURL, GcsStorageConfig> gcsConfigurations;
   private final Map<NormalizedURL, GcpCredentialGenerator> credentialGenerators =
@@ -128,6 +128,44 @@ public class GcpCredentialVendor {
     return literal.append('"').toString();
   }
 
+  /**
+   * Builds the credential access boundary condition that limits a downscoped credential to a
+   * location and everything under it.
+   *
+   * @param location a gs:// location
+   * @return the CEL condition, which Google limits to {@link #MAX_CONDITION_LENGTH} characters
+   */
+  public static String accessBoundaryCondition(NormalizedURL location) {
+    URI locationUri = location.toUri();
+    String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
+
+    // Match the path itself or anything under path/. Listing with the bare path as the
+    // prefix also returns sibling names such as path_archive, as the S3 policy allows.
+    String dirPrefix = path.isEmpty() ? "" : path + "/";
+    String objectsPrefix = format("projects/_/buckets/%s/objects/", locationUri.getHost());
+
+    // for reading/writing objects
+    String objectStartsWithExpr =
+        format("resource.name.startsWith(%s)", celStringLiteral(objectsPrefix + dirPrefix));
+
+    // for listing objects
+    String listStartsWithExpr =
+        format(
+            "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith(%s)",
+            celStringLiteral(dirPrefix));
+
+    // At a bucket root the startsWith clauses already match everything.
+    return path.isEmpty()
+        ? objectStartsWithExpr + " || " + listStartsWithExpr
+        : format(
+            "resource.name == %s || %s || api.getAttribute("
+                + "'storage.googleapis.com/objectListPrefix', '') == %s || %s",
+            celStringLiteral(objectsPrefix + path),
+            objectStartsWithExpr,
+            celStringLiteral(path),
+            listStartsWithExpr);
+  }
+
   OAuth2Credentials downscopeGcpCreds(GoogleCredentials credentials, CredentialContext context) {
     CredentialAccessBoundary.Builder boundaryBuilder = CredentialAccessBoundary.newBuilder();
     List<String> roles = resolvePrivilegesToRoles(context.getPrivileges());
@@ -137,40 +175,9 @@ public class GcpCredentialVendor {
         .forEach(
             location -> {
               URI locationUri = location.toUri();
-              String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
-
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
-
-              // Match the path itself or anything under path/. Listing with the bare path as the
-              // prefix also returns sibling names such as path_archive, as the S3 policy allows.
-              String dirPrefix = path.isEmpty() ? "" : path + "/";
-              String objectsPrefix =
-                  format("projects/_/buckets/%s/objects/", locationUri.getHost());
-
-              // for reading/writing objects
-              String objectStartsWithExpr =
-                  format(
-                      "resource.name.startsWith(%s)", celStringLiteral(objectsPrefix + dirPrefix));
-
-              // for listing objects
-              String listStartsWithExpr =
-                  format(
-                      "api.getAttribute('storage.googleapis.com/objectListPrefix',"
-                          + " '').startsWith(%s)",
-                      celStringLiteral(dirPrefix));
-
-              // At a bucket root the startsWith clauses already match everything.
-              String combinedExpr =
-                  path.isEmpty()
-                      ? objectStartsWithExpr + " || " + listStartsWithExpr
-                      : format(
-                          "resource.name == %s || %s || api.getAttribute("
-                              + "'storage.googleapis.com/objectListPrefix', '') == %s || %s",
-                          celStringLiteral(objectsPrefix + path),
-                          objectStartsWithExpr,
-                          celStringLiteral(path),
-                          listStartsWithExpr);
+              String combinedExpr = accessBoundaryCondition(location);
 
               if (combinedExpr.length() > MAX_CONDITION_LENGTH) {
                 throw new BaseException(

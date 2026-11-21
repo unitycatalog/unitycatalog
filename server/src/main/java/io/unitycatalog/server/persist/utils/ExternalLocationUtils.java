@@ -18,8 +18,10 @@ import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -818,36 +820,61 @@ public class ExternalLocationUtils {
    * Validates that the managed table and volume locations under a catalog or schema created at this
    * storage root fit in {@link Constants#MAX_STORAGE_LOCATION_LENGTH}. Lengths are counted in UTF-8
    * bytes, which also keeps the indexed staging table location within PostgreSQL's index entry
-   * limit.
+   * limit. For a gs:// root, the GCS credential access boundary condition for each of those
+   * locations must also fit in {@link GcpCredentialVendor#MAX_CONDITION_LENGTH}, so that temporary
+   * credentials can be vended for them.
    *
    * @param storageRoot the storage root of the catalog or schema
    * @param managedStoragePrefix {@link Constants#MANAGED_STORAGE_CATALOG_PREFIX} or {@link
    *     Constants#MANAGED_STORAGE_SCHEMA_PREFIX}
-   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the longest managed location
-   *     would be too long
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a managed location would be
+   *     too long
    */
   public static void validateManagedLocationsFit(
       NormalizedURL storageRoot, String managedStoragePrefix) {
     UUID anyId = new UUID(0, 0);
     NormalizedURL containerLocation =
         getManagedLocationForEntity(storageRoot, managedStoragePrefix, anyId);
-    int longestLocationBytes =
+    List<NormalizedURL> managedLocations =
         Stream.of(ManagedResourceType.TABLE, ManagedResourceType.VOLUME)
-            .mapToInt(
-                type ->
-                    utf8Length(
-                        getManagedLocationForEntity(containerLocation, type.pathSegment(), anyId)))
-            .max()
-            .getAsInt();
-    int excess = longestLocationBytes - Constants.MAX_STORAGE_LOCATION_LENGTH;
-    if (excess > 0) {
+            .map(type -> getManagedLocationForEntity(containerLocation, type.pathSegment(), anyId))
+            .toList();
+
+    int excessBytes =
+        managedLocations.stream().mapToInt(ExternalLocationUtils::utf8Length).max().getAsInt()
+            - Constants.MAX_STORAGE_LOCATION_LENGTH;
+    if (excessBytes > 0) {
       int rootBytes = utf8Length(storageRoot);
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           String.format(
               "Storage root is %d bytes long in UTF-8, but it can be at most %d bytes so that "
                   + "managed table and volume locations under it fit in %d bytes.",
-              rootBytes, rootBytes - excess, Constants.MAX_STORAGE_LOCATION_LENGTH));
+              rootBytes, rootBytes - excessBytes, Constants.MAX_STORAGE_LOCATION_LENGTH));
+    }
+
+    if (UriScheme.GS.toString().equals(storageRoot.toUri().getScheme())) {
+      validateGcsAccessBoundariesFit(managedLocations);
+    }
+  }
+
+  private static void validateGcsAccessBoundariesFit(List<NormalizedURL> managedLocations) {
+    int longestCondition =
+        managedLocations.stream()
+            .mapToInt(location -> GcpCredentialVendor.accessBoundaryCondition(location).length())
+            .max()
+            .getAsInt();
+    int excess = longestCondition - GcpCredentialVendor.MAX_CONDITION_LENGTH;
+    if (excess > 0) {
+      // The object path appears four times in the condition.
+      int minCharsToRemove = (excess + 3) / 4;
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "GCS storage root is too long. Temporary credentials for managed tables and volumes "
+                  + "under it need an access boundary condition of %d characters, and GCS allows "
+                  + "%d. Shorten the root path by at least %d characters.",
+              longestCondition, GcpCredentialVendor.MAX_CONDITION_LENGTH, minCharsToRemove));
     }
   }
 
