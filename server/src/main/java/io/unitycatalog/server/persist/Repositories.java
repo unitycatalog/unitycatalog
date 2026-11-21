@@ -10,6 +10,7 @@ import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendorImpl;
+import io.unitycatalog.server.service.credential.StorageLocationValidator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Objects;
 import java.util.Optional;
@@ -26,6 +27,7 @@ public class Repositories {
   private final SessionFactory sessionFactory;
   private final ExternalLocationUtils externalLocationUtils;
   private final StorageCredentialVendor storageCredentialVendor;
+  private final StorageLocationValidator storageLocationValidator;
   // The vendor built here rather than injected, which the owner of this object closes.
   private final Optional<CloudCredentialVendor> ownedCloudCredentialVendor;
   private final FileOperations fileOperations;
@@ -122,6 +124,10 @@ public class Repositories {
         new StorageCredentialVendorImpl(
             resolvedCloudCredentialVendor, externalLocationUtils, serverProperties);
     this.storageCredentialVendor = auditor.map(a -> a.wrap(vendor)).orElse(vendor);
+    this.storageLocationValidator =
+        new StorageLocationValidator(
+            resolvedCloudCredentialVendor,
+            externalLocationUtils::getExternalLocationCredentialDaoForPath);
     this.fileOperations =
         fileOperationsDecorator.apply(
             new FileOperationsImpl(storageCredentialVendor, serverProperties));

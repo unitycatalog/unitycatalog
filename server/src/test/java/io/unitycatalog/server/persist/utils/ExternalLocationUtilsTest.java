@@ -1,7 +1,5 @@
 package io.unitycatalog.server.persist.utils;
 
-import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
-import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -268,54 +266,6 @@ public class ExternalLocationUtilsTest {
               assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED);
               assertThat(exception).hasMessage("Input path overlaps pending storage cleanup.");
             });
-  }
-
-  private static void assertStorageRootTooLong(
-      String storageRoot, String managedStoragePrefix, int rootBytes, int maxRootBytes) {
-    assertThatThrownBy(
-            () ->
-                ExternalLocationUtils.validateManagedLocationsFit(
-                    NormalizedURL.from(storageRoot), managedStoragePrefix))
-        .isInstanceOfSatisfying(
-            BaseException.class,
-            exception -> {
-              assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
-              assertThat(exception)
-                  .hasMessageStartingWith(
-                      String.format(
-                          "Storage root is %d bytes long in UTF-8, but it can be at most %d bytes",
-                          rootBytes, maxRootBytes));
-            });
-  }
-
-  @Test
-  public void testManagedLocationsUnderTheLongestStorageRootFit() {
-    UUID id = UUID.randomUUID();
-    String bucket = "s3://bucket/";
-
-    String catalogRoot = bucket + "c".repeat(1942 - bucket.length());
-    ExternalLocationUtils.validateManagedLocationsFit(
-        NormalizedURL.from(catalogRoot), MANAGED_STORAGE_CATALOG_PREFIX);
-    NormalizedURL catalogLocation =
-        ExternalLocationUtils.getManagedLocationForCatalog(NormalizedURL.from(catalogRoot), id);
-    assertThat(ExternalLocationUtils.getManagedLocationForVolume(catalogLocation, id).toString())
-        .hasSize(2048);
-    assertStorageRootTooLong(catalogRoot + "c", MANAGED_STORAGE_CATALOG_PREFIX, 1943, 1942);
-
-    String schemaRoot = bucket + "s".repeat(1943 - bucket.length());
-    ExternalLocationUtils.validateManagedLocationsFit(
-        NormalizedURL.from(schemaRoot), MANAGED_STORAGE_SCHEMA_PREFIX);
-    NormalizedURL schemaLocation =
-        ExternalLocationUtils.getManagedLocationForSchema(NormalizedURL.from(schemaRoot), id);
-    assertThat(ExternalLocationUtils.getManagedLocationForVolume(schemaLocation, id).toString())
-        .hasSize(2048);
-    assertStorageRootTooLong(schemaRoot + "s", MANAGED_STORAGE_SCHEMA_PREFIX, 1944, 1943);
-
-    String twoByteCharacters = "é".repeat((1942 - bucket.length()) / 2);
-    ExternalLocationUtils.validateManagedLocationsFit(
-        NormalizedURL.from(bucket + twoByteCharacters), MANAGED_STORAGE_CATALOG_PREFIX);
-    assertStorageRootTooLong(
-        bucket + twoByteCharacters + "é", MANAGED_STORAGE_CATALOG_PREFIX, 1944, 1942);
   }
 
   @Test

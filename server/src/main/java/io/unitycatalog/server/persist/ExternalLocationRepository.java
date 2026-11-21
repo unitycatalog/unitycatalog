@@ -15,6 +15,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.credential.StorageLocationValidator;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -73,6 +74,15 @@ public class ExternalLocationRepository {
    * @param credentialDAO the location's storage credential, or null if it was force-deleted
    * @throws BaseException with INVALID_ARGUMENT if the credential cannot reach the URL
    */
+  private void validateUrlLimits(String url, Optional<CredentialDAO> credentialDAO) {
+    repositories
+        .getStorageLocationValidator()
+        .validateLocation(
+            NormalizedURL.from(url),
+            StorageLocationValidator.MAX_EXTERNAL_LOCATION_URL_LENGTH,
+            credentialDAO);
+  }
+
   static void validateUrlForCredential(String url, CredentialDAO credentialDAO) {
     // Only an s3_compatible credential limits its locations' URLs, so a location an earlier release
     // stored with a URL that no longer parses can still change otherwise; such a URL is not an
@@ -109,6 +119,7 @@ public class ExternalLocationRepository {
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
           validateUrlForCredential(url.toString(), credentialDAO);
+          validateUrlLimits(url.toString(), Optional.of(credentialDAO));
           UUID externalLocationId = UUID.randomUUID();
           ExternalLocationDAO externalLocationDAO =
               ExternalLocationDAO.builder()
@@ -282,6 +293,7 @@ public class ExternalLocationRepository {
             CredentialDAO credentialDAO = validateAndGetCredentialDAO(session, credentialName);
             existingLocation.setCredentialId(credentialDAO.getId());
             validateUrlForCredential(existingLocation.getUrl(), credentialDAO);
+            validateUrlLimits(existingLocation.getUrl(), Optional.of(credentialDAO));
           } else {
             // Keep the current credential. Locked on its first read in this session: a lock taken
             // on an entity already loaded does not refresh it, so a concurrent type change could go
@@ -292,6 +304,9 @@ public class ExternalLocationRepository {
             credentialName = current == null ? null : current.getName();
             // Checked whether or not the URL changes, against the credential's committed type.
             validateUrlForCredential(existingLocation.getUrl(), current);
+            if (updateExternalLocation.getUrl() != null) {
+              validateUrlLimits(existingLocation.getUrl(), Optional.ofNullable(current));
+            }
           }
 
           existingLocation.setUpdatedAt(new Date());

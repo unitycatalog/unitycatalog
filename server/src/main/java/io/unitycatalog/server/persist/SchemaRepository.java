@@ -82,8 +82,9 @@ public class SchemaRepository {
             // storageRoot, if set, is already authorized as a valid external location by
             // SchemaService.
             ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
-            ExternalLocationUtils.validateManagedLocationsFit(
-                storageRoot, Constants.MANAGED_STORAGE_SCHEMA_PREFIX);
+            repositories
+                .getStorageLocationValidator()
+                .validateSchemaStorageRoot(session, storageRoot);
             NormalizedURL storageLocation =
                 ExternalLocationUtils.getManagedLocationForSchema(storageRoot, schemaId);
             schemaInfo.setStorageRoot(storageRoot.toString());

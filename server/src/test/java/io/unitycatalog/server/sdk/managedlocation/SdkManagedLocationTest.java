@@ -192,6 +192,17 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
 
     String externalVolumeLocation = "s3://volume-bucket/" + "v".repeat(2029);
     assertThat(externalVolumeLocation).hasSize(2048);
+    TestUtils.assertApiException(
+        () ->
+            volumeOperations.createVolume(
+                new CreateVolumeRequestContent()
+                    .name(EXTERNAL_VOLUME_NAME)
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .volumeType(VolumeType.EXTERNAL)
+                    .storageLocation(externalVolumeLocation + "v")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage location is too long: it is 2049 bytes in UTF-8, and the limit is 2048.");
     volumeOperations.createVolume(
         new CreateVolumeRequestContent()
             .name(EXTERNAL_VOLUME_NAME)
@@ -212,6 +223,16 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
             .name(MANAGED_MODEL_NAME)
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME));
+    TestUtils.assertApiException(
+        () ->
+            modelOperations.createModelVersion(
+                new CreateModelVersion()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .modelName(MANAGED_MODEL_NAME)
+                    .source(modelVersionSource + "m")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Model version source is too long: it is 2049 bytes in UTF-8, and the limit is 2048.");
     ModelVersionInfo version =
         modelOperations.createModelVersion(
             new CreateModelVersion()

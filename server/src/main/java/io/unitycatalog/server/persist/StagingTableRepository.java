@@ -9,6 +9,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -100,6 +101,9 @@ public class StagingTableRepository {
           NormalizedURL stagingLocation =
               ExternalLocationUtils.getManagedLocationForTable(
                   parentStorageLocation, stagingTableId);
+          repositories
+              .getStorageLocationValidator()
+              .validateLocation(session, stagingLocation, Constants.MAX_STORAGE_LOCATION_LENGTH);
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 

@@ -10,5 +10,9 @@ public class Constants {
   public static final String MANAGED_STORAGE_CATALOG_PREFIX = MANAGED_STORAGE_PREFIX + "/catalogs";
   public static final String MANAGED_STORAGE_SCHEMA_PREFIX = MANAGED_STORAGE_PREFIX + "/schemas";
 
+  /**
+   * The width of the storage location columns, in characters. Locations are validated against it in
+   * UTF-8 bytes, which is stricter, so a location that passes fits in the column on every database.
+   */
   public static final int MAX_STORAGE_LOCATION_LENGTH = 2048;
 }

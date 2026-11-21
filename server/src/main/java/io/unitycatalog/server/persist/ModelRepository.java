@@ -19,6 +19,8 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.service.credential.StorageLocationValidator;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -243,6 +245,7 @@ public class ModelRepository {
               catalogAndSchemaDao, this::getDefaultModelsStorageRoot);
       NormalizedURL storageLocation =
           ExternalLocationUtils.getManagedLocationForModel(parentStorageLocation, modelId);
+      repositories.getStorageLocationValidator().validateModelLocation(session, storageLocation);
       SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
       try {
         // Check if registered model already exists
@@ -569,6 +572,12 @@ public class ModelRepository {
     long createTime = System.currentTimeMillis();
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     UUID modelVersionId = UUID.randomUUID();
+    if (createModelVersion.getSource() != null) {
+      StorageLocationValidator.validateLength(
+          "Model version source",
+          createModelVersion.getSource(),
+          Constants.MAX_STORAGE_LOCATION_LENGTH);
+    }
     String catalogName = createModelVersion.getCatalogName();
     String schemaName = createModelVersion.getSchemaName();
     String modelName = createModelVersion.getModelName();
@@ -611,6 +620,10 @@ public class ModelRepository {
         storageLocation =
             ExternalLocationUtils.getManagedLocationForModelVersion(
                 NormalizedURL.from(existingRegisteredModel.getUrl()), modelVersionId);
+        repositories
+            .getStorageLocationValidator()
+            .validateLocation(
+                session, storageLocation, StorageLocationValidator.MAX_MODEL_LOCATION_LENGTH);
         modelVersionInfo.setVersion(version);
         modelVersionInfo.setStorageLocation(storageLocation.toString());
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);

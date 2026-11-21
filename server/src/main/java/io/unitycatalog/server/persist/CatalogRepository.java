@@ -62,8 +62,6 @@ public class CatalogRepository {
     if (storageRoot != null) {
       // storageRoot, if set, is already authorized as a valid external location by CatalogService.
       ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
-      ExternalLocationUtils.validateManagedLocationsFit(
-          storageRoot, Constants.MANAGED_STORAGE_CATALOG_PREFIX);
       NormalizedURL storageLocation =
           ExternalLocationUtils.getManagedLocationForCatalog(storageRoot, catalogId);
       catalogInfo.setStorageRoot(storageRoot.toString());
@@ -73,6 +71,11 @@ public class CatalogRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
+          if (storageRoot != null) {
+            repositories
+                .getStorageLocationValidator()
+                .validateCatalogStorageRoot(session, storageRoot);
+          }
           if (RepositoryUtils.getCatalogDaoOpt(session, createCatalog.getName()).isPresent()) {
             throw new BaseException(
                 ErrorCode.CATALOG_ALREADY_EXISTS,

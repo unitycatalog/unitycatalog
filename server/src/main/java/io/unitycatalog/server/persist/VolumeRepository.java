@@ -13,6 +13,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -82,6 +83,9 @@ public class VolumeRepository {
                 createVolumeRequest.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
           }
+          repositories
+              .getStorageLocationValidator()
+              .validateLocation(session, storageLocation, Constants.MAX_STORAGE_LOCATION_LENGTH);
           Date now = new Date();
 
           VolumeInfoDAO volumeInfoDAO =
