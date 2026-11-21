@@ -78,15 +78,15 @@ checksum_matches () {
 }
 
 # Verifies $1 (a freshly downloaded "*.part" file) against the expected SHA-256 $3, and moves it
-# to $2 only on a match. On a mismatch, deletes $1 so the caller can retry from another URL or
-# fail.
+# to $2 only on a match, reporting whether the move itself succeeded. On a mismatch, deletes $1 so
+# the caller can retry from another URL or fail.
 verify_and_install_sbt_jar () {
   local jar_dl="$1"
   local jar_dest="$2"
   local expected_sha256="$3"
   if checksum_matches "$jar_dl" "$expected_sha256"; then
     mv "$jar_dl" "$jar_dest"
-    return 0
+    return $?
   fi
   rm -f "$jar_dl"
   return 1
