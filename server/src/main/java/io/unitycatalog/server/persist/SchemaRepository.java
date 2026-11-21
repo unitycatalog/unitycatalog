@@ -115,7 +115,7 @@ public class SchemaRepository {
     SchemaInfo schemaInfo = schemaInfoDAO.toSchemaInfo();
     addNamespaceData(schemaInfo, catalogName);
     return RepositoryUtils.attachProperties(
-        schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
+        schemaInfo, SchemaInfo::setProperties, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
   }
 
   public SchemaInfoDAO getSchemaDaoOrThrow(
@@ -206,7 +206,11 @@ public class SchemaRepository {
     for (SchemaInfoDAO schemaInfoDAO : schemaInfoDAOList) {
       SchemaInfo schemaInfo = schemaInfoDAO.toSchemaInfo();
       RepositoryUtils.attachProperties(
-          schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
+          schemaInfo,
+          SchemaInfo::setProperties,
+          schemaInfo.getSchemaId(),
+          Constants.SCHEMA,
+          session);
       addNamespaceData(schemaInfo, catalogName);
       result.add(schemaInfo);
     }
@@ -218,9 +222,7 @@ public class SchemaRepository {
         sessionFactory,
         session -> {
           SchemaInfoDAO schemaInfoDAO = getSchemaDaoOrThrow(session, fullName);
-          SchemaInfo schemaInfo = convertFromDAO(session, schemaInfoDAO, fullName);
-          return RepositoryUtils.attachProperties(
-              schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
+          return convertFromDAO(session, schemaInfoDAO, fullName);
         },
         "Failed to get schema",
         /* readOnly= */ true);

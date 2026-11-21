@@ -254,7 +254,11 @@ public class TableRepository {
           TableInfoDAO tableInfoDAO = findTableOrThrow(session, catalogName, schemaName, tableName);
           TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
-              tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+              tableInfo,
+              TableInfo::setProperties,
+              tableInfo.getTableId(),
+              Constants.TABLE,
+              session);
           RepositoryUtils.attachDependencies(
               tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
           return tableInfo;
@@ -1256,7 +1260,7 @@ public class TableRepository {
           RepositoryUtils.attachDependencies(
               result, dao, session, repositories.getDependencyRepository());
           return RepositoryUtils.attachProperties(
-              result, result.getTableId(), Constants.TABLE, session);
+              result, TableInfo::setProperties, result.getTableId(), Constants.TABLE, session);
         },
         "Failed to update table owner",
         /* readOnly= */ false);
