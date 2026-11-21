@@ -151,13 +151,13 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
                     .schemaName(schemaName)
                     .name(TABLE_NAME));
     assertThat(staging.getStagingLocation()).startsWith(parentLocation + "/tables/");
+    assertThat(staging.getStagingLocation()).hasSize(2047);
   }
 
   @SneakyThrows
   @Test
-  public void testStoragePathsLongerThan255Characters() {
-    // The longest roots whose managed volume locations, the longest managed child locations, are
-    // exactly 2048 characters.
+  public void testStoragePathsUpToTheColumnLimit() {
+    // The longest roots allowed. A managed volume under each is exactly 2048 characters.
     String catalogRoot = "s3://catalog-bucket/" + "c".repeat(1922);
     String schemaRoot = "s3://schema-bucket/" + "s".repeat(1924);
     TestUtils.assertApiException(
@@ -165,7 +165,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
             catalogOperations.createCatalog(
                 new CreateCatalog().name(CATALOG_NAME).storageRoot(catalogRoot + "c")),
         ErrorCode.INVALID_ARGUMENT,
-        "Storage root is 1943 characters long, but it can be at most 1942 characters");
+        "Storage root is 1943 bytes long in UTF-8, but it can be at most 1942 bytes");
     createCatalog(Optional.of(catalogRoot));
     TestUtils.assertApiException(
         () ->
@@ -175,7 +175,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
                     .name(SCHEMA_NAME)
                     .storageRoot(schemaRoot + "s")),
         ErrorCode.INVALID_ARGUMENT,
-        "Storage root is 1944 characters long, but it can be at most 1943 characters");
+        "Storage root is 1944 bytes long in UTF-8, but it can be at most 1943 bytes");
     createSchema(Optional.of(schemaRoot));
     assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageRoot()).isEqualTo(catalogRoot);
     assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageLocation())

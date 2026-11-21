@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.dao;
 
+import static io.unitycatalog.server.utils.Constants.MAX_STORAGE_LOCATION_LENGTH;
+
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionStatus;
 import jakarta.persistence.Column;
@@ -39,7 +41,7 @@ public class ModelVersionInfoDAO {
   @Column(name = "version")
   private Long version;
 
-  @Column(name = "source", length = 2048)
+  @Column(name = "source", length = MAX_STORAGE_LOCATION_LENGTH)
   private String source;
 
   @Column(name = "run_id")

@@ -62,6 +62,8 @@ public class CatalogRepository {
     if (storageRoot != null) {
       // storageRoot, if set, is already authorized as a valid external location by CatalogService.
       ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
+      ExternalLocationUtils.validateManagedLocationsFit(
+          storageRoot, Constants.MANAGED_STORAGE_CATALOG_PREFIX);
       NormalizedURL storageLocation =
           ExternalLocationUtils.getManagedLocationForCatalog(storageRoot, catalogId);
       catalogInfo.setStorageRoot(storageRoot.toString());

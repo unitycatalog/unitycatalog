@@ -20,6 +20,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -805,45 +806,53 @@ public class ExternalLocationUtils {
 
   public static NormalizedURL getManagedLocationForSchema(
       NormalizedURL storageRoot, UUID schemaId) {
-    validateManagedLocationsFit(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX);
     return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX, schemaId);
   }
 
   public static NormalizedURL getManagedLocationForCatalog(
       NormalizedURL storageRoot, UUID catalogId) {
-    validateManagedLocationsFit(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX);
     return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX, catalogId);
   }
 
   /**
-   * Rejects a catalog or schema storage root whose managed table, staging table or volume locations
-   * would not fit in {@link Constants#MAX_STORAGE_LOCATION_LENGTH} characters.
+   * Validates that the managed table and volume locations under a catalog or schema created at this
+   * storage root fit in {@link Constants#MAX_STORAGE_LOCATION_LENGTH}. Lengths are counted in UTF-8
+   * bytes, which also keeps the indexed staging table location within PostgreSQL's index entry
+   * limit.
+   *
+   * @param storageRoot the storage root of the catalog or schema
+   * @param managedStoragePrefix {@link Constants#MANAGED_STORAGE_CATALOG_PREFIX} or {@link
+   *     Constants#MANAGED_STORAGE_SCHEMA_PREFIX}
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the longest managed location
+   *     would be too long
    */
-  private static void validateManagedLocationsFit(NormalizedURL storageRoot, String prefix) {
+  public static void validateManagedLocationsFit(
+      NormalizedURL storageRoot, String managedStoragePrefix) {
     UUID anyId = new UUID(0, 0);
-    NormalizedURL containerLocation = getManagedLocationForEntity(storageRoot, prefix, anyId);
-    int longestLocation =
-        Stream.of(
-                ManagedResourceType.TABLE,
-                ManagedResourceType.STAGING_TABLE,
-                ManagedResourceType.VOLUME)
+    NormalizedURL containerLocation =
+        getManagedLocationForEntity(storageRoot, managedStoragePrefix, anyId);
+    int longestLocationBytes =
+        Stream.of(ManagedResourceType.TABLE, ManagedResourceType.VOLUME)
             .mapToInt(
                 type ->
-                    getManagedLocationForEntity(containerLocation, type.pathSegment(), anyId)
-                        .toString()
-                        .length())
+                    utf8Length(
+                        getManagedLocationForEntity(containerLocation, type.pathSegment(), anyId)))
             .max()
             .getAsInt();
-    int excess = longestLocation - Constants.MAX_STORAGE_LOCATION_LENGTH;
+    int excess = longestLocationBytes - Constants.MAX_STORAGE_LOCATION_LENGTH;
     if (excess > 0) {
-      int rootLength = storageRoot.toString().length();
+      int rootBytes = utf8Length(storageRoot);
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           String.format(
-              "Storage root is %d characters long, but it can be at most %d characters so that "
-                  + "managed table and volume locations under it fit in %d characters.",
-              rootLength, rootLength - excess, Constants.MAX_STORAGE_LOCATION_LENGTH));
+              "Storage root is %d bytes long in UTF-8, but it can be at most %d bytes so that "
+                  + "managed table and volume locations under it fit in %d bytes.",
+              rootBytes, rootBytes - excess, Constants.MAX_STORAGE_LOCATION_LENGTH));
     }
+  }
+
+  private static int utf8Length(NormalizedURL url) {
+    return url.toString().getBytes(StandardCharsets.UTF_8).length;
   }
 
   // The following methods do not add a __unitystorage prefix because the storageRoot
