@@ -114,14 +114,13 @@ public class CachingCloudCredentialVendorTest {
   }
 
   /** AWS session credentials as STS returns them; a {@code null} expiry is a static credential. */
-  private static Optional<Credentials> awsCreds(String accessKey, Long expiryEpochMs) {
-    return Optional.of(
-        Credentials.builder()
-            .accessKeyId(accessKey)
-            .secretAccessKey("SK")
-            .sessionToken("TK")
-            .expiration(expiryEpochMs == null ? null : Instant.ofEpochMilli(expiryEpochMs))
-            .build());
+  private static Credentials awsCreds(String accessKey, Long expiryEpochMs) {
+    return Credentials.builder()
+        .accessKeyId(accessKey)
+        .secretAccessKey("SK")
+        .sessionToken("TK")
+        .expiration(expiryEpochMs == null ? null : Instant.ofEpochMilli(expiryEpochMs))
+        .build();
   }
 
   /** Every cloud vends a new, distinct credential on each call, valid for an hour. */
@@ -170,13 +169,12 @@ public class CachingCloudCredentialVendorTest {
   }
 
   /** A context on S3-compatible storage with an {@code s3_compatible} credential. */
-  private static CredentialContext s3CompatibleCtx(String fingerprint, boolean isServerAccess) {
-    return s3CompatibleCtx(
-        fingerprint, isServerAccess, "http://storage.example.com:9000", "us-east-1");
+  private static CredentialContext s3CompatibleCtx(String fingerprint) {
+    return s3CompatibleCtx(fingerprint, "http://storage.example.com:9000", "us-east-1");
   }
 
   private static CredentialContext s3CompatibleCtx(
-      String fingerprint, boolean isServerAccess, String s3Endpoint, String s3Region) {
+      String fingerprint, String s3Endpoint, String s3Region) {
     CredentialDAO dao = mock(CredentialDAO.class);
     when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.S3_COMPATIBLE);
     when(dao.getId()).thenReturn(S3_ACCESS_KEY_ID);
@@ -185,12 +183,7 @@ public class CachingCloudCredentialVendorTest {
     when(dao.getAwsIamRoleResponse())
         .thenThrow(new BaseException(ErrorCode.FAILED_PRECONDITION, "not AWS_IAM_ROLE"));
     return CredentialContext.create(
-        LOC,
-        READ_ONLY,
-        Optional.of(dao),
-        Optional.of(s3Endpoint),
-        Optional.of(s3Region),
-        isServerAccess);
+        LOC, READ_ONLY, Optional.of(dao), Optional.of(s3Endpoint), Optional.of(s3Region));
   }
 
   private static String accessKey(TemporaryCredentials credentials) {
@@ -237,16 +230,15 @@ public class CachingCloudCredentialVendorTest {
             "per-bucket config instead of a credential", original, perBucket(LOC.toString())),
         // An s3_compatible credential: its stored value, its endpoint, and the region the
         // storage reports, which can follow the fallback region at the same endpoint.
-        Arguments.of(
-            "s3_compatible value", s3CompatibleCtx("fp-1", false), s3CompatibleCtx("fp-2", false)),
+        Arguments.of("s3_compatible value", s3CompatibleCtx("fp-1"), s3CompatibleCtx("fp-2")),
         Arguments.of(
             "s3 endpoint",
-            s3CompatibleCtx("fp-1", false, "http://storage-a.example.com:9000", "us-east-1"),
-            s3CompatibleCtx("fp-1", false, "http://storage-b.example.com:9000", "us-east-1")),
+            s3CompatibleCtx("fp-1", "http://storage-a.example.com:9000", "us-east-1"),
+            s3CompatibleCtx("fp-1", "http://storage-b.example.com:9000", "us-east-1")),
         Arguments.of(
             "reported region",
-            s3CompatibleCtx("fp-1", false, "http://storage.example.com:9000", "us-east-1"),
-            s3CompatibleCtx("fp-1", false, "http://storage.example.com:9000", "garage")));
+            s3CompatibleCtx("fp-1", "http://storage.example.com:9000", "us-east-1"),
+            s3CompatibleCtx("fp-1", "http://storage.example.com:9000", "garage")));
   }
 
   /** A READ_ONLY context for {@code location} with no credential DAO (per-bucket config). */
@@ -706,40 +698,5 @@ public class CachingCloudCredentialVendorTest {
   @FunctionalInterface
   private interface ThrowingRunnable {
     void run() throws Exception;
-  }
-
-  @Test
-  public void testS3CompatibleServerAndClientVendsAndVersionsAreCachedApart() {
-    // A server vend of an s3_compatible credential always carries keys, so a client must never be
-    // served it; and any update to the credential can change what is vended.
-    vendDistinctCredentials();
-    CachingCloudCredentialVendor cache = cache();
-    String client = accessKey(cache.vendCredential(s3CompatibleCtx("version-1", false)));
-    String server = accessKey(cache.vendCredential(s3CompatibleCtx("version-1", true)));
-    assertNotEquals(client, server);
-    assertEquals(client, accessKey(cache.vendCredential(s3CompatibleCtx("version-1", false))));
-    assertEquals(server, accessKey(cache.vendCredential(s3CompatibleCtx("version-1", true))));
-
-    String updated = accessKey(cache.vendCredential(s3CompatibleCtx("version-2", false)));
-    assertNotEquals(client, updated);
-    verify(aws, times(3)).vendAwsCredentials(any());
-  }
-
-  @Test
-  public void testAwsIamRoleServerAndClientVendsShareAnEntry() {
-    // Only s3_compatible credentials vend differently to the server, so an IAM role vends once.
-    vendDistinctCredentials();
-    CachingCloudCredentialVendor cache = cache();
-    CredentialContext client = ctx("arn:aws:iam::123456789012:role/r");
-    CredentialContext server =
-        CredentialContext.create(
-            LOC,
-            READ_ONLY,
-            client.getCredentialDAO(),
-            Optional.empty(),
-            Optional.empty(),
-            /* isServerAccess= */ true);
-    assertEquals(accessKey(cache.vendCredential(client)), accessKey(cache.vendCredential(server)));
-    verify(aws, times(1)).vendAwsCredentials(any());
   }
 }

@@ -5,14 +5,11 @@ import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
-import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.time.Instant;
-import java.util.Optional;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class CloudCredentialVendor implements AutoCloseable {
@@ -74,16 +71,7 @@ public class CloudCredentialVendor implements AutoCloseable {
             .s3Region(context.getS3Region().orElse(null));
     TemporaryCredentials temporaryCredentials =
         new TemporaryCredentials().awsTempCredentials(awsCredentials);
-    Optional<Credentials> vended = awsCredentialVendor.vendAwsCredentials(context);
-    if (vended.isEmpty()) {
-      // The path's credential does not vend keys: return only the S3 endpoint, and the client uses
-      // its own keys. The lifetime, as for a vended key pair, tells clients when they may fetch
-      // again to pick up a changed endpoint; one that does not refetch a vend without keys, such
-      // as the UC Hadoop connector, picks it up on its first table load after that time.
-      return temporaryCredentials.expirationTime(
-          Instant.now().plus(AwsCredentialGenerator.SESSION_DURATION).toEpochMilli());
-    }
-    Credentials credentials = vended.get();
+    Credentials credentials = awsCredentialVendor.vendAwsCredentials(context);
     awsCredentials
         .accessKeyId(credentials.accessKeyId())
         .secretAccessKey(credentials.secretAccessKey())

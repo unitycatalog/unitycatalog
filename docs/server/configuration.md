@@ -254,7 +254,11 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   replaced by `[REDACTED]` otherwise.
 - `access` is `READ` or `READ_WRITE`: the access the request asked for. A static credential, such as
   configured S3 keys, is returned as configured and can allow more. `expires_at` is when the
-  credential expires. Records never contain credential values.
+  credential expires. An `s3_compatible` key pair does not expire: its `expires_at`, an hour after
+  the vend, tells clients that renew when to fetch it again. Like any expiry, it also caps reuse from
+  the credential cache, which `server.storage-credential-cache.max-age` and the one-minute expiry
+  margin usually end sooner. An `endpoint-only` response carries the same time and is built without
+  the cache. Records never contain credential values.
 
 A record is written for every credential issued, including ones served from the credential cache.
 For local `file:` storage there is no credential to issue. A request for credentials, through the

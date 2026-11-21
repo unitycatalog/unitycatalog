@@ -13,7 +13,6 @@ import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
-import io.unitycatalog.server.utils.ServerProperties.S3CompatibleStaticKeyVending;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -68,8 +67,9 @@ import software.amazon.awssdk.services.sts.model.Credentials;
  *   <li><b>S3-Compatible Credentials:</b> An {@code s3_compatible} storage credential of an
  *       external location on S3-compatible storage. With {@code assume_role}, its own keys assume
  *       the role at its {@code sts_endpoint}, or its {@code s3_endpoint} when none is set, as
- *       above. Without it, the server uses the key pair for its own storage access, and {@link
- *       ServerProperties.Property#S3_COMPATIBLE_STATIC_KEY_VENDING} decides what clients receive.
+ *       above. Without it, its key pair, with the lifetime of an STS session; {@link
+ *       ServerProperties.Property#S3_COMPATIBLE_STATIC_KEY_VENDING} decides, at the storage vendor,
+ *       what clients receive of it.
  * </ol>
  */
 public class AwsCredentialVendor implements AutoCloseable {
@@ -167,8 +167,6 @@ public class AwsCredentialVendor implements AutoCloseable {
     }
   }
 
-  private final S3CompatibleStaticKeyVending staticKeyVending;
-
   private final CredentialSecretStore secretStore;
 
   private final ServerProperties serverProperties;
@@ -189,7 +187,6 @@ public class AwsCredentialVendor implements AutoCloseable {
     this.perBucketS3Configs = serverProperties.getS3Configurations();
     // awsS3MasterRoleConfig.awsRoleArn is null. The ARN to assume comes from credential securable.
     this.awsS3MasterRoleConfig = serverProperties.getS3MasterRoleConfiguration();
-    this.staticKeyVending = serverProperties.getS3CompatibleStaticKeyVending();
     this.secretStore = CredentialSecretStore.from(serverProperties);
     this.serverProperties = serverProperties;
   }
@@ -215,14 +212,11 @@ public class AwsCredentialVendor implements AutoCloseable {
 
   /**
    * Vends for an {@code s3_compatible} credential: scoped short-lived credentials from its STS with
-   * {@code assume_role}. Without it, the key pair for the server's own access, and for clients only
-   * when {@code server.s3-compatible-storage.static-key-vending} is {@code static-key}, with the
-   * lifetime of an STS session.
+   * {@code assume_role}, and otherwise its key pair, with the lifetime of an STS session.
    *
-   * @return the credentials, or empty when the key pair is not vended to clients
+   * @return the credentials
    */
-  private Optional<Credentials> vendS3Compatible(
-      CredentialDAO credentialDAO, CredentialContext context) {
+  private Credentials vendS3Compatible(CredentialDAO credentialDAO, CredentialContext context) {
     // Credentials stored while the feature was enabled stay in the database after it is turned off;
     // they are not vended then.
     serverProperties.checkS3CompatibleStorageEnabled();
@@ -239,21 +233,16 @@ public class AwsCredentialVendor implements AutoCloseable {
           StaticCredentialsProvider.create(
               AwsBasicCredentials.create(
                   s3Compatible.getAccessKeyId(), secretAccessKey(credentialDAO)));
-      return Optional.of(assumeS3CompatibleRole(key, context, assumeRole.getRoleArn(), signer));
+      return assumeS3CompatibleRole(key, context, assumeRole.getRoleArn(), signer);
     }
-    if (context.isServerAccess()) {
-      return Optional.of(keyPair(credentialDAO, s3Compatible).build());
-    }
-    if (staticKeyVending == S3CompatibleStaticKeyVending.STATIC_KEY) {
-      // The key pair itself does not expire. A lifetime makes clients vend again, so an update of
-      // the credential's key pair reaches them.
-      return Optional.of(
-          keyPair(credentialDAO, s3Compatible)
-              .expiration(Instant.now().plus(AwsCredentialGenerator.SESSION_DURATION))
-              .build());
-    }
-    // Clients get only the S3 endpoint, so the secret is not loaded from its store.
-    return Optional.empty();
+    // The key pair itself does not expire. The lifetime tells clients that renew, such as the UC
+    // Hadoop connector, when to fetch it again, so an update of the key pair reaches them; the
+    // Iceberg REST config carries no lifetime for a key pair. Like any expiry, it also caps reuse
+    // from the vend cache, whose max age usually ends it first. What a client may receive of it is
+    // decided by the caller (StorageCredentialVendorImpl).
+    return keyPair(credentialDAO, s3Compatible)
+        .expiration(Instant.now().plus(AwsCredentialGenerator.SESSION_DURATION))
+        .build();
   }
 
   /**
@@ -338,9 +327,9 @@ public class AwsCredentialVendor implements AutoCloseable {
    * Vends AWS credentials for the context's path.
    *
    * @param context the path, privileges, and storage credential to vend for
-   * @return the credentials, or empty when the path's credential does not vend keys to clients
+   * @return the credentials
    */
-  public Optional<Credentials> vendAwsCredentials(CredentialContext context) {
+  public Credentials vendAwsCredentials(CredentialContext context) {
     AwsCredentialGenerator generator;
     if (context.getCredentialDAO().isPresent()) {
       CredentialDAO credentialDAO = context.getCredentialDAO().get();
@@ -361,7 +350,7 @@ public class AwsCredentialVendor implements AutoCloseable {
         generator = getPerBucketCredGenerator(context.getStorageBase(), config);
       }
     }
-    return Optional.of(generator.generate(context));
+    return generator.generate(context);
   }
 
   private synchronized AwsCredentialGenerator getPerBucketCredGenerator(
