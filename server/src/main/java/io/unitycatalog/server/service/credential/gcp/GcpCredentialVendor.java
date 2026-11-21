@@ -176,9 +176,9 @@ public class GcpCredentialVendor {
    *
    * @return why the locations can't be used on GCS, or empty
    */
-  public Optional<String> limitViolation(CredentialContext context) {
+  public Optional<String> limitViolation(CredentialContext context, StorageLimits.Extent extent) {
     return StorageLimits.objectNameViolation(
-            context.getLocations(), "GCS object", StorageLimits.Unit.UTF8_BYTES)
+            context.getLocations(), "GCS object", StorageLimits.Unit.UTF8_BYTES, extent)
         .or(
             () ->
                 buildsAccessBoundary(context)

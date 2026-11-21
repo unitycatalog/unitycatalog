@@ -1,4 +1,4 @@
-package io.unitycatalog.server.service.credential;
+package io.unitycatalog.server.persist.utils;
 
 import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
 import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
@@ -18,7 +18,9 @@ import io.unitycatalog.server.model.S3AssumeRole;
 import io.unitycatalog.server.model.S3CompatibleRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
-import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.service.credential.StorageLimits.Unit;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -335,7 +337,7 @@ public class StorageLocationValidatorTest {
         .extracting(Throwable::getMessage)
         .isEqualTo(
             "Storage root is too long. For the location of a managed model version under it, S3"
-                + " object key names under it are at least 1025 bytes, and the limit is 1024.");
+                + " object key names under it have at least 1025 bytes, and the limit is 1024.");
   }
 
   @Test
@@ -518,8 +520,62 @@ public class StorageLocationValidatorTest {
         .isInstanceOf(BaseException.class)
         .hasMessage(
             "Registered model location is too long. For the location of a model version under"
-                + " it, Azure blob names under it are at least 1025 characters, and the limit is"
+                + " it, Azure blob names under it have at least 1025 characters, and the limit is"
                 + " 1024.");
+  }
+
+  @Test
+  public void testRequestLocationMayNameASingleS3Object() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    // An external table can be a single file, so a location given in a request only has to be a
+    // valid key itself. S3: object keys are "a maximum length of 1,024 bytes" (Amazon S3 object
+    // keys, checked 2026-11-21).
+    NormalizedURL file = NormalizedURL.from(STATIC_BUCKET + "/" + "a".repeat(1020) + ".csv");
+    assertThat(StorageLimits.objectName(file)).hasSize(1024);
+
+    assertThatCode(() -> validator.validateLocation(null, file, 2048)).doesNotThrowAnyException();
+    assertThatThrownBy(
+            () ->
+                validator.validateLocation(
+                    null,
+                    NormalizedURL.from(STATIC_BUCKET + "/" + "a".repeat(1021) + ".csv"),
+                    2048))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Storage location is too long: its S3 object key name has 1025 bytes, and the limit"
+                + " is 1024.");
+    // The server writes objects under a managed location, so one has to fit under it.
+    assertThatThrownBy(() -> validator.validateManagedLocation(null, file, 2048))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Storage location is too long: S3 object key names under it have at least 1026"
+                + " bytes, and the limit is 1024.");
+  }
+
+  @Test
+  public void testRequestLocationMayNameASingleAzureBlob() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    String container = "abfss://container@account.dfs.core.windows.net/";
+    NormalizedURL deepest =
+        NormalizedURL.from(container + String.join("/", Collections.nCopies(254, "s")));
+    NormalizedURL longest = NormalizedURL.from(container + "b".repeat(1024));
+
+    assertThatCode(() -> validator.validateLocation(null, deepest, 2048))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () -> validator.validateLocation(null, NormalizedURL.from(deepest + "/s"), 2048))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Storage location is too long: its Azure blob name has 255 path segments, and the"
+                + " limit is 254.");
+    assertThatCode(() -> validator.validateLocation(null, longest, 2048))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () -> validator.validateLocation(null, NormalizedURL.from(longest + "b"), 2048))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Storage location is too long: its Azure blob name has 1025 characters, and the limit"
+                + " is 1024.");
   }
 
   @Test
@@ -561,7 +617,7 @@ public class StorageLocationValidatorTest {
                         "abfss://container@account.dfs.core.windows.net/" + "a".repeat(1100)),
                     2048))
         .isInstanceOf(BaseException.class)
-        .hasMessageContaining("Azure blob names under it are at least");
+        .hasMessageContaining("its Azure blob name has 1100 characters");
   }
 
   @Test
@@ -602,14 +658,14 @@ public class StorageLocationValidatorTest {
                         null, NormalizedURL.from(bucket + threeByteCharacter.repeat(length)), 2048);
                     return true;
                   } catch (BaseException e) {
-                    assertThat(e).hasMessageContaining("GCS object names under it are at least");
+                    assertThat(e).hasMessageContaining("its GCS object name has");
                     return false;
                   }
                 })
             .max()
             .getAsInt();
     // GCS: object names are "1-1024 bytes when UTF-8 encoded" (Objects, checked 2026-11-21).
-    assertThat(3 * longestAccepted + "/x".length()).isBetween(1022, 1024);
+    assertThat(3 * longestAccepted).isBetween(1022, 1024);
   }
 
   @Test

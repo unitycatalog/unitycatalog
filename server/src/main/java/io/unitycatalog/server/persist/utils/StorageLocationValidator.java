@@ -1,9 +1,11 @@
-package io.unitycatalog.server.service.credential;
+package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
-import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageLimits.Extent;
 import io.unitycatalog.server.service.credential.StorageLimits.Unit;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -21,7 +23,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Rejects storage locations that their database column, or the cloud storage they are on, can't
  * hold. Cloud limits are the ones {@link CloudCredentialVendor#limitViolation} checks: object name
- * limits for objects under the location, and the limits of the credentials vended for it.
+ * limits, and the limits of the credentials vended for a location.
  *
  * <p>A location given in a request is checked against its column in characters, counted the way the
  * database counts them. A location the server builds, a storage root and the managed locations
@@ -38,14 +40,27 @@ public class StorageLocationValidator {
     Optional<CredentialDAO> find(Session session, NormalizedURL location);
   }
 
-  // A location given in a request may only be read, so only its read policy has to fit. A write
-  // vend whose policy is too long fails with INVALID_ARGUMENT before STS is called.
-  private static final Set<CredentialContext.Privilege> READ =
-      Set.of(CredentialContext.Privilege.SELECT);
+  /** How the server uses a location, which decides the cloud limits it has to meet. */
+  private enum Use {
+    /**
+     * A location given in a request may only be read, and may name a single object, such as a table
+     * that is one file. A write vend whose policy is too long fails with INVALID_ARGUMENT before
+     * STS is called.
+     */
+    REQUESTED(Set.of(CredentialContext.Privilege.SELECT), Extent.OBJECT_OR_PREFIX),
+    /** The server reads and writes objects under the managed locations it builds. */
+    MANAGED(
+        Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE),
+        Extent.PREFIX);
 
-  // The server writes to the managed locations it builds, so their read/write policy has to fit.
-  private static final Set<CredentialContext.Privilege> READ_WRITE =
-      Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE);
+    private final Set<CredentialContext.Privilege> privileges;
+    private final Extent extent;
+
+    Use(Set<CredentialContext.Privilege> privileges, Extent extent) {
+      this.privileges = privileges;
+      this.extent = extent;
+    }
+  }
 
   // Only the S3 and GCS vendors build credentials from a location's storage credential.
   private static final Set<String> CREDENTIAL_SCHEMES =
@@ -88,7 +103,8 @@ public class StorageLocationValidator {
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the location is too long
    */
   public void validateLocation(Session session, NormalizedURL location, int maxLength) {
-    validateLocation(location, maxLength, columnUnit.get(), READ, credentialFor(session, location));
+    validateLocation(
+        location, maxLength, columnUnit.get(), Use.REQUESTED, credentialFor(session, location));
   }
 
   /**
@@ -101,7 +117,8 @@ public class StorageLocationValidator {
    */
   public void validateLocation(
       NormalizedURL location, int maxLength, Optional<CredentialDAO> credential) {
-    validateLocation(location, maxLength, columnUnit.get(), READ, new Resolved(credential));
+    validateLocation(
+        location, maxLength, columnUnit.get(), Use.REQUESTED, new Resolved(credential));
   }
 
   /**
@@ -112,7 +129,7 @@ public class StorageLocationValidator {
    */
   public void validateManagedLocation(Session session, NormalizedURL location, int maxBytes) {
     validateLocation(
-        location, maxBytes, Unit.UTF8_BYTES, READ_WRITE, credentialFor(session, location));
+        location, maxBytes, Unit.UTF8_BYTES, Use.MANAGED, credentialFor(session, location));
   }
 
   /**
@@ -153,7 +170,7 @@ public class StorageLocationValidator {
         modelLocation,
         Constants.MAX_MODEL_LOCATION_LENGTH,
         Unit.UTF8_BYTES,
-        READ_WRITE,
+        Use.MANAGED,
         credential);
     NormalizedURL versionLocation =
         ExternalLocationUtils.getManagedLocationForModelVersion(modelLocation, ANY_ID);
@@ -161,7 +178,7 @@ public class StorageLocationValidator {
             versionLocation,
             Constants.MAX_MODEL_LOCATION_LENGTH,
             Unit.UTF8_BYTES,
-            READ_WRITE,
+            Use.MANAGED,
             credential)
         .ifPresent(
             violation -> {
@@ -212,7 +229,7 @@ public class StorageLocationValidator {
     VendCredential credential = credentialFor(session, storageRoot);
     managedLocations.forEach(
         managed ->
-            cloudLimitViolation(managed.location(), READ_WRITE, credential)
+            cloudLimitViolation(managed.location(), Use.MANAGED, credential)
                 .ifPresent(
                     violation -> {
                       throw new BaseException(
@@ -259,12 +276,8 @@ public class StorageLocationValidator {
   }
 
   private void validateLocation(
-      NormalizedURL location,
-      int maxLength,
-      Unit unit,
-      Set<CredentialContext.Privilege> privileges,
-      VendCredential credential) {
-    violation(location, maxLength, unit, privileges, credential)
+      NormalizedURL location, int maxLength, Unit unit, Use use, VendCredential credential) {
+    violation(location, maxLength, unit, use, credential)
         .ifPresent(
             violation -> {
               throw new BaseException(
@@ -282,23 +295,17 @@ public class StorageLocationValidator {
   }
 
   private Optional<String> violation(
-      NormalizedURL location,
-      int maxLength,
-      Unit unit,
-      Set<CredentialContext.Privilege> privileges,
-      VendCredential credential) {
+      NormalizedURL location, int maxLength, Unit unit, Use use, VendCredential credential) {
     return lengthViolation(location.toString(), maxLength, unit)
-        .or(() -> cloudLimitViolation(location, privileges, credential));
+        .or(() -> cloudLimitViolation(location, use, credential));
   }
 
   private Optional<String> cloudLimitViolation(
-      NormalizedURL location,
-      Set<CredentialContext.Privilege> privileges,
-      VendCredential credential) {
+      NormalizedURL location, Use use, VendCredential credential) {
     if (!(credential instanceof Resolved resolved)) {
       return Optional.empty();
     }
     return cloudCredentialVendor.limitViolation(
-        CredentialContext.create(location, privileges, resolved.credential()));
+        CredentialContext.create(location, use.privileges, resolved.credential()), use.extent);
   }
 }

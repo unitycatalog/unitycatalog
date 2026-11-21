@@ -279,7 +279,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
     String storedLocation = container + "s".repeat(1100);
     setStored("CatalogInfoDAO", "storageLocation", CATALOG_NAME, storedLocation);
     setStored("RegisteredModelInfoDAO", "url", MANAGED_MODEL_NAME, storedLocation);
-    String rejection = "Azure blob names under it are at least";
+    String rejection = "Azure blob names under it have at least";
 
     TestUtils.assertApiException(
         () ->

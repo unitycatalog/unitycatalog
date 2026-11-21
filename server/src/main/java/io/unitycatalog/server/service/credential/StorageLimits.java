@@ -53,6 +53,31 @@ public final class StorageLimits {
     }
   }
 
+  /** Whether objects are stored under a location, or the location may itself name one. */
+  public enum Extent {
+    /**
+     * Objects are stored under the location. The shortest name of such an object is the location's
+     * name, a slash and one character, one path segment more.
+     */
+    PREFIX(2, 1),
+    /** The location may itself name an object, such as a table that is a single file. */
+    OBJECT_OR_PREFIX(0, 0);
+
+    private final int extraNameLength;
+    private final int extraSegments;
+
+    Extent(int extraNameLength, int extraSegments) {
+      this.extraNameLength = extraNameLength;
+      this.extraSegments = extraSegments;
+    }
+
+    private String describe(String kind, String measure) {
+      return this == PREFIX
+          ? String.format("%s names under it have at least %s", kind, measure)
+          : String.format("its %s name has %s", kind, measure);
+    }
+  }
+
   private StorageLimits() {}
 
   /**
@@ -63,46 +88,50 @@ public final class StorageLimits {
   }
 
   /**
-   * Checks that an object can be stored under each location. The shortest name of such an object is
-   * the location's name, a slash and one character.
+   * Checks that each location can hold an object: under it, or for {@link Extent#OBJECT_OR_PREFIX}
+   * also as the location itself.
    *
-   * @param kind what the storage calls an object name, for the message
-   * @return why no object fits under one of the locations, or empty
+   * @param kind what the storage calls an object, for the message
+   * @return why no object fits at one of the locations, or empty
    */
   public static Optional<String> objectNameViolation(
-      List<NormalizedURL> locations, String kind, Unit unit) {
+      List<NormalizedURL> locations, String kind, Unit unit, Extent extent) {
     return locations.stream()
-        .mapToInt(location -> unit.length(objectName(location)) + 2)
+        .mapToInt(location -> unit.length(objectName(location)) + extent.extraNameLength)
         .max()
         .stream()
-        .filter(shortestChildName -> shortestChildName > MAX_OBJECT_NAME_LENGTH)
+        .filter(shortestName -> shortestName > MAX_OBJECT_NAME_LENGTH)
         .mapToObj(
-            shortestChildName ->
+            shortestName ->
                 String.format(
-                    "%s names under it are at least %d %s, and the limit is %d",
-                    kind, shortestChildName, unit.label, MAX_OBJECT_NAME_LENGTH))
+                    "%s, and the limit is %d",
+                    extent.describe(kind, shortestName + " " + unit.label), MAX_OBJECT_NAME_LENGTH))
         .findFirst();
   }
 
   /**
-   * Checks that a blob can be stored under each location, whose name has at most {@link
-   * #MAX_AZURE_PATH_SEGMENTS} path segments.
+   * Checks that each location can hold a blob whose name has at most {@link
+   * #MAX_AZURE_PATH_SEGMENTS} path segments, under it or, for {@link Extent#OBJECT_OR_PREFIX}, as
+   * the location itself.
    *
-   * @return why no blob fits under one of the locations, or empty
+   * @return why no blob fits at one of the locations, or empty
    */
-  public static Optional<String> azurePathSegmentViolation(List<NormalizedURL> locations) {
+  public static Optional<String> azurePathSegmentViolation(
+      List<NormalizedURL> locations, Extent extent) {
     return locations.stream()
         .mapToInt(
             location ->
-                Splitter.on('/').omitEmptyStrings().splitToList(objectName(location)).size() + 1)
+                Splitter.on('/').omitEmptyStrings().splitToList(objectName(location)).size()
+                    + extent.extraSegments)
         .max()
         .stream()
         .filter(segments -> segments > MAX_AZURE_PATH_SEGMENTS)
         .mapToObj(
             segments ->
                 String.format(
-                    "Azure blob names under it have at least %d path segments, and the limit is %d",
-                    segments, MAX_AZURE_PATH_SEGMENTS))
+                    "%s, and the limit is %d",
+                    extent.describe("Azure blob", segments + " path segments"),
+                    MAX_AZURE_PATH_SEGMENTS))
         .findFirst();
   }
 }

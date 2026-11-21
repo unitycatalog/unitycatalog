@@ -53,16 +53,17 @@ public class CloudCredentialVendor implements AutoCloseable {
   }
 
   /**
-   * Checks the cloud limits a vend for this context, or storing objects under its locations, would
+   * Checks the cloud limits a vend for this context, or storing objects at its locations, would
    * hit, without calling the cloud.
    *
+   * @param extent whether objects are stored under the locations, or a location may name one
    * @return why the locations can't be used, or empty
    */
-  public Optional<String> limitViolation(CredentialContext context) {
+  public Optional<String> limitViolation(CredentialContext context, StorageLimits.Extent extent) {
     return switch (context.getStorageScheme()) {
-      case ABFS, ABFSS -> azureCredentialVendor.limitViolation(context);
-      case GS -> gcpCredentialVendor.limitViolation(context);
-      case S3 -> awsCredentialVendor.limitViolation(context);
+      case ABFS, ABFSS -> azureCredentialVendor.limitViolation(context, extent);
+      case GS -> gcpCredentialVendor.limitViolation(context, extent);
+      case S3 -> awsCredentialVendor.limitViolation(context, extent);
       case FILE, NULL -> Optional.empty();
     };
   }

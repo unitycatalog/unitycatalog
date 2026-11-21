@@ -375,12 +375,12 @@ public class AwsCredentialVendor implements AutoCloseable {
    *
    * @return why the locations can't be used on AWS, or empty
    */
-  public Optional<String> limitViolation(CredentialContext context) {
+  public Optional<String> limitViolation(CredentialContext context, StorageLimits.Extent extent) {
     if (!isOnAwsS3(context)) {
       return Optional.empty();
     }
     return StorageLimits.objectNameViolation(
-            context.getLocations(), "S3 object key", StorageLimits.Unit.UTF8_BYTES)
+            context.getLocations(), "S3 object key", StorageLimits.Unit.UTF8_BYTES, extent)
         .or(
             () ->
                 awsStsRole(context)

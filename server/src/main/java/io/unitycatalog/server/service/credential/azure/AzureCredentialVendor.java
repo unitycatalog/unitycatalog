@@ -20,15 +20,15 @@ public class AzureCredentialVendor {
   }
 
   /**
-   * Checks the Azure Blob Storage limits that objects under each location would hit: the blob name
-   * length and the number of path segments of a hierarchical namespace account.
+   * Checks the Azure Blob Storage limits that objects at each location would hit: the blob name
+   * length and the number of path segments.
    *
    * @return why the locations can't be used on Azure, or empty
    */
-  public Optional<String> limitViolation(CredentialContext ctx) {
+  public Optional<String> limitViolation(CredentialContext ctx, StorageLimits.Extent extent) {
     return StorageLimits.objectNameViolation(
-            ctx.getLocations(), "Azure blob", StorageLimits.Unit.UTF16_CODE_UNITS)
-        .or(() -> StorageLimits.azurePathSegmentViolation(ctx.getLocations()));
+            ctx.getLocations(), "Azure blob", StorageLimits.Unit.UTF16_CODE_UNITS, extent)
+        .or(() -> StorageLimits.azurePathSegmentViolation(ctx.getLocations(), extent));
   }
 
   public AzureCredential vendAzureCredential(CredentialContext ctx) {
