@@ -325,7 +325,9 @@ public class UnityCatalogServerTest extends BaseServerTest {
     }
 
     // An empty relative configuration folder is the working directory, which has no parent path.
+    // The JVM cannot change its working directory, so keep a token.txt already there.
     Path tokenFile = Path.of("token.txt");
+    byte[] existingToken = Files.exists(tokenFile) ? Files.readAllBytes(tokenFile) : null;
     try (UnityCatalogServer server =
         UnityCatalogServer.builder()
             .port(0)
@@ -335,7 +337,11 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .build()) {
       assertThat(tokenFile).isNotEmptyFile();
     } finally {
-      Files.deleteIfExists(tokenFile);
+      if (existingToken == null) {
+        Files.deleteIfExists(tokenFile);
+      } else {
+        Files.write(tokenFile, existingToken);
+      }
     }
   }
 
