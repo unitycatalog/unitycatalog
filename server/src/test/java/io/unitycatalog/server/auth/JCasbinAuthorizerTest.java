@@ -21,11 +21,17 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,15 +94,7 @@ public class JCasbinAuthorizerTest {
     UUID principal = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
     authenticator.grantAuthorization(principal, resource, Privileges.OWNER);
-    try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
-        var statement = connection.createStatement()) {
-      String drop = "DROP INDEX idx_casbin_rule_resource";
-      if (connection.getMetaData().getDatabaseProductName().equals("MySQL")) {
-        drop += " ON casbin_rule";
-      }
-      statement.executeUpdate(drop);
-      connection.commit();
-    }
+    dropOwnerLookupIndex();
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
@@ -105,15 +103,64 @@ public class JCasbinAuthorizerTest {
       assertThat(restarted.listAuthorizations(principal, resource))
           .containsExactly(Privileges.OWNER);
     }
-    try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
-        var statement = connection.createStatement()) {
-      // Dropping the index proves that startup recreated it on the existing policy table.
-      statement.executeUpdate(
-          "DROP INDEX idx_casbin_rule_resource"
-              + (connection.getMetaData().getDatabaseProductName().equals("MySQL")
-                  ? " ON casbin_rule"
-                  : ""));
-      connection.commit();
+    // Dropping the index proves that startup recreated it on the existing policy table.
+    dropOwnerLookupIndex();
+  }
+
+  @Test
+  void simultaneousStartupCreatesLookupIndex() throws Exception {
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    authenticator.grantAuthorization(principal, resource, Privileges.OWNER);
+    dropOwnerLookupIndex();
+    CountDownLatch creators = new CountDownLatch(2);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try (Connection firstConnection = hibernateConfigurator.getDataSource().getConnection();
+        Connection secondConnection = hibernateConfigurator.getDataSource().getConnection()) {
+      List<Connection> checkouts = new ArrayList<>();
+      for (Connection realConnection : List.of(firstConnection, secondConnection)) {
+        Connection connection = mock(Connection.class, delegatesTo(realConnection));
+        doAnswer(
+                createStatement -> {
+                  Statement realStatement = realConnection.createStatement();
+                  Statement statement = mock(Statement.class, delegatesTo(realStatement));
+                  doAnswer(
+                          createIndex -> {
+                            creators.countDown();
+                            if (!creators.await(10, TimeUnit.SECONDS)) {
+                              throw new SQLException("Concurrent index creation did not start");
+                            }
+                            return realStatement.executeUpdate(createIndex.getArgument(0));
+                          })
+                      .when(statement)
+                      .executeUpdate(
+                          "CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2)");
+                  return statement;
+                })
+            .when(connection)
+            .createStatement();
+        checkouts.add(connection);
+      }
+      HikariDataSource dataSource = mock(HikariDataSource.class);
+      doReturn(checkouts.get(0), checkouts.get(1)).when(dataSource).getConnection();
+      HibernateConfigurator config =
+          mock(HibernateConfigurator.class, delegatesTo(hibernateConfigurator));
+      doReturn(dataSource).when(config).getDataSource();
+      Callable<Void> start =
+          () -> {
+            try (JCasbinAuthorizer instance = new JCasbinAuthorizer(config, serverProperties)) {
+              assertThat(instance.listAuthorizations(principal, resource))
+                  .containsExactly(Privileges.OWNER);
+            }
+            return null;
+          };
+      var first = executor.submit(start);
+      var second = executor.submit(start);
+      first.get(20, TimeUnit.SECONDS);
+      second.get(20, TimeUnit.SECONDS);
+    } finally {
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
     }
   }
 
@@ -122,14 +169,9 @@ public class JCasbinAuthorizerTest {
   void failedStartupClosesConnectionAndPreservesIndexError(boolean closeFails) throws Exception {
     SQLException indexError = new SQLException("index creation failed");
     SQLException closeError = new SQLException("connection close failed");
+    dropOwnerLookupIndex();
     try (Connection realConnection = hibernateConfigurator.getDataSource().getConnection();
         Statement realStatement = realConnection.createStatement()) {
-      realStatement.executeUpdate(
-          "DROP INDEX idx_casbin_rule_resource"
-              + (realConnection.getMetaData().getDatabaseProductName().equals("MySQL")
-                  ? " ON casbin_rule"
-                  : ""));
-      realConnection.commit();
       Statement statement = mock(Statement.class, delegatesTo(realStatement));
       doThrow(indexError)
           .when(statement)
@@ -374,5 +416,17 @@ public class JCasbinAuthorizerTest {
             () -> authenticator.revokeAuthorization(principal, resource, Privileges.OWNER))
         .isInstanceOf(Error.class)
         .hasCauseInstanceOf(SQLException.class);
+  }
+
+  private void dropOwnerLookupIndex() throws SQLException {
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
+        Statement statement = connection.createStatement()) {
+      statement.executeUpdate(
+          "DROP INDEX idx_casbin_rule_resource"
+              + (connection.getMetaData().getDatabaseProductName().equals("MySQL")
+                  ? " ON casbin_rule"
+                  : ""));
+      connection.commit();
+    }
   }
 }

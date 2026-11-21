@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -83,7 +84,7 @@ public class OwnershipRepositoryTest {
   private static final String SECOND_OWNER = "second-owner@localhost";
   private static final String THIRD_OWNER = "third-owner@localhost";
 
-  private final UUID resourceId = UUID.randomUUID();
+  private final UUID resourceId = UUID.fromString("40000000-0000-0000-0000-000000000000");
   private final UUID firstId = UUID.randomUUID();
   private final UUID secondId = UUID.randomUUID();
   private final UUID thirdId = UUID.randomUUID();
@@ -437,37 +438,44 @@ public class OwnershipRepositoryTest {
 
   @Test
   void transferringOwnerDoesNotBlockUnrelatedGrantsOrRevokes() throws Exception {
-    UUID unrelated = UUID.randomUUID();
+    UUID adjacent = UUID.fromString("60000000-0000-0000-0000-000000000000");
+    UUID unrelated = UUID.fromString("80000000-0000-0000-0000-000000000000");
     authorizer.grantAuthorization(thirdId, unrelated, Privileges.MANAGE);
     authorizer.grantAuthorization(thirdId, unrelated, Privileges.SELECT);
     ExecutorService executor = Executors.newSingleThreadExecutor();
-    try (Session session = sessionFactory.openSession()) {
-      Transaction transaction = session.beginTransaction();
-      try {
-        CatalogInfoDAO resource = session.get(CatalogInfoDAO.class, resourceId);
-        resource.setOwner(
-            repositories.getOwnershipRepository().updateOwner(session, resource, SECOND_OWNER));
-        Future<?> changes =
-            executor.submit(
-                () -> {
-                  assertThat(authorizer.grantAuthorization(thirdId, unrelated, Privileges.MODIFY))
-                      .isTrue();
-                  assertThat(authorizer.revokeAuthorization(thirdId, unrelated, Privileges.SELECT))
-                      .isTrue();
-                });
-        changes.get(10, TimeUnit.SECONDS);
-        transaction.commit();
-      } finally {
-        if (transaction.isActive()) {
-          transaction.rollback();
-        }
-      }
+    try {
+      repositories
+          .getCatalogRepository()
+          .updateCatalog(
+              CATALOG,
+              new UpdateCatalog().owner(SECOND_OWNER),
+              () -> {
+                Future<?> changes =
+                    executor.submit(
+                        () -> {
+                          // This resource falls in the index gap after the transferred OWNER.
+                          assertThat(
+                                  authorizer.grantAuthorization(
+                                      thirdId, adjacent, Privileges.MODIFY))
+                              .isTrue();
+                          assertThat(
+                                  authorizer.grantAuthorization(
+                                      thirdId, unrelated, Privileges.MODIFY))
+                              .isTrue();
+                          assertThat(
+                                  authorizer.revokeAuthorization(
+                                      thirdId, unrelated, Privileges.SELECT))
+                              .isTrue();
+                        });
+                assertThatCode(() -> changes.get(10, TimeUnit.SECONDS)).doesNotThrowAnyException();
+              });
     } finally {
       executor.shutdownNow();
       assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
     }
     authorizer.reloadAuthorizations();
     assertOwnership(SECOND_OWNER, secondId);
+    assertThat(authorizer.listAuthorizations(thirdId, adjacent)).containsExactly(Privileges.MODIFY);
     assertThat(authorizer.listAuthorizations(thirdId, unrelated))
         .containsExactlyInAnyOrder(Privileges.MANAGE, Privileges.MODIFY);
   }

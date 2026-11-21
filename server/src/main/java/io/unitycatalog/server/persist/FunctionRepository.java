@@ -24,6 +24,7 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.JsonUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -261,7 +262,8 @@ public class FunctionRepository {
           return result;
         },
         "Failed to update function",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   public FunctionInfoDAO getFunctionDAO(
