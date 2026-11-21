@@ -28,6 +28,7 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -325,7 +326,10 @@ public class SchemaRepository {
           return convertFromDAO(session, schemaInfoDAO, fullName);
         },
         "Failed to update schema",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        updateSchema.getOwner() == null
+            ? Optional.empty()
+            : Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   public List<DeletedResource> deleteSchema(String fullName, boolean force) {

@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_READ_COMMITTED;
 import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
@@ -1256,7 +1257,8 @@ public class TableRepository {
               result, result.getTableId(), Constants.TABLE, session);
         },
         "Failed to update table owner",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   /**

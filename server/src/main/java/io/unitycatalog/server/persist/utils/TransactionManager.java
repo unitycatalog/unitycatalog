@@ -44,6 +44,19 @@ public class TransactionManager {
         sessionFactory, operation, errorMessage, readOnly, Optional.empty());
   }
 
+  /** Sets isolation before a transaction begins. The pool restores it on connection return. */
+  public static void setIsolationLevel(Session session, int isolationLevel) {
+    // Without autocommit, a pooled connection may carry an open implicit transaction. H2 applies
+    // the isolation change to the NEXT transaction, so that transaction must end first.
+    session.doWork(
+        connection -> {
+          if (!connection.getAutoCommit()) {
+            connection.rollback();
+          }
+          connection.setTransactionIsolation(isolationLevel);
+        });
+  }
+
   /**
    * Executes a database operation with transaction management and optional custom isolation level.
    *
@@ -79,22 +92,8 @@ public class TransactionManager {
         session.setDefaultReadOnly(true);
       }
 
-      // Set the custom isolation level if specified. Hikari resets it when the connection returns
-      // to the pool.
-      // IMPORTANT: without autocommit, a pooled connection may carry an open implicit transaction
-      // from its prior use. H2's setTransactionIsolation() takes effect for the NEXT transaction,
-      // not the current implicit one, so that transaction has to end first or REPEATABLE_READ
-      // reads can see stale data from before the connection was returned to the pool. MySQL and
-      // PostgreSQL reject rollback() on an autocommit connection, so only roll back when there is
-      // something to end.
       if (isolationLevel.isPresent()) {
-        session.doWork(
-            connection -> {
-              if (!connection.getAutoCommit()) {
-                connection.rollback();
-              }
-              connection.setTransactionIsolation(isolationLevel.get());
-            });
+        setIsolationLevel(session, isolationLevel.get());
       }
 
       Transaction tx = session.beginTransaction();

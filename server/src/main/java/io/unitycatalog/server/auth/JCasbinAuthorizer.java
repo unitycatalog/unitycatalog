@@ -7,7 +7,6 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
-import jakarta.persistence.Tuple;
 import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
@@ -202,25 +201,28 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
    * caller must reload the live authorizer after commit.
    */
   public static List<UUID> replaceOwner(Session session, UUID resource, UUID newOwner) {
-    // A locking read sees the latest committed owners under MySQL REPEATABLE READ too.
-    List<Tuple> owners =
+    // Owner-update transactions use READ_COMMITTED to avoid MySQL gap locks.
+    List<UUID> oldOwners =
         session
             .createNativeQuery(
-                "SELECT id, v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND"
+                "SELECT v0 FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND"
                     + " v2 = :owner FOR UPDATE",
-                Tuple.class)
+                String.class)
             .setParameter("resource", resource.toString())
             .setParameter("owner", Privileges.OWNER.getValue())
-            .getResultList();
+            .getResultList()
+            .stream()
+            .map(UUID::fromString)
+            .toList();
     // The JDBC adapter commits on a separate connection. Use this transaction for both writes.
-    for (Tuple owner : owners) {
-      session
-          .createNativeMutationQuery("DELETE FROM casbin_rule WHERE id = :id")
-          .setParameter("id", owner.get("id", Number.class).longValue())
-          .executeUpdate();
-    }
+    session
+        .createNativeMutationQuery(
+            "DELETE FROM casbin_rule WHERE ptype = 'p' AND v1 = :resource AND v2 = :owner")
+        .setParameter("resource", resource.toString())
+        .setParameter("owner", Privileges.OWNER.getValue())
+        .executeUpdate();
     addOwner(session, resource, newOwner);
-    return owners.stream().map(owner -> UUID.fromString(owner.get("v0", String.class))).toList();
+    return oldOwners;
   }
 
   /** Saves an OWNER grant in the caller's transaction. */

@@ -16,6 +16,7 @@ import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -264,7 +265,10 @@ public class VolumeRepository {
           return volumeInfo.toVolumeInfo(catalog, schema);
         },
         "Failed to update volume",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        updateVolumeRequest.getOwner() == null
+            ? Optional.empty()
+            : Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   public void deleteVolume(String name) {
