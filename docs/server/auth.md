@@ -315,6 +315,17 @@ and grants. Set it back to `true` when the migration is complete.
 
 Use the same value on every server instance. Restart each instance after changing it.
 
+### Native policy storage
+
+Casbin stores grants in `casbin_rule`. The server adds the index below at startup if it is missing.
+The index limits the rows scanned by permission changes. Creating it requires the `INDEX` privilege
+on MySQL and ownership of `casbin_rule` on PostgreSQL. If the server's database user lacks this
+permission, ask a database administrator to create it before starting the server:
+
+```sql
+CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2);
+```
+
 ### Multiple server instances
 
 This section applies to Casbin. With OPA, `server.authorization.policy-refresh` does not change

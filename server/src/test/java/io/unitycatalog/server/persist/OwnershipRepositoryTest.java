@@ -1,8 +1,10 @@
 package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.fail;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.AdditionalAnswers.delegatesTo;
@@ -73,6 +75,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class OwnershipRepositoryTest {
@@ -81,7 +84,7 @@ public class OwnershipRepositoryTest {
   private static final String SECOND_OWNER = "second-owner@localhost";
   private static final String THIRD_OWNER = "third-owner@localhost";
 
-  private final UUID resourceId = UUID.randomUUID();
+  private final UUID resourceId = UUID.fromString("40000000-0000-0000-0000-000000000000");
   private final UUID firstId = UUID.randomUUID();
   private final UUID secondId = UUID.randomUUID();
   private final UUID thirdId = UUID.randomUUID();
@@ -262,9 +265,10 @@ public class OwnershipRepositoryTest {
   }
 
   @ParameterizedTest
-  @ValueSource(booleans = {false, true})
-  void sessionCloseFailureStillReloadsCommittedOwnership(boolean reloadFails) {
-    RuntimeException closeError = new IllegalStateException("session close failed");
+  @CsvSource({"false, false", "false, true", "true, false", "true, true"})
+  void committedOwnershipReloadsAfterCommitOrCloseFailure(
+      boolean commitFails, boolean reloadFails) {
+    RuntimeException updateError = new IllegalStateException("committed update failed");
     RuntimeException reloadError = new IllegalStateException("policy reload failed");
     UnityCatalogAuthorizer serviceAuthorizer =
         mock(UnityCatalogAuthorizer.class, delegatesTo(authorizer));
@@ -273,13 +277,27 @@ public class OwnershipRepositoryTest {
     }
     try (Session realSession = sessionFactory.openSession()) {
       Session session = mock(Session.class, delegatesTo(realSession));
-      doAnswer(
-              invocation -> {
-                realSession.close();
-                throw closeError;
-              })
-          .when(session)
-          .close();
+      if (commitFails) {
+        Transaction realTransaction = realSession.beginTransaction();
+        Transaction transaction = mock(Transaction.class, delegatesTo(realTransaction));
+        doReturn(transaction).when(session).beginTransaction();
+        doReturn(transaction).when(session).getTransaction();
+        doAnswer(
+                invocation -> {
+                  realTransaction.commit();
+                  throw updateError;
+                })
+            .when(transaction)
+            .commit();
+      } else {
+        doAnswer(
+                invocation -> {
+                  realSession.close();
+                  throw updateError;
+                })
+            .when(session)
+            .close();
+      }
       SessionFactory failingFactory = mock(SessionFactory.class);
       when(failingFactory.openSession()).thenReturn(session);
       Repositories serviceRepositories = spy(repositories);
@@ -289,17 +307,21 @@ public class OwnershipRepositoryTest {
       CatalogService service =
           new CatalogService(serviceAuthorizer, serviceRepositories, properties);
 
-      assertThatThrownBy(
-              () -> service.updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER)))
-          .isSameAs(closeError);
+      Throwable error =
+          catchThrowable(
+              () -> service.updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER)));
+      if (commitFails) {
+        assertThat(error).isInstanceOf(BaseException.class).hasCause(updateError);
+      } else {
+        assertThat(error).isSameAs(updateError);
+      }
       verify(serviceAuthorizer).reloadAuthorizations();
+      assertThat(error.getSuppressed())
+          .containsExactly(reloadFails ? new Throwable[] {reloadError} : new Throwable[0]);
     }
     assertThat(repositories.getCatalogRepository().getCatalog(CATALOG).getOwner())
         .isEqualTo(SECOND_OWNER);
-    if (reloadFails) {
-      assertThat(closeError.getSuppressed()).containsExactly(reloadError);
-    } else {
-      assertThat(closeError.getSuppressed()).isEmpty();
+    if (!reloadFails) {
       assertOwnership(SECOND_OWNER, secondId);
     }
   }
@@ -412,6 +434,50 @@ public class OwnershipRepositoryTest {
     assertThat(CapturingAuditSink.RECORDS)
         .extracting(AuditRecord::getAction, AuditRecord::getPrincipalId, AuditRecord::getResourceId)
         .containsExactly(tuple(AuditRecord.Action.GRANT, firstId, created));
+  }
+
+  @Test
+  void transferringOwnerDoesNotBlockUnrelatedGrantsOrRevokes() throws Exception {
+    UUID adjacent = UUID.fromString("60000000-0000-0000-0000-000000000000");
+    UUID unrelated = UUID.fromString("80000000-0000-0000-0000-000000000000");
+    authorizer.grantAuthorization(thirdId, unrelated, Privileges.MANAGE);
+    authorizer.grantAuthorization(thirdId, unrelated, Privileges.SELECT);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      repositories
+          .getCatalogRepository()
+          .updateCatalog(
+              CATALOG,
+              new UpdateCatalog().owner(SECOND_OWNER),
+              () -> {
+                Future<?> changes =
+                    executor.submit(
+                        () -> {
+                          // This resource falls in the index gap after the transferred OWNER.
+                          assertThat(
+                                  authorizer.grantAuthorization(
+                                      thirdId, adjacent, Privileges.MODIFY))
+                              .isTrue();
+                          assertThat(
+                                  authorizer.grantAuthorization(
+                                      thirdId, unrelated, Privileges.MODIFY))
+                              .isTrue();
+                          assertThat(
+                                  authorizer.revokeAuthorization(
+                                      thirdId, unrelated, Privileges.SELECT))
+                              .isTrue();
+                        });
+                assertThatCode(() -> changes.get(10, TimeUnit.SECONDS)).doesNotThrowAnyException();
+              });
+    } finally {
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
+    authorizer.reloadAuthorizations();
+    assertOwnership(SECOND_OWNER, secondId);
+    assertThat(authorizer.listAuthorizations(thirdId, adjacent)).containsExactly(Privileges.MODIFY);
+    assertThat(authorizer.listAuthorizations(thirdId, unrelated))
+        .containsExactlyInAnyOrder(Privileges.MANAGE, Privileges.MODIFY);
   }
 
   @Test
