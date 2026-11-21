@@ -48,6 +48,7 @@ jobs:
     #   "[Non Blocking] Spark tests (Spark 4.2.0, Delta master-SNAPSHOT)"
     #   "All tests (Spark 4.0.0, Delta 4.4.1, POSTGRES_18)"
     #   "All tests (Spark 4.0.0, Delta 4.4.1, MYSQL_8)"
+    # Keep this event list the same as the one in continue-on-error below.
     name: >-
       ${{ matrix.non-blocking && contains(fromJSON('["push", "pull_request"]'), github.event_name) && '[Non Blocking]' || '' }}
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
