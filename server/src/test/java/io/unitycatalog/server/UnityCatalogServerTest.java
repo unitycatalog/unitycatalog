@@ -323,6 +323,20 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .build()) {
       assertThat(missing.resolve("token.txt")).isNotEmptyFile();
     }
+
+    // An empty relative configuration folder is the working directory, which has no parent path.
+    Path tokenFile = Path.of("token.txt");
+    try (UnityCatalogServer server =
+        UnityCatalogServer.builder()
+            .port(0)
+            .serverProperties(new ServerProperties(properties))
+            .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(Path.of(""))
+            .build()) {
+      assertThat(tokenFile).isNotEmptyFile();
+    } finally {
+      Files.deleteIfExists(tokenFile);
+    }
   }
 
   @Test

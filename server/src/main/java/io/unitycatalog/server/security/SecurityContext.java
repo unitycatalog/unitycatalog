@@ -69,7 +69,7 @@ public class SecurityContext {
 
   @SneakyThrows
   public void createServiceTokenFile() {
-    Files.createDirectories(serviceTokenFile.getParent());
+    Files.createDirectories(serviceTokenFile.toAbsolutePath().getParent());
     Files.writeString(serviceTokenFile, serviceToken);
   }
 }
