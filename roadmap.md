@@ -8,18 +8,19 @@ features may move in/out of milestones pending available resources, priorities, 
 ### 0.8: S3-compatible storage, identity, and authorization
 
 We plan to add S3-compatible external locations with scoped, short-lived credential vending,
-GCP storage, and modular OAuth/OIDC integration.
+GCP storage credentials and external locations, and work toward modular OAuth/OIDC integration.
 Identity and authorization work includes groups and group grants, ownership transfer,
 BROWSE, MANAGE, READ METADATA, WRITE VOLUME, CREATE MODEL VERSION, and consistent
 authorization checks across supported operations. We also plan to add pluggable
-authorization with OPA and refresh the catalog browsing and editing UI.
+authorization with OPA and refresh the catalog browsing and editing UI. Production
+work includes database schema upgrades and server-side storage credential caching.
 
 ### Beyond 0.8: Catalog interoperability, production operation, and migration
 
 We plan to add Iceberg REST view lifecycle support, service principals, tags on catalogs,
 schemas and tables, Open Sharing server integration, and lineage integration with OpenLineage.
 We also plan to add Hive Metastore bulk migration tooling, register/unregister APIs for tables,
-and Azure storage. Production work includes
+and Azure storage credentials and external locations. Production work includes
 deployment and upgrade guidance, backend database and upgrade testing, and validation of
 multi-instance operation, recovery and scale.
 
@@ -27,7 +28,7 @@ multi-instance operation, recovery and scale.
 
 ## Full roadmap
 
-The matrix is cumulative. ✅ marks included scope, 🛠️ work in progress, and
+The matrix is cumulative. ✅ marks included scope, — unavailable scope, and
 ❓ items under consideration. Future columns indicate planned scope.
 Releases through 0.5 are consolidated; 0.6, 0.7, and 0.8 remain separate.
 Beyond 0.8 combines later plans and unassigned features without assigning a release.
@@ -109,48 +110,48 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
     <td align="center">✅</td>
   </tr>
   <tr>
-    <td>GCP storage</td>
+    <td>GCP storage credentials and external locations</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
   </tr>
   <tr>
-    <td>Azure storage</td>
+    <td>Azure storage credentials and external locations</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Multi-tenancy</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>S3-compatible storage</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">🛠️</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">✅</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Refreshed catalog UI</td>
     <td>UI</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">🛠️</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">✅</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -168,19 +169,19 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Group management</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Support for Machine identities (SPs)</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -195,10 +196,10 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>SCIM group provisioning</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
@@ -211,12 +212,21 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
     <td align="center">✅</td>
   </tr>
   <tr>
+    <td>Pluggable OIDC providers (Okta, Entra ID, proxy passthrough)</td>
+    <td>API + Server</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">✅</td>
+    <td align="center">✅</td>
+  </tr>
+  <tr>
     <td>OAuth/OIDC for Services</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -231,20 +241,11 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>SAML authentication support</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
-  </tr>
-  <tr>
-    <td>Pluggable authorization / OPA</td>
-    <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">✅</td>
-    <td align="center">✅</td>
   </tr>
   <tr>
     <td colspan="7" bgcolor="grey" align="center">Access Control &amp; Governance</td>
@@ -252,10 +253,10 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Support for change of ownership</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">🛠️</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">✅</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -270,18 +271,18 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>BROWSE</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Expanded privileges</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
   </tr>
@@ -322,66 +323,84 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
     <td align="center">✅</td>
   </tr>
   <tr>
+    <td>Pluggable authorization / OPA</td>
+    <td>API + Server</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">✅</td>
+    <td align="center">✅</td>
+  </tr>
+  <tr>
+    <td>Object tags</td>
+    <td>API + Server</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">✅</td>
+  </tr>
+  <tr>
     <td>Auditing</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>SQL DCL changes</td>
     <td>Spark Integration</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>RBAC</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Row level filters</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Column level masks</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>ABAC</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Lineage integration with OpenLineage</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -390,8 +409,8 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Monitoring and Telemetry</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center" bgcolor="green">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
@@ -399,28 +418,37 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Database schema upgrades</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">✅</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Change events</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
-    <td>Server-side storage credential and FileIO caching</td>
+    <td>Server-side storage credential caching</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">✅</td>
+    <td align="center">✅</td>
+  </tr>
+  <tr>
+    <td>Server-side FileIO caching</td>
+    <td>API + Server</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -435,8 +463,8 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Managed tables and volumes lifecycle</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center" bgcolor="green">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
@@ -444,19 +472,19 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Production operation and upgrade validation</td>
     <td>Server / deployment</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Hive Metastore bulk migration tooling</td>
     <td>Migration tooling</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -490,10 +518,10 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Register/unregister APIs for tables</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -532,10 +560,10 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   </tr>
   <tr>
     <td>Delta Kernel integration</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -558,8 +586,8 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Iceberg tables with create+read+write</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center" bgcolor="green">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
@@ -576,19 +604,19 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Streaming tables</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Shallow clones</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -597,7 +625,7 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Basic Spark SQL flavor views</td>
     <td>API + Server</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
     <td align="center" bgcolor="green">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
@@ -606,34 +634,34 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Multi-dialect views</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Iceberg view support</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Materialized views</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Metric views</td>
     <td>API + Server</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
     <td align="center" bgcolor="green">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
@@ -645,19 +673,10 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Skills</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">✅</td>
-  </tr>
-  <tr>
-    <td>Object tags</td>
-    <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -679,28 +698,28 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   </tr>
   <tr>
     <td>Spark integration</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Multi-engine functions (SQL)</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Remote functions</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
@@ -714,10 +733,10 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   </tr>
   <tr>
     <td>Spark integration</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -731,10 +750,10 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   </tr>
   <tr>
     <td>Spark integration</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -756,28 +775,28 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   </tr>
   <tr>
     <td>Spark integration</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Features tables</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Data monitors</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
@@ -786,37 +805,37 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Open Sharing</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Shares</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Recipients</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
     <td>Providers</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">✅</td>
   </tr>
   <tr>
@@ -825,28 +844,28 @@ Beyond 0.8 combines later plans and unassigned features without assigning a rele
   <tr>
     <td>Connections</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Foreign objects (catalogs, schemas, tables)</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Support for different data sources: JDBC, Iceberg REST, HMS</td>
     <td>API + Server</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">_</td>
-    <td align="center">✅</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td align="center">❓</td>
   </tr>
 </table>
