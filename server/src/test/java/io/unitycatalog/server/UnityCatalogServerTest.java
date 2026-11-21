@@ -67,6 +67,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .port(0)
                     .serverProperties(properties)
                     .hibernateConfigurator(hibernateConfigurator)
+                    .configurationFolder(configurationFolder)
                     .build())
         .isInstanceOf(BaseException.class)
         .hasMessage(
@@ -86,6 +87,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .port(0)
                     .serverProperties(properties)
                     .hibernateConfigurator(hibernateConfigurator)
+                    .configurationFolder(configurationFolder)
                     .build())
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("server.authorization.opa.decision-url is required");
@@ -98,6 +100,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .port(0)
             .serverProperties(properties)
             .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(configurationFolder)
             .build();
     try (Connection connection = hibernateConfigurator.getDataSource().getConnection()) {
       connection.createStatement().execute("CREATE TABLE callers_table (id INT)");
@@ -280,6 +283,10 @@ public class UnityCatalogServerTest extends BaseServerTest {
     assertThat(configurationFolder.resolve("token.txt")).isNotEmptyFile();
     assertThatThrownBy(() -> UnityCatalogServer.builder().configurationFolder(null))
         .isInstanceOf(NullPointerException.class);
+    // A second setUp() in the same test fails before it starts another server.
+    assertThatThrownBy(this::setUp)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("setUp() ran twice in one test");
 
     try (ServerSocket occupied = new ServerSocket(0)) {
       UnityCatalogServer server =

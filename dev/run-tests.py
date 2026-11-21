@@ -357,11 +357,20 @@ def first_errors(log_path, limit=10):
 
 
 def conf_stamps():
-    """Returns the mtime of each file in etc/conf, which tests should never write."""
-    conf = os.path.join(ROOT, "etc", "conf")
-    if not os.path.isdir(conf):
-        return {}
-    return {name: os.path.getmtime(os.path.join(conf, name)) for name in os.listdir(conf)}
+    """Returns the mtime of each file in an etc/conf, by path; tests should never write them.
+
+    Covers etc/conf at the root and in modules up to two levels deep (connectors/spark/etc/conf),
+    with everything under it, hidden files included. Unlike project/scripts/check_etc_conf.sh in
+    CI, it does not look for deeper etc/conf directories.
+    """
+    stamps = {}
+    for depth in range(3):
+        for conf in glob.glob(os.path.join(ROOT, *["*"] * depth, "etc", "conf")):
+            for directory, _, names in os.walk(conf):
+                for name in names:
+                    path = os.path.join(directory, name)
+                    stamps[os.path.relpath(path, ROOT)] = os.path.getmtime(path)
+    return stamps
 
 
 def elapsed(start):
@@ -384,7 +393,7 @@ def main():
     touched = sorted(name for name in set(conf_before) | set(conf_after)
                      if conf_before.get(name) != conf_after.get(name))
     if touched:
-        print(f"Warning: tests wrote etc/conf: {', '.join(touched)}. A test likely started a "
+        print(f"Warning: tests changed {', '.join(touched)}. A test likely started a "
               "server without its own configurationFolder.")
     return returncode
 
