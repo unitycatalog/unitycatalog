@@ -250,6 +250,19 @@ jobs:
           grep -A6 -- '- name: OAUTH_CLIENT_SECRET$' <<<"$out" | grep -qF 'optional: true'
           out="$(helm template uc helm -f helm/ci/secrets-values.yaml)"
           ! grep -qE -- '- name: OAUTH_CLIENT_SECRET$' <<<"$out" || exit 1
+          # The server reads each GCS key file where the server container mounts it from the Secret.
+          gcs=()
+          for i in 0 1; do
+            gcs+=(--set "storage.credentials.gcs[$i].bucketPath=gs://ci-bucket-$i"
+              --set "storage.credentials.gcs[$i].credentialsSecretName=ci-gcs-$i")
+          done
+          out="$(helm template uc helm "${gcs[@]}")"
+          server="$(sed -n '/^        - name: server$/,/^      volumes:$/p' <<<"$out")"
+          for i in 0 1; do
+            key_file="$(sed -n "s/^ *gcs\.jsonKeyFilePath\.$i=//p" <<<"$out")"
+            [ -n "$key_file" ]
+            grep -A1 -- "- name: gcs-credentials-$i\$" <<<"$server" | sed -n 's/^ *mountPath: //p' | grep -qxF -- "$key_file"
+          done
 
       - name: Build the server and UI images
         run: |
