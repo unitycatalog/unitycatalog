@@ -44,6 +44,10 @@ _INTEGER_TYPE_NAMES = frozenset(
     name for name, python_type in UC_TYPE_JSON_MAPPING.items() if python_type is int
 )
 
+# A double holds every integer below 2**53 exactly. A float of 2**53 or more may be a rounded
+# integer, such as 2**53 + 1 arriving as 2**53.
+_EXACT_FLOAT_INTEGER_LIMIT = 2**53
+
 
 def _restore_integers(value: Any, uc_type_json: Union[str, Dict[str, Any]]) -> Any:
     """
@@ -51,13 +55,17 @@ def _restore_integers(value: Any, uc_type_json: Union[str, Dict[str, Any]]) -> A
     integer type, including in STRUCT fields, ARRAY elements and MAP values.
 
     Gemini passes the arguments of a function call as a protobuf Struct, which returns every number
-    as a float. Any other value is returned as it is, so the function client still validates it.
+    as a float. A float of 2**53 or more is not converted, since it may be a rounded integer. Any
+    other value is returned as it is. The function client checks only the type of a top-level
+    value, so it rejects such a float for an integer parameter, but a value nested in a STRUCT,
+    ARRAY or MAP is not validated.
     """
     if isinstance(uc_type_json, str):
         if (
             uc_type_json.upper() in _INTEGER_TYPE_NAMES
             and isinstance(value, float)
             and value.is_integer()
+            and abs(value) < _EXACT_FLOAT_INTEGER_LIMIT
         ):
             return int(value)
         return value

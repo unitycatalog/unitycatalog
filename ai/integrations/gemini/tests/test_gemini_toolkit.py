@@ -607,8 +607,18 @@ GEMINI_NUMBER_ARGUMENT_PARAMS = {
             {"big": 4.5, "point": {"x": 6.5, "weight": 7.5}, "ids": [8.5], "counts": {"a": 9.5}},
             {"big": 4.5, "point": {"x": 6.5, "weight": 7.5}, "ids": [8.5], "counts": {"a": 9.5}},
         ),
+        (
+            {"big": 2**53 - 1, "ids": [-(2**53 - 1)]},
+            {"big": 2**53 - 1, "ids": [-(2**53 - 1)]},
+        ),
+        # The protobuf Struct rounds 2**53 + 1 to the double 2**53, so it is sent as a float, which
+        # the function client rejects for a LONG parameter, instead of as a different integer.
+        (
+            {"big": 2**53 + 1, "ids": [-(2**53 + 1)]},
+            {"big": float(2**53), "ids": [-float(2**53)]},
+        ),
     ],
-    ids=["integral", "fractional"],
+    ids=["integral", "fractional", "largest-exact", "beyond-float-precision"],
 )
 @pytest.mark.parametrize(
     "function_info",
@@ -683,6 +693,9 @@ INT_STRUCT_TYPE_JSON = {
         ("1", "int", "1"),
         ([1.0], INT_STRUCT_TYPE_JSON, [1.0]),
         ({"a": 1.0}, {"type": "array", "elementType": "int", "containsNull": False}, {"a": 1.0}),
+        (float(2**53 - 1), "long", 2**53 - 1),
+        (float(2**53), "long", float(2**53)),
+        (-float(2**53), "long", -float(2**53)),
     ],
     ids=[
         "array-of-structs",
@@ -691,6 +704,9 @@ INT_STRUCT_TYPE_JSON = {
         "string-for-int",
         "list-for-struct",
         "dict-for-array",
+        "largest-exact",
+        "first-inexact",
+        "first-inexact-negative",
     ],
 )
 def test_restore_integers(value, uc_type_json, expected):
