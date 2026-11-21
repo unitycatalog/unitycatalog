@@ -294,6 +294,10 @@ public class ExternalLocationRepository {
             validateUrlForCredential(existingLocation.getUrl(), credentialDAO);
             if (updateExternalLocation.getUrl() != null) {
               validateUrlLimits(existingLocation.getUrl(), Optional.of(credentialDAO));
+            } else {
+              // A URL an earlier release stored that no longer parses can still move.
+              storedUrlToCheck(existingLocation.getUrl())
+                  .ifPresent(url -> validateUrlLimits(url.toString(), Optional.of(credentialDAO)));
             }
           } else {
             // Keep the current credential. Locked on its first read in this session: a lock taken

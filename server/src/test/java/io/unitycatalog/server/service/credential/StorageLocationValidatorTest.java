@@ -52,7 +52,9 @@ public class StorageLocationValidatorTest {
   private static final String GCS_BUCKET = "gs://gcs-bucket";
   private static final String CUSTOM_GCS_BUCKET = "gs://custom-gcs-bucket";
   private static final String ROLE_ARN = "arn:aws:iam::123456789012:role/bucket-role";
-  private static final Set<CredentialContext.Privilege> ALL_PRIVILEGES =
+  private static final Set<CredentialContext.Privilege> READ =
+      Set.of(CredentialContext.Privilege.SELECT);
+  private static final Set<CredentialContext.Privilege> READ_WRITE =
       Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE);
   private static final EncryptedCredentialSecretStore SECRET_STORE =
       new EncryptedCredentialSecretStore(Optional.of(TestUtils.CREDENTIAL_ENCRYPTION_KEY));
@@ -142,9 +144,16 @@ public class StorageLocationValidatorTest {
   }
 
   private boolean canVend(NormalizedURL location, Optional<CredentialDAO> credential) {
+    return canVend(location, READ_WRITE, credential);
+  }
+
+  private boolean canVend(
+      NormalizedURL location,
+      Set<CredentialContext.Privilege> privileges,
+      Optional<CredentialDAO> credential) {
     try {
       cloudCredentialVendor.vendCredential(
-          CredentialContext.create(location, ALL_PRIVILEGES, credential));
+          CredentialContext.create(location, privileges, credential));
       return true;
     } catch (BaseException e) {
       assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
@@ -204,13 +213,58 @@ public class StorageLocationValidatorTest {
   }
 
   @Test
+  public void testRequestLocationNeedsOnlyItsReadPolicyToFit() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    List<Integer> readOnlyLengths =
+        IntStream.rangeClosed(1, 600)
+            .filter(
+                length -> {
+                  NormalizedURL location =
+                      NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(length));
+                  boolean accepted =
+                      accepts(() -> validator.validateLocation(null, location, 2048));
+                  boolean acceptedAsManaged =
+                      accepts(() -> validator.validateManagedLocation(null, location, 2048));
+                  assertThat(accepted)
+                      .as("location path of %d characters", length)
+                      .isEqualTo(canVend(location, READ, Optional.empty()));
+                  assertThat(acceptedAsManaged)
+                      .as("managed location path of %d characters", length)
+                      .isEqualTo(canVend(location, READ_WRITE, Optional.empty()));
+                  return accepted && !acceptedAsManaged;
+                })
+            .boxed()
+            .toList();
+
+    // Between the two policy sizes, a location can be registered and read, and a write vend fails
+    // with INVALID_ARGUMENT.
+    assertThat(readOnlyLengths).isNotEmpty();
+    assertThat(
+            accepts(
+                () ->
+                    validator.validateLocation(
+                        null, NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(600)), 2048)))
+        .isFalse();
+  }
+
+  private static boolean accepts(Runnable validation) {
+    try {
+      validation.run();
+      return true;
+    } catch (BaseException e) {
+      assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+      return false;
+    }
+  }
+
+  @Test
   public void testTooLongAwsSessionPolicyIsRejectedWithoutCallingSts() {
     NormalizedURL location = NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(600));
 
     assertThatThrownBy(
             () ->
                 cloudCredentialVendor.vendCredential(
-                    CredentialContext.create(location, ALL_PRIVILEGES, Optional.empty())))
+                    CredentialContext.create(location, READ_WRITE, Optional.empty())))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("its AWS STS session policy is")
         .hasMessageContaining("and the limit is 2048")

@@ -362,6 +362,34 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testCredentialChangeChecksTheUrlAgainstTheNewCredential() throws ApiException {
+    createCompatCredential(COMPAT_CREDENTIAL_NAME, "http://storage-a.invalid:9000");
+    // The AWS STS session policy repeats the path five times and escapes each * to ${*}, so this
+    // URL's policy is over 2,048 characters, a limit S3-compatible storage doesn't have.
+    String url = "s3://bucket/" + "*".repeat(100);
+    createLocation(EXTERNAL_LOCATION_NAME, url, COMPAT_CREDENTIAL_NAME);
+
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().credentialName(CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        "its AWS STS session policy is");
+    assertApiException(
+        () ->
+            createLocation(
+                NEW_EXTERNAL_LOCATION_NAME, url.replace("bucket", "other-bucket"), CREDENTIAL_NAME),
+        ErrorCode.INVALID_ARGUMENT,
+        "its AWS STS session policy is");
+    assertThat(
+            externalLocationOperations
+                .getExternalLocation(EXTERNAL_LOCATION_NAME)
+                .getCredentialName())
+        .isEqualTo(COMPAT_CREDENTIAL_NAME);
+  }
+
+  @Test
   public void testUrlLengthIsCountedTheWayTheDatabaseCountsIt() throws ApiException {
     // An emoji is one character in PostgreSQL and MySQL, which count code points, and two in H2,
     // which counts UTF-16 code units.
