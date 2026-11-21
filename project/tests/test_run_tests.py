@@ -111,21 +111,25 @@ def check_cgroup_memory(run_tests) -> None:
 
 
 def check_conf_stamps(run_tests) -> None:
-    # etc/conf at the root and in modules one and two levels deep, with a hidden file, and a
-    # subdirectory, which is not a file.
-    files = ["etc/conf/a.properties", "server/etc/conf/.hidden", "connectors/spark/etc/conf/b.json"]
+    # etc/conf at the root and in modules one and two levels deep, with a hidden file and a file
+    # in a subdirectory.
+    files = ["etc/conf/a.properties", "etc/conf/keys/private_key.der", "server/etc/conf/.hidden",
+             "connectors/spark/etc/conf/b.json"]
     saved = run_tests.ROOT
     with tempfile.TemporaryDirectory() as root:
         for name in files:
             (Path(root) / name).parent.mkdir(parents=True, exist_ok=True)
             (Path(root) / name).write_text("x")
-        (Path(root) / "etc" / "conf" / "subdir").mkdir()
         run_tests.ROOT = root
         try:
-            stamps = run_tests.conf_stamps()
+            before = run_tests.conf_stamps()
+            # An edited file must change its stamp, or the warning would never fire for it.
+            os.utime(Path(root) / files[2], (1, 1))
+            after = run_tests.conf_stamps()
         finally:
             run_tests.ROOT = saved
-    assert sorted(stamps) == sorted(files), f"conf_stamps() watched {sorted(stamps)}"
+    assert sorted(before) == sorted(files), f"conf_stamps() watched {sorted(before)}"
+    assert before[files[2]] != after[files[2]], f"editing {files[2]} did not change its stamp"
 
 
 def check_concurrency_limit() -> None:

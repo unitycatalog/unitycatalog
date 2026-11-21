@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check project/scripts/check_etc_conf.sh against a throwaway git repository."""
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -8,15 +9,19 @@ from pathlib import Path
 
 UC_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = UC_ROOT / "project" / "scripts" / "check_etc_conf.sh"
+# Ignore the developer's global and system git configuration (excludes, signing, hooks), so only
+# the throwaway repository's own rules apply.
+GIT_ENV = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 
 
 def git(repo: Path, *args: str) -> None:
     subprocess.run(["git", "-c", "user.name=test", "-c", "user.email=test@example.com", *args],
-                   cwd=repo, check=True, capture_output=True)
+                   cwd=repo, env=GIT_ENV, check=True, capture_output=True)
 
 
 def check(repo: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(["bash", str(SCRIPT)], cwd=repo, capture_output=True, text=True)
+    return subprocess.run(["bash", str(SCRIPT)], cwd=repo, env=GIT_ENV, capture_output=True,
+                          text=True)
 
 
 def main() -> None:

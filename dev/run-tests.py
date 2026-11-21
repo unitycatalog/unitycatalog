@@ -357,18 +357,20 @@ def first_errors(log_path, limit=10):
 
 
 def conf_stamps():
-    """Returns the mtime of each file in any etc/conf, by path; tests should never write them.
+    """Returns the mtime of each file in an etc/conf, by path; tests should never write them.
 
-    Covers the root and the modules one or two levels deep (connectors/spark/etc/conf), like
-    project/scripts/check_etc_conf.sh does in CI.
+    Covers etc/conf at the root and in modules up to two levels deep (connectors/spark/etc/conf),
+    with everything under it, hidden files included. Unlike project/scripts/check_etc_conf.sh in
+    CI, it does not look for deeper etc/conf directories.
     """
-    paths = []
+    stamps = {}
     for depth in range(3):
         for conf in glob.glob(os.path.join(ROOT, *["*"] * depth, "etc", "conf")):
-            # listdir, not glob("*"), so hidden files count too.
-            paths += [os.path.join(conf, name) for name in os.listdir(conf)]
-    return {os.path.relpath(path, ROOT): os.path.getmtime(path) for path in paths
-            if os.path.isfile(path)}
+            for directory, _, names in os.walk(conf):
+                for name in names:
+                    path = os.path.join(directory, name)
+                    stamps[os.path.relpath(path, ROOT)] = os.path.getmtime(path)
+    return stamps
 
 
 def elapsed(start):
