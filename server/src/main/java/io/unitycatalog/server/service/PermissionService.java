@@ -86,59 +86,69 @@ public class PermissionService implements UnityCatalogRestService {
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Get("/metastore/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getMetastoreAuthorization(@Param("name") String name) {
-    return getAuthorization(METASTORE, name);
+  public HttpResponse getMetastoreAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(METASTORE, name, principal);
   }
 
   @Get("/catalog/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getCatalogAuthorization(@Param("name") String name) {
-    return getAuthorization(CATALOG, name);
+  public HttpResponse getCatalogAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(CATALOG, name, principal);
   }
 
   @Get("/schema/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getSchemaAuthorization(@Param("name") String name) {
-    return getAuthorization(SCHEMA, name);
+  public HttpResponse getSchemaAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(SCHEMA, name, principal);
   }
 
   @Get("/table/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getTableAuthorization(@Param("name") String name) {
-    return getAuthorization(TABLE, name);
+  public HttpResponse getTableAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(TABLE, name, principal);
   }
 
   @Get("/function/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getFunctionAuthorization(@Param("name") String name) {
-    return getAuthorization(FUNCTION, name);
+  public HttpResponse getFunctionAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(FUNCTION, name, principal);
   }
 
   @Get("/volume/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getVolumeAuthorization(@Param("name") String name) {
-    return getAuthorization(VOLUME, name);
+  public HttpResponse getVolumeAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(VOLUME, name, principal);
   }
 
   @Get("/registered_model/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getRegisteredModelAuthorization(@Param("name") String name) {
-    return getAuthorization(REGISTERED_MODEL, name);
+  public HttpResponse getRegisteredModelAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(REGISTERED_MODEL, name, principal);
   }
 
   @Get("/external_location/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getExternalLocationAuthorization(@Param("name") String name) {
-    return getAuthorization(EXTERNAL_LOCATION, name);
+  public HttpResponse getExternalLocationAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(EXTERNAL_LOCATION, name, principal);
   }
 
   @Get("/credential/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getCredentialAuthorization(@Param("name") String name) {
-    return getAuthorization(CREDENTIAL, name);
+  public HttpResponse getCredentialAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(CREDENTIAL, name, principal);
   }
 
-  private HttpResponse getAuthorization(SecurableType securableType, String name) {
+  private HttpResponse getAuthorization(
+      SecurableType securableType, String name, Optional<String> principal) {
 
     // Owners, managers, and metadata readers can view all direct grants. Other users see their own
     // grants.
@@ -245,6 +255,8 @@ public class PermissionService implements UnityCatalogRestService {
                       .privileges(privileges);
                 })
             .filter(assignment -> !assignment.getPrivileges().isEmpty())
+            .filter(
+                assignment -> principal.map(p -> p.equals(assignment.getPrincipal())).orElse(true))
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));

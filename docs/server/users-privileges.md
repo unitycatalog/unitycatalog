@@ -67,3 +67,30 @@ location, or storage credential. Metastore, catalog, and schema grants cover des
 and catalog grants need no usage grants. A schema grant needs `USE CATALOG`. A table, function,
 volume, or model grant needs both `USE CATALOG` and `USE SCHEMA`. It does not permit data access,
 inference, temporary credentials, writes, or permission changes.
+
+## Viewing Grants
+
+`permission get` lists the privileges granted directly on an object. Add `--principal` to list only
+one user's grants:
+
+```sh
+bin/uc --auth_token $(cat etc/conf/token.txt) permission get --securable_type catalog --name unity --principal bobbie@rocinante
+```
+
+`--principal` must match the user's email exactly as the result shows it. An email with no grants
+on the object, or one that is not a user, returns an empty list.
+
+These users see every user's grants on an object:
+
+- The metastore admin, and users with `READ METADATA` on the metastore. `MANAGE` cannot be granted
+  on the metastore.
+- Owners of the object, or of the schema or catalog that contains it.
+- For a catalog, external location, or storage credential: users with `MANAGE` or `READ METADATA`
+  on it.
+- For a schema: users with `MANAGE` or `READ METADATA` on its catalog, or on the schema together
+  with `USE CATALOG`.
+- For a table, function, volume, or registered model: users with `MANAGE` or `READ METADATA` on its
+  catalog, on its schema together with `USE CATALOG`, or on the object together with `USE CATALOG`
+  and `USE SCHEMA`.
+
+Other users see only their own grants, so for them any other email returns an empty list.

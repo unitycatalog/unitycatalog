@@ -96,6 +96,14 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
     assertThat(privilegesFor(catalogPermissions, REGULAR_1))
         .containsExactlyInAnyOrder(Privilege.USE_CATALOG, Privilege.CREATE_SCHEMA);
     assertThat(privilegesFor(catalogPermissions, REGULAR_2)).containsExactly(Privilege.USE_CATALOG);
+    assertThat(grantsApi.get(SecurableType.CATALOG, CATALOG_NAME, REGULAR_2))
+        .isEqualTo(
+            new PermissionsList()
+                .privilegeAssignments(
+                    List.of(
+                        new PrivilegeAssignment()
+                            .principal(REGULAR_2)
+                            .privileges(List.of(Privilege.USE_CATALOG)))));
 
     PermissionsList schemaPermissions = grantsApi.get(SecurableType.SCHEMA, SCHEMA_FULL_NAME, null);
     assertThat(privilegesFor(schemaPermissions, REGULAR_1))
