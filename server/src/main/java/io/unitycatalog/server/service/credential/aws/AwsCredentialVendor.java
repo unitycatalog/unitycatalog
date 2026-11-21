@@ -401,17 +401,17 @@ public class AwsCredentialVendor implements AutoCloseable {
           == CredentialDAO.CredentialType.AWS_IAM_ROLE;
     }
     S3StorageConfig config = perBucketS3Configs.get(context.getStorageBase());
-    return config != null
-        && config.getCredentialGenerator() == null
-        && config.getStsEndpoint() == null;
+    return config != null && config.getCredentialGenerator() == null;
   }
 
   private record AwsStsRole(String roleArn, Region region) {}
 
   /**
-   * The role that a vend for this context, on AWS S3, assumes on AWS STS, as in {@link
-   * #vendAwsCredentials}: the role of the location's credential, or of the bucket unless the bucket
-   * has a static session token.
+   * The role that a vend for this context, on AWS S3, assumes on AWS STS: the role of the
+   * location's credential, or of the bucket unless the bucket has a static session token. The
+   * policy's partition comes from the role ARN as in the vend. Only for an ARN without one does the
+   * vend use a region looked up from the environment when none is configured, where this uses
+   * commercial AWS.
    */
   private Optional<AwsStsRole> awsStsRole(CredentialContext context) {
     if (context.getCredentialDAO().isPresent()) {

@@ -23,10 +23,10 @@ public final class StorageLimits {
   public static final int MAX_OBJECT_NAME_LENGTH = 1024;
 
   /**
-   * The most path segments of a blob in a hierarchical namespace account, counting the account and
-   * the container.
+   * The most path segments a blob name can have. A hierarchical namespace account allows fewer, 63
+   * counting the account and container, but whether an account has one isn't known from its URL.
    */
-  public static final int MAX_AZURE_PATH_SEGMENTS = 63;
+  public static final int MAX_AZURE_PATH_SEGMENTS = 254;
 
   public enum Unit {
     UTF8_BYTES("bytes"),
@@ -38,8 +38,12 @@ public final class StorageLimits {
       this.label = label;
     }
 
-    int length(String name) {
+    public int length(String name) {
       return this == UTF8_BYTES ? name.getBytes(StandardCharsets.UTF_8).length : name.length();
+    }
+
+    public String label() {
+      return this == UTF8_BYTES ? "bytes in UTF-8" : label;
     }
   }
 
@@ -75,26 +79,23 @@ public final class StorageLimits {
   }
 
   /**
-   * Checks that an object can be stored under each location of a hierarchical namespace account,
-   * whose blobs have at most {@link #MAX_AZURE_PATH_SEGMENTS} path segments.
+   * Checks that a blob can be stored under each location, whose name has at most {@link
+   * #MAX_AZURE_PATH_SEGMENTS} path segments.
    *
-   * @return why no object fits under one of the locations, or empty
+   * @return why no blob fits under one of the locations, or empty
    */
   public static Optional<String> azurePathSegmentViolation(List<NormalizedURL> locations) {
     return locations.stream()
         .mapToInt(
             location ->
-                2
-                    + Splitter.on('/').omitEmptyStrings().splitToList(objectName(location)).size()
-                    + 1)
+                Splitter.on('/').omitEmptyStrings().splitToList(objectName(location)).size() + 1)
         .max()
         .stream()
         .filter(segments -> segments > MAX_AZURE_PATH_SEGMENTS)
         .mapToObj(
             segments ->
                 String.format(
-                    "Azure blob paths under it have at least %d segments, counting the account and"
-                        + " container, and the limit is %d",
+                    "Azure blob names under it have at least %d path segments, and the limit is %d",
                     segments, MAX_AZURE_PATH_SEGMENTS))
         .findFirst();
   }

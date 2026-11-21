@@ -202,7 +202,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
                     .volumeType(VolumeType.EXTERNAL)
                     .storageLocation(externalVolumeLocation + "v")),
         ErrorCode.INVALID_ARGUMENT,
-        "Storage location is too long: it is 2049 bytes in UTF-8, and the limit is 2048.");
+        "Storage location is too long: it is 2049 characters, and the limit is 2048.");
     volumeOperations.createVolume(
         new CreateVolumeRequestContent()
             .name(EXTERNAL_VOLUME_NAME)
@@ -215,6 +215,22 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
                 .getVolume(SCHEMA_FULL_NAME + "." + EXTERNAL_VOLUME_NAME)
                 .getStorageLocation())
         .isEqualTo(externalVolumeLocation);
+
+    String externalTableLocation = "s3://table-bucket/" + "t".repeat(2031);
+    assertThat(externalTableLocation).hasSize(2049);
+    TestUtils.assertApiException(
+        () ->
+            tableOperations.createTable(
+                new CreateTable()
+                    .name(EXTERNAL_TABLE_NAME)
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .columns(COLUMNS)
+                    .tableType(TableType.EXTERNAL)
+                    .dataSourceFormat(DataSourceFormat.DELTA)
+                    .storageLocation(externalTableLocation)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage location is too long: it is 2049 characters, and the limit is 2048.");
 
     String modelVersionSource = "s3://model-bucket/" + "m".repeat(2030);
     assertThat(modelVersionSource).hasSize(2048);
@@ -232,7 +248,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
                     .modelName(MANAGED_MODEL_NAME)
                     .source(modelVersionSource + "m")),
         ErrorCode.INVALID_ARGUMENT,
-        "Model version source is too long: it is 2049 bytes in UTF-8, and the limit is 2048.");
+        "Model version source is too long: it is 2049 characters, and the limit is 2048.");
     ModelVersionInfo version =
         modelOperations.createModelVersion(
             new CreateModelVersion()

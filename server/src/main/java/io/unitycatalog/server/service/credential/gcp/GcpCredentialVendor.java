@@ -12,6 +12,7 @@ import com.google.common.base.CharMatcher;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
@@ -168,27 +169,40 @@ public class GcpCredentialVendor {
   }
 
   /**
-   * Checks the access boundary condition limit a vend for this context would hit, without calling
-   * GCS. The GCS object name limit of 1,024 bytes needs no check of its own: the condition repeats
-   * the object path four times in 2,048 characters, so it is always reached first.
+   * Checks the GCS limits that a vend for this context, or storing objects under its locations,
+   * would hit, without calling GCS: the object name limit of 1,024 bytes, and the access boundary
+   * condition limit when the vend builds one, which is for a configured bucket without a custom
+   * credential generator.
    *
-   * @return why credentials can't be vended for one of the locations, or empty
+   * @return why the locations can't be used on GCS, or empty
    */
   public Optional<String> limitViolation(CredentialContext context) {
-    return context.getLocations().stream()
-        .map(GcpCredentialVendor::conditionViolation)
-        .flatMap(Optional::stream)
-        .findFirst();
+    return StorageLimits.objectNameViolation(
+            context.getLocations(), "GCS object", StorageLimits.Unit.UTF8_BYTES)
+        .or(
+            () ->
+                buildsAccessBoundary(context)
+                    ? context.getLocations().stream()
+                        .map(location -> conditionViolation(accessBoundaryCondition(location)))
+                        .flatMap(Optional::stream)
+                        .findFirst()
+                    : Optional.empty());
   }
 
-  private static Optional<String> conditionViolation(NormalizedURL location) {
-    int length = accessBoundaryCondition(location).length();
-    return length <= MAX_CONDITION_LENGTH
+  private boolean buildsAccessBoundary(CredentialContext context) {
+    GcsStorageConfig config = gcsConfigurations.get(context.getStorageBase());
+    return context.getCredentialDAO().isEmpty()
+        && config != null
+        && (config.getCredentialGenerator() == null || config.getCredentialGenerator().isEmpty());
+  }
+
+  private static Optional<String> conditionViolation(String condition) {
+    return condition.length() <= MAX_CONDITION_LENGTH
         ? Optional.empty()
         : Optional.of(
             format(
                 "its GCS access boundary condition is %d characters, and the limit is %d",
-                length, MAX_CONDITION_LENGTH));
+                condition.length(), MAX_CONDITION_LENGTH));
   }
 
   OAuth2Credentials downscopeGcpCreds(GoogleCredentials credentials, CredentialContext context) {
@@ -202,7 +216,8 @@ public class GcpCredentialVendor {
               URI locationUri = location.toUri();
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
-              conditionViolation(location)
+              String combinedExpr = accessBoundaryCondition(location);
+              conditionViolation(combinedExpr)
                   .ifPresent(
                       violation -> {
                         throw new BaseException(
@@ -211,7 +226,6 @@ public class GcpCredentialVendor {
                                 "GCS location %s is too long for a downscoped credential: %s.",
                                 location, violation));
                       });
-              String combinedExpr = accessBoundaryCondition(location);
 
               boundaryBuilder.addRule(
                   CredentialAccessBoundary.AccessBoundaryRule.newBuilder()

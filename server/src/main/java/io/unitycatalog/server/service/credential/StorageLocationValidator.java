@@ -4,9 +4,10 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.service.credential.StorageLimits.Unit;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
-import java.nio.charset.StandardCharsets;
+import io.unitycatalog.server.utils.UriScheme;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -18,6 +19,11 @@ import org.hibernate.Session;
  * Rejects storage locations that their database column, or the cloud storage they are on, can't
  * hold. Cloud limits are the ones {@link CloudCredentialVendor#limitViolation} checks: object name
  * limits for objects under the location, and the limits of the credentials vended for it.
+ *
+ * <p>A location given in a request is checked against its column in characters, as the databases
+ * count it. A location the server builds, a storage root and the managed locations under it, is
+ * checked in UTF-8 bytes, which is stricter and keeps the indexed staging table location within
+ * PostgreSQL's 2,704 byte index entry limit.
  */
 public class StorageLocationValidator {
 
@@ -27,15 +33,13 @@ public class StorageLocationValidator {
     Optional<CredentialDAO> find(Session session, NormalizedURL location);
   }
 
-  /** The column width of registered model and model version locations. */
-  public static final int MAX_MODEL_LOCATION_LENGTH = 4096;
-
-  /** The column width of external location URLs. */
-  public static final int MAX_EXTERNAL_LOCATION_URL_LENGTH = 255;
-
   // The most a vend asks for, so the longest credential policy is checked.
   private static final Set<CredentialContext.Privilege> ALL_PRIVILEGES =
       Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE);
+
+  // Only the S3 and GCS vendors build credentials from a location's storage credential.
+  private static final Set<String> CREDENTIAL_SCHEMES =
+      Set.of(UriScheme.S3.toString(), UriScheme.GS.toString());
 
   // Managed locations are laid out the same for every id.
   private static final UUID ANY_ID = new UUID(0, 0);
@@ -52,30 +56,36 @@ public class StorageLocationValidator {
   }
 
   /**
-   * Validates a location given in a request or derived for a new managed entity.
+   * Validates a location given in a request, such as an external table or volume location.
+   *
+   * @param maxLength the width of the column the location is stored in, in characters
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the location is too long
+   */
+  public void validateLocation(Session session, NormalizedURL location, int maxLength) {
+    validateLocation(location, maxLength, Unit.CHARACTERS, credentialFor(session, location));
+  }
+
+  /**
+   * Validates a location given in a request whose storage credential is already known, such as the
+   * URL of an external location.
+   *
+   * @param maxLength the width of the column the location is stored in, in characters
+   * @param credential the location's storage credential, or empty if it has none
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the location is too long
+   */
+  public void validateLocation(
+      NormalizedURL location, int maxLength, Optional<CredentialDAO> credential) {
+    validateLocation(location, maxLength, Unit.CHARACTERS, Optional.of(credential));
+  }
+
+  /**
+   * Validates a location the server derived for a new managed entity.
    *
    * @param maxBytes the width of the column the location is stored in, counted in UTF-8 bytes
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the location is too long
    */
-  public void validateLocation(Session session, NormalizedURL location, int maxBytes) {
-    validateLocation(location, maxBytes, credentialLookup.find(session, location));
-  }
-
-  /**
-   * Validates a location whose storage credential is already known, such as the URL of a new
-   * external location.
-   *
-   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the location is too long
-   */
-  public void validateLocation(
-      NormalizedURL location, int maxBytes, Optional<CredentialDAO> credential) {
-    violation(location, maxBytes, credential)
-        .ifPresent(
-            violation -> {
-              throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT,
-                  String.format("Storage location is too long: %s.", violation));
-            });
+  public void validateManagedLocation(Session session, NormalizedURL location, int maxBytes) {
+    validateLocation(location, maxBytes, Unit.UTF8_BYTES, credentialFor(session, location));
   }
 
   /**
@@ -104,16 +114,58 @@ public class StorageLocationValidator {
         ExternalLocationUtils.getManagedLocationForSchema(storageRoot, ANY_ID));
   }
 
+  /**
+   * Validates the location of a new registered model and of the versions the server creates under
+   * it.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a location is too long
+   */
+  public void validateModelLocation(Session session, NormalizedURL modelLocation) {
+    Optional<Optional<CredentialDAO>> credential = credentialFor(session, modelLocation);
+    validateLocation(
+        modelLocation, Constants.MAX_MODEL_LOCATION_LENGTH, Unit.UTF8_BYTES, credential);
+    NormalizedURL versionLocation =
+        ExternalLocationUtils.getManagedLocationForModelVersion(modelLocation, ANY_ID);
+    violation(versionLocation, Constants.MAX_MODEL_LOCATION_LENGTH, Unit.UTF8_BYTES, credential)
+        .ifPresent(
+            violation -> {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  String.format(
+                      "Registered model location is too long. For the location of a model version"
+                          + " under it, %s.",
+                      violation));
+            });
+  }
+
+  /**
+   * Validates a value stored in a column of {@code maxLength} characters, such as a model version
+   * source.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the value is too long
+   */
+  public static void validateLength(String field, String value, int maxLength) {
+    lengthViolation(value, maxLength, Unit.CHARACTERS)
+        .ifPresent(
+            violation -> {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  String.format("%s is too long: %s.", field, violation));
+            });
+  }
+
   private void validateStorageRoot(
       Session session, NormalizedURL storageRoot, NormalizedURL container) {
     List<ManagedLocation> managedLocations = managedLocationsUnder(container).toList();
     int excessBytes =
         managedLocations.stream()
-            .mapToInt(managed -> utf8Length(managed.location().toString()) - managed.maxBytes())
+            .mapToInt(
+                managed ->
+                    Unit.UTF8_BYTES.length(managed.location().toString()) - managed.maxBytes())
             .max()
             .getAsInt();
     if (excessBytes > 0) {
-      int rootBytes = utf8Length(storageRoot.toString());
+      int rootBytes = Unit.UTF8_BYTES.length(storageRoot.toString());
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           String.format(
@@ -121,7 +173,7 @@ public class StorageLocationValidator {
                   + "managed table and volume locations under it fit in %d bytes.",
               rootBytes, rootBytes - excessBytes, Constants.MAX_STORAGE_LOCATION_LENGTH));
     }
-    Optional<CredentialDAO> credential = credentialLookup.find(session, storageRoot);
+    Optional<Optional<CredentialDAO>> credential = credentialFor(session, storageRoot);
     managedLocations.forEach(
         managed ->
             cloudLimitViolation(managed.location(), credential)
@@ -136,29 +188,6 @@ public class StorageLocationValidator {
                     }));
   }
 
-  /**
-   * Validates the location of a new registered model and of the versions the server creates under
-   * it.
-   *
-   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a location is too long
-   */
-  public void validateModelLocation(Session session, NormalizedURL modelLocation) {
-    Optional<CredentialDAO> credential = credentialLookup.find(session, modelLocation);
-    validateLocation(modelLocation, MAX_MODEL_LOCATION_LENGTH, credential);
-    NormalizedURL versionLocation =
-        ExternalLocationUtils.getManagedLocationForModelVersion(modelLocation, ANY_ID);
-    violation(versionLocation, MAX_MODEL_LOCATION_LENGTH, credential)
-        .ifPresent(
-            violation -> {
-              throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT,
-                  String.format(
-                      "Registered model location is too long. For the location of a model version"
-                          + " under it, %s.",
-                      violation));
-            });
-  }
-
   private static Stream<ManagedLocation> managedLocationsUnder(NormalizedURL container) {
     NormalizedURL model = ExternalLocationUtils.getManagedLocationForModel(container, ANY_ID);
     return Stream.of(
@@ -170,52 +199,66 @@ public class StorageLocationValidator {
             "volume",
             ExternalLocationUtils.getManagedLocationForVolume(container, ANY_ID),
             Constants.MAX_STORAGE_LOCATION_LENGTH),
-        new ManagedLocation("registered model", model, MAX_MODEL_LOCATION_LENGTH),
+        new ManagedLocation("registered model", model, Constants.MAX_MODEL_LOCATION_LENGTH),
         new ManagedLocation(
             "model version",
             ExternalLocationUtils.getManagedLocationForModelVersion(model, ANY_ID),
-            MAX_MODEL_LOCATION_LENGTH));
+            Constants.MAX_MODEL_LOCATION_LENGTH));
   }
 
   /**
-   * Validates a value stored in a column of {@code maxBytes}, such as a model version source.
-   *
-   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the value is too long
+   * The storage credential a vend for the location would use, or empty if it can't be resolved,
+   * such as when the covering external location's credential was force-deleted. The vend then fails
+   * and reports that, so the cloud limits are not checked.
    */
-  public static void validateLength(String field, String value, int maxBytes) {
-    lengthViolation(value, maxBytes)
+  private Optional<Optional<CredentialDAO>> credentialFor(Session session, NormalizedURL location) {
+    if (!CREDENTIAL_SCHEMES.contains(location.toUri().getScheme())) {
+      return Optional.of(Optional.empty());
+    }
+    try {
+      return Optional.of(credentialLookup.find(session, location));
+    } catch (BaseException e) {
+      return Optional.empty();
+    }
+  }
+
+  private void validateLocation(
+      NormalizedURL location,
+      int maxLength,
+      Unit unit,
+      Optional<Optional<CredentialDAO>> credential) {
+    violation(location, maxLength, unit, credential)
         .ifPresent(
             violation -> {
               throw new BaseException(
                   ErrorCode.INVALID_ARGUMENT,
-                  String.format("%s is too long: %s.", field, violation));
+                  String.format("Storage location is too long: %s.", violation));
             });
   }
 
-  private static int utf8Length(String value) {
-    return value.getBytes(StandardCharsets.UTF_8).length;
-  }
-
-  private static Optional<String> lengthViolation(String value, int maxBytes) {
-    int bytes = utf8Length(value);
-    return bytes <= maxBytes
+  private static Optional<String> lengthViolation(String value, int maxLength, Unit unit) {
+    int length = unit.length(value);
+    return length <= maxLength
         ? Optional.empty()
         : Optional.of(
-            String.format("it is %d bytes in UTF-8, and the limit is %d", bytes, maxBytes));
+            String.format("it is %d %s, and the limit is %d", length, unit.label(), maxLength));
   }
 
   private Optional<String> violation(
-      NormalizedURL location, int maxBytes, Optional<CredentialDAO> credential) {
-    return lengthViolation(location.toString(), maxBytes)
+      NormalizedURL location,
+      int maxLength,
+      Unit unit,
+      Optional<Optional<CredentialDAO>> credential) {
+    return lengthViolation(location.toString(), maxLength, unit)
         .or(() -> cloudLimitViolation(location, credential));
   }
 
   private Optional<String> cloudLimitViolation(
-      NormalizedURL location, Optional<CredentialDAO> credential) {
-    if (location.isCloudStorageRoot()) {
+      NormalizedURL location, Optional<Optional<CredentialDAO>> credential) {
+    if (credential.isEmpty() || location.isCloudStorageRoot()) {
       return Optional.empty();
     }
     return cloudCredentialVendor.limitViolation(
-        CredentialContext.create(location, ALL_PRIVILEGES, credential));
+        CredentialContext.create(location, ALL_PRIVILEGES, credential.get()));
   }
 }

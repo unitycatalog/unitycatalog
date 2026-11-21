@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.dao;
 
+import static io.unitycatalog.server.utils.Constants.MAX_MODEL_LOCATION_LENGTH;
+
 import io.unitycatalog.server.model.RegisteredModelInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -52,7 +54,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
   @Column(name = "comment", length = 65535)
   private String comment;
 
-  @Column(name = "url", length = 4096)
+  @Column(name = "url", length = MAX_MODEL_LOCATION_LENGTH)
   private String url;
 
   @Column(name = "max_version_number")

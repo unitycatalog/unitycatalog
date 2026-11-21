@@ -48,6 +48,8 @@ public class StorageLocationValidatorTest {
 
   private static final String STS_BUCKET = "s3://sts-bucket";
   private static final String STATIC_BUCKET = "s3://static-bucket";
+  private static final String GCS_BUCKET = "gs://gcs-bucket";
+  private static final String CUSTOM_GCS_BUCKET = "gs://custom-gcs-bucket";
   private static final String ROLE_ARN = "arn:aws:iam::123456789012:role/bucket-role";
   private static final Set<CredentialContext.Privilege> ALL_PRIVILEGES =
       Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE);
@@ -63,6 +65,9 @@ public class StorageLocationValidatorTest {
     properties.put("aws.region", "us-west-2");
     properties.put("aws.accessKey", "masterKey");
     properties.put("aws.secretKey", "masterSecret");
+    properties.put("gcs.bucketPath.0", GCS_BUCKET);
+    properties.put("gcs.bucketPath.1", CUSTOM_GCS_BUCKET);
+    properties.put("gcs.credentialGenerator.1", "com.example.CustomGenerator");
     properties.put("s3.bucketPath.0", STS_BUCKET);
     properties.put("s3.region.0", "us-west-2");
     properties.put("s3.awsRoleArn.0", ROLE_ARN);
@@ -304,7 +309,7 @@ public class StorageLocationValidatorTest {
     String container = "abfss://container@account.dfs.core.windows.net/";
     StorageLocationValidator validator = validatorFor(Optional.empty());
     int mostSegmentsAccepted =
-        IntStream.rangeClosed(1, 80)
+        IntStream.rangeClosed(1, 300)
             .filter(
                 segments ->
                     rootRejection(
@@ -315,11 +320,11 @@ public class StorageLocationValidatorTest {
                         .isEmpty())
             .max()
             .getAsInt();
-    // Azure: with a hierarchical namespace, "the number of path segments comprising the blob name
-    // cannot exceed 63 (including path segments for account name and container name)" (checked
-    // 2026-11-21). The deepest managed location under the root adds six segments
-    // (__unitystorage/catalogs/<id>/models/<id>/versions/<id> is seven) and an object one more.
-    assertThat(2 + mostSegmentsAccepted + 7 + 1).isEqualTo(63);
+    // Azure: "the number of path segments comprising the blob name cannot exceed 254" (Naming and
+    // Referencing Containers, Blobs, and Metadata, checked 2026-11-21). The deepest managed
+    // location under a catalog root, __unitystorage/catalogs/<id>/models/<id>/versions/<id>, adds
+    // seven segments, and a blob under it one more.
+    assertThat(mostSegmentsAccepted + 7 + 1).isEqualTo(254);
   }
 
   private void assertStorageRootTooLong(
@@ -369,17 +374,135 @@ public class StorageLocationValidatorTest {
   }
 
   @Test
-  public void testExplicitLocationOverTheColumnIsRejected() {
+  public void testExplicitLocationIsCheckedInCharacters() {
     StorageLocationValidator validator = validatorFor(Optional.empty());
     String bucket = "file:///tmp/";
-    NormalizedURL longest = NormalizedURL.from(bucket + "v".repeat(2048 - bucket.length()));
+    NormalizedURL longest = NormalizedURL.from(bucket + "é".repeat(2048 - bucket.length()));
 
+    // The columns count characters, so a location that fits in characters but not in bytes is
+    // still accepted, as on main.
     assertThatCode(() -> validator.validateLocation(null, longest, 2048))
         .doesNotThrowAnyException();
     assertThatThrownBy(
-            () -> validator.validateLocation(null, NormalizedURL.from(longest + "v"), 2048))
+            () -> validator.validateLocation(null, NormalizedURL.from(longest + "é"), 2048))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Storage location is too long: it is 2049 characters, and the limit is 2048.");
+  }
+
+  @Test
+  public void testManagedLocationIsCheckedInBytes() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    String bucket = "file:///tmp/";
+    NormalizedURL longest = NormalizedURL.from(bucket + "é".repeat((2048 - bucket.length()) / 2));
+
+    assertThatCode(() -> validator.validateManagedLocation(null, longest, 2048))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () -> validator.validateManagedLocation(null, NormalizedURL.from(longest + "é"), 2048))
         .isInstanceOf(BaseException.class)
         .hasMessage(
-            "Storage location is too long: it is 2049 bytes in UTF-8, and the limit is 2048.");
+            "Storage location is too long: it is 2050 bytes in UTF-8, and the limit is 2048.");
+  }
+
+  @Test
+  public void testRegisteredModelIsRejectedWhenItsVersionsCannotFit() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    String container = "abfss://container@account.dfs.core.windows.net/";
+    UUID id = UUID.randomUUID();
+    int longestAccepted =
+        IntStream.rangeClosed(1, 1100)
+            .filter(
+                length -> {
+                  try {
+                    validator.validateModelLocation(
+                        null, NormalizedURL.from(container + "m".repeat(length)));
+                    return true;
+                  } catch (BaseException e) {
+                    return false;
+                  }
+                })
+            .max()
+            .getAsInt();
+    NormalizedURL version =
+        ExternalLocationUtils.getManagedLocationForModelVersion(
+            NormalizedURL.from(container + "m".repeat(longestAccepted)), id);
+    assertThat(StorageLimits.objectName(version).length() + "/x".length()).isEqualTo(1024);
+    assertThatThrownBy(
+            () ->
+                validator.validateModelLocation(
+                    null, NormalizedURL.from(container + "m".repeat(longestAccepted + 1))))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Registered model location is too long. For the location of a model version under"
+                + " it, Azure blob names under it are at least 1025 characters, and the limit is"
+                + " 1024.");
+  }
+
+  @Test
+  public void testUnresolvableCredentialLeavesCloudLimitsToTheVend() {
+    StorageLocationValidator validator =
+        new StorageLocationValidator(
+            cloudCredentialVendor,
+            (session, location) -> {
+              throw new BaseException(
+                  ErrorCode.INTERNAL, "The storage credential no longer exists");
+            });
+    NormalizedURL root = NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(600));
+
+    assertThat(rootRejection(validator, root, MANAGED_STORAGE_CATALOG_PREFIX)).isEmpty();
+    assertThatCode(
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from("file:///tmp/" + "f".repeat(600)), 2048))
+        .doesNotThrowAnyException();
+    // With the credential resolved, the same root is too long.
+    assertThat(rootRejection(validatorFor(Optional.empty()), root, MANAGED_STORAGE_CATALOG_PREFIX))
+        .isPresent();
+  }
+
+  @Test
+  public void testGcsObjectNamesAreCountedInBytes() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    // An unconfigured bucket builds no access boundary, so only the object name limit applies.
+    String bucket = "gs://unconfigured-bucket/";
+    String threeByteCharacter = "資";
+    int longestAccepted =
+        IntStream.rangeClosed(1, 400)
+            .filter(
+                length -> {
+                  try {
+                    validator.validateLocation(
+                        null, NormalizedURL.from(bucket + threeByteCharacter.repeat(length)), 2048);
+                    return true;
+                  } catch (BaseException e) {
+                    assertThat(e).hasMessageContaining("GCS object names under it are at least");
+                    return false;
+                  }
+                })
+            .max()
+            .getAsInt();
+    // GCS: object names are "1-1024 bytes when UTF-8 encoded" (Objects, checked 2026-11-21).
+    assertThat(3 * longestAccepted + "/x".length()).isBetween(1022, 1024);
+  }
+
+  @Test
+  public void testGcsConditionIsCheckedOnlyWhenTheVendBuildsOne() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    String path = "/" + "g".repeat(500);
+
+    assertThatThrownBy(
+            () -> validator.validateLocation(null, NormalizedURL.from(GCS_BUCKET + path), 2048))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("its GCS access boundary condition is");
+    assertThatCode(
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from(CUSTOM_GCS_BUCKET + path), 2048))
+        .doesNotThrowAnyException();
+    assertThatCode(
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from("gs://unconfigured-bucket" + path), 2048))
+        .doesNotThrowAnyException();
   }
 }

@@ -103,7 +103,8 @@ public class StagingTableRepository {
                   parentStorageLocation, stagingTableId);
           repositories
               .getStorageLocationValidator()
-              .validateLocation(session, stagingLocation, Constants.MAX_STORAGE_LOCATION_LENGTH);
+              .validateManagedLocation(
+                  session, stagingLocation, Constants.MAX_STORAGE_LOCATION_LENGTH);
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 

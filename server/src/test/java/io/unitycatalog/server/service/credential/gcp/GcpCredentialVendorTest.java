@@ -38,8 +38,15 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 public class GcpCredentialVendorTest {
 
-  private final GcpCredentialVendor credentialVendor =
-      new GcpCredentialVendor(new ServerProperties(new Properties()));
+  private final GcpCredentialVendor credentialVendor = new GcpCredentialVendor(serverProperties());
+
+  // Buckets without a custom credential generator, whose vends build an access boundary.
+  private static ServerProperties serverProperties() {
+    Properties properties = new Properties();
+    properties.put("gcs.bucketPath.0", "gs://test-bucket");
+    properties.put("gcs.bucketPath.1", "gs://test-bucket0");
+    return new ServerProperties(properties);
+  }
 
   private AccessBoundaryRule ruleFor(String location) {
     CredentialContext context =
@@ -236,6 +243,20 @@ public class GcpCredentialVendorTest {
     int longestAccepted = acceptedLengths.get(acceptedLengths.size() - 1);
     assertThat(longestAccepted).isLessThan(500);
     assertThat(acceptedLengths).hasSize(longestAccepted);
+
+    // Google: "The maximum length of the expression field is 2048 characters" (AccessBoundary,
+    // checked 2026-11-21). Each root character adds four to eight, so the longest condition vended
+    // is within eight of the limit.
+    NormalizedURL longestRoot =
+        NormalizedURL.from("gs://" + bucket + "/" + pathChar.repeat(longestAccepted));
+    NormalizedURL longestContainer =
+        prefix.equals(MANAGED_STORAGE_CATALOG_PREFIX)
+            ? ExternalLocationUtils.getManagedLocationForCatalog(longestRoot, id)
+            : ExternalLocationUtils.getManagedLocationForSchema(longestRoot, id);
+    NormalizedURL deepest =
+        ExternalLocationUtils.getManagedLocationForModelVersion(
+            ExternalLocationUtils.getManagedLocationForModel(longestContainer, id), id);
+    assertThat(availabilityConditionFor(deepest.toString()).length()).isBetween(2041, 2048);
   }
 
   @ParameterizedTest

@@ -622,8 +622,7 @@ public class ModelRepository {
                 NormalizedURL.from(existingRegisteredModel.getUrl()), modelVersionId);
         repositories
             .getStorageLocationValidator()
-            .validateLocation(
-                session, storageLocation, StorageLocationValidator.MAX_MODEL_LOCATION_LENGTH);
+            .validateManagedLocation(session, storageLocation, Constants.MAX_MODEL_LOCATION_LENGTH);
         modelVersionInfo.setVersion(version);
         modelVersionInfo.setStorageLocation(storageLocation.toString());
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);
