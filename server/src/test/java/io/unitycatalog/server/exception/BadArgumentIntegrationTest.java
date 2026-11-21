@@ -6,9 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.utils.ServerProperties.Property;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
+import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,7 +52,7 @@ public class BadArgumentIntegrationTest extends BaseServerTest {
   public void badInputReturns400() throws Exception {
     // ---- Body-parse path: TypedErrorJacksonRequestConverter -> MalformedRequestBodyException ----
     assertUcInvalidArgument(
-        post(TABLES_PATH, "{not valid json"),
+        TestUtils.sendRawJsonPost(serverConfig, TABLES_PATH, "{not valid json", "application/json"),
         "Malformed request body: Unexpected character ('n' (code 110)): "
             + "was expecting double-quote to start field name");
 
@@ -62,23 +60,40 @@ public class BadArgumentIntegrationTest extends BaseServerTest {
     // the public OSS wire contract, not a secret; pinning it exactly means any future change to
     // widen or narrow the leaked detail fails here and forces a conscious decision.
     assertUcInvalidArgument(
-        post(TABLES_PATH, "\"this-is-a-string-not-an-object\""),
+        TestUtils.sendRawJsonPost(
+            serverConfig, TABLES_PATH, "\"this-is-a-string-not-an-object\"", "application/json"),
         "Malformed request body: Cannot construct instance of "
             + "`io.unitycatalog.server.model.CreateTable` (although at least one Creator exists): "
             + "no String-argument constructor/factory method to deserialize from String value "
             + "('this-is-a-string-not-an-object')");
 
+    // Mapping failures name the JSON path of the failing field, built from Jackson's reference
+    // chain rather than its own "(through reference chain: ...)" text, which names Java types.
+    assertUcInvalidArgument(
+        TestUtils.sendRawJsonPost(
+            serverConfig, TABLES_PATH, "{\"columns\":[{\"position\":\"x\"}]}", "application/json"),
+        "Malformed request body: Cannot deserialize value of type `java.lang.Integer` from String "
+            + "\"x\": not a valid `java.lang.Integer` value (at columns[0].position)");
+
+    assertUcInvalidArgument(
+        TestUtils.sendRawJsonPost(
+            serverConfig, TABLES_PATH, "{\"properties\":{\"a\":{}}}", "application/json"),
+        "Malformed request body: Cannot deserialize value of type `java.lang.String` from Object "
+            + "value (token `JsonToken.START_OBJECT`) (at properties.a)");
+
     // ---- @Param conversion path: Armeria AnnotatedValueResolver -> IllegalArgumentException ----
     assertUcInvalidArgument(
-        get(TABLES_PATH + "?catalog_name=x&schema_name=y&max_results=not-an-int"),
+        TestUtils.sendRawGet(
+            serverConfig, TABLES_PATH + "?catalog_name=x&schema_name=y&max_results=not-an-int"),
         "For input string: \"not-an-int\"");
 
     assertUcInvalidArgument(
-        get(TABLES_PATH + "?catalog_name=x&schema_name=y&omit_properties=maybe"),
+        TestUtils.sendRawGet(
+            serverConfig, TABLES_PATH + "?catalog_name=x&schema_name=y&omit_properties=maybe"),
         "Can't convert 'maybe' to type 'Boolean'.");
 
     assertUcInvalidArgument(
-        get(TABLES_PATH + "?schema_name=y"),
+        TestUtils.sendRawGet(serverConfig, TABLES_PATH + "?schema_name=y"),
         "Mandatory parameter/header/attribute is missing: catalog_name");
 
     // ---- Delta path: DeltaApiExceptionHandler wraps in the Delta error-response envelope ----
@@ -87,12 +102,14 @@ public class BadArgumentIntegrationTest extends BaseServerTest {
     // body-parse case goes through the same TypedErrorJacksonRequestConverter as the UC case above;
     // the body fails to bind before the handler runs, so the catalog and schema need not exist.
     assertDeltaInvalidArgument(
-        post(DELTA_STAGING_TABLES_PATH, "{not valid json"),
+        TestUtils.sendRawJsonPost(
+            serverConfig, DELTA_STAGING_TABLES_PATH, "{not valid json", "application/json"),
         "Malformed request body: Unexpected character ('n' (code 110)): "
             + "was expecting double-quote to start field name");
 
     assertDeltaInvalidArgument(
-        get(DELTA_CONFIG_PATH), "Mandatory parameter/header/attribute is missing: catalog");
+        TestUtils.sendRawGet(serverConfig, DELTA_CONFIG_PATH),
+        "Mandatory parameter/header/attribute is missing: catalog");
   }
 
   private void assertUcInvalidArgument(HttpResponse<String> resp, String expectedMessage)
@@ -125,6 +142,9 @@ public class BadArgumentIntegrationTest extends BaseServerTest {
     // Map.of rejects null values; ErrorModel.stack serializes as null when stack traces are off.
     Map<String, Object> error = new LinkedHashMap<>();
     error.put("message", expectedMessage);
+    // Legacy: ManagedDeltaTablesSpec.md lists BadRequestException for a malformed request, but the
+    // server has always answered InvalidParameterValueException. Pinned as current behavior, not as
+    // the contract; to be fixed in a follow-up.
     error.put("type", "InvalidParameterValueException");
     error.put("code", 400);
     error.put("stack", null);
@@ -132,26 +152,5 @@ public class BadArgumentIntegrationTest extends BaseServerTest {
     assertThat(MAPPER.readTree(resp.body()))
         .as("Delta response body should match the Delta error envelope exactly")
         .isEqualTo(expected);
-  }
-
-  private HttpResponse<String> post(String path, String body) throws Exception {
-    return HttpClient.newHttpClient()
-        .send(
-            HttpRequest.newBuilder(URI.create(serverConfig.getServerUrl() + path))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer ")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build(),
-            HttpResponse.BodyHandlers.ofString());
-  }
-
-  private HttpResponse<String> get(String path) throws Exception {
-    return HttpClient.newHttpClient()
-        .send(
-            HttpRequest.newBuilder(URI.create(serverConfig.getServerUrl() + path))
-                .header("Authorization", "Bearer ")
-                .GET()
-                .build(),
-            HttpResponse.BodyHandlers.ofString());
   }
 }

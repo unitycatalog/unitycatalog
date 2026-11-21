@@ -367,9 +367,10 @@ public class ArmeriaServerBuilder {
     RequestConverterFunction requestConverter =
         switch (protocol) {
           case AUTH, UC, SCIM -> bodyConverter(ucMapper);
-          // On every surface an unreadable body is reported as "Malformed request body: <reason>"
-          // with Jackson's own wording (see bodyConverter). The Iceberg surface further rewrites it
-          // into a fixed message, since its REST spec fixes the error contract clients parse.
+          // The shared Jackson converter (see bodyConverter) reports an unreadable body as
+          // "Malformed request body: <reason>". On Iceberg, parse and mismatched-input failures are
+          // further rewritten into fixed messages, since its REST spec fixes the error contract
+          // clients parse; other mapping failures keep the shared converter's message.
           case ICEBERG -> new MalformedBodyRejectingConverter(bodyConverter(icebergMapper));
           case DELTA -> bodyConverter(deltaMapper);
         };
