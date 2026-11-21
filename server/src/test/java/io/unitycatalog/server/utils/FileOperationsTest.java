@@ -712,13 +712,14 @@ public class FileOperationsTest {
         .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-central-1").build());
     FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
 
+    // A valid bucket name that is not a valid host name.
     Map<String, String> config =
-        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my_bucket/table"));
 
     assertThat(config).containsEntry(AwsClientProperties.CLIENT_REGION, "eu-central-1");
     ArgumentCaptor<HeadBucketRequest> request = ArgumentCaptor.forClass(HeadBucketRequest.class);
     verify(s3).headBucket(request.capture());
-    assertThat(request.getValue().bucket()).isEqualTo("my-bucket");
+    assertThat(request.getValue().bucket()).isEqualTo("my_bucket");
   }
 
   @Test

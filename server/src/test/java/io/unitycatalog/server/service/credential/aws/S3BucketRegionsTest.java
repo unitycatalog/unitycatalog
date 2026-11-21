@@ -14,14 +14,21 @@ import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
@@ -132,9 +139,11 @@ public class S3BucketRegionsTest {
     }
   }
 
-  @Test
-  public void testConcurrentRequestsShareOneLookup() throws Exception {
-    // While one lookup waits on the storage, other requests for the bucket wait for its answer.
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void testConcurrentRequestsShareOneLookup(boolean isFailing) throws Exception {
+    // While one lookup waits on the storage, other requests for the bucket wait for its answer,
+    // or for its failure: an AWS bucket with no known region then gets the same error.
     CountDownLatch inLookup = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     when(s3.headBucket(any(HeadBucketRequest.class)))
@@ -142,18 +151,38 @@ public class S3BucketRegionsTest {
             invocation -> {
               inLookup.countDown();
               release.await();
+              if (isFailing) {
+                throw s3Exception(503, null);
+              }
               return HeadBucketResponse.builder().bucketRegion("eu-test-1").build();
             });
-    ExecutorService pool = Executors.newFixedThreadPool(2);
+    Callable<String> request =
+        isFailing
+            ? () -> regions.getAwsRegion("bucket")
+            : () -> regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket");
+    ExecutorService pool = Executors.newSingleThreadExecutor();
     try {
-      Future<String> first =
-          pool.submit(() -> regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket"));
+      Future<String> first = pool.submit(request);
       inLookup.await();
-      Future<String> second =
-          pool.submit(() -> regions.getS3CompatibleRegion(S3_ENDPOINT, "bucket"));
+      FutureTask<String> second = new FutureTask<>(request);
+      Thread waiter = new Thread(second);
+      waiter.start();
+      // Released only once the second request waits for the first one's lookup.
+      while (waiter.getState() != Thread.State.WAITING) {
+        Thread.sleep(1);
+      }
       release.countDown();
-      assertThat(first.get(10, TimeUnit.SECONDS)).isEqualTo("eu-test-1");
-      assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo("eu-test-1");
+      for (Future<String> result : List.of(first, second)) {
+        if (isFailing) {
+          assertThatThrownBy(() -> result.get(10, TimeUnit.SECONDS))
+              .cause()
+              .isInstanceOfSatisfying(
+                  BaseException.class,
+                  e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
+        } else {
+          assertThat(result.get(10, TimeUnit.SECONDS)).isEqualTo("eu-test-1");
+        }
+      }
     } finally {
       pool.shutdownNow();
     }
@@ -240,12 +269,37 @@ public class S3BucketRegionsTest {
     verify(s3, times(7)).headBucket(any(HeadBucketRequest.class));
   }
 
-  @Test
-  public void testAwsBucketKeepsItsReportedRegionAndHasNoDefault() {
-    // An AWS bucket shares the lookup: its region is cached, and a failed recheck keeps it.
+  /** The ways an AWS recheck can fail, and the error once no region is known. */
+  private static Stream<Arguments> awsRecheckFailures() {
+    return Stream.of(
+        Arguments.of("503", s3Exception(503, null), ErrorCode.INTERNAL),
+        Arguments.of("404", s3Exception(404, null), ErrorCode.FAILED_PRECONDITION),
+        Arguments.of("403 without a region", s3Exception(403, null), ErrorCode.FAILED_PRECONDITION),
+        Arguments.of(
+            "200 without a region",
+            HeadBucketResponse.builder().build(),
+            ErrorCode.FAILED_PRECONDITION),
+        Arguments.of(
+            "a malformed region",
+            HeadBucketResponse.builder().bucketRegion("eu central 1").build(),
+            ErrorCode.FAILED_PRECONDITION));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("awsRecheckFailures")
+  public void testAwsBucketKeepsItsReportedRegionOnAFailedRecheck(
+      String name, Object recheck, ErrorCode errorWithoutRegion) {
+    // An AWS bucket shares the lookup: its region is cached, and however a recheck fails, the
+    // bucket keeps its region, unlike a 404 on S3-compatible storage.
     when(s3.headBucket(any(HeadBucketRequest.class)))
         .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-central-1").build())
-        .thenThrow(s3Exception(503, null));
+        .thenAnswer(
+            invocation -> {
+              if (recheck instanceof RuntimeException e) {
+                throw e;
+              }
+              return recheck;
+            });
     AtomicLong now = new AtomicLong();
     S3BucketRegions aws = new S3BucketRegions(() -> builder, now::get);
     assertThat(aws.getAwsRegion("bucket")).isEqualTo("eu-central-1");
@@ -267,9 +321,13 @@ public class S3BucketRegionsTest {
     aws.evictReportedRegion(/* s3Endpoint= */ null, "bucket");
     assertThatThrownBy(() -> aws.getAwsRegion("bucket"))
         .isInstanceOfSatisfying(
-            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(errorWithoutRegion));
     verify(s3, times(4)).headBucket(any(HeadBucketRequest.class));
+  }
 
+  @Test
+  public void testAwsBucketWithoutAKnownRegionHasNoDefault() {
+    AtomicLong now = new AtomicLong();
     // Without a known region it has no default: transient failures and answers without a region
     // fail every time, and the bucket is asked again on the next request.
     for (RuntimeException failure :
