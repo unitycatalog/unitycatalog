@@ -36,8 +36,75 @@ dlog () {
   [[ $debug ]] && echoerr "$@"
 }
 
+# The known-good SHA-256 of each sbt-launch jar this script is allowed to run, keyed by
+# sbt.version. Recorded by downloading the jar from Maven Central and checking it against the
+# .sha1 Maven Central publishes alongside it, then hashing the same (verified) bytes with SHA-256.
+# An sbt upgrade (project/build.properties) must add a matching entry here in the same change, or
+# every build/sbt invocation fails closed instead of running an unverified launcher.
+sbt_launch_sha256 () {
+  case "$1" in
+    1.9.9) echo "99fd0509060b9655ece7c5a34ecd7ecb471986d4191922966100057f6b6f373c" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Prints the SHA-256 of $1 as a lowercase hex string, using whichever of sha256sum (Linux) or
+# shasum -a 256 (macOS) is on PATH. acquire_sbt_jar checks up front that one of them exists, so
+# this only returns non-zero here as a last-resort guard, without repeating that message.
+sha256_of () {
+  if command -v sha256sum > /dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum > /dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    return 1
+  fi
+}
+
+# Compares the SHA-256 of $1 against the expected hash $2. Returns 0 on a match. On a mismatch,
+# prints the expected and actual hashes and returns 1; the caller decides what to do with $1.
+checksum_matches () {
+  local file="$1"
+  local expected_sha256="$2"
+  local actual_sha256
+  actual_sha256="$(sha256_of "$file")"
+  if [[ "$actual_sha256" == "$expected_sha256" ]]; then
+    return 0
+  fi
+  echoerr "sbt launcher checksum mismatch for $file"
+  echoerr "  expected sha256: $expected_sha256"
+  echoerr "  actual sha256:   $actual_sha256"
+  return 1
+}
+
+# Verifies $1 (a freshly downloaded "*.part" file) against the expected SHA-256 $3, and moves it
+# to $2 only on a match, reporting whether the move itself succeeded. On a mismatch, deletes $1 so
+# the caller can retry from another URL or fail.
+verify_and_install_sbt_jar () {
+  local jar_dl="$1"
+  local jar_dest="$2"
+  local expected_sha256="$3"
+  if checksum_matches "$jar_dl" "$expected_sha256"; then
+    mv "$jar_dl" "$jar_dest"
+    return $?
+  fi
+  rm -f "$jar_dl"
+  return 1
+}
+
 acquire_sbt_jar () {
   SBT_VERSION=`awk -F "=" '/sbt\.version/ {print $2}' ./project/build.properties`
+
+  SBT_LAUNCH_SHA256="$(sbt_launch_sha256 "${SBT_VERSION}")"
+  if [[ -z "${SBT_LAUNCH_SHA256}" ]]; then
+    echoerr "No known-good SHA-256 is recorded for sbt-launch ${SBT_VERSION} in sbt_launch_sha256()."
+    echoerr "Add one in build/sbt-launch-lib.bash (verified against the .sha1 Maven Central publishes) when bumping sbt.version."
+    exit 1
+  fi
+  if ! command -v sha256sum > /dev/null 2>&1 && ! command -v shasum > /dev/null 2>&1; then
+    echoerr "Neither sha256sum nor shasum is available to verify the sbt launcher checksum."
+    exit 1
+  fi
 
   # Download sbt from mirror URL if the environment variable is provided
   if [[ "${SBT_VERSION}" == "0.13.18" ]] && [[ -n "${SBT_MIRROR_JAR_URL}" ]]; then
@@ -52,6 +119,16 @@ acquire_sbt_jar () {
   JAR=build/sbt-launch-${SBT_VERSION}.jar
   sbt_jar=$JAR
 
+  if [[ -f "$sbt_jar" ]] && ! checksum_matches "$sbt_jar" "${SBT_LAUNCH_SHA256}"; then
+    # A jar already on disk may have been swapped or corrupted after download, so it is
+    # re-verified on every run.
+    echoerr "Cached sbt launcher ${sbt_jar} does not match the expected checksum; re-downloading."
+    rm -f "$sbt_jar" || {
+      echoerr "Could not remove the cached sbt launcher ${sbt_jar}; refusing to run it unverified."
+      exit 1
+    }
+  fi
+
   if [[ ! -f "$sbt_jar" ]]; then
     # Download sbt launch jar if it hasn't been downloaded yet
     if [ ! -f "${JAR}" ]; then
@@ -60,30 +137,30 @@ acquire_sbt_jar () {
     JAR_DL="${JAR}.part"
     if [ $(command -v curl) ]; then
       curl --fail --location --silent ${URL1} > "${JAR_DL}" &&\
-        mv "${JAR_DL}" "${JAR}"
+        verify_and_install_sbt_jar "${JAR_DL}" "${JAR}" "${SBT_LAUNCH_SHA256}"
     elif [ $(command -v wget) ]; then
       wget --quiet ${URL1} -O "${JAR_DL}" &&\
-        mv "${JAR_DL}" "${JAR}"
+        verify_and_install_sbt_jar "${JAR_DL}" "${JAR}" "${SBT_LAUNCH_SHA256}"
     else
       printf "You do not have curl or wget installed, please install sbt manually from https://www.scala-sbt.org/\n"
       exit -1
     fi
     fi
     if [ ! -f "${JAR}" ]; then
-    # Primary download failed, retry from Maven Central directly
-    printf 'Download from %s failed. Retrying from %s\n' "${URL1}" "${BACKUP_URL}"
+    # Primary download failed (or failed checksum verification), retry from Maven Central directly
+    printf 'Could not fetch a verified sbt launcher from %s. Retrying from %s\n' "${URL1}" "${BACKUP_URL}"
     JAR_DL="${JAR}.part"
     if [ $(command -v curl) ]; then
       curl --fail --location --silent ${BACKUP_URL} > "${JAR_DL}" &&\
-        mv "${JAR_DL}" "${JAR}"
+        verify_and_install_sbt_jar "${JAR_DL}" "${JAR}" "${SBT_LAUNCH_SHA256}"
     elif [ $(command -v wget) ]; then
       wget --quiet ${BACKUP_URL} -O "${JAR_DL}" &&\
-        mv "${JAR_DL}" "${JAR}"
+        verify_and_install_sbt_jar "${JAR_DL}" "${JAR}" "${SBT_LAUNCH_SHA256}"
     fi
     fi
     if [ ! -f "${JAR}" ]; then
-    # Both downloads failed
-    printf "Our attempt to download sbt locally to ${JAR} failed. Please install sbt manually from https://www.scala-sbt.org/\n"
+    # Both downloads failed, or neither one passed checksum verification
+    printf "Our attempt to download and verify sbt locally to ${JAR} failed. Please install sbt manually from https://www.scala-sbt.org/\n"
     exit -1
     fi
     printf "Launching sbt from ${JAR}\n"
