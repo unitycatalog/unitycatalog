@@ -273,10 +273,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
 
   @Test
   public void startFailsWhenThePortIsTaken() throws Exception {
-    // The server setUp() built writes certs.json and token.txt to configurationFolder, next to the
-    // signing keys copied there.
-    String keyId = Files.readString(configurationFolder.resolve("key_id.txt"));
-    assertThat(Files.readString(configurationFolder.resolve("certs.json"))).contains(keyId);
+    // The server setUp() built writes token.txt to configurationFolder.
     assertThat(configurationFolder.resolve("token.txt")).isNotEmptyFile();
     assertThatThrownBy(() -> UnityCatalogServer.builder().configurationFolder(null))
         .isInstanceOf(NullPointerException.class);
@@ -295,6 +292,56 @@ public class UnityCatalogServerTest extends BaseServerTest {
           .isInstanceOf(CompletionException.class)
           .hasCauseInstanceOf(ServerPortBindException.class);
       assertThatCode(server::close).doesNotThrowAnyException();
+    }
+  }
+
+  @Test
+  public void startupUsesTheTokenSigningKeyFileSettings() throws Exception {
+    Properties properties = new Properties();
+    properties.putAll(serverProperties);
+    properties.setProperty("server.token-signing-private-key-file", "/no/such/private_key.pem");
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .port(0)
+                    .serverProperties(new ServerProperties(properties))
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .build())
+        .hasMessageContaining("No token signing key file");
+
+    // The server creates a configuration folder that does not exist yet.
+    Path missing = configurationFolder.resolve("not-yet").resolve("conf");
+    properties.setProperty(
+        "server.token-signing-private-key-file",
+        configurationFolder.resolve("private_key.der").toString());
+    try (UnityCatalogServer server =
+        UnityCatalogServer.builder()
+            .port(0)
+            .serverProperties(new ServerProperties(properties))
+            .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(missing)
+            .build()) {
+      assertThat(missing.resolve("token.txt")).isNotEmptyFile();
+    }
+
+    // An empty relative configuration folder is the working directory, which has no parent path.
+    // The JVM cannot change its working directory, so keep a token.txt already there.
+    Path tokenFile = Path.of("token.txt");
+    byte[] existingToken = Files.exists(tokenFile) ? Files.readAllBytes(tokenFile) : null;
+    try (UnityCatalogServer server =
+        UnityCatalogServer.builder()
+            .port(0)
+            .serverProperties(new ServerProperties(properties))
+            .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(Path.of(""))
+            .build()) {
+      assertThat(tokenFile).isNotEmptyFile();
+    } finally {
+      if (existingToken == null) {
+        Files.deleteIfExists(tokenFile);
+      } else {
+        Files.write(tokenFile, existingToken);
+      }
     }
   }
 
