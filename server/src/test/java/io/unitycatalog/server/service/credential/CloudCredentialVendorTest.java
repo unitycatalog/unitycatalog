@@ -530,6 +530,13 @@ public class CloudCredentialVendorTest {
                   .s3Endpoint(S3_ENDPOINT)
                   .s3Region(DISCOVERED_REGION));
       assertThat(credentials.getUrl()).isEqualTo(COMPAT_PATH);
+
+      // S3-compatible STS publishes no session policy limit, so a policy longer than AWS STS
+      // allows is still sent.
+      vendCredential(
+          COMPAT_PATH + "/" + "r".repeat(600),
+          Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+      assertThat(requestCaptor.getValue().policy().length()).isGreaterThan(2048);
     }
     assertThat(requestCaptor.getValue().roleArn()).isEqualTo(ROLE_ARN);
     assertThat(requestCaptor.getValue().policy()).contains("arn:aws:s3:::compat-bucket/data");

@@ -49,6 +49,7 @@ public class StorageLocationValidatorTest {
 
   private static final String STS_BUCKET = "s3://sts-bucket";
   private static final String STATIC_BUCKET = "s3://static-bucket";
+  private static final String CUSTOM_S3_BUCKET = "s3://custom-s3-bucket";
   private static final String GCS_BUCKET = "gs://gcs-bucket";
   private static final String CUSTOM_GCS_BUCKET = "gs://custom-gcs-bucket";
   private static final String ROLE_ARN = "arn:aws:iam::123456789012:role/bucket-role";
@@ -81,6 +82,10 @@ public class StorageLocationValidatorTest {
     properties.put("s3.accessKey.1", "accessKey1");
     properties.put("s3.secretKey.1", "secretKey1");
     properties.put("s3.sessionToken.1", "sessionToken1");
+    properties.put("s3.bucketPath.2", CUSTOM_S3_BUCKET);
+    properties.put("s3.region.2", "us-west-2");
+    properties.put("s3.awsRoleArn.2", ROLE_ARN);
+    properties.put("s3.credentialGenerator.2", "com.example.CustomGenerator");
     ServerProperties serverProperties = new ServerProperties(properties);
 
     StsClient stsClient = mock(StsClient.class);
@@ -518,6 +523,48 @@ public class StorageLocationValidatorTest {
   }
 
   @Test
+  public void testS3BucketsTheServerDoesNotVendForAreOnlyLimitedByTheColumn() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    String path = "/" + "r".repeat(1100);
+
+    // A custom generator vends credentials its own way, and the server vends none for a bucket it
+    // has no configuration for.
+    for (String bucket : List.of(CUSTOM_S3_BUCKET, "s3://unconfigured-bucket")) {
+      assertThat(
+              rootRejection(
+                  validator, NormalizedURL.from(bucket + path), MANAGED_STORAGE_CATALOG_PREFIX))
+          .as(bucket)
+          .isEmpty();
+    }
+    assertThat(
+            rootRejection(
+                validator, NormalizedURL.from(STS_BUCKET + path), MANAGED_STORAGE_CATALOG_PREFIX))
+        .isPresent();
+  }
+
+  @Test
+  public void testFailingCredentialLookupLeavesAzureLimitsChecked() {
+    StorageLocationValidator validator =
+        new StorageLocationValidator(
+            cloudCredentialVendor,
+            (session, location) -> {
+              throw new BaseException(ErrorCode.INTERNAL, "The lookup failed");
+            },
+            () -> Unit.UTF16_CODE_UNITS);
+
+    // Azure vends without a storage credential, so its limits don't depend on the lookup.
+    assertThatThrownBy(
+            () ->
+                validator.validateLocation(
+                    null,
+                    NormalizedURL.from(
+                        "abfss://container@account.dfs.core.windows.net/" + "a".repeat(1100)),
+                    2048))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Azure blob names under it are at least");
+  }
+
+  @Test
   public void testUnresolvableCredentialLeavesCloudLimitsToTheVend() {
     StorageLocationValidator validator =
         new StorageLocationValidator(
@@ -578,6 +625,20 @@ public class StorageLocationValidatorTest {
             () ->
                 validator.validateLocation(
                     null, NormalizedURL.from(CUSTOM_GCS_BUCKET + path), 2048))
+        .doesNotThrowAnyException();
+    // A vend for a location with a storage credential builds no access boundary.
+    CredentialDAO credential =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("role-credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(new AwsIamRoleRequest().roleArn(ROLE_ARN)),
+            "test-user",
+            SECRET_STORE);
+    assertThatCode(
+            () ->
+                validatorFor(Optional.of(credential))
+                    .validateLocation(null, NormalizedURL.from(GCS_BUCKET + path), 2048))
         .doesNotThrowAnyException();
     assertThatCode(
             () ->

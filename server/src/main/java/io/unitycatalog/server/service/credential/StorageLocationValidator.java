@@ -295,7 +295,7 @@ public class StorageLocationValidator {
       NormalizedURL location,
       Set<CredentialContext.Privilege> privileges,
       VendCredential credential) {
-    if (!(credential instanceof Resolved resolved) || location.isCloudStorageRoot()) {
+    if (!(credential instanceof Resolved resolved)) {
       return Optional.empty();
     }
     return cloudCredentialVendor.limitViolation(
