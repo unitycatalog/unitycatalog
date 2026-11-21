@@ -311,7 +311,7 @@ public class ExternalLocationUtils {
         /* readOnly= */ true);
   }
 
-  private Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(
+  public Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(
       Session session, NormalizedURL url) {
     // Get the external location
     // Find out the external location that covers the input URL. Either the external location is

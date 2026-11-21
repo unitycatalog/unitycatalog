@@ -872,6 +872,9 @@ public class TableRepository {
                 "External table storage location must include a non-empty path prefix: %s",
                 createTable.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
+            repositories
+                .getStorageLocationValidator()
+                .validateLocation(session, storageLocation, Constants.MAX_STORAGE_LOCATION_LENGTH);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());

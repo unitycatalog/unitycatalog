@@ -71,6 +71,11 @@ public class CatalogRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
+          if (storageRoot != null) {
+            repositories
+                .getStorageLocationValidator()
+                .validateCatalogStorageRoot(session, storageRoot);
+          }
           if (RepositoryUtils.getCatalogDaoOpt(session, createCatalog.getName()).isPresent()) {
             throw new BaseException(
                 ErrorCode.CATALOG_ALREADY_EXISTS,

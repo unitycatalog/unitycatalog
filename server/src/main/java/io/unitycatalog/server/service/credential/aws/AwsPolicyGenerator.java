@@ -11,6 +11,7 @@ import java.net.URI;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
@@ -22,6 +23,14 @@ import software.amazon.awssdk.regions.Region;
 public class AwsPolicyGenerator {
 
   static final String AWS_PARTITION = "aws";
+
+  /**
+   * AWS STS limit on the plaintext of a session policy.
+   *
+   * @see <a href="https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html">
+   *     AssumeRole</a>
+   */
+  static final int MAX_SESSION_POLICY_LENGTH = 2048;
 
   // Exact action names: some S3-compatible STS implementations reject partial
   // wildcards such as s3:GetO*. On AWS, multipart initiate/upload/complete are
@@ -203,6 +212,18 @@ public class AwsPolicyGenerator {
     }
 
     return JSON_MAPPER.writeValueAsString(policyRoot);
+  }
+
+  /**
+   * @return why AWS STS refuses this session policy, or empty if it fits
+   */
+  static Optional<String> sessionPolicyViolation(String policy) {
+    return policy.length() <= MAX_SESSION_POLICY_LENGTH
+        ? Optional.empty()
+        : Optional.of(
+            String.format(
+                "its AWS STS session policy is %d characters, and the limit is %d",
+                policy.length(), MAX_SESSION_POLICY_LENGTH));
   }
 
   /**

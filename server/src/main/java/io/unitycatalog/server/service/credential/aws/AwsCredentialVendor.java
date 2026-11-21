@@ -11,6 +11,7 @@ import io.unitycatalog.server.model.S3CompatibleResponse;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.S3CompatibleStaticKeyVending;
@@ -23,6 +24,7 @@ import java.util.function.Supplier;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
@@ -362,6 +364,73 @@ public class AwsCredentialVendor implements AutoCloseable {
       }
     }
     return Optional.of(generator.generate(context));
+  }
+
+  /**
+   * Checks the AWS limits that a vend for this context, or storing objects under its locations,
+   * would hit, without calling AWS: the S3 object key limit when the locations are on AWS S3, and
+   * the STS session policy limit when the vend assumes a role on AWS STS. S3-compatible storage,
+   * whose limits differ between stores, a bucket with a custom credential generator, and a bucket
+   * the server has no credentials for are not checked.
+   *
+   * @return why the locations can't be used on AWS, or empty
+   */
+  public Optional<String> limitViolation(CredentialContext context) {
+    if (!isOnAwsS3(context)) {
+      return Optional.empty();
+    }
+    return StorageLimits.objectNameViolation(
+            context.getLocations(), "S3 object key", StorageLimits.Unit.UTF8_BYTES)
+        .or(
+            () ->
+                awsStsRole(context)
+                    .flatMap(
+                        role ->
+                            AwsPolicyGenerator.sessionPolicyViolation(
+                                AwsPolicyGenerator.generatePolicy(
+                                    context.getPrivileges(),
+                                    context.getLocations(),
+                                    role.roleArn(),
+                                    role.region(),
+                                    /* isS3Compatible= */ false))));
+  }
+
+  private boolean isOnAwsS3(CredentialContext context) {
+    if (context.getCredentialDAO().isPresent()) {
+      return context.getCredentialDAO().get().getCredentialType()
+          == CredentialDAO.CredentialType.AWS_IAM_ROLE;
+    }
+    S3StorageConfig config = perBucketS3Configs.get(context.getStorageBase());
+    return config != null && config.getCredentialGenerator() == null;
+  }
+
+  private record AwsStsRole(String roleArn, Region region) {}
+
+  /**
+   * The role that a vend for this context, on AWS S3, assumes on AWS STS: the role of the
+   * location's credential, or of the bucket unless the bucket has a static session token. The
+   * policy's partition comes from the role ARN as in the vend. Only for an ARN without one does the
+   * vend use a region looked up from the environment when none is configured, where this uses
+   * commercial AWS.
+   */
+  private Optional<AwsStsRole> awsStsRole(CredentialContext context) {
+    if (context.getCredentialDAO().isPresent()) {
+      return Optional.of(
+          new AwsStsRole(
+              context.getCredentialDAO().get().getAwsIamRoleResponse().getRoleArn(),
+              configuredRegion(awsS3MasterRoleConfig)));
+    }
+    S3StorageConfig config = perBucketS3Configs.get(context.getStorageBase());
+    if (config.getSessionToken() != null && !config.getSessionToken().isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(new AwsStsRole(config.getAwsRoleArn(), configuredRegion(config)));
+  }
+
+  private static Region configuredRegion(S3StorageConfig config) {
+    return config.getRegion() == null || config.getRegion().isEmpty()
+        ? null
+        : Region.of(config.getRegion());
   }
 
   private synchronized AwsCredentialGenerator getPerBucketCredGenerator(

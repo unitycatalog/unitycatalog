@@ -9,11 +9,15 @@ import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateModelVersion;
+import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.ModelVersionInfo;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.VolumeInfo;
@@ -120,5 +124,142 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
     VolumeInfo externalVolumeInfo = volumeOperations.createVolume(createExternalVolume);
     assertThat(externalVolumeInfo.getStorageLocation())
         .isEqualTo(NormalizedURL.normalize(storageRootDir.toString()));
+  }
+
+  @SneakyThrows
+  private void assertManagedVolumeUnder(String schemaName, String parentLocation) {
+    VolumeInfo managed =
+        volumeOperations.createVolume(
+            new CreateVolumeRequestContent()
+                .name(MANAGED_VOLUME_NAME1)
+                .catalogName(CATALOG_NAME)
+                .schemaName(schemaName)
+                .volumeType(VolumeType.MANAGED));
+    assertThat(managed.getStorageLocation()).startsWith(parentLocation + "/volumes/");
+    assertThat(managed.getStorageLocation()).hasSize(2048);
+    assertThat(volumeOperations.getVolume(managed.getFullName()).getStorageLocation())
+        .isEqualTo(managed.getStorageLocation());
+  }
+
+  @SneakyThrows
+  private void assertManagedStagingTableUnder(String schemaName, String parentLocation) {
+    StagingTableInfo staging =
+        new TablesApi(TestUtils.createApiClient(serverConfig))
+            .createStagingTable(
+                new CreateStagingTable()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(schemaName)
+                    .name(TABLE_NAME));
+    assertThat(staging.getStagingLocation()).startsWith(parentLocation + "/tables/");
+    assertThat(staging.getStagingLocation()).hasSize(2047);
+  }
+
+  @SneakyThrows
+  @Test
+  public void testStoragePathsUpToTheColumnLimit() {
+    // The longest roots allowed. A managed volume under each is exactly 2048 characters.
+    String catalogRoot = "s3://catalog-bucket/" + "c".repeat(1922);
+    String schemaRoot = "s3://schema-bucket/" + "s".repeat(1924);
+    TestUtils.assertApiException(
+        () ->
+            catalogOperations.createCatalog(
+                new CreateCatalog().name(CATALOG_NAME).storageRoot(catalogRoot + "c")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage root is 1943 bytes long in UTF-8, but it can be at most 1942 bytes");
+    createCatalog(Optional.of(catalogRoot));
+    TestUtils.assertApiException(
+        () ->
+            schemaOperations.createSchema(
+                new CreateSchema()
+                    .catalogName(CATALOG_NAME)
+                    .name(SCHEMA_NAME)
+                    .storageRoot(schemaRoot + "s")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage root is 1944 bytes long in UTF-8, but it can be at most 1943 bytes");
+    createSchema(Optional.of(schemaRoot));
+    assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageRoot()).isEqualTo(catalogRoot);
+    assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageLocation())
+        .isEqualTo(catalogInfo.getStorageLocation());
+    assertThat(schemaOperations.getSchema(SCHEMA_FULL_NAME).getStorageRoot()).isEqualTo(schemaRoot);
+    assertThat(schemaOperations.getSchema(SCHEMA_FULL_NAME).getStorageLocation())
+        .isEqualTo(schemaInfo.getStorageLocation());
+
+    schemaOperations.createSchema(new CreateSchema().catalogName(CATALOG_NAME).name(SCHEMA_NAME2));
+    assertManagedVolumeUnder(SCHEMA_NAME, schemaInfo.getStorageLocation());
+    assertManagedVolumeUnder(SCHEMA_NAME2, catalogInfo.getStorageLocation());
+    assertManagedStagingTableUnder(SCHEMA_NAME, schemaInfo.getStorageLocation());
+    assertManagedStagingTableUnder(SCHEMA_NAME2, catalogInfo.getStorageLocation());
+
+    String externalVolumeLocation = "s3://volume-bucket/" + "v".repeat(2029);
+    assertThat(externalVolumeLocation).hasSize(2048);
+    TestUtils.assertApiException(
+        () ->
+            volumeOperations.createVolume(
+                new CreateVolumeRequestContent()
+                    .name(EXTERNAL_VOLUME_NAME)
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .volumeType(VolumeType.EXTERNAL)
+                    .storageLocation(externalVolumeLocation + "v")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage location is too long: it is 2049 characters, and the limit is 2048.");
+    volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(EXTERNAL_VOLUME_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(externalVolumeLocation));
+    assertThat(
+            volumeOperations
+                .getVolume(SCHEMA_FULL_NAME + "." + EXTERNAL_VOLUME_NAME)
+                .getStorageLocation())
+        .isEqualTo(externalVolumeLocation);
+
+    String externalTableLocation = "s3://table-bucket/" + "t".repeat(2031);
+    assertThat(externalTableLocation).hasSize(2049);
+    TestUtils.assertApiException(
+        () ->
+            tableOperations.createTable(
+                new CreateTable()
+                    .name(EXTERNAL_TABLE_NAME)
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .columns(COLUMNS)
+                    .tableType(TableType.EXTERNAL)
+                    .dataSourceFormat(DataSourceFormat.DELTA)
+                    .storageLocation(externalTableLocation)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage location is too long: it is 2049 characters, and the limit is 2048.");
+
+    String modelVersionSource = "s3://model-bucket/" + "m".repeat(2030);
+    assertThat(modelVersionSource).hasSize(2048);
+    modelOperations.createRegisteredModel(
+        new CreateRegisteredModel()
+            .name(MANAGED_MODEL_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME));
+    TestUtils.assertApiException(
+        () ->
+            modelOperations.createModelVersion(
+                new CreateModelVersion()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .modelName(MANAGED_MODEL_NAME)
+                    .source(modelVersionSource + "m")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Model version source is too long: it is 2049 characters, and the limit is 2048.");
+    ModelVersionInfo version =
+        modelOperations.createModelVersion(
+            new CreateModelVersion()
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .modelName(MANAGED_MODEL_NAME)
+                .source(modelVersionSource));
+    assertThat(
+            modelOperations
+                .getModelVersion(SCHEMA_FULL_NAME + "." + MANAGED_MODEL_NAME, version.getVersion())
+                .getSource())
+        .isEqualTo(modelVersionSource);
   }
 }

@@ -3,9 +3,11 @@ package io.unitycatalog.server.service.credential.azure;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class AzureCredentialVendor {
@@ -15,6 +17,18 @@ public class AzureCredentialVendor {
 
   public AzureCredentialVendor(ServerProperties serverProperties) {
     this.adlsConfigurations = serverProperties.getAdlsConfigurations();
+  }
+
+  /**
+   * Checks the Azure Blob Storage limits that objects under each location would hit: the blob name
+   * length and the number of path segments of a hierarchical namespace account.
+   *
+   * @return why the locations can't be used on Azure, or empty
+   */
+  public Optional<String> limitViolation(CredentialContext ctx) {
+    return StorageLimits.objectNameViolation(
+            ctx.getLocations(), "Azure blob", StorageLimits.Unit.CHARACTERS)
+        .or(() -> StorageLimits.azurePathSegmentViolation(ctx.getLocations()));
   }
 
   public AzureCredential vendAzureCredential(CredentialContext ctx) {

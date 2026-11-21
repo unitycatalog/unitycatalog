@@ -13,6 +13,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -69,6 +70,10 @@ public class VolumeRepository {
                 ExternalLocationUtils.getManagedStorageLocation(catalogAndSchemaDao);
             storageLocation =
                 ExternalLocationUtils.getManagedLocationForVolume(parentStorageLocation, volumeId);
+            repositories
+                .getStorageLocationValidator()
+                .validateManagedLocation(
+                    session, storageLocation, Constants.MAX_STORAGE_LOCATION_LENGTH);
           } else {
             // EXTERNAL volume.
             if (createVolumeRequest.getStorageLocation() == null) {
@@ -81,6 +86,9 @@ public class VolumeRepository {
                 "External volume storage location must include a non-empty path prefix: %s",
                 createVolumeRequest.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
+            repositories
+                .getStorageLocationValidator()
+                .validateLocation(session, storageLocation, Constants.MAX_STORAGE_LOCATION_LENGTH);
           }
           Date now = new Date();
 

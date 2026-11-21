@@ -329,6 +329,29 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testUrlUpToTheColumnLimit() throws ApiException {
+    String longestUrl = testUrl() + "/" + "u".repeat(255 - testUrl().length() - 1);
+    assertThat(longestUrl).hasSize(255);
+    assertApiException(
+        () -> create(EXTERNAL_LOCATION_NAME, longestUrl + "u"),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage location is too long: it is 256 characters, and the limit is 255.");
+    create(EXTERNAL_LOCATION_NAME, testUrl());
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(longestUrl + "u")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage location is too long: it is 256 characters, and the limit is 255.");
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(longestUrl))
+                .getUrl())
+        .isEqualTo(longestUrl);
+  }
+
+  @Test
   public void testLocationWithAUrlFromAnEarlierReleaseCanStillChange() throws ApiException {
     // An earlier release stored URLs that no longer parse, such as one with a query. Changing
     // anything but the URL still works, as does moving it to a credential other than
