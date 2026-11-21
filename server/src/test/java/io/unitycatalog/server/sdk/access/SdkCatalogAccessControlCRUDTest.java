@@ -319,7 +319,8 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     // rather than a denial.
     assertHttpApiException(
         TestUtils.sendRawJsonPost(adminConfig, CATALOGS_PATH, "{\"name\":", "application/json"),
-        ErrorCode.INVALID_ARGUMENT);
+        ErrorCode.INVALID_ARGUMENT,
+        "Malformed request body:");
     TestUtils.assertHttpRequestMetric(
         serverConfig,
         observabilityServerConfig,
