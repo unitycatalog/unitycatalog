@@ -115,7 +115,7 @@ public class CatalogRepository {
     for (CatalogInfoDAO catalogInfoDAO : catalogInfoDAOList) {
       CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
       RepositoryUtils.attachProperties(
-          catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+          catalogInfo, CatalogInfo::setProperties, catalogInfo.getId(), Constants.CATALOG, session);
       result.add(catalogInfo);
     }
     return new ListCatalogsResponse().catalogs(result).nextPageToken(nextPageToken);
@@ -128,7 +128,11 @@ public class CatalogRepository {
           CatalogInfoDAO catalogInfoDAO = getCatalogDaoOrThrow(session, name);
           CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
           return RepositoryUtils.attachProperties(
-              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+              catalogInfo,
+              CatalogInfo::setProperties,
+              catalogInfo.getId(),
+              Constants.CATALOG,
+              session);
         },
         "Failed to get catalog",
         /* readOnly= */ true);
@@ -173,7 +177,11 @@ public class CatalogRepository {
                   || updateCatalog.getProperties().isEmpty())) {
             CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
             return RepositoryUtils.attachProperties(
-                catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+                catalogInfo,
+                CatalogInfo::setProperties,
+                catalogInfo.getId(),
+                Constants.CATALOG,
+                session);
           }
           if (updateCatalog.getNewName() != null
               && RepositoryUtils.getCatalogDaoOpt(session, updateCatalog.getNewName())
@@ -201,7 +209,11 @@ public class CatalogRepository {
           session.merge(catalogInfoDAO);
           CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
           return RepositoryUtils.attachProperties(
-              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+              catalogInfo,
+              CatalogInfo::setProperties,
+              catalogInfo.getId(),
+              Constants.CATALOG,
+              session);
         },
         "Failed to update catalog",
         /* readOnly= */ false);
