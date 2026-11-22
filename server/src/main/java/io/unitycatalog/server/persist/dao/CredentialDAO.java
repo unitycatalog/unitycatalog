@@ -71,6 +71,10 @@ public class CredentialDAO extends IdentifiableDAO {
   // response type and dropped when the blob is read back as a response.
   private static final String SECRET_ACCESS_KEY_FIELD = "secret_access_key";
   private static final String PRIVATE_KEY_FIELD = "private_key";
+  // A Google service account key has an email of under 100 characters, a key id of 40, and an RSA
+  // private key of about 1.7 KB in PEM; these leave room without storing an unbounded value.
+  private static final int MAX_GCP_FIELD_LENGTH = 1024;
+  private static final int MAX_GCP_PRIVATE_KEY_LENGTH = 4096;
   private static final List<String> WRITE_ONLY_FIELDS =
       List.of(SECRET_ACCESS_KEY_FIELD, PRIVATE_KEY_FIELD);
 
@@ -297,6 +301,9 @@ public class CredentialDAO extends IdentifiableDAO {
     ValidationUtils.checkArgument(
         key.getPrivateKey() != null && !key.getPrivateKey().isBlank(),
         "gcp_service_account_key.private_key is required.");
+    checkLength("email", key.getEmail(), MAX_GCP_FIELD_LENGTH);
+    checkLength("private_key_id", key.getPrivateKeyId(), MAX_GCP_FIELD_LENGTH);
+    checkLength("private_key", key.getPrivateKey(), MAX_GCP_PRIVATE_KEY_LENGTH);
     try {
       ServiceAccountCredentials.fromPkcs8(
           /* clientId= */ null,
@@ -310,6 +317,13 @@ public class CredentialDAO extends IdentifiableDAO {
           ErrorCode.INVALID_ARGUMENT,
           "gcp_service_account_key.private_key is not a PEM-encoded PKCS#8 private key.");
     }
+  }
+
+  private static void checkLength(String field, String value, int maxLength) {
+    ValidationUtils.checkArgument(
+        value.length() <= maxLength,
+        String.format(
+            "gcp_service_account_key.%s is longer than %d characters.", field, maxLength));
   }
 
   private <T> void setCredential(CredentialType type, T inputCredential) {

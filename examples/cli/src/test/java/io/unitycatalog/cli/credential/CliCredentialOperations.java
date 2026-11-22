@@ -52,7 +52,11 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       return execute(CredentialInfo.class, "create", argsList);
     } finally {
       if (keyFile != null) {
-        keyFile.toFile().delete();
+        try {
+          Files.deleteIfExists(keyFile);
+        } catch (IOException e) {
+          throw new UncheckedIOException(e);
+        }
       }
     }
   }

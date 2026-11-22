@@ -144,7 +144,11 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
    * endpoint ({@code endpoint-only}) or the key pair with a refetch time ({@code static-key}). So
    * for every {@code s3_compatible} credential they never share an entry; {@code
    * server.s3-compatible-storage.static-key-vending} is read once at startup, so entries never span
-   * two modes. A {@code gcp_service_account_key} credential is vended the same way to both.
+   * two modes.
+   *
+   * <p>A {@code gcp_service_account_key} credential is not vended yet: a request under its external
+   * location fails with {@code UNIMPLEMENTED}. Its id and fingerprint are part of the key already,
+   * so that once vending lands, entries are replaced when the key changes.
    */
   private record Key(
       List<NormalizedURL> locations,
