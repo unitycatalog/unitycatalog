@@ -9,11 +9,12 @@ import java.time.Duration;
  *
  * <pre>{@code
  * RetryPolicy policy = JitterDelayRetryPolicy.builder().build();
- * for(int attempt = 1; policy.allowRetry(attempt); attempt +=1) {
+ * for (int attempt = 1; attempt <= policy.maxAttempts(); attempt += 1) {
  *   try {
  *     doSomeAction();
+ *     return;
  *   } catch (Exception e) {
- *     if (isRetryable(e)){
+ *     if (isRetryable(e) && attempt < policy.maxAttempts() && policy.allowRetry(attempt)) {
  *       Thread.sleep(policy.sleepTime(attempt).toMillis());
  *     } else {
  *       throw e;
@@ -24,37 +25,35 @@ import java.time.Duration;
  */
 public interface RetryPolicy {
   /**
-   * Returns the maximum number of retry attempts allowed by this policy.
+   * Returns the maximum number of attempts allowed by this policy.
    *
-   * <p>This value determines the upper bound on retry attempts. A return value of 0 means no
-   * retries will be attempted (only the initial attempt), while a positive value indicates the
-   * maximum number of additional attempts after the initial failure.
+   * <p>This value is the total number of attempts, including the initial one, so a value of 1 means
+   * no retries. No backoff is slept after the last attempt.
    *
-   * @return the maximum number of retry attempts, must be non-negative
+   * @return the maximum number of attempts, must be positive
    */
   int maxAttempts();
 
   /**
-   * Calculates the sleep duration before the specified retry attempt.
+   * Calculates the sleep duration before the attempt that follows the given failed attempt.
    *
    * <p>This method determines how long to wait before making the next retry attempt. Different
    * implementations may use different strategies such as constant delay, linear backoff, or
    * exponential backoff.
    *
-   * @param attempt the current retry attempt number, starting from 1 for the first retry
-   * @return the duration to sleep before this retry attempt, must not be null or negative
-   * @throws IllegalArgumentException if attempt is less than 1 or greater than maxAttempts()
+   * @param attempt the number of the attempt that just failed, from 1 to {@code maxAttempts() - 1}
+   * @return the duration to sleep before the next attempt, must not be null or negative
    */
   Duration sleepTime(int attempt);
 
   /**
-   * Determines whether a retry should be allowed for the given attempt number.
+   * Determines whether a retry is allowed for the given attempt number.
    *
-   * <p>This method is invoked to check if another retry attempt should be made based on the current
-   * attempt number and the policy's configuration. Typically, returns {@code false} when the
-   * attempt number exceeds {@link #maxAttempts()}.
+   * <p>The client's retry handler asks it after an attempt fails, and only while fewer than {@link
+   * #maxAttempts()} attempts have been made, so a policy can return {@code false} to stop retrying
+   * earlier.
    *
-   * @param attempt the current retry attempt number, starting from 1 for the first retry
+   * @param attempt the attempt number, starting from 1
    * @return {@code true} if a retry is allowed for this attempt, {@code false} otherwise
    */
   boolean allowRetry(int attempt);

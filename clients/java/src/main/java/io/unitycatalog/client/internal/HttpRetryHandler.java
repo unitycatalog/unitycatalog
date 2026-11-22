@@ -52,7 +52,8 @@ class HttpRetryHandler {
         shouldRetry = isCausedByRecoverableEx(e);
       }
 
-      if (shouldRetry && retryPolicy.allowRetry(attempt)) {
+      // No backoff after the final attempt, even if a custom policy's allowRetry allows one.
+      if (shouldRetry && attempt < retryPolicy.maxAttempts() && retryPolicy.allowRetry(attempt)) {
         try {
           clock.sleep(retryPolicy.sleepTime(attempt));
         } catch (InterruptedException interrupted) {
