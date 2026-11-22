@@ -220,8 +220,9 @@ public class GcpCredentialVendor {
               String bucket = locationUri.getRawAuthority();
               String resource = format("//storage.googleapis.com/projects/_/buckets/%s", bucket);
 
-              // Match the path itself or anything under path/. Listing with the bare path as the
-              // prefix also returns sibling names such as path_archive, as the S3 policy allows.
+              // Read the path itself or anything under path/. A list must use a prefix under path/:
+              // listing with the bare path as the prefix would return sibling names such as
+              // path_archive.
               String dirPrefix = path.isEmpty() ? "" : path + "/";
               String objectsPrefix = format("projects/_/buckets/%s/objects/", bucket);
 
@@ -242,11 +243,9 @@ public class GcpCredentialVendor {
                   path.isEmpty()
                       ? objectStartsWithExpr + " || " + listStartsWithExpr
                       : format(
-                          "resource.name == %s || %s || api.getAttribute("
-                              + "'storage.googleapis.com/objectListPrefix', '') == %s || %s",
+                          "resource.name == %s || %s || %s",
                           celStringLiteral(objectsPrefix + path),
                           objectStartsWithExpr,
-                          celStringLiteral(path),
                           listStartsWithExpr);
 
               if (combinedExpr.length() > MAX_CONDITION_LENGTH) {
