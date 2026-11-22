@@ -66,10 +66,9 @@ public class GcpCredentialVendorTest {
     return format(
         "resource.name == \"projects/_/buckets/%s/objects/%s\""
             + " || resource.name.startsWith(\"projects/_/buckets/%s/objects/%s/\")"
-            + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '') == \"%s\""
             + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
             + ".startsWith(\"%s/\")",
-        bucket, escapedPath, bucket, escapedPath, escapedPath, escapedPath);
+        bucket, escapedPath, bucket, escapedPath, escapedPath);
   }
 
   @Test
@@ -83,8 +82,7 @@ public class GcpCredentialVendorTest {
         .isEqualTo(
             "resource.name == \"projects/_/buckets/test-bucket/objects/team/data\" ||"
                 + " resource.name.startsWith(\"projects/_/buckets/test-bucket/objects/team/data/\")"
-                + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '') =="
-                + " \"team/data\" || api.getAttribute('storage.googleapis.com/objectListPrefix',"
+                + " || api.getAttribute('storage.googleapis.com/objectListPrefix',"
                 + " '').startsWith(\"team/data/\")");
   }
 
@@ -165,12 +163,12 @@ public class GcpCredentialVendorTest {
 
   @Test
   public void testConditionAtTheLengthLimit() {
-    // With a 12-character bucket, a 440-character path makes a condition of exactly 2048.
-    assertThat(availabilityConditionFor("gs://test-bucket0/" + "a".repeat(440))).hasSize(2048);
+    // With a 12-character bucket, a 611-character path makes a condition of exactly 2048.
+    assertThat(availabilityConditionFor("gs://test-bucket0/" + "a".repeat(611))).hasSize(2048);
 
-    assertThatThrownBy(() -> ruleFor("gs://test-bucket0/" + "a".repeat(441)))
+    assertThatThrownBy(() -> ruleFor("gs://test-bucket0/" + "a".repeat(612)))
         .isInstanceOf(BaseException.class)
-        .hasMessageContaining("2052 characters, and the limit is 2048")
+        .hasMessageContaining("2051 characters, and the limit is 2048")
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.INVALID_ARGUMENT);
   }
