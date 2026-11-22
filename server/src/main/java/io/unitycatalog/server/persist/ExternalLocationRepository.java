@@ -70,7 +70,7 @@ public class ExternalLocationRepository {
   private void validateUrlLimits(String url, Optional<CredentialDAO> credentialDAO) {
     repositories
         .getStorageLocationValidator()
-        .validateLocation(
+        .validateExternalLocationUrl(
             NormalizedURL.from(url), Constants.MAX_EXTERNAL_LOCATION_URL_LENGTH, credentialDAO);
   }
 

@@ -160,6 +160,24 @@ complete example.
   read it from the Secret named by the database's `passwordSecretName`. In a `server.db.overrideConfig`
   template, remove the line `hibernate.connection.password=${DB_PASSWORD}`.
 
+## Storage location limits
+
+The server rejects a location with `INVALID_ARGUMENT` when its database column or its cloud storage can't hold it:
+
+- Catalog and schema storage roots, table and volume locations, and model version sources can be up to 2,048
+  characters, registered model and model version locations up to 4,096, and external location URLs up to 255. A
+  location the server builds, such as a managed table location, has to fit its column in UTF-8 bytes.
+- For storage the server vends credentials for, an object name is at most 1,024 bytes on S3 and GCS, and at most 1,024
+  characters and 254 path segments on Azure. A location that holds files has to leave room for one under it: a storage
+  root, an external location, a volume, and a Delta or Iceberg table. A table in another format, such as CSV, may be a
+  single file.
+- The AWS STS session policy and the GCS credential access boundary vended for a location have to fit their limits.
+
+On an Azure storage account with a hierarchical namespace, a path has at most 63 segments, counting the account and
+container. Nothing the server is given says whether an account has one, so it doesn't check that limit. Under a
+catalog or schema storage root, a managed table location adds 5 segments and a managed model version location adds 7,
+before the names of the files in it.
+
 ## Local file system storage
 
 Unity Catalog can store data on the server's local file system, which is convenient for development and single-machine

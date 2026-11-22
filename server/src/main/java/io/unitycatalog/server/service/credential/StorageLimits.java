@@ -2,6 +2,7 @@ package io.unitycatalog.server.service.credential;
 
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
+import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -23,8 +24,9 @@ public final class StorageLimits {
   public static final int MAX_OBJECT_NAME_LENGTH = 1024;
 
   /**
-   * The most path segments a blob name can have. A hierarchical namespace account allows fewer, 63
-   * counting the account and container, but whether an account has one isn't known from its URL.
+   * The most path segments a blob name can have. An account with a hierarchical namespace allows
+   * fewer, 63 counting the account and container, but nothing the server is given says whether an
+   * account has one, so that limit isn't checked.
    */
   public static final int MAX_AZURE_PATH_SEGMENTS = 254;
 
@@ -60,7 +62,7 @@ public final class StorageLimits {
      * name, a slash and one character, one path segment more.
      */
     PREFIX(2, 1),
-    /** The location may itself name an object, such as a table that is a single file. */
+    /** The location may itself name an object, such as a CSV table that is a single file. */
     OBJECT_OR_PREFIX(0, 0);
 
     private final int extraNameLength;
@@ -69,6 +71,18 @@ public final class StorageLimits {
     Extent(int extraNameLength, int extraSegments) {
       this.extraNameLength = extraNameLength;
       this.extraSegments = extraSegments;
+    }
+
+    /**
+     * The extent of a table location. Delta and Iceberg tables are directories of data and metadata
+     * files, and a table in another format, such as CSV, may be a single file.
+     *
+     * @param format the table's format, or null if it has none
+     */
+    public static Extent ofTable(DataSourceFormat format) {
+      return format == DataSourceFormat.DELTA || format == DataSourceFormat.ICEBERG
+          ? PREFIX
+          : OBJECT_OR_PREFIX;
     }
 
     private String describe(String kind, String measure) {

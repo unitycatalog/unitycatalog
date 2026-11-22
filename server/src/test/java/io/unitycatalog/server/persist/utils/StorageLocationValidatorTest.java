@@ -14,6 +14,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.S3AssumeRole;
 import io.unitycatalog.server.model.S3CompatibleRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -21,6 +22,7 @@ import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageLimits;
+import io.unitycatalog.server.service.credential.StorageLimits.Extent;
 import io.unitycatalog.server.service.credential.StorageLimits.Unit;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -40,6 +42,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
@@ -229,7 +232,10 @@ public class StorageLocationValidatorTest {
                   NormalizedURL location =
                       NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(length));
                   boolean accepted =
-                      accepts(() -> validator.validateLocation(null, location, 2048));
+                      accepts(
+                          () ->
+                              validator.validateLocation(
+                                  null, location, 2048, Extent.OBJECT_OR_PREFIX));
                   boolean acceptedAsManaged =
                       accepts(() -> validator.validateManagedLocation(null, location, 2048));
                   assertThat(accepted)
@@ -250,7 +256,10 @@ public class StorageLocationValidatorTest {
             accepts(
                 () ->
                     validator.validateLocation(
-                        null, NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(600)), 2048)))
+                        null,
+                        NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(600)),
+                        2048,
+                        Extent.OBJECT_OR_PREFIX)))
         .isFalse();
   }
 
@@ -444,10 +453,12 @@ public class StorageLocationValidatorTest {
 
     // The columns count characters, so a location that fits in characters but not in bytes is
     // still accepted, as on main.
-    assertThatCode(() -> validator.validateLocation(null, longest, 2048))
+    assertThatCode(() -> validator.validateLocation(null, longest, 2048, Extent.OBJECT_OR_PREFIX))
         .doesNotThrowAnyException();
     assertThatThrownBy(
-            () -> validator.validateLocation(null, NormalizedURL.from(longest + "é"), 2048))
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from(longest + "é"), 2048, Extent.OBJECT_OR_PREFIX))
         .isInstanceOf(BaseException.class)
         .hasMessage("Storage location is too long: it is 2049 characters, and the limit is 2048.");
   }
@@ -461,16 +472,18 @@ public class StorageLocationValidatorTest {
         new StorageLocationValidator(
             cloudCredentialVendor, (session, location) -> Optional.empty(), () -> Unit.CODE_POINTS);
 
-    assertThatCode(() -> codePoints.validateLocation(url, 255, Optional.empty()))
+    assertThatCode(() -> codePoints.validateExternalLocationUrl(url, 255, Optional.empty()))
         .doesNotThrowAnyException();
     assertThatThrownBy(
             () ->
-                codePoints.validateLocation(
+                codePoints.validateExternalLocationUrl(
                     NormalizedURL.from(url + "a".repeat(122)), 255, Optional.empty()))
         .isInstanceOf(BaseException.class)
         .hasMessage("Storage location is too long: it is 256 characters, and the limit is 255.");
     assertThatThrownBy(
-            () -> validatorFor(Optional.empty()).validateLocation(url, 255, Optional.empty()))
+            () ->
+                validatorFor(Optional.empty())
+                    .validateExternalLocationUrl(url, 255, Optional.empty()))
         .isInstanceOf(BaseException.class)
         .hasMessage("Storage location is too long: it is 256 characters, and the limit is 255.");
   }
@@ -525,7 +538,7 @@ public class StorageLocationValidatorTest {
   }
 
   @Test
-  public void testRequestLocationMayNameASingleS3Object() {
+  public void testOnlyASingleFileRequestLocationMayNameAnS3Object() {
     StorageLocationValidator validator = validatorFor(Optional.empty());
     // An external table can be a single file, so a location given in a request only has to be a
     // valid key itself. S3: object keys are "a maximum length of 1,024 bytes" (Amazon S3 object
@@ -533,49 +546,116 @@ public class StorageLocationValidatorTest {
     NormalizedURL file = NormalizedURL.from(STATIC_BUCKET + "/" + "a".repeat(1020) + ".csv");
     assertThat(StorageLimits.objectName(file)).hasSize(1024);
 
-    assertThatCode(() -> validator.validateLocation(null, file, 2048)).doesNotThrowAnyException();
+    assertThatCode(() -> validator.validateLocation(null, file, 2048, Extent.OBJECT_OR_PREFIX))
+        .doesNotThrowAnyException();
     assertThatThrownBy(
             () ->
                 validator.validateLocation(
                     null,
                     NormalizedURL.from(STATIC_BUCKET + "/" + "a".repeat(1021) + ".csv"),
-                    2048))
+                    2048,
+                    Extent.OBJECT_OR_PREFIX))
         .isInstanceOf(BaseException.class)
         .hasMessage(
             "Storage location is too long: its S3 object key name has 1025 bytes, and the limit"
                 + " is 1024.");
-    // The server writes objects under a managed location, so one has to fit under it.
+    // A file has to fit under a managed location or a request location that is a directory.
+    String noRoomForAFile =
+        "Storage location is too long: S3 object key names under it have at least 1026"
+            + " bytes, and the limit is 1024.";
     assertThatThrownBy(() -> validator.validateManagedLocation(null, file, 2048))
         .isInstanceOf(BaseException.class)
-        .hasMessage(
-            "Storage location is too long: S3 object key names under it have at least 1026"
-                + " bytes, and the limit is 1024.");
+        .hasMessage(noRoomForAFile);
+    assertThatThrownBy(() -> validator.validateLocation(null, file, 2048, Extent.PREFIX))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(noRoomForAFile);
+    NormalizedURL directory = NormalizedURL.from(STATIC_BUCKET + "/" + "a".repeat(1022));
+    assertThat(StorageLimits.objectName(directory)).hasSize(1022);
+    assertThatCode(() -> validator.validateLocation(null, directory, 2048, Extent.PREFIX))
+        .doesNotThrowAnyException();
   }
 
   @Test
-  public void testRequestLocationMayNameASingleAzureBlob() {
+  public void testOnlyASingleFileRequestLocationMayNameAnAzureBlob() {
     StorageLocationValidator validator = validatorFor(Optional.empty());
     String container = "abfss://container@account.dfs.core.windows.net/";
     NormalizedURL deepest =
         NormalizedURL.from(container + String.join("/", Collections.nCopies(254, "s")));
     NormalizedURL longest = NormalizedURL.from(container + "b".repeat(1024));
 
-    assertThatCode(() -> validator.validateLocation(null, deepest, 2048))
+    assertThatCode(() -> validator.validateLocation(null, deepest, 2048, Extent.OBJECT_OR_PREFIX))
         .doesNotThrowAnyException();
     assertThatThrownBy(
-            () -> validator.validateLocation(null, NormalizedURL.from(deepest + "/s"), 2048))
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from(deepest + "/s"), 2048, Extent.OBJECT_OR_PREFIX))
         .isInstanceOf(BaseException.class)
         .hasMessage(
             "Storage location is too long: its Azure blob name has 255 path segments, and the"
                 + " limit is 254.");
-    assertThatCode(() -> validator.validateLocation(null, longest, 2048))
+    assertThatCode(() -> validator.validateLocation(null, longest, 2048, Extent.OBJECT_OR_PREFIX))
         .doesNotThrowAnyException();
     assertThatThrownBy(
-            () -> validator.validateLocation(null, NormalizedURL.from(longest + "b"), 2048))
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from(longest + "b"), 2048, Extent.OBJECT_OR_PREFIX))
         .isInstanceOf(BaseException.class)
         .hasMessage(
             "Storage location is too long: its Azure blob name has 1025 characters, and the limit"
                 + " is 1024.");
+
+    // A directory needs room for one more segment and "/x".
+    assertThatThrownBy(() -> validator.validateLocation(null, deepest, 2048, Extent.PREFIX))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Storage location is too long: Azure blob names under it have at least 255 path"
+                + " segments, and the limit is 254.");
+    NormalizedURL deepestDirectory =
+        NormalizedURL.from(container + String.join("/", Collections.nCopies(253, "s")));
+    assertThatCode(() -> validator.validateLocation(null, deepestDirectory, 2048, Extent.PREFIX))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from(container + "b".repeat(1023)), 2048, Extent.PREFIX))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Storage location is too long: Azure blob names under it have at least 1025"
+                + " characters, and the limit is 1024.");
+    assertThatCode(
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from(container + "b".repeat(1022)), 2048, Extent.PREFIX))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void testExternalLocationNeedsRoomForAFileUnderIt() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    String container = "abfss://container@account.dfs.core.windows.net/";
+
+    assertThatCode(
+            () ->
+                validator.validateExternalLocationUrl(
+                    NormalizedURL.from(container + "b".repeat(1022)), 2048, Optional.empty()))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () ->
+                validator.validateExternalLocationUrl(
+                    NormalizedURL.from(container + "b".repeat(1023)), 2048, Optional.empty()))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Storage location is too long: Azure blob names under it have at least 1025"
+                + " characters, and the limit is 1024.");
+  }
+
+  @ParameterizedTest
+  @EnumSource(DataSourceFormat.class)
+  public void testOnlyDeltaAndIcebergTablesAreAlwaysDirectories(DataSourceFormat format) {
+    boolean directory = format == DataSourceFormat.DELTA || format == DataSourceFormat.ICEBERG;
+    assertThat(Extent.ofTable(format))
+        .isEqualTo(directory ? Extent.PREFIX : Extent.OBJECT_OR_PREFIX);
+    assertThat(Extent.ofTable(null)).isEqualTo(Extent.OBJECT_OR_PREFIX);
   }
 
   @Test
@@ -615,7 +695,8 @@ public class StorageLocationValidatorTest {
                     null,
                     NormalizedURL.from(
                         "abfss://container@account.dfs.core.windows.net/" + "a".repeat(1100)),
-                    2048))
+                    2048,
+                    Extent.OBJECT_OR_PREFIX))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("its Azure blob name has 1100 characters");
   }
@@ -636,7 +717,10 @@ public class StorageLocationValidatorTest {
     assertThatCode(
             () ->
                 validator.validateLocation(
-                    null, NormalizedURL.from("file:///tmp/" + "f".repeat(600)), 2048))
+                    null,
+                    NormalizedURL.from("file:///tmp/" + "f".repeat(600)),
+                    2048,
+                    Extent.OBJECT_OR_PREFIX))
         .doesNotThrowAnyException();
     // With the credential resolved, the same root is too long.
     assertThat(rootRejection(validatorFor(Optional.empty()), root, MANAGED_STORAGE_CATALOG_PREFIX))
@@ -655,7 +739,10 @@ public class StorageLocationValidatorTest {
                 length -> {
                   try {
                     validator.validateLocation(
-                        null, NormalizedURL.from(bucket + threeByteCharacter.repeat(length)), 2048);
+                        null,
+                        NormalizedURL.from(bucket + threeByteCharacter.repeat(length)),
+                        2048,
+                        Extent.OBJECT_OR_PREFIX);
                     return true;
                   } catch (BaseException e) {
                     assertThat(e).hasMessageContaining("its GCS object name has");
@@ -674,13 +761,18 @@ public class StorageLocationValidatorTest {
     String path = "/" + "g".repeat(500);
 
     assertThatThrownBy(
-            () -> validator.validateLocation(null, NormalizedURL.from(GCS_BUCKET + path), 2048))
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from(GCS_BUCKET + path), 2048, Extent.OBJECT_OR_PREFIX))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("its GCS access boundary condition is");
     assertThatCode(
             () ->
                 validator.validateLocation(
-                    null, NormalizedURL.from(CUSTOM_GCS_BUCKET + path), 2048))
+                    null,
+                    NormalizedURL.from(CUSTOM_GCS_BUCKET + path),
+                    2048,
+                    Extent.OBJECT_OR_PREFIX))
         .doesNotThrowAnyException();
     // A vend for a location with a storage credential builds no access boundary.
     CredentialDAO credential =
@@ -694,12 +786,16 @@ public class StorageLocationValidatorTest {
     assertThatCode(
             () ->
                 validatorFor(Optional.of(credential))
-                    .validateLocation(null, NormalizedURL.from(GCS_BUCKET + path), 2048))
+                    .validateLocation(
+                        null, NormalizedURL.from(GCS_BUCKET + path), 2048, Extent.OBJECT_OR_PREFIX))
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
                 validator.validateLocation(
-                    null, NormalizedURL.from("gs://unconfigured-bucket" + path), 2048))
+                    null,
+                    NormalizedURL.from("gs://unconfigured-bucket" + path),
+                    2048,
+                    Extent.OBJECT_OR_PREFIX))
         .doesNotThrowAnyException();
   }
 }

@@ -266,6 +266,63 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
 
   @SneakyThrows
   @Test
+  public void testDirectoryLocationsLeaveRoomForAFile() {
+    createCatalog(Optional.empty());
+    createSchema(Optional.empty());
+    String container = "abfss://container@account.dfs.core.windows.net/";
+    // A blob name has at most 1,024 characters, and a file under a directory adds "/x".
+    String directory = container + "d".repeat(1022);
+    String noRoomForAFile = "Azure blob names under it have at least 1025 characters";
+
+    TestUtils.assertApiException(
+        () -> createExternalVolume(EXTERNAL_VOLUME_NAME, directory + "d"),
+        ErrorCode.INVALID_ARGUMENT,
+        noRoomForAFile);
+    assertThat(createExternalVolume(EXTERNAL_VOLUME_NAME, directory).getStorageLocation())
+        .isEqualTo(directory);
+    TestUtils.assertApiException(
+        () ->
+            createExternalTable(
+                EXTERNAL_TABLE_NAME, DataSourceFormat.DELTA, container + "t".repeat(1023)),
+        ErrorCode.INVALID_ARGUMENT,
+        noRoomForAFile);
+    createExternalTable(EXTERNAL_TABLE_NAME, DataSourceFormat.DELTA, container + "t".repeat(1022));
+
+    // A CSV table may be a single file, so only its own name has to fit.
+    String file = container + "f".repeat(1024);
+    createExternalTable(EXTERNAL_TABLE_NAME + "_csv", DataSourceFormat.CSV, file);
+    TestUtils.assertApiException(
+        () -> createExternalTable(EXTERNAL_TABLE_NAME + "_csv2", DataSourceFormat.CSV, file + "f"),
+        ErrorCode.INVALID_ARGUMENT,
+        "its Azure blob name has 1025 characters");
+  }
+
+  @SneakyThrows
+  private VolumeInfo createExternalVolume(String name, String location) {
+    return volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(name)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(location));
+  }
+
+  @SneakyThrows
+  private void createExternalTable(String name, DataSourceFormat format, String location) {
+    tableOperations.createTable(
+        new CreateTable()
+            .name(name)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .columns(COLUMNS)
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(format)
+            .storageLocation(location));
+  }
+
+  @SneakyThrows
+  @Test
   public void testLocationsUnderAStoredLocationAreChecked() {
     String container = "abfss://container@account.dfs.core.windows.net/";
     createCatalog(Optional.of(container + "catalog"));
