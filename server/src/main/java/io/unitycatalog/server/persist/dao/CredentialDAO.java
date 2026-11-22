@@ -20,7 +20,7 @@ import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore.SecretContext;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
-import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.utils.GcpServiceAccountKeys;
 import io.unitycatalog.server.utils.ValidationUtils;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -303,7 +303,7 @@ public class CredentialDAO extends IdentifiableDAO {
     checkLength("private_key_id", key.getPrivateKeyId(), MAX_GCP_FIELD_LENGTH);
     checkLength("private_key", key.getPrivateKey(), MAX_GCP_PRIVATE_KEY_LENGTH);
     try {
-      GcpCredentialVendor.credentialsOf(key);
+      GcpServiceAccountKeys.credentialsOf(key);
     } catch (IOException | RuntimeException e) {
       // The key is not part of the message.
       throw new BaseException(

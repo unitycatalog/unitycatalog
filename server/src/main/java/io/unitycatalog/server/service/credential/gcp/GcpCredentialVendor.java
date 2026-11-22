@@ -16,6 +16,7 @@ import io.unitycatalog.server.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.GcpServiceAccountKeys;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
@@ -155,7 +156,7 @@ public class GcpCredentialVendor {
     return new ServiceAccountCredentialGenerator(
         () -> {
           try {
-            return credentialsOf(key);
+            return GcpServiceAccountKeys.credentialsOf(key);
           } catch (IOException e) {
             // The key was checked when the credential was created, so this is the server's fault.
             throw new BaseException(
@@ -163,20 +164,6 @@ public class GcpCredentialVendor {
           }
         },
         GcpCredentialVendor::storedKeyError);
-  }
-
-  /**
-   * @return the credentials of a service account key
-   * @throws IOException if the private key is not a PEM-encoded PKCS#8 key
-   */
-  public static ServiceAccountCredentials credentialsOf(GcpServiceAccountKeyRequest key)
-      throws IOException {
-    return ServiceAccountCredentials.fromPkcs8(
-        /* clientId= */ null,
-        key.getEmail(),
-        key.getPrivateKey(),
-        key.getPrivateKeyId(),
-        /* scopes= */ null);
   }
 
   /**
@@ -229,14 +216,14 @@ public class GcpCredentialVendor {
               URI locationUri = location.toUri();
               String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
 
-              String resource =
-                  format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
+              // Not getHost(): it is null for a bucket name with an underscore.
+              String bucket = locationUri.getRawAuthority();
+              String resource = format("//storage.googleapis.com/projects/_/buckets/%s", bucket);
 
               // Match the path itself or anything under path/. Listing with the bare path as the
               // prefix also returns sibling names such as path_archive, as the S3 policy allows.
               String dirPrefix = path.isEmpty() ? "" : path + "/";
-              String objectsPrefix =
-                  format("projects/_/buckets/%s/objects/", locationUri.getHost());
+              String objectsPrefix = format("projects/_/buckets/%s/objects/", bucket);
 
               // for reading/writing objects
               String objectStartsWithExpr =
@@ -312,11 +299,11 @@ public class GcpCredentialVendor {
    *   <li>the token service rejecting the request as invalid, which is the location's doing, is
    *       {@code INVALID_ARGUMENT};
    *   <li>Google rejecting the key, for example because it was disabled or deleted, is for an
-   *       administrator to fix: {@code FAILED_PRECONDITION}, saying to replace the storage
-   *       credential;
+   *       administrator to fix: {@code FAILED_PRECONDITION}, saying to contact the administrator;
    *   <li>Google rejecting the server's timestamps, which is clock skew that no key fixes, is
    *       {@code INTERNAL};
-   *   <li>any other failure, such as the network, may pass: {@code UNAVAILABLE}.
+   *   <li>any other failure, such as a network error, is {@code UNAVAILABLE}, since a retry may
+   *       succeed.
    * </ul>
    *
    * No message names an account or key, since whoever asks for access may not be allowed to read
@@ -343,7 +330,7 @@ public class GcpCredentialVendor {
       return new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           "Google rejected the service account key of the storage credential for this location:"
-              + " it may have been disabled, deleted or revoked. Replace the storage credential.",
+              + " it may have been disabled, deleted or revoked. Contact the server administrator.",
           e);
     }
     return new BaseException(
