@@ -89,6 +89,17 @@ public class GcpCredentialVendorTest {
   }
 
   @Test
+  public void testBucketNameWithAnUnderscore() {
+    AccessBoundaryRule rule = ruleFor("gs://my_bucket/data");
+
+    assertThat(rule.getAvailableResource())
+        .isEqualTo("//storage.googleapis.com/projects/_/buckets/my_bucket");
+    assertThat(rule.getAvailabilityCondition().getExpression())
+        .contains("projects/_/buckets/my_bucket/objects/data/")
+        .doesNotContain("null");
+  }
+
+  @Test
   public void testBucketRootCoversWholeBucket() {
     assertThat(availabilityConditionFor("gs://test-bucket"))
         .isEqualTo(
@@ -232,10 +243,10 @@ public class GcpCredentialVendorTest {
     // Whoever asks for access may not read the credential, so the message names none of it.
     assertThat(error.getMessage()).doesNotContain(STORED_KEY_EMAIL).doesNotContain("key-id-1");
     if (expected == ErrorCode.FAILED_PRECONDITION) {
-      assertThat(error.getMessage()).contains("Replace the storage credential");
+      assertThat(error.getMessage()).contains("Google rejected the service account key");
     } else if (expected == ErrorCode.INTERNAL) {
-      // A clock problem is not fixed by replacing the key.
-      assertThat(error.getMessage()).doesNotContain("Replace the storage credential");
+      // A clock problem is not about the key.
+      assertThat(error.getMessage()).doesNotContain("service account key");
     }
   }
 
