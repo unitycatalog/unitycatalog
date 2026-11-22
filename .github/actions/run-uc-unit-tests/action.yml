@@ -71,6 +71,11 @@ runs:
       shell: bash
       run: build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
 
+    # Record the checkout before the tests, so the check after them blames only what the tests left.
+    - name: Record the checkout before the tests
+      shell: bash
+      run: git status --porcelain --untracked-files=all | sort > "$RUNNER_TEMP/status-before-tests.txt"
+
     - name: Run tests with coverage
       shell: bash
       env:
@@ -82,6 +87,19 @@ runs:
         else
           echo "Running all tests"
           build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
+        fi
+
+    # A test writes files under @TempDir or target/ only. Anything else it creates or changes in the
+    # checkout fails here.
+    - name: Check that the tests left the checkout clean
+      shell: bash
+      run: |
+        git status --porcelain --untracked-files=all | sort > "$RUNNER_TEMP/status-after-tests.txt"
+        left=$(comm -13 "$RUNNER_TEMP/status-before-tests.txt" "$RUNNER_TEMP/status-after-tests.txt")
+        if [ -n "$left" ]; then
+          echo "$left"
+          echo "::error::The tests left these files in the checkout. Write test files under @TempDir or target/; a child JVM started with the test classpath needs -Djacoco-agent.destfile passed on."
+          exit 1
         fi
 
     - name: Run license check
