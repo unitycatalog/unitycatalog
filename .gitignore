@@ -37,6 +37,8 @@ integration-tests/etc/conf/*.der
 
 # test
 .pytest_cache/
+# JaCoCo coverage data that `build/sbt test` leaves in the module directory
+jacoco.exec
 mlruns/
 mlartifacts/
 
