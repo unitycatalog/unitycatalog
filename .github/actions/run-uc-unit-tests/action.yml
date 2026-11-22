@@ -89,8 +89,9 @@ runs:
           build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
         fi
 
-    # A test writes files under @TempDir or target/ only. Anything else it creates or changes in the
-    # checkout fails here.
+    # A test writes files under @TempDir or target/ only. A file it creates or changes that git does
+    # not ignore fails here. The comparison is of status lines, so a file already dirty before the
+    # tests is not checked again; on a fresh CI checkout there is none.
     - name: Check that the tests left the checkout clean
       shell: bash
       run: |
