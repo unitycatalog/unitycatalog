@@ -79,8 +79,6 @@ public class CredentialDAO extends IdentifiableDAO {
       List.of(SECRET_ACCESS_KEY_FIELD, PRIVATE_KEY_FIELD);
 
   public enum CredentialType {
-    // In alphabetical order, as the schema steps list the values: PostgreSQL's CHECK takes them in
-    // this order.
     AWS_IAM_ROLE,
     GCP_SERVICE_ACCOUNT_KEY,
     S3_COMPATIBLE,

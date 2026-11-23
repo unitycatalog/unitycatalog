@@ -155,8 +155,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
       Set<CredentialContext.Privilege> privileges,
       String roleArn,
       String externalId,
-      Optional<CredentialVersion> s3CompatibleVersion,
-      Optional<CredentialVersion> gcpKeyVersion,
+      Optional<CredentialVersion> credentialVersion,
       Optional<String> s3Endpoint,
       Optional<String> s3Region,
       boolean isServerAccess) {
@@ -174,26 +173,29 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
               .getCredentialDAO()
               .filter(dao -> dao.getCredentialType() == CredentialType.AWS_IAM_ROLE)
               .map(CredentialDAO::getAwsIamRoleResponse);
-      Optional<CredentialVersion> s3CompatibleVersion =
+      // The stored key pair or service account key is the credential, so its version is the key.
+      Optional<CredentialVersion> credentialVersion =
+          context
+              .getCredentialDAO()
+              .filter(
+                  dao ->
+                      dao.getCredentialType() == CredentialType.S3_COMPATIBLE
+                          || dao.getCredentialType() == CredentialType.GCP_SERVICE_ACCOUNT_KEY)
+              .map(dao -> new CredentialVersion(dao.getId(), dao.getCredentialFingerprint()));
+      boolean isS3Compatible =
           context
               .getCredentialDAO()
               .filter(dao -> dao.getCredentialType() == CredentialType.S3_COMPATIBLE)
-              .map(dao -> new CredentialVersion(dao.getId(), dao.getCredentialFingerprint()));
-      Optional<CredentialVersion> gcpKeyVersion =
-          context
-              .getCredentialDAO()
-              .filter(dao -> dao.getCredentialType() == CredentialType.GCP_SERVICE_ACCOUNT_KEY)
-              .map(dao -> new CredentialVersion(dao.getId(), dao.getCredentialFingerprint()));
+              .isPresent();
       return new Key(
           context.getLocations(),
           context.getPrivileges(),
           awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(null),
           awsIamRole.map(AwsIamRoleResponse::getExternalId).orElse(null),
-          s3CompatibleVersion,
-          gcpKeyVersion,
+          credentialVersion,
           context.getS3Endpoint(),
           context.getS3Region(),
-          context.isServerAccess() && s3CompatibleVersion.isPresent());
+          context.isServerAccess() && isS3Compatible);
     }
   }
 
