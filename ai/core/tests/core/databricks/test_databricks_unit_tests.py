@@ -1962,6 +1962,33 @@ def test_local_execution_rejects_declared_securables(properties, expected_messag
         client._execute_uc_functions_with_local(info, {})
 
 
+def test_local_execution_returns_result_of_function_that_prints():
+    client = DatabricksFunctionClient(client=MagicMock(), execution_mode="local")
+    info = FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="fn",
+        full_name="catalog.schema.fn",
+        data_type=ColumnTypeName.INT,
+        routine_body=CreateFunctionRoutineBody.EXTERNAL,
+        routine_definition="print('debug')\nreturn a + b",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    "a", type_name=ColumnTypeName.INT, type_text="int", position=0
+                ),
+                FunctionParameterInfo(
+                    "b", type_name=ColumnTypeName.INT, type_text="int", position=1
+                ),
+            ]
+        ),
+    )
+
+    result = client._execute_uc_functions_with_local(info, {"a": 1, "b": 2})
+
+    assert (result.value, result.error) == (3, None)
+
+
 def test_get_function_secrets_ignores_non_dict_entries():
     info = _function_info_with_properties(
         {"routine_secrets.secrets": '{"secrets":["oops",{"catalog":"c","schema":"s","key":"k"}]}'}
