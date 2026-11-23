@@ -191,7 +191,9 @@ class UCFunctionToolkit(BaseModel):
                 )
             )
         ]
-        schema = dict(name=function_info.name, description=function_info.comment)
+        schema = dict(
+            name=get_tool_name(function_info.full_name), description=function_info.comment
+        )
         if parameters["properties"]:
             schema["parameters"] = parameters
         return schema
@@ -232,7 +234,12 @@ class UCFunctionToolkit(BaseModel):
         else:
             raise ValueError("Either function_name or function_info should be provided.")
 
-        schema = UCFunctionToolkit.convert_to_gemini_schema(function_info, strict=True)
+        tool_name = get_tool_name(function_name)
+        # Gemini dispatches by the declared name, and the client's full_name can differ in case.
+        schema = {
+            **UCFunctionToolkit.convert_to_gemini_schema(function_info, strict=True),
+            "name": tool_name,
+        }
         param_infos = function_info.input_params.parameters if function_info.input_params else []
         params_type_json = {
             "type": "struct",
@@ -254,7 +261,7 @@ class UCFunctionToolkit(BaseModel):
 
         return GeminiTool(
             fn=func,
-            name=get_tool_name(function_name),
+            name=tool_name,
             description=function_info.comment or "",
             schema=schema,
         )

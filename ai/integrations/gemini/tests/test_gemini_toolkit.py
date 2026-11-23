@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import os
 from unittest import mock
@@ -9,7 +10,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from google.generativeai import GenerativeModel, protos
-from google.generativeai.types import CallableFunctionDeclaration
+from google.generativeai.types import CallableFunctionDeclaration, GenerateContentResponse
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import BaseFunctionClient
@@ -18,6 +19,7 @@ from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit, _restore_integers
+from unitycatalog.ai.gemini.utils import generate_tool_call_messages
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     client,  # noqa: F401
@@ -213,7 +215,7 @@ def test_convert_to_gemini_schema_with_valid_function_info():
 
     # Expected output
     expected_schema = {
-        "name": "test",
+        "name": "catalog__schema__test",
         "description": "Executes Python code and returns its stdout.",
         "parameters": {
             "properties": {
@@ -478,11 +480,13 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
     }
 
     assert {tool.name: tool.schema for tool in toolkit.tools}["catalog__schema__get_weather"] == {
-        "name": "get_weather",
+        "name": "catalog__schema__get_weather",
         "description": "Get the weather.",
     }
-    assert declarations["test"].to_proto().parameters.required == ["x"]
-    response = declarations["get_weather"](protos.FunctionCall(name="get_weather", args={}))
+    assert declarations["catalog__schema__test"].to_proto().parameters.required == ["x"]
+    response = declarations["catalog__schema__get_weather"](
+        protos.FunctionCall(name="catalog__schema__get_weather", args={})
+    )
     client.execute_function.assert_called_once_with(
         function_name="catalog.schema.get_weather", parameters={}, enable_retriever_tracing=False
     )
@@ -490,6 +494,141 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
         "format": "SCALAR",
         "value": "sunny",
     }
+
+
+def function_infos_in_schemas(generate, schemas):
+    function_info = generate({"x": ("STRING", "string")})
+    full_names = {schema: f"catalog.{schema}.test" for schema in schemas}
+    if isinstance(function_info, OSSFunctionInfo):
+        return {
+            full_name: function_info.model_copy(
+                update={"schema_name": schema, "full_name": full_name}
+            )
+            for schema, full_name in full_names.items()
+        }
+    return {
+        full_name: dataclasses.replace(function_info, schema_name=schema, full_name=full_name)
+        for schema, full_name in full_names.items()
+    }
+
+
+def mock_client_for(function_infos):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.side_effect = lambda name, **kwargs: function_infos[name.lower()]
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    return client
+
+
+def model_response(part):
+    return protos.GenerateContentResponse(
+        candidates=[
+            protos.Candidate(
+                content=protos.Content(role="model", parts=[part]),
+                finish_reason=protos.Candidate.FinishReason.STOP,
+            )
+        ]
+    )
+
+
+def function_call_response(name, args):
+    return model_response(protos.Part(function_call=protos.FunctionCall(name=name, args=args)))
+
+
+SAME_NAMED_FUNCTIONS = ["catalog.sales.test", "catalog.hr.test"]
+
+FUNCTION_INFO_GENERATORS = pytest.mark.parametrize(
+    "generate",
+    [generate_function_info_with_params, generate_function_info_with_params_oss],
+    ids=["databricks", "oss"],
+)
+
+
+@FUNCTION_INFO_GENERATORS
+def test_toolkit_declares_same_named_functions_by_tool_name(generate):
+    client = mock_client_for(function_infos_in_schemas(generate, ["sales", "hr"]))
+    toolkit = UCFunctionToolkit(function_names=SAME_NAMED_FUNCTIONS, client=client)
+    declarations = toolkit.generate_callable_tool_list()
+
+    GenerativeModel(model_name="gemini-2.0-flash", tools=declarations)
+
+    assert [declaration.name for declaration in declarations] == [
+        "catalog__sales__test",
+        "catalog__hr__test",
+    ]
+    assert [tool.name for tool in toolkit.tools] == ["catalog__sales__test", "catalog__hr__test"]
+
+
+@pytest.mark.parametrize(
+    ("called", "tool_name"),
+    [("catalog.sales.test", "catalog__sales__test"), ("catalog.hr.test", "catalog__hr__test")],
+)
+@FUNCTION_INFO_GENERATORS
+def test_generate_tool_call_messages_runs_the_called_same_named_function(
+    generate, called, tool_name
+):
+    client = mock_client_for(function_infos_in_schemas(generate, ["sales", "hr"]))
+    toolkit = UCFunctionToolkit(function_names=SAME_NAMED_FUNCTIONS, client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    response = GenerateContentResponse.from_response(function_call_response(tool_name, {"x": "hi"}))
+
+    _, parts = generate_tool_call_messages(model=model, response=response, conversation_history=[])
+
+    client.execute_function.assert_called_once_with(
+        function_name=called, parameters={"x": "hi"}, enable_retriever_tracing=False
+    )
+    assert [part.function_response.name for part in parts] == [tool_name]
+
+
+@pytest.mark.parametrize(
+    ("called", "tool_name"),
+    [("catalog.sales.test", "catalog__sales__test"), ("catalog.hr.test", "catalog__hr__test")],
+)
+@FUNCTION_INFO_GENERATORS
+def test_automatic_function_calling_runs_the_called_same_named_function(
+    generate, called, tool_name
+):
+    client = mock_client_for(function_infos_in_schemas(generate, ["sales", "hr"]))
+    toolkit = UCFunctionToolkit(function_names=SAME_NAMED_FUNCTIONS, client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    gemini_client = mock.MagicMock()
+    gemini_client.generate_content.side_effect = [
+        function_call_response(tool_name, {"x": "hi"}),
+        model_response(protos.Part(text="done")),
+    ]
+
+    with mock.patch(
+        "google.generativeai.client.get_default_generative_client", return_value=gemini_client
+    ):
+        response = model.start_chat(enable_automatic_function_calling=True).send_message("hi")
+
+    assert response.text == "done"
+    client.execute_function.assert_called_once_with(
+        function_name=called, parameters={"x": "hi"}, enable_retriever_tracing=False
+    )
+
+
+@FUNCTION_INFO_GENERATORS
+def test_mixed_case_function_name_is_declared_as_the_tool_name(generate):
+    client = mock_client_for(function_infos_in_schemas(generate, ["hr"]))
+    toolkit = UCFunctionToolkit(function_names=["Catalog.HR.Test"], client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    response = GenerateContentResponse.from_response(
+        function_call_response("Catalog__HR__Test", {"x": "hi"})
+    )
+
+    generate_tool_call_messages(model=model, response=response, conversation_history=[])
+
+    assert [tool.name for tool in toolkit.tools] == ["Catalog__HR__Test"]
+    client.execute_function.assert_called_once_with(
+        function_name="Catalog.HR.Test", parameters={"x": "hi"}, enable_retriever_tracing=False
+    )
 
 
 # Unlike JSON_ARGUMENT_PARAMS, these have no DATE, TIMESTAMP or DECIMAL parameter and no nullable
