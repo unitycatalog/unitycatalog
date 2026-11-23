@@ -14,6 +14,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.net.URI;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.Optional;
 
@@ -52,7 +53,7 @@ public final class DeltaUniformUtils {
   /**
    * UniForm Iceberg fields, normalized once at the request boundary. Callers normalize the
    * metadata-location (using {@link NormalizedURL#from(String)} or {@link NormalizedURL#from(URI)})
-   * and convert the timestamp to epoch ms (parsing the RFC 3339 string once on the commit-side
+   * and convert the timestamp to epoch ms (parsing the ISO 8601 string once on the commit-side
    * path), then assemble this record. After {@link #requireBasicShape} succeeds the first three
    * fields are non-null and the location is within the size bound, so downstream code (subpath
    * check, DAO write) reads them without re-checking. {@code baseConvertedDeltaVersion} is the
@@ -181,12 +182,13 @@ public final class DeltaUniformUtils {
    *
    * <ul>
    *   <li>{@code uniform.iceberg} is not null;
+   *   <li>{@code converted-delta-timestamp} parses as an instant that fits in epoch milliseconds;
    *   <li>basic shape (presence + size) via {@link #requireBasicShape};
    *   <li>commit-version atomicity: {@code converted-delta-version} must equal {@code
    *       commit.commitInfo.version} when commit-info is present.
    * </ul>
    *
-   * <p>The metadata-location is normalized exactly once and the RFC 3339 timestamp parsed exactly
+   * <p>The metadata-location is normalized exactly once and the ISO 8601 timestamp parsed exactly
    * once; both are returned in {@link UniformIcebergFields} so the subpath check ({@code
    * DeltaCommitRepository.validateTableForCommit}) and the DAO write ({@link #applyToDao}) reuse
    * them without re-doing the work. Returns {@code Optional.empty()} when no UniForm metadata was
@@ -205,13 +207,36 @@ public final class DeltaUniformUtils {
         new UniformIcebergFields(
             NormalizedURL.from(iceberg.getMetadataLocation()),
             iceberg.getConvertedDeltaVersion(),
-            timestampStr == null ? null : Instant.parse(timestampStr).toEpochMilli(),
+            timestampStr == null ? null : parseConvertedDeltaTimestampMs(timestampStr),
             Optional.ofNullable(iceberg.getBaseConvertedDeltaVersion()));
     requireBasicShape(fields);
     if (commit.getCommitInfo() != null) {
       requireConvertedDeltaVersionEquals(fields, commit.getCommitInfo().getVersion());
     }
     return Optional.of(fields);
+  }
+
+  /**
+   * Parse the commit-time {@code converted-delta-timestamp} into epoch milliseconds.
+   *
+   * @param timestamp the wire value, an ISO 8601 UTC instant such as {@code
+   *     2025-01-04T03:13:11.423Z}
+   * @return the instant as epoch milliseconds
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} when the value does not parse as
+   *     an instant or does not fit in epoch milliseconds
+   */
+  private static long parseConvertedDeltaTimestampMs(String timestamp) {
+    try {
+      return Instant.parse(timestamp).toEpochMilli();
+    } catch (DateTimeParseException | ArithmeticException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "uniform.iceberg.converted-delta-timestamp must be an ISO 8601 UTC instant within the"
+              + " epoch-millisecond range, such as 2025-01-04T03:13:11.423Z, but was '"
+              + timestamp
+              + "'.",
+          e);
+    }
   }
 
   /**
