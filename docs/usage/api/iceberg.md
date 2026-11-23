@@ -97,6 +97,13 @@ a configured `storage_root` but outside its assigned `storage_location` use the 
 location and require its privileges. A different catalog or schema's assigned managed directory
 cannot be used through a covering external location.
 
+All files referenced by retained snapshots must also be inside the table directory, including
+manifest lists, manifests, data files, and delete files. Previous metadata files, statistics files,
+and configured data directories must be inside it too. Registration reads the retained snapshots'
+manifests to check these paths and rejects layouts that need access outside the table directory.
+Bucket-root and container-root external locations are supported; the metadata read uses a child
+directory within that boundary.
+
 The caller needs `USE_CATALOG` on the destination catalog and `USE_SCHEMA` plus `CREATE_TABLE` on the
 destination schema. Ownership satisfies the corresponding catalog or schema tier. For an external
 location, the caller must also own the location or hold all three privileges: `CREATE_MANAGED_STORAGE`,
@@ -104,7 +111,8 @@ location, the caller must also own the location or hold all three privileges: `C
 
 Registration rejects directory overlaps with tables, volumes, models, uncommitted staging tables,
 and pending storage cleanup. It also rejects shared storage roots and directories that contain them.
-Concurrent table and volume creates and registrations check paths under a shared database lock.
+Table, volume, model, catalog, and schema storage allocation checks registered directories and
+pending cleanup under a shared database lock, including when authorization is disabled.
 
 Registration keeps the metadata file, table UUID, snapshots, schema, and properties. UC assigns a
 separate catalog table ID. The table becomes `MANAGED`: dropping it schedules deletion of its original

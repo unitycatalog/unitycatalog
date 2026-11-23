@@ -3,15 +3,25 @@ package io.unitycatalog.server.service.iceberg;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.LocalStorageLocationValidator;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Paths;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.hadoop.fs.Path;
+import org.apache.iceberg.ManifestFile;
+import org.apache.iceberg.ManifestFiles;
+import org.apache.iceberg.ManifestReader;
+import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
@@ -52,13 +62,20 @@ public class MetadataService {
 
   /**
    * Reads existing metadata within an authorized storage boundary. The table directory must be a
-   * child of that boundary and must contain the metadata file; registration never rewrites it.
+   * child of that boundary and contain all referenced files; registration never rewrites them.
    */
   public TableMetadata readRegistrationMetadata(
       NormalizedURL metadataLocation, NormalizedURL storageRoot) {
     validateMetadataLocation(metadataLocation, storageRoot);
+    boolean isLocal = UriScheme.fromURI(storageRoot.toUri()) == UriScheme.FILE;
+    // Keep local ancestor checks rooted at the authorized boundary. Cloud credentials need only
+    // the metadata directory, which also permits an external location at a bucket root.
+    NormalizedURL readLocation =
+        isLocal
+            ? storageRoot
+            : NormalizedURL.from(new Path(metadataLocation.toString()).getParent().toString());
     TableMetadata metadata;
-    try (FileIO fileIO = fileOperations.getFileIO(storageRoot)) {
+    try (FileIO fileIO = fileOperations.getFileIO(readLocation)) {
       metadata = TableMetadataParser.read(fileIO, metadataLocation.toString());
     } catch (NotFoundException | UncheckedIOException | IllegalArgumentException e) {
       throw new BaseException(
@@ -68,7 +85,76 @@ public class MetadataService {
     validateMetadataLocation(tableLocation, storageRoot);
     validateMetadataLocation(metadataLocation, tableLocation);
     validateTableMetadataLocation(metadata, tableLocation);
+    validateRegistrationFiles(metadata, tableLocation, isLocal ? storageRoot : tableLocation);
     return metadata;
+  }
+
+  /** Checks every retained snapshot, including historical data and delete manifests. */
+  private void validateRegistrationFiles(
+      TableMetadata metadata, NormalizedURL tableLocation, NormalizedURL readLocation) {
+    for (String property :
+        List.of(
+            TableProperties.WRITE_DATA_LOCATION,
+            TableProperties.WRITE_FOLDER_STORAGE_LOCATION,
+            TableProperties.OBJECT_STORE_PATH)) {
+      String location = metadata.properties().get(property);
+      if (location != null) {
+        validateRegistrationLocation(location, tableLocation);
+      }
+    }
+    metadata
+        .previousFiles()
+        .forEach(file -> validateRegistrationLocation(file.file(), tableLocation));
+    metadata
+        .statisticsFiles()
+        .forEach(file -> validateRegistrationLocation(file.path(), tableLocation));
+    metadata
+        .partitionStatisticsFiles()
+        .forEach(file -> validateRegistrationLocation(file.path(), tableLocation));
+    if (metadata.snapshots().isEmpty()) {
+      return;
+    }
+    Set<String> checkedManifests = new HashSet<>();
+    try (FileIO fileIO = fileOperations.getFileIO(readLocation)) {
+      for (Snapshot snapshot : metadata.snapshots()) {
+        if (snapshot.manifestListLocation() != null) {
+          validateRegistrationLocation(snapshot.manifestListLocation(), tableLocation);
+        }
+        for (ManifestFile manifest : snapshot.allManifests(fileIO)) {
+          validateRegistrationLocation(manifest.path(), tableLocation);
+          if (checkedManifests.add(manifest.path())) {
+            validateRegistrationManifest(metadata, tableLocation, fileIO, manifest);
+          }
+        }
+      }
+    } catch (IOException | NotFoundException | UncheckedIOException | IllegalArgumentException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Cannot read Iceberg manifests for " + tableLocation, e);
+    }
+  }
+
+  private static void validateRegistrationManifest(
+      TableMetadata metadata, NormalizedURL tableLocation, FileIO fileIO, ManifestFile manifest)
+      throws IOException {
+    try (ManifestReader<?> reader =
+        switch (manifest.content()) {
+          case DATA -> ManifestFiles.read(manifest, fileIO, metadata.specsById());
+          case DELETES -> ManifestFiles.readDeleteManifest(manifest, fileIO, metadata.specsById());
+        }) {
+      reader
+          .select(List.of("file_path"))
+          .forEach(file -> validateRegistrationLocation(file.location(), tableLocation));
+    }
+  }
+
+  private static void validateRegistrationLocation(String path, NormalizedURL tableLocation) {
+    NormalizedURL location = NormalizedURL.from(path);
+    LocalStorageLocationValidator.validateCanonicalLocalLocation(location);
+    ValidationUtils.checkArgument(
+        location.equals(tableLocation) || location.toString().startsWith(tableLocation + "/"),
+        "Iceberg registration location ('%s') must be at or below the table location ('%s').",
+        location,
+        tableLocation);
   }
 
   /** Writes metadata only within the table location persisted by UC. */

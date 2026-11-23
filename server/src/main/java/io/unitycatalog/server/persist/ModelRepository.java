@@ -19,10 +19,12 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -231,62 +233,43 @@ public class ModelRepository {
     registeredModelInfo.setFullName(fullName);
     LOGGER.info("Creating Registered Model: {}", fullName);
 
-    Transaction tx;
-    try (Session session = sessionFactory.openSession()) {
-      tx = session.beginTransaction();
-      String catalogName = registeredModelInfo.getCatalogName();
-      String schemaName = registeredModelInfo.getSchemaName();
-      RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
-          RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalogName, schemaName);
-      NormalizedURL parentStorageLocation =
-          ExternalLocationUtils.getManagedStorageLocation(
-              catalogAndSchemaDao, this::getDefaultModelsStorageRoot);
-      NormalizedURL storageLocation =
-          ExternalLocationUtils.getManagedLocationForModel(parentStorageLocation, modelId);
-      SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
-      try {
-        // Check if registered model already exists
-        RegisteredModelInfoDAO existingRegisteredModel =
-            getRegisteredModelDao(session, schemaInfoDAO.getId(), registeredModelInfo.getName());
-        if (existingRegisteredModel != null) {
-          throw new BaseException(
-              ErrorCode.ALREADY_EXISTS, "Registered model already exists: " + fullName);
-        }
-        registeredModelInfo.setStorageLocation(storageLocation.toString());
-        RegisteredModelInfoDAO registeredModelInfoDAO =
-            RegisteredModelInfoDAO.from(registeredModelInfo);
-        registeredModelInfoDAO.setSchemaId(schemaInfoDAO.getId());
-        registeredModelInfoDAO.setMaxVersionNumber(0L);
-        session.persist(registeredModelInfoDAO);
-        repositories
-            .getOwnershipRepository()
-            .initializeOwner(
-                session, registeredModelInfoDAO.getId(), callerId, schemaInfoDAO.getId());
-        FileOperations.createStorageLocationDir(storageLocation);
-        tx.commit();
-      } catch (RuntimeException e) {
-        if (tx != null && tx.getStatus().canRollback()) {
-          try {
-            // For now, never delete.  We will implement a soft delete later.
-            // UriUtils.deleteStorageLocationPath(storageLocation);
-          } catch (Exception deleteErr) {
-            LOGGER.error(
-                "Unable to delete storage location {} during rollback: {}",
-                storageLocation,
-                deleteErr.getMessage());
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          ExternalLocationUtils.lockTableStorage(session);
+          String catalogName = registeredModelInfo.getCatalogName();
+          String schemaName = registeredModelInfo.getSchemaName();
+          RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
+              RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalogName, schemaName);
+          NormalizedURL parentStorageLocation =
+              ExternalLocationUtils.getManagedStorageLocation(
+                  catalogAndSchemaDao, this::getDefaultModelsStorageRoot);
+          NormalizedURL storageLocation =
+              ExternalLocationUtils.getManagedLocationForModel(parentStorageLocation, modelId);
+          ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, storageLocation);
+          SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
+          RegisteredModelInfoDAO existingRegisteredModel =
+              getRegisteredModelDao(session, schemaInfoDAO.getId(), registeredModelInfo.getName());
+          if (existingRegisteredModel != null) {
+            throw new BaseException(
+                ErrorCode.ALREADY_EXISTS, "Registered model already exists: " + fullName);
           }
-          tx.rollback();
-        }
-        throw e;
-      }
-    } catch (RuntimeException e) {
-      if (e instanceof BaseException) {
-        throw e;
-      }
-      throw new BaseException(
-          ErrorCode.INTERNAL, "Error creating registered model: " + fullName, e);
-    }
-    return registeredModelInfo;
+          registeredModelInfo.setStorageLocation(storageLocation.toString());
+          RegisteredModelInfoDAO registeredModelInfoDAO =
+              RegisteredModelInfoDAO.from(registeredModelInfo);
+          registeredModelInfoDAO.setSchemaId(schemaInfoDAO.getId());
+          registeredModelInfoDAO.setMaxVersionNumber(0L);
+          session.persist(registeredModelInfoDAO);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(
+                  session, registeredModelInfoDAO.getId(), callerId, schemaInfoDAO.getId());
+          FileOperations.createStorageLocationDir(storageLocation);
+          return registeredModelInfo;
+        },
+        "Error creating registered model: " + fullName,
+        /* readOnly= */ false,
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   public ListRegisteredModelsResponse listRegisteredModels(

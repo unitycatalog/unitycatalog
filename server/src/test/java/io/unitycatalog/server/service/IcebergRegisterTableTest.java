@@ -8,6 +8,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
+import io.unitycatalog.client.api.RegisteredModelsApi;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.VolumesApi;
@@ -15,6 +16,7 @@ import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialPurpose;
@@ -27,34 +29,42 @@ import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
 import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.IcebergTestUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import lombok.SneakyThrows;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
+import org.apache.iceberg.avro.Avro;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.data.GenericRecord;
+import org.apache.iceberg.data.avro.DataReader;
 import org.apache.iceberg.rest.RESTCatalog;
+import org.apache.iceberg.rest.RESTClient;
+import org.apache.iceberg.rest.RESTSessionCatalog;
 import org.apache.iceberg.rest.auth.OAuth2Properties;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ImmutableRegisterTableRequest;
@@ -79,6 +89,14 @@ public class IcebergRegisterTableTest extends BaseServerTest {
   private TablesApi tables;
   private Path externalRoot;
   private FileOperations fileOperations;
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(
+        ServerProperties.Property.MODEL_STORAGE_ROOT.getKey(),
+        testDirectoryRoot.resolve("external/model_root").toString());
+  }
 
   @Override
   protected FileOperations decorateFileOperations(FileOperations operations) {
@@ -140,19 +158,25 @@ public class IcebergRegisterTableTest extends BaseServerTest {
       root = testDirectoryRoot.resolve("__unitystorage");
     }
     Path directory = root.resolve("orders");
-    Path file = directory.resolve("metadata/v1.metadata.json");
-    Files.createDirectories(file.getParent());
-    String json;
-    try (var fixture =
-        Objects.requireNonNull(
-            getClass().getResourceAsStream("/iceberg.metadata.two-snapshots.json"))) {
-      json =
-          new String(fixture.readAllBytes(), StandardCharsets.UTF_8)
-              .replace(
-                  "file:/tmp/uniform_iceberg_table",
-                  NormalizedURL.from(directory.toUri()).toString());
+    var source = IcebergTestUtils.createTable(directory, SCHEMA);
+    TableMetadata original;
+    try (var ignored = source.io()) {
+      for (long id : List.of(10L, 20L)) {
+        GenericRecord record = GenericRecord.create(SCHEMA);
+        record.setField("id", id);
+        source
+            .newFastAppend()
+            .appendFile(IcebergTestUtils.writeDataFile(source, "record" + id, record))
+            .commit();
+      }
+      original = source.operations().current();
     }
-    Files.writeString(file, json);
+    Path file = Path.of(NormalizedURL.from(original.metadataFileLocation()).toUri());
+    String json = Files.readString(file);
+    List<Path> originalFiles;
+    try (var files = Files.list(file.getParent())) {
+      originalFiles = files.toList();
+    }
     Path sibling = root.resolve("orders-sibling/keep");
     Files.createDirectories(sibling.getParent());
     Files.writeString(sibling, "keep");
@@ -166,15 +190,15 @@ public class IcebergRegisterTableTest extends BaseServerTest {
     assertThat(response.metadataLocation()).isEqualTo(file.toString());
     assertThat(response.tableMetadata().snapshots()).hasSize(2);
     assertThat(response.tableMetadata().previousFiles()).hasSize(2);
-    assertThat(response.tableMetadata().uuid()).isEqualTo("55d4dc69-5b14-4483-bfc8-f33b80f99f99");
+    assertThat(response.tableMetadata().uuid()).isEqualTo(original.uuid());
     assertThat(Files.readString(file)).isEqualTo(json);
     try (var files = Files.list(file.getParent())) {
-      assertThat(files.toList()).containsExactly(file);
+      assertThat(files.toList()).containsExactlyInAnyOrderElementsOf(originalFiles);
     }
     var table = tables.getTable(catalog + "." + namespace + ".orders", null, null, null);
     assertThat(table.getTableType()).isEqualTo(TableType.MANAGED);
     assertThat(table.getDataSourceFormat()).isEqualTo(DataSourceFormat.ICEBERG);
-    assertThat(table.getColumns()).extracting(column -> column.getName()).containsExactly("x", "y");
+    assertThat(table.getColumns()).extracting(column -> column.getName()).containsExactly("id");
     assertThat(table.getProperties()).containsAllEntriesOf(response.tableMetadata().properties());
     UUID id = UUID.fromString(table.getTableId());
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
@@ -214,8 +238,27 @@ public class IcebergRegisterTableTest extends BaseServerTest {
 
   @Test
   public void icebergClientCanRegisterAndCommit() throws Exception {
-    Path file = writeMetadata(externalRoot.resolve("client_table"));
-    try (RESTCatalog catalog = new RESTCatalog()) {
+    var source = IcebergTestUtils.createTable(externalRoot.resolve("client_table"), SCHEMA);
+    Path file;
+    try (var ignored = source.io()) {
+      GenericRecord record = GenericRecord.create(SCHEMA);
+      record.setField("id", 42L);
+      source
+          .newFastAppend()
+          .appendFile(IcebergTestUtils.writeDataFile(source, "record", record))
+          .commit();
+      file =
+          Path.of(NormalizedURL.from(source.operations().current().metadataFileLocation()).toUri());
+    }
+    try (RESTCatalog catalog =
+        new RESTCatalog() {
+          @Override
+          protected RESTSessionCatalog newSessionCatalog(
+              Function<Map<String, String>, RESTClient> clientBuilder) {
+            return new RESTSessionCatalog(
+                clientBuilder, (context, properties) -> new SimpleLocalFileIO(externalRoot));
+          }
+        }) {
       catalog.initialize(
           "uc",
           Map.of(
@@ -227,6 +270,19 @@ public class IcebergRegisterTableTest extends BaseServerTest {
               serverConfig.getAuthToken()));
       var table =
           catalog.registerTable(TableIdentifier.of(NAMESPACE, "client_table"), file.toString());
+      try (var tasks = table.newScan().planFiles()) {
+        var files = tasks.iterator();
+        assertThat(files.hasNext()).isTrue();
+        var task = files.next();
+        try (var rows =
+            Avro.read(table.io().newInputFile(task.file().location()))
+                .project(table.schema())
+                .createReaderFunc(DataReader::create)
+                .<GenericRecord>build()) {
+          assertThat(rows).extracting(row -> row.getField("id")).containsExactly(42L);
+        }
+        assertThat(files.hasNext()).isFalse();
+      }
       table.updateProperties().set("registered", "true").commit();
       assertThat(client.loadTable(CATALOG, NAMESPACE, "client_table").tableMetadata().properties())
           .containsEntry("registered", "true");
@@ -314,6 +370,90 @@ public class IcebergRegisterTableTest extends BaseServerTest {
               assertThat(e.getCode()).isEqualTo(400);
               assertThat(e.getResponseBody()).contains("INVALID_ARGUMENT", "overlaps");
             });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"catalog", "schema"})
+  public void rejectsNamespaceAllocationInRegisteredStorage(String kind) throws Exception {
+    Path directory = externalRoot.resolve("orders");
+    Path file = writeMetadata(directory);
+    client.registerTable(CATALOG, NAMESPACE, request("orders", file.toString()));
+    for (boolean dropped : List.of(false, true)) {
+      if (dropped) {
+        client.dropTable(CATALOG, NAMESPACE, "orders");
+      }
+      assertThatThrownBy(
+              () -> {
+                if (kind.equals("catalog")) {
+                  catalogs.createCatalog(
+                      new CreateCatalog().name("nested").storageRoot(directory.toString()));
+                } else {
+                  schemas.createSchema(
+                      new CreateSchema()
+                          .catalogName(CATALOG)
+                          .name("nested")
+                          .storageRoot(directory.toString()));
+                }
+              })
+          .isInstanceOfSatisfying(
+              ApiException.class,
+              e -> {
+                assertThat(e.getCode()).isEqualTo(400);
+                assertThat(e.getResponseBody()).contains("INVALID_ARGUMENT", "overlaps");
+              });
+      try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+        assertThat(
+                session
+                    .createSelectionQuery(
+                        "FROM CatalogInfoDAO WHERE name='nested'", CatalogInfoDAO.class)
+                    .getResultList())
+            .isEmpty();
+        assertThat(
+                session
+                    .createSelectionQuery(
+                        "FROM SchemaInfoDAO WHERE name='nested'", SchemaInfoDAO.class)
+                    .getResultList())
+            .isEmpty();
+      }
+      assertThat(file).exists();
+    }
+    // A shared raw root is valid when the assigned namespace directory is disjoint.
+    schemas.createSchema(
+        new CreateSchema()
+            .catalogName(CATALOG)
+            .name("sibling")
+            .storageRoot(externalRoot.toString()));
+    new RegisteredModelsApi(TestUtils.createApiClient(serverConfig))
+        .createRegisteredModel(
+            new CreateRegisteredModel().catalogName(CATALOG).schemaName("sibling").name("model"));
+  }
+
+  @Test
+  public void rejectsModelAllocationInRegisteredStorage() throws Exception {
+    Path directory = externalRoot.resolve("model_root");
+    Path file = writeMetadata(directory);
+    client.registerTable(CATALOG, NAMESPACE, request("orders", file.toString()));
+    RegisteredModelsApi models = new RegisteredModelsApi(TestUtils.createApiClient(serverConfig));
+    for (boolean dropped : List.of(false, true)) {
+      if (dropped) {
+        client.dropTable(CATALOG, NAMESPACE, "orders");
+      }
+      assertThatThrownBy(
+              () ->
+                  models.createRegisteredModel(
+                      new CreateRegisteredModel()
+                          .catalogName(CATALOG)
+                          .schemaName(NAMESPACE)
+                          .name("model")))
+          .isInstanceOfSatisfying(
+              ApiException.class,
+              e -> {
+                assertThat(e.getCode()).isEqualTo(400);
+                assertThat(e.getResponseBody()).contains("INVALID_ARGUMENT", "overlaps");
+              });
+      assertThat(directory.resolve("__unitystorage")).doesNotExist();
+      assertThat(file).exists();
+    }
   }
 
   @Test
@@ -413,10 +553,11 @@ public class IcebergRegisterTableTest extends BaseServerTest {
   }
 
   @ParameterizedTest
-  @ValueSource(booleans = {false, true})
-  public void concurrentRegistrationClaimsOneDirectory(boolean createExternalTable)
-      throws Exception {
-    Path file = writeMetadata(externalRoot.resolve("orders"));
+  @ValueSource(strings = {"register", "table", "catalog", "schema", "model"})
+  public void concurrentRegistrationClaimsOneDirectory(String operation) throws Exception {
+    Path file =
+        writeMetadata(externalRoot.resolve(operation.equals("model") ? "model_root" : "orders"));
+    var models = new RegisteredModelsApi(TestUtils.createApiClient(serverConfig));
     var barrier = new CyclicBarrier(2);
     var executor = Executors.newFixedThreadPool(2);
     try {
@@ -428,7 +569,7 @@ public class IcebergRegisterTableTest extends BaseServerTest {
                           () -> {
                             barrier.await(30, TimeUnit.SECONDS);
                             try {
-                              if (createExternalTable && name.equals("second")) {
+                              if (operation.equals("table") && name.equals("second")) {
                                 client.createTable(
                                     CATALOG,
                                     NAMESPACE,
@@ -437,6 +578,23 @@ public class IcebergRegisterTableTest extends BaseServerTest {
                                         .withSchema(SCHEMA)
                                         .withLocation(file.getParent().getParent().toString())
                                         .build());
+                              } else if (operation.equals("catalog") && name.equals("second")) {
+                                catalogs.createCatalog(
+                                    new CreateCatalog()
+                                        .name(name)
+                                        .storageRoot(file.getParent().getParent().toString()));
+                              } else if (operation.equals("schema") && name.equals("second")) {
+                                schemas.createSchema(
+                                    new CreateSchema()
+                                        .catalogName(CATALOG)
+                                        .name(name)
+                                        .storageRoot(file.getParent().getParent().toString()));
+                              } else if (operation.equals("model") && name.equals("second")) {
+                                models.createRegisteredModel(
+                                    new CreateRegisteredModel()
+                                        .catalogName(CATALOG)
+                                        .schemaName(NAMESPACE)
+                                        .name(name));
                               } else {
                                 client.registerTable(
                                     CATALOG, NAMESPACE, request(name, file.toString()));
@@ -455,7 +613,19 @@ public class IcebergRegisterTableTest extends BaseServerTest {
     } finally {
       executor.shutdownNow();
     }
-    assertThat(client.listTables(CATALOG, NAMESPACE).identifiers()).hasSize(1);
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      long count = 0;
+      for (String entity :
+          List.of("TableInfoDAO", "SchemaInfoDAO", "CatalogInfoDAO", "RegisteredModelInfoDAO")) {
+        count +=
+            session
+                .createSelectionQuery(
+                    "SELECT count(*) FROM " + entity + " WHERE name IN ('first', 'second')",
+                    Long.class)
+                .getSingleResult();
+      }
+      assertThat(count).isEqualTo(1);
+    }
     assertThat(file).exists();
   }
 

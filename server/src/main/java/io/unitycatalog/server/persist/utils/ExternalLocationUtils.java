@@ -867,7 +867,7 @@ public class ExternalLocationUtils {
     }
   }
 
-  /** Serializes table and volume path allocation with registration; use READ COMMITTED. */
+  /** Serializes storage allocation with table registration; use READ COMMITTED. */
   public static void lockTableStorage(Session session) {
     session
         .createSelectionQuery("FROM MetastoreDAO", MetastoreDAO.class)

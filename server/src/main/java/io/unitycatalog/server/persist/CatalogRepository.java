@@ -20,6 +20,7 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -71,6 +72,11 @@ public class CatalogRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
+          if (storageRoot != null) {
+            ExternalLocationUtils.lockTableStorage(session);
+            ExternalLocationUtils.validateNotOverlapWithRegisteredTables(
+                session, NormalizedURL.from(catalogInfo.getStorageLocation()));
+          }
           if (RepositoryUtils.getCatalogDaoOpt(session, createCatalog.getName()).isPresent()) {
             throw new BaseException(
                 ErrorCode.CATALOG_ALREADY_EXISTS,
@@ -87,7 +93,8 @@ public class CatalogRepository {
           return catalogInfo;
         },
         "Failed to add catalog",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   /**

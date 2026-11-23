@@ -54,6 +54,7 @@ class ManagedModelCleanupTaskTest {
     ServerProperties serverProperties = new ServerProperties(properties);
     sessionFactory = testDatabase.sessionFactory();
     repositories = StorageCleanupTestSupport.auditedRepositories(sessionFactory, serverProperties);
+    repositories.getMetastoreRepository().initMetastoreIfNeeded();
     repositories.getCatalogRepository().addCatalog(new CreateCatalog().name("catalog"));
   }
 

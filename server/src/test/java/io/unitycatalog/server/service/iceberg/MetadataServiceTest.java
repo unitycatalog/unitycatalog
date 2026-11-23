@@ -14,10 +14,16 @@ import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.amazonaws.util.IOUtils;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
+import io.unitycatalog.server.service.credential.StorageCredentialVendorImpl;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -29,6 +35,7 @@ import lombok.SneakyThrows;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.types.Types;
@@ -37,6 +44,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 
@@ -93,6 +102,50 @@ public class MetadataServiceTest {
     TableMetadata tableMetadata =
         metadataService.readTableMetadata(metadataLocation, tableLocation);
     assertThat(tableMetadata.uuid()).isEqualTo("11111111-2222-3333-4444-555555555555");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "/warehouse"})
+  public void registrationUsesChildCloudScope(String prefix) {
+    String bucket = "registration-" + (prefix.isEmpty() ? "bucket" : "prefix");
+    mockS3Client.createBucket(builder -> builder.bucket(bucket));
+    NormalizedURL storageRoot = NormalizedURL.from("s3://" + bucket + prefix);
+    String tableLocation = storageRoot + "/orders";
+    String metadataPath = tableLocation + "/metadata/v1.metadata.json";
+    TableMetadata original =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            tableLocation,
+            Map.of());
+    mockS3Client.putObject(
+        builder ->
+            builder
+                .bucket(bucket)
+                .key(
+                    prefix.replaceFirst("^/", "")
+                        + (prefix.isEmpty() ? "" : "/")
+                        + "orders/metadata/v1.metadata.json"),
+        RequestBody.fromString(TableMetadataParser.toJson(original)));
+    CloudCredentialVendor cloudVendor = mock();
+    when(cloudVendor.vendCredential(any())).thenReturn(new TemporaryCredentials());
+    var vendor =
+        new StorageCredentialVendorImpl(
+            cloudVendor, mock(ExternalLocationUtils.class), mock(ServerProperties.class));
+    when(mockFileOperations.getFileIO(any()))
+        .thenAnswer(
+            invocation -> {
+              vendor.vendCredential(
+                  invocation.getArgument(0), CredentialContext.READ_ONLY, CredentialUse.SERVER);
+              return new S3FileIO(() -> mockS3Client);
+            });
+
+    assertThat(
+            metadataService
+                .readRegistrationMetadata(NormalizedURL.from(metadataPath), storageRoot)
+                .uuid())
+        .isEqualTo(original.uuid());
+    verify(mockFileOperations).getFileIO(NormalizedURL.from(tableLocation + "/metadata"));
   }
 
   @SneakyThrows
