@@ -226,8 +226,9 @@ public abstract class CredPropsBuilder {
   protected abstract void setInitRenewableCredKeys(GenericCredential cred);
 
   /**
-   * Returns the fixed-path credential secrets for this cloud, which {@link #build()} sets, or an
-   * empty map when the credential is not served through them.
+   * Returns the fixed-path credential keys for this cloud, the secrets plus any provider the cloud
+   * needs to serve them, which {@link #build()} sets, or an empty map when the credential is not
+   * served through them.
    */
   protected abstract Map<String, String> initFixedCredKeys(GenericCredential cred);
 }
