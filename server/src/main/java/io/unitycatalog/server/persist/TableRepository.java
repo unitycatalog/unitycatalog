@@ -805,8 +805,19 @@ public class TableRepository {
     }
   }
 
-  public TableInfoDAO deleteViewForIceberg(String catalog, String schema, String name) {
-    return deleteTable(catalog, schema, name, dao -> requireIcebergView(dao, name));
+  /** Checks the authorized view ID on the locked row before deleting it or its children. */
+  public TableInfoDAO deleteViewForIceberg(
+      String catalog, String schema, String name, UUID expectedViewId) {
+    return deleteTable(
+        catalog,
+        schema,
+        name,
+        dao -> {
+          if (!dao.getId().equals(expectedViewId)) {
+            throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+          }
+          requireIcebergView(dao, name);
+        });
   }
 
   /**

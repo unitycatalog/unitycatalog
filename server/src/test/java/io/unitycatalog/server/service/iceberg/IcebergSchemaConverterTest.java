@@ -97,6 +97,20 @@ public class IcebergSchemaConverterTest {
   }
 
   @Test
+  public void quotesNestedFieldNamesInSparkDdl() {
+    var struct =
+        Types.StructType.of(
+            Types.NestedField.optional(5, "a.b", Types.IntegerType.get()),
+            Types.NestedField.optional(6, "c`d", Types.StringType.get()));
+    var map = Types.MapType.ofRequired(3, 4, Types.StringType.get(), struct);
+    var schema =
+        new Schema(Types.NestedField.required(1, "items", Types.ListType.ofRequired(2, map)));
+
+    assertThat(IcebergSchemaConverter.toColumnInfos(schema).get(0).getTypeText())
+        .isEqualTo("array<map<string,struct<`a.b`:int,`c``d`:string>>>");
+  }
+
+  @Test
   public void convertsNestedStructListAndMap() throws Exception {
     Schema schema =
         new Schema(
