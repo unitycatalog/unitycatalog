@@ -88,7 +88,7 @@ Key points: HTTP verb annotations (`@Post`, `@Get`, `@Patch`, `@Delete`) with `@
 | `examples/cli/` | The `uc` command-line client. |
 | `examples/sample-database/` | Builds the sample H2 database (`etc/db/h2db.mv.db`) that the quickstart examples use. |
 | `integration-tests/` | Cross-module and end-to-end tests. |
-| `ui/` | The web UI (React, built with Yarn / Node). |
+| `ui/` | The web UI (React, built with Bun). |
 | `docs/` | User documentation, published with MkDocs (`mkdocs.yml`). |
 | `ai/` | The Unity Catalog AI library: function-calling integrations for various frameworks. A separate Python subproject with its own `uv`-based toolchain. It is not the catalog server; do not confuse `ai/` with server code. |
 | `bin/` | `bin/start-uc-server`, `bin/uc`. |

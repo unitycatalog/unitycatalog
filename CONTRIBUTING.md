@@ -29,7 +29,7 @@ We generally follow the [Apache Spark Scala Style Guide](https://spark.apache.or
 
 ## Formatting and lint
 
-CI runs these checks on every pull request (`.github/workflows/lint-check.yml`). Run them before you push:
+CI runs these checks on every pull request to `main` (`.github/workflows/lint-check.yml`). Run them before you push:
 
 | Code | Check (what CI runs) | Fix |
 |---|---|---|
