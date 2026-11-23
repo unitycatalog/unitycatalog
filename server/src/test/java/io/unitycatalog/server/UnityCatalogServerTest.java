@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.auth0.jwt.JWT;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
@@ -28,6 +29,7 @@ import io.unitycatalog.server.logging.RequestContextDataProvider;
 import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -324,6 +326,14 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .configurationFolder(missing)
             .build()) {
       assertThat(missing.resolve("token.txt")).isNotEmptyFile();
+      // The token is signed with the configured key, and no fallback key was generated.
+      SecurityConfiguration configured =
+          SecurityConfiguration.load(new ServerProperties(properties), missing);
+      JWT.require(configured.algorithmRSA())
+          .build()
+          .verify(Files.readString(missing.resolve("token.txt")));
+      assertThat(missing.resolve("private_key.der")).doesNotExist();
+      assertThat(missing.resolve("public_key.der")).doesNotExist();
     }
 
     // An empty relative configuration folder has no parent path. A zip file system under @TempDir
