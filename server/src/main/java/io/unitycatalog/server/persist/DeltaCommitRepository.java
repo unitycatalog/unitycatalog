@@ -146,6 +146,10 @@ public class DeltaCommitRepository {
    */
   private static final int MAX_NUM_COMMITS_PER_TABLE = 10;
 
+  /** Message for a uniform block sent without a commit. */
+  private static final String UNIFORM_WITHOUT_COMMIT_MESSAGE =
+      "Uniform metadata requires an accompanying commit.";
+
   /**
    * The batch size limit for commit delete operations. This limit is set to be larger than
    * MAX_NUM_COMMITS_PER_TABLE so that it should never hit this limit at all. But it serves the
@@ -654,8 +658,7 @@ public class DeltaCommitRepository {
         commitInfoOpt.isPresent() || latestBackfilledVersion.isPresent(),
         "At least one of add-commit or set-latest-backfilled-version is required.");
     if (uniformFields.isPresent() && commitInfoOpt.isEmpty()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Uniform metadata requires an accompanying commit.");
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, UNIFORM_WITHOUT_COMMIT_MESSAGE);
     }
     if (newestCommits.isEmpty()) {
       serverProperties.checkManagedTableEnabled();
@@ -1372,7 +1375,7 @@ public class DeltaCommitRepository {
    *   <li>If metadata properties are present: validates that table ID property matches the commit's
    *       table ID
    *   <li>If commit info is absent: ensures this is a valid backfill-only commit with backfilled
-   *       version set
+   *       version set and no metadata or uniform
    * </ul>
    *
    * @param commit the commit request to validate
@@ -1424,6 +1427,9 @@ public class DeltaCommitRepository {
       if (commit.getMetadata() != null) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT, "metadata shouldn't be set for backfill only commit");
+      }
+      if (commit.getUniform() != null) {
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, UNIFORM_WITHOUT_COMMIT_MESSAGE);
       }
     }
   }
@@ -1506,7 +1512,9 @@ public class DeltaCommitRepository {
    *       normalization.
    *   <li>UniForm subpath: when {@code uniformFields} is present, its {@code metadata-location}
    *       must be a subpath of the table's storage root.
-   *   <li>UniForm property/block consistency via {@link #validateUniformMetadataPresence}.
+   *   <li>UniForm property/block consistency via {@link #validateUniformMetadataPresence}, only
+   *       when the request adds a commit. A backfill-only request converts nothing, so it carries
+   *       no uniform block even on a UniForm table.
    * </ul>
    *
    * <p>{@code uniformFields} is the already-validated, already-normalized output of {@link
@@ -1527,7 +1535,9 @@ public class DeltaCommitRepository {
         tableInfoDAO.getUrl());
     uniformFields.ifPresent(
         uf -> DeltaUniformUtils.requireMetadataLocationSubpath(uf.metadataLocation(), tableUri));
-    validateUniformMetadataPresence(session, commit, tableInfoDAO);
+    if (commit.getCommitInfo() != null) {
+      validateUniformMetadataPresence(session, commit, tableInfoDAO);
+    }
   }
 
   /**

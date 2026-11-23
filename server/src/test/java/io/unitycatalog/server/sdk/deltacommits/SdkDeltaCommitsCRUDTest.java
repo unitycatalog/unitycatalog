@@ -1406,6 +1406,51 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyIcebergMetadata(Optional.empty());
   }
 
+  /**
+   * A backfill-only request carries no commit, so it has no Iceberg conversion to report. It must
+   * work on a UniForm table without a uniform block, or a table at the commit limit can never be
+   * backfilled and stays unwritable.
+   */
+  @Test
+  public void testBackfillOnlyCommitOnUniformTable() throws ApiException, IOException {
+    String enabledFormats = TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS;
+    deltaCommitsApi.commit(
+        commitWithProperties(1L, Map.of(enabledFormats, "iceberg")).uniform(uniformAt(1L)));
+    for (long v = 2; v <= 10; v++) {
+      deltaCommitsApi.commit(commitKeepingProperties(v).uniform(uniformAt(v)));
+    }
+    assertApiException(
+        () -> deltaCommitsApi.commit(commitKeepingProperties(11L).uniform(uniformAt(11L))),
+        ErrorCode.RESOURCE_EXHAUSTED,
+        "Max number of commits per table reached");
+    writePublishedCommitFiles(1L, 10L);
+
+    assertApiException(
+        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(10L).uniform(uniformAt(9L))),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata requires an accompanying commit.");
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
+    verifyIcebergMetadata(Optional.of(10L));
+
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(10L));
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 10);
+    verifyIcebergMetadata(Optional.of(10L));
+
+    assertApiException(
+        () -> deltaCommitsApi.commit(commitKeepingProperties(11L)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata must be set");
+    deltaCommitsApi.commit(commitKeepingProperties(11L).uniform(uniformAt(11L)));
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 11, 11);
+    verifyIcebergMetadata(Optional.of(11L));
+  }
+
+  /** A commit with no metadata, so the stored table properties stay as they are. */
+  private DeltaCommit commitKeepingProperties(long version) {
+    return createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation())
+        .metadata(null);
+  }
+
   /** A commit that replaces the table properties with the table ID plus {@code properties}. */
   private DeltaCommit commitWithProperties(long version, Map<String, String> properties) {
     return createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation())
