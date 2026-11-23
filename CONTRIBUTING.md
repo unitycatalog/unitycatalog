@@ -27,6 +27,18 @@ We have implemented a feature that allows users to comment "**take**" on an issu
 
 We generally follow the [Apache Spark Scala Style Guide](https://spark.apache.org/contributing.html).
 
+## Formatting and lint
+
+CI runs these checks on every pull request (`.github/workflows/lint-check.yml`). Run them before you push:
+
+| Code | Check (what CI runs) | Fix |
+|---|---|---|
+| Java | `build/sbt javafmtCheck` | `build/sbt javafmtAll` |
+| UI (`ui/`) | `cd ui && bun install --frozen-lockfile && bun run test:format` | `cd ui && bun run format` |
+| UI lock file | `cd ui && bun run scripts/clean-bun-lock.ts --check` | `cd ui && bun run scripts/clean-bun-lock.ts` |
+
+Compiling a module that has the Java formatter enabled also runs `javafmtAll`, so `build/sbt compile` formats the Java files it builds.
+
 # Sign your work
 
 The sign-off is a simple line at the end of the explanation for the patch. Your signature certifies that you wrote the patch or otherwise have the right to pass it on as an open-source patch.
