@@ -79,7 +79,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.SortOrder;
@@ -773,21 +772,19 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     serverProperties.checkIcebergTableEnabled();
-    Pair<TableInfoDAO, TableMetadata> unregistered =
+    TableRepository.IcebergTableState state =
+        tableRepository.getManagedIcebergTableState(catalog, namespace, table);
+    // Cloud FileIO resolves credentials through the database, before the delete holds a connection.
+    TableMetadata metadata =
+        metadataService.readTableMetadata(
+            NormalizedURL.from(state.metadataLocation()),
+            NormalizedURL.from(state.storageLocation()));
+    TableInfoDAO dao =
         tableRepository.unregisterManagedIcebergTable(
-            catalog,
-            namespace,
-            table,
-            dao ->
-                Pair.of(
-                    dao,
-                    metadataService.readTableMetadata(
-                        NormalizedURL.from(dao.getIcebergMetadataLocation()),
-                        NormalizedURL.from(dao.getUrl()))));
-    TableInfoDAO dao = unregistered.getLeft();
+            catalog, namespace, table, state.tableId(), state.metadataLocation());
     removeHierarchicalAuthorizations(dao.getId().toString(), dao.getSchemaId().toString());
     // The unregister response uses the metadata fields of a load response, without credentials.
-    return LoadTableResponse.builder().withTableMetadata(unregistered.getRight()).build();
+    return LoadTableResponse.builder().withTableMetadata(metadata).build();
   }
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")

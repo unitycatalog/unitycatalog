@@ -87,6 +87,9 @@ This operation requires the same privileges as dropping a table and is disabled 
 `server.iceberg-table.enabled=false`. It applies only to native Iceberg tables with table type `MANAGED`;
 external tables and Delta tables, including UniForm tables, return HTTP 400. A missing table returns HTTP 404.
 If the server cannot read the final metadata, it leaves the table registered.
+The server reads metadata before the delete transaction, then checks the table UUID and metadata pointer
+under the commit lock. If either changed during the read, it leaves the table registered and returns HTTP 503;
+retry the unregister request to read the current metadata.
 
 After unregister, the caller is responsible for the retained files and access to them. The response does not
 contain storage credentials. The `dropTable` operation and its storage cleanup behavior are unchanged.

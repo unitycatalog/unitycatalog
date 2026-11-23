@@ -35,7 +35,6 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
@@ -110,12 +109,12 @@ public class IcebergRestCatalogServiceTest {
             .discardChanges()
             .withMetadataLocation(metadataLocation)
             .build();
-    when(tableRepository.unregisterManagedIcebergTable(eq("cat"), eq("ns"), eq("tbl"), any()))
-        .thenAnswer(
-            invocation -> {
-              Function<TableInfoDAO, ?> loadMetadata = invocation.getArgument(3);
-              return loadMetadata.apply(table);
-            });
+    when(tableRepository.getManagedIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                id, DataSourceFormat.ICEBERG, metadataLocation, TABLE_LOCATION));
+    when(tableRepository.unregisterManagedIcebergTable("cat", "ns", "tbl", id, metadataLocation))
+        .thenReturn(table);
     when(metadataService.readTableMetadata(
             NormalizedURL.from(metadataLocation), NormalizedURL.from(TABLE_LOCATION)))
         .thenReturn(metadata);

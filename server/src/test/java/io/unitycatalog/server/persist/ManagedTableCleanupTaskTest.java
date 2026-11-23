@@ -2,19 +2,35 @@ package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.IcebergRestCatalogService;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.iceberg.MetadataService;
+import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -24,11 +40,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
+import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
+import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.rest.responses.LoadTableResponse;
+import org.apache.iceberg.types.Types;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -242,44 +266,130 @@ class ManagedTableCleanupTaskTest {
   }
 
   @Test
-  void unregisterUsesTheCommitLockAndReturnsTheFinalMetadataWithoutCleanup() {
+  void unregisterReadsCloudMetadataWithOneDatabaseConnection() throws Exception {
+    TableInfoDAO table =
+        createTable("cloud_unregister", TableType.MANAGED, id -> "gs://bucket/tables/" + id);
+    String metadataLocation = table.getUrl() + "/metadata/00000.metadata.json";
+    setIcebergState(table, TableType.MANAGED, DataSourceFormat.ICEBERG, metadataLocation);
+    Path metadataFile = tempDir.resolve("00000.metadata.json");
+    TableMetadata metadata =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            table.getUrl(),
+            Map.of());
+    TableMetadataParser.write(
+        metadata, org.apache.iceberg.Files.localOutput(metadataFile.toFile()));
+    InputFile input = spy(org.apache.iceberg.Files.localInput(metadataFile.toFile()));
+    doReturn(metadataLocation).when(input).location();
+    CloudCredentialVendor cloudVendor = mock();
+    when(cloudVendor.vendCredential(any()))
+        .thenReturn(
+            new TemporaryCredentials().gcpOauthToken(new GcpOauthToken().oauthToken("test-token")));
+    Properties poolProperties = testDatabase.hibernateProperties();
+    poolProperties.setProperty("hibernate.hikari.maximumPoolSize", "1");
+    poolProperties.setProperty("hibernate.hikari.minimumIdle", "1");
+    poolProperties.setProperty("hibernate.hikari.connectionTimeout", "500");
+    SessionFactory singleConnection =
+        testDatabase.openHibernateConfigurator(poolProperties).getSessionFactory();
+    Repositories cloudRepositories =
+        new Repositories(
+            singleConnection,
+            serverProperties,
+            cloudVendor,
+            operations -> {
+              FileOperations decorated = spy(operations);
+              doAnswer(
+                      invocation -> {
+                        // Keep credential lookup and FileIO construction real; only file reads stay
+                        // local.
+                        FileIO fileIO = spy((FileIO) invocation.callRealMethod());
+                        doReturn(input).when(fileIO).newInputFile(metadataLocation);
+                        return fileIO;
+                      })
+                  .when(decorated)
+                  .getFileIO(NormalizedURL.from(table.getUrl()), CredentialContext.READ_ONLY);
+              return decorated;
+            });
+    FileOperations operations = cloudRepositories.getFileOperations();
+    IcebergRestCatalogService service =
+        new IcebergRestCatalogService(
+            new AllowingAuthorizer(),
+            new TableConfigService(operations),
+            new MetadataService(operations),
+            cloudRepositories,
+            serverProperties);
+
+    LoadTableResponse response = service.unregisterTable(CATALOG, SCHEMA, table.getName());
+
+    assertThat(response.metadataLocation()).isEqualTo(metadataLocation);
+    assertThat(response.tableMetadata().uuid()).isEqualTo(metadata.uuid());
+    assertThat(findTable(table.getId())).isNull();
+    assertThat(allTasks()).isEmpty();
+    verify(cloudVendor).vendCredential(any());
+  }
+
+  @Test
+  void unregisterWaitingForCommitRejectsStaleMetadataThenSucceedsOnRetry() throws Exception {
     TableInfoDAO table = createTableWithColumn("unregister");
     setIcebergState(table, TableType.MANAGED, DataSourceFormat.ICEBERG, "metadata-before.json");
-    AtomicBoolean readMetadata = new AtomicBoolean();
-    try (Session commit = sessionFactory.openSession()) {
-      Transaction tx = commit.beginTransaction();
-      lockAndReplaceColumns(commit, table);
-      commit
-          .get(TableInfoDAO.class, table.getId())
-          .setIcebergMetadataLocation("metadata-final.json");
-      commit.flush();
-      assertThatThrownBy(
-              () ->
-                  impatientRepositories()
-                      .getTableRepository()
-                      .unregisterManagedIcebergTable(
-                          CATALOG,
-                          SCHEMA,
-                          table.getName(),
-                          dao -> {
-                            readMetadata.set(true);
-                            return dao;
-                          }))
-          .isInstanceOfSatisfying(
-              BaseException.class,
-              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
-      assertThat(readMetadata).isFalse();
-      tx.commit();
-    }
+    TableRepository tables = repositories.getTableRepository();
+    TableRepository.IcebergTableState before =
+        tables.getManagedIcebergTableState(CATALOG, SCHEMA, table.getName());
+    assertThatThrownBy(
+            () ->
+                testDatabase.runBlockedByHeldWrite(
+                    commit -> {
+                      lockAndReplaceColumns(commit, table);
+                      commit
+                          .get(TableInfoDAO.class, table.getId())
+                          .setIcebergMetadataLocation("metadata-final.json");
+                    },
+                    () ->
+                        tables.unregisterManagedIcebergTable(
+                            CATALOG,
+                            SCHEMA,
+                            table.getName(),
+                            before.tableId(),
+                            before.metadataLocation())))
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE))
+        .hasMessage(
+            "Table changed while reading metadata: catalog.schema.unregister; retry unregister.");
+    assertThat(findTable(table.getId()).getIcebergMetadataLocation())
+        .isEqualTo("metadata-final.json");
+    assertThat(allTasks()).isEmpty();
 
-    String metadata =
-        repositories
-            .getTableRepository()
-            .unregisterManagedIcebergTable(
-                CATALOG, SCHEMA, table.getName(), TableInfoDAO::getIcebergMetadataLocation);
+    TableRepository.IcebergTableState current =
+        tables.getManagedIcebergTableState(CATALOG, SCHEMA, table.getName());
+    TableInfoDAO unregistered =
+        tables.unregisterManagedIcebergTable(
+            CATALOG, SCHEMA, table.getName(), current.tableId(), current.metadataLocation());
 
-    assertThat(metadata).isEqualTo("metadata-final.json");
+    assertThat(unregistered.getIcebergMetadataLocation()).isEqualTo("metadata-final.json");
     assertThat(findTable(table.getId())).isNull();
+    assertThat(allTasks()).isEmpty();
+  }
+
+  @Test
+  void unregisterRejectsAReplacementTableWithTheSameMetadataPointer() {
+    TableInfoDAO original = createTableWithColumn("replaced");
+    setIcebergState(original, TableType.MANAGED, DataSourceFormat.ICEBERG, "metadata.json");
+    TableRepository tables = repositories.getTableRepository();
+    tables.unregisterManagedIcebergTable(
+        CATALOG, SCHEMA, original.getName(), original.getId(), "metadata.json");
+    TableInfoDAO replacement = createTableWithColumn(original.getName());
+    setIcebergState(replacement, TableType.MANAGED, DataSourceFormat.ICEBERG, "metadata.json");
+
+    assertThatThrownBy(
+            () ->
+                tables.unregisterManagedIcebergTable(
+                    CATALOG, SCHEMA, original.getName(), original.getId(), "metadata.json"))
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE))
+        .hasMessage(
+            "Table changed while reading metadata: catalog.schema.replaced; retry unregister.");
+    assertThat(findTable(replacement.getId())).isNotNull();
     assertThat(allTasks()).isEmpty();
   }
 
@@ -292,17 +402,20 @@ class ManagedTableCleanupTaskTest {
           continue;
         }
         setIcebergState(table, type, format, "metadata.json");
-        assertThatThrownBy(
+        TableRepository tables = repositories.getTableRepository();
+        for (Runnable operation :
+            List.<Runnable>of(
+                () -> tables.getManagedIcebergTableState(CATALOG, SCHEMA, table.getName()),
                 () ->
-                    repositories
-                        .getTableRepository()
-                        .unregisterManagedIcebergTable(
-                            CATALOG, SCHEMA, table.getName(), Function.identity()))
-            .isInstanceOfSatisfying(
-                BaseException.class,
-                e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
-            .hasMessage(
-                "Only managed Iceberg tables can be unregistered: catalog.schema.unsupported");
+                    tables.unregisterManagedIcebergTable(
+                        CATALOG, SCHEMA, table.getName(), table.getId(), "metadata.json"))) {
+          assertThatThrownBy(operation::run)
+              .isInstanceOfSatisfying(
+                  BaseException.class,
+                  e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+              .hasMessage(
+                  "Only managed Iceberg tables can be unregistered: catalog.schema.unsupported");
+        }
         assertThat(findTable(table.getId())).isNotNull();
       }
     }
@@ -312,7 +425,8 @@ class ManagedTableCleanupTaskTest {
               () ->
                   repositories
                       .getTableRepository()
-                      .unregisterManagedIcebergTable(CATALOG, SCHEMA, name, Function.identity()))
+                      .unregisterManagedIcebergTable(
+                          CATALOG, SCHEMA, name, table.getId(), "metadata.json"))
           .isInstanceOfSatisfying(
               BaseException.class,
               e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))
@@ -331,7 +445,8 @@ class ManagedTableCleanupTaskTest {
       TableInfoDAO read = commit.get(TableInfoDAO.class, table.getId());
       repositories
           .getTableRepository()
-          .unregisterManagedIcebergTable(CATALOG, SCHEMA, table.getName(), Function.identity());
+          .unregisterManagedIcebergTable(
+              CATALOG, SCHEMA, table.getName(), table.getId(), "metadata.json");
 
       assertThatThrownBy(
               () ->

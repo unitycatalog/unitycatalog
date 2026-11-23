@@ -934,6 +934,27 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           .isNull();
     }
     assertThat(metadata).hasContent("invalid metadata");
+
+    Files.delete(metadata);
+    ApiException failure =
+        assertThrows(
+            ApiException.class,
+            () ->
+                icebergClient.unregisterTable(
+                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "unreadable"));
+    assertThat(failure.getCode()).isEqualTo(500);
+    ErrorResponse error = ErrorResponseParser.fromJson(failure.getResponseBody());
+    assertThat(error.type()).isEqualTo(ServiceFailureException.class.getSimpleName());
+    assertThat(error.message()).isEqualTo("Could not read this table");
+    assertThat(
+            tableOperations
+                .getTable(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".unreadable")
+                .getTableId())
+        .isEqualTo(table.getTableId());
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(session.get(StorageCleanupTaskDAO.class, UUID.fromString(table.getTableId())))
+          .isNull();
+    }
   }
 
   private LoadTableResponse createManagedIcebergTable(String name) throws ApiException {
