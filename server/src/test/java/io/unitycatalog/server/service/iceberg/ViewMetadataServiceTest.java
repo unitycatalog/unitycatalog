@@ -92,6 +92,44 @@ class ViewMetadataServiceTest {
   }
 
   @Test
+  void rejectsLinkedViewDirectoryForCreateReadAndDiscard() throws Exception {
+    var store = new ViewMetadataService(root.toString());
+    UUID id = UUID.randomUUID();
+    var request = IcebergViewTestUtils.request("v", "spark", "select 1 as id");
+    var metadata = store.create(id, request);
+    Path file = Path.of(URI.create(metadata.metadataFileLocation()));
+    Path original = Files.move(file.getParent(), root.resolve("original"));
+    Files.createSymbolicLink(file.getParent(), original);
+
+    assertThatThrownBy(() -> store.create(id, request))
+        .isInstanceOf(BaseException.class)
+        .hasRootCauseMessage("View metadata directory is a symbolic link");
+    assertThatThrownBy(() -> store.read(id.toString(), metadata.metadataFileLocation()))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Invalid persisted view metadata location");
+    store.discardUnpublished(metadata);
+    assertThat(file.getParent()).isSymbolicLink();
+    try (var files = Files.list(original)) {
+      assertThat(files).containsExactly(original.resolve(file.getFileName()));
+    }
+  }
+
+  @Test
+  void readsRequireARegularMetadataFile() throws Exception {
+    var store = new ViewMetadataService(root.toString());
+    UUID id = UUID.randomUUID();
+    Path directory = Files.createDirectory(root.resolve(id.toString()));
+    Path target = Files.createTempFile(directory, "regular", ".json");
+    Path link = Files.createSymbolicLink(directory.resolve("link.metadata.json"), target);
+    Path folder = Files.createDirectory(directory.resolve("directory.metadata.json"));
+    for (Path path : List.of(link, folder)) {
+      assertThatThrownBy(() -> store.read(id.toString(), path.toUri().toString()))
+          .isInstanceOf(BaseException.class)
+          .hasMessage("Invalid persisted view metadata location");
+    }
+  }
+
+  @Test
   void loadRejectsMetadataOutsideTheViewOrWithADifferentIdentity() throws Exception {
     var store = new ViewMetadataService(root.toString());
     UUID id = UUID.randomUUID();

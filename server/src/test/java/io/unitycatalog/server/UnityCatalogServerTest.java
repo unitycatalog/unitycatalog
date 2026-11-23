@@ -59,7 +59,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
 
   @ParameterizedTest
   @NullSource
-  @ValueSource(strings = " ")
+  @ValueSource(strings = {"", " "})
   void enablingIcebergViewsRequiresAMetadataRoot(String root) {
     ServerProperties properties = new ServerProperties(serverProperties);
     properties.set(Property.AUTHORIZATION_ENABLED, "disable");

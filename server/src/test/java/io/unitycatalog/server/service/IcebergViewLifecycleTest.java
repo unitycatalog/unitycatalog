@@ -144,6 +144,14 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
   }
 
   @Test
+  public void loadViewReportsMissingParentsAsNoSuchView() {
+    assertIcebergApiException(
+        () -> client.loadView("missing_catalog", NS, "v"), 404, NoSuchViewException.class, "v");
+    assertIcebergApiException(
+        () -> client.loadView(CAT, "missing_schema", "v"), 404, NoSuchViewException.class, "v");
+  }
+
+  @Test
   public void viewMetadataIsWrittenBeforeWaitingForTheSchemaLock() throws Exception {
     var api = TestUtils.createApiClient(serverConfig);
     UUID schemaId =
