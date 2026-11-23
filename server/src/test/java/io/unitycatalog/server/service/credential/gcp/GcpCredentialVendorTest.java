@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.google.api.client.http.LowLevelHttpRequest;
+import com.google.api.client.http.LowLevelHttpResponse;
 import com.google.api.client.testing.http.MockHttpTransport;
+import com.google.api.client.testing.http.MockLowLevelHttpRequest;
 import com.google.api.client.testing.http.MockLowLevelHttpResponse;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.CredentialAccessBoundary;
@@ -24,7 +27,11 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -406,6 +413,87 @@ public class GcpCredentialVendorTest {
     assertThat(
             GcpCredentialVendor.storedKeyError(refreshStoredKeyAgainst(unreachable)).getErrorCode())
         .isEqualTo(ErrorCode.UNAVAILABLE);
+  }
+
+  /** A stand-in for Google: the key's sign-in and the token downscoping, recording what it gets. */
+  private static final class FakeGoogle extends MockHttpTransport {
+    final List<String> urls = new ArrayList<>();
+    final List<String> bodies = new ArrayList<>();
+    private final int stsStatus;
+    private final String stsBody;
+
+    FakeGoogle(int stsStatus, String stsBody) {
+      this.stsStatus = stsStatus;
+      this.stsBody = stsBody;
+    }
+
+    @Override
+    public LowLevelHttpRequest buildRequest(String method, String url) {
+      return new MockLowLevelHttpRequest(url) {
+        @Override
+        public LowLevelHttpResponse execute() throws IOException {
+          urls.add(url);
+          bodies.add(getContentAsString());
+          boolean isSts = url.contains("sts.googleapis.com");
+          return new MockLowLevelHttpResponse()
+              .setStatusCode(isSts ? stsStatus : 200)
+              .setContentType("application/json")
+              .setContent(
+                  isSts
+                      ? stsBody
+                      : "{\"access_token\": \"source-token\", \"expires_in\": 3600,"
+                          + " \"token_type\": \"Bearer\"}");
+        }
+      };
+    }
+  }
+
+  private GcpCredentialVendor vendorThroughTheRealGenerator(FakeGoogle google) {
+    return new GcpCredentialVendor(
+        new ServerProperties(new Properties()), SECRET_STORE, null, () -> google);
+  }
+
+  /**
+   * Through the vendor's own generator, not a stand-in: the stored key signs in, and what it gets
+   * is downscoped to the requested path and privilege before it is returned.
+   */
+  @Test
+  public void testStoredKeyIsDownscopedToTheRequestedPath() {
+    FakeGoogle google =
+        new FakeGoogle(
+            200,
+            "{\"access_token\": \"downscoped-token\", \"expires_in\": 3600,"
+                + " \"token_type\": \"Bearer\","
+                + " \"issued_token_type\": \"urn:ietf:params:oauth:token-type:access_token\"}");
+
+    AccessToken token =
+        vendorThroughTheRealGenerator(google).vendGcpCredential(contextWithStoredKey());
+
+    // The token is the downscoped one, not the one the key signed in with.
+    assertThat(token.getTokenValue()).isEqualTo("downscoped-token");
+    assertThat(google.urls).hasSize(2);
+    assertThat(google.urls.get(0)).contains("oauth2.googleapis.com");
+    assertThat(google.bodies.get(0)).contains("assertion=");
+    String exchange = URLDecoder.decode(google.bodies.get(1), StandardCharsets.UTF_8);
+    assertThat(exchange)
+        .contains("source-token")
+        .contains("projects/_/buckets/test-bucket")
+        .contains("roles/storage.objectViewer")
+        .contains("objects/t");
+  }
+
+  @Test
+  public void testStoredKeyFailureOfTheRealGeneratorIsMappedForTheCaller() {
+    FakeGoogle google =
+        new FakeGoogle(400, "{\"error\": \"invalid_grant\", \"error_description\": \"no\"}");
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class,
+            () -> vendorThroughTheRealGenerator(google).vendGcpCredential(contextWithStoredKey()));
+
+    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(error.getMessage()).contains("Contact the server administrator");
   }
 
   private static final String STORED_KEY_EMAIL = "uc-test@my-project.iam.gserviceaccount.com";
