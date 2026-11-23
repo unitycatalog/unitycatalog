@@ -11,6 +11,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -20,6 +22,11 @@ import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.core.config.Configurator;
 
 public class UnityCatalogCli {
+  private static final String UC_BASE_PATH = "/api/2.1/unity-catalog";
+  private static final String CONTROL_BASE_PATH = "/api/1.0/unity-control";
+  private static final Pattern SERVER_PATH_SUFFIX =
+      Pattern.compile(
+          "/*(" + Pattern.quote(UC_BASE_PATH) + "|" + Pattern.quote(CONTROL_BASE_PATH) + ")?/*$");
 
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/cli.log4j2.properties");
@@ -125,7 +132,8 @@ public class UnityCatalogCli {
       String command = subArgs[0];
       switch (command) {
         case CliUtils.AUTH:
-          apiClient.setBasePath("/api/1.0/unity-control");
+          // The auth endpoints are part of the control API, not the UC API.
+          apiClient.updateBaseUri(getBaseUri(cmd, CONTROL_BASE_PATH));
           AuthCli.handle(cmd, apiClient);
           break;
         case CliUtils.CATALOG:
@@ -243,22 +251,8 @@ public class UnityCatalogCli {
   }
 
   private static ApiClient getApiClient(CommandLine cmd) {
-    // By default, the client will connect to ref server on localhost:8080
     ApiClient apiClient = new ApiClient();
-    String server = loadProperty(CliUtils.SERVER, cmd);
-    if (server.isEmpty()) {
-      server = "http://localhost:8080";
-    }
-    URI uri = URI.create(server);
-    apiClient.setHost(uri.getHost());
-    if (uri.getPort() == -1 && uri.getScheme().equals("https")) {
-      apiClient.setPort(443);
-    } else if (uri.getPort() == -1 && uri.getScheme().equals("http")) {
-      apiClient.setPort(8080);
-    } else {
-      apiClient.setPort(uri.getPort());
-    }
-    apiClient.setScheme(uri.getScheme());
+    apiClient.updateBaseUri(getBaseUri(cmd, UC_BASE_PATH));
     String customAuthToken = loadProperty(CliUtils.AUTH_TOKEN, cmd);
     if (!customAuthToken.isEmpty()) {
       apiClient.setRequestInterceptor(
@@ -270,22 +264,8 @@ public class UnityCatalogCli {
   }
 
   private static io.unitycatalog.control.ApiClient getControlClient(CommandLine cmd) {
-    // By default, the client will connect to ref server on localhost:8080
     io.unitycatalog.control.ApiClient controlClient = new io.unitycatalog.control.ApiClient();
-    String server = loadProperty(CliUtils.SERVER, cmd);
-    if (server.isEmpty()) {
-      server = "http://localhost:8080";
-    }
-    URI uri = URI.create(server);
-    controlClient.setHost(uri.getHost());
-    if (uri.getPort() == -1 && uri.getScheme().equals("https")) {
-      controlClient.setPort(443);
-    } else if (uri.getPort() == -1 && uri.getScheme().equals("http")) {
-      controlClient.setPort(8080);
-    } else {
-      controlClient.setPort(uri.getPort());
-    }
-    controlClient.setScheme(uri.getScheme());
+    controlClient.updateBaseUri(getBaseUri(cmd, CONTROL_BASE_PATH));
     String customAuthToken = loadProperty(CliUtils.AUTH_TOKEN, cmd);
     if (!customAuthToken.isEmpty()) {
       controlClient.setRequestInterceptor(
@@ -294,5 +274,46 @@ public class UnityCatalogCli {
           });
     }
     return controlClient;
+  }
+
+  /**
+   * Resolves the URI of one API of the server given by {@code --server} or the {@code server}
+   * property. Without a server, the CLI connects to the reference server on {@code localhost:8080}.
+   * Without a port, it uses 443 for https and 8080 for http.
+   *
+   * @param cmd the parsed command line
+   * @param basePath the base path of the API, such as {@code /api/2.1/unity-catalog}
+   * @return the server URL with its port and the base path appended to its path
+   */
+  private static String getBaseUri(CommandLine cmd, String basePath) {
+    String server = loadProperty(CliUtils.SERVER, cmd);
+    URI uri = URI.create(server.isEmpty() ? "http://localhost:8080" : server);
+    int port = uri.getPort();
+    if (port == -1 && uri.getScheme().equals("https")) {
+      port = 443;
+    } else if (port == -1 && uri.getScheme().equals("http")) {
+      port = 8080;
+    }
+    return uri.getScheme()
+        + "://"
+        + uri.getHost()
+        + (port == -1 ? "" : ":" + port)
+        + getServerPath(uri)
+        + basePath;
+  }
+
+  /**
+   * Returns the path of the server URL without trailing slashes or a trailing API base path, so
+   * that a server behind a gateway path such as {@code https://gateway.example.com/uc} is reached
+   * at {@code /uc/api/...}, and a URL that already ends in {@code /api/2.1/unity-catalog} or {@code
+   * /api/1.0/unity-control} works for every API.
+   *
+   * @param uri the server URL
+   * @return the raw path, which is empty when the URL has none
+   */
+  private static String getServerPath(URI uri) {
+    return SERVER_PATH_SUFFIX
+        .matcher(Objects.requireNonNullElse(uri.getRawPath(), ""))
+        .replaceFirst("");
   }
 }

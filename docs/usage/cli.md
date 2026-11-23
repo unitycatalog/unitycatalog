@@ -823,6 +823,13 @@ The CLI can be configured to talk to Databricks Unity Catalog by one of the foll
   - `server`: The URL of the Unity Catalog server.
   - `auth_token`: The PAT(Personal Authorization Token) token obtained from Databricks' Workspace.
 
+The server URL may include a path, for example `https://gateway.example.com/uc` for a server behind a reverse proxy.
+The CLI then sends its requests under that path, such as `https://gateway.example.com/uc/api/2.1/unity-catalog/catalogs`.
+The URL may also end in `/api/2.1/unity-catalog` or `/api/1.0/unity-control`, as in `http://localhost:8080/api/2.1/unity-catalog`.
+The CLI drops that ending and adds the right API path for each command.
+Creating a managed table is the exception to both.
+Its Delta client adds `/api/2.1/unity-catalog` a second time, so its requests go to a doubled API path such as `http://localhost:8080/api/2.1/unity-catalog/api/2.1/unity-catalog/...`.
+
 Each parameter can be configured either from the CLI or the configuration file, independently of each other.
 The CLI will prioritize the values provided from the CLI over the configuration file.
 
