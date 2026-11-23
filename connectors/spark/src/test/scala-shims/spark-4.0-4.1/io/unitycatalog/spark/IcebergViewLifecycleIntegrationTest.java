@@ -54,6 +54,20 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
     }
   }
 
+  @Test
+  public void ucReaderResolvesQuotedNestedFieldNames() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    String view = CATALOG_NAME + "." + SCHEMA_NAME + ".nested_names";
+    sql("CREATE VIEW %s AS SELECT named_struct('a.b', 1, 'c`d', 2) AS s", view);
+    try {
+      var row = nativeSession().sql("SELECT s.`a.b`, s.`c``d` FROM " + view).first();
+      assertThat(row.getInt(0)).isEqualTo(1);
+      assertThat(row.getInt(1)).isEqualTo(2);
+    } finally {
+      sql("DROP VIEW IF EXISTS %s", view);
+    }
+  }
+
   private SparkSession nativeSession() {
     var reader = session.newSession();
     String catalog = "spark.sql.catalog." + CATALOG_NAME;

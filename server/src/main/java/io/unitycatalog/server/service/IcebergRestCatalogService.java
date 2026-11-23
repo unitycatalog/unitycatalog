@@ -999,13 +999,16 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
   @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @ResponseAuthorizeFilter(isList = false)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse dropView(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
       @Param("view") @AuthorizeResourceKey(TABLE) String view) {
     viewMetadataService();
-    TableInfoDAO deleted = tableRepository.deleteViewForIceberg(catalog, namespace, view);
+    UUID viewId =
+        UUID.fromString(authorizedViewState(catalog, namespace, view).view().getTableId());
+    TableInfoDAO deleted = tableRepository.deleteViewForIceberg(catalog, namespace, view, viewId);
     removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }

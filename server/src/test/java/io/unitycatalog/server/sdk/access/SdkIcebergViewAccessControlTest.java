@@ -3,14 +3,21 @@ package io.unitycatalog.server.sdk.access;
 import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.IcebergViewTestUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.UUID;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
@@ -25,6 +32,38 @@ public class SdkIcebergViewAccessControlTest extends SdkAccessControlBaseCRUDTes
     serverProperties.setProperty(
         Property.ICEBERG_VIEW_METADATA_ROOT.getKey(),
         testDirectoryRoot.resolve("view_metadata").toString());
+  }
+
+  @Test
+  public void dropWithADifferentIdKeepsTheViewMetadataAndGrants() throws Exception {
+    String catalog = TestUtils.CATALOG_NAME;
+    String schema = TestUtils.SCHEMA_NAME;
+    String fullName = catalog + "." + schema + ".v";
+    var client = new IcebergRestClient(adminConfig);
+    var created =
+        client.createView(
+            catalog, schema, IcebergViewTestUtils.request("v", "spark", "select 1 as id"));
+    createTestUser(REGULAR_1);
+    grantPermissions(REGULAR_1, SecurableType.TABLE, fullName, Privileges.READ_METADATA);
+    var tables =
+        new Repositories(
+                testDatabase.sessionFactory(),
+                new ServerProperties(serverProperties),
+                cloudCredentialVendor)
+            .getTableRepository();
+    var rejected =
+        assertThrows(
+            BaseException.class,
+            () -> tables.deleteViewForIceberg(catalog, schema, "v", UUID.randomUUID()));
+    assertThat(rejected.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED);
+
+    var stored = client.loadView(catalog, schema, "v");
+    assertThat(stored.metadata().uuid()).isEqualTo(created.metadata().uuid());
+    assertThat(stored.metadataLocation()).isEqualTo(created.metadataLocation());
+    assertThat(grantsApi.get(SecurableType.TABLE, fullName, null).getPrivilegeAssignments())
+        .filteredOn(assignment -> REGULAR_1.equals(assignment.getPrincipal()))
+        .flatExtracting(assignment -> assignment.getPrivileges())
+        .containsExactly(Privilege.READ_METADATA);
   }
 
   @Test

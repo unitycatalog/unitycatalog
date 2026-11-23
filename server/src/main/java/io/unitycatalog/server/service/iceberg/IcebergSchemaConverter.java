@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.exceptions.BadRequestException;
@@ -36,6 +37,7 @@ import org.apache.iceberg.types.Types;
 public final class IcebergSchemaConverter {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final Pattern UNQUOTED_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
   private IcebergSchemaConverter() {}
 
@@ -194,7 +196,7 @@ public final class IcebergSchemaConverter {
       case STRUCT ->
           ((Types.StructType) type)
               .fields().stream()
-                  .map(f -> f.name() + ":" + typeText(f.type()))
+                  .map(f -> quoteFieldNameIfNeeded(f.name()) + ":" + typeText(f.type()))
                   .collect(Collectors.joining(",", "struct<", ">"));
       case LIST -> "array<" + typeText(((Types.ListType) type).elementType()) + ">";
       case MAP -> {
@@ -205,6 +207,11 @@ public final class IcebergSchemaConverter {
       case LONG -> "bigint";
       default -> primitiveTypeName(type);
     };
+  }
+
+  // Spark's StructField.toDDL leaves regular identifiers unquoted and doubles embedded backticks.
+  private static String quoteFieldNameIfNeeded(String name) {
+    return UNQUOTED_IDENTIFIER.matcher(name).matches() ? name : "`" + name.replace("`", "``") + "`";
   }
 
   private static String primitiveTypeName(Type type) {

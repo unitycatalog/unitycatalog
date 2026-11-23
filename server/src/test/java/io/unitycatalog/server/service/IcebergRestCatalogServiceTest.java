@@ -93,11 +93,7 @@ public class IcebergRestCatalogServiceTest {
   @ParameterizedTest
   @ValueSource(booleans = {false, true})
   public void viewReadsRejectASnapshotWithADifferentId(boolean ucCreated, @TempDir Path root) {
-    when(serverProperties.isIcebergViewEnabled()).thenReturn(true);
-    when(serverProperties.isAuthorizationEnabled()).thenReturn(true);
-    when(serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT))
-        .thenReturn(root.toString());
-    var views = newService();
+    var views = authorizedViewService(root);
     UUID authorizedId = UUID.randomUUID();
     UUID snapshotId = UUID.randomUUID();
     String pointer = ucCreated ? null : root.resolve("view.json").toUri().toString();
@@ -126,6 +122,35 @@ public class IcebergRestCatalogServiceTest {
                   .getErrorCode())
           .isEqualTo(ErrorCode.PERMISSION_DENIED);
     }
+  }
+
+  private IcebergRestCatalogService authorizedViewService(Path root) {
+    when(serverProperties.isIcebergViewEnabled()).thenReturn(true);
+    when(serverProperties.isAuthorizationEnabled()).thenReturn(true);
+    when(serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT))
+        .thenReturn(root.toString());
+    return newService();
+  }
+
+  @Test
+  public void rejectedDropPassesTheAuthorizedIdAndKeepsGrants(@TempDir Path root) {
+    var views = authorizedViewService(root);
+    UUID viewId = UUID.randomUUID();
+    TableInfo view = new TableInfo().tableId(viewId.toString());
+    String pointer = root.resolve("view.json").toUri().toString();
+    when(tableRepository.getIcebergViewState("cat", "ns", "v"))
+        .thenReturn(new TableRepository.IcebergViewState(view, pointer));
+    var filter = mock(ResultFilter.class);
+    when(filter.filterResult(SecurableType.TABLE, view, null)).thenReturn(view);
+    var context = ServiceRequestContext.of(HttpRequest.of(HttpMethod.DELETE, "/"));
+    context.setAttr(UnityAccessDecorator.RESULT_FILTER_ATTR, filter);
+    var denied = new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    when(tableRepository.deleteViewForIceberg("cat", "ns", "v", viewId)).thenThrow(denied);
+    try (var ignored = context.push()) {
+      assertThatThrownBy(() -> views.dropView("cat", "ns", "v")).isSameAs(denied);
+    }
+    verify(filter).filterResult(SecurableType.TABLE, view, null);
+    verifyNoInteractions(authorizer);
   }
 
   @ParameterizedTest
