@@ -14,6 +14,7 @@ server.iceberg-view.metadata-root=/absolute/path/to/private/view-metadata
 ```
 
 Enable this option on every server that writes to the same catalog database after upgrading them all.
+An enabled server requires a metadata root at startup.
 Table and view creates and renames then take a lock on the parent schema before checking a name.
 Existing duplicate names are left for the operator to resolve.
 
@@ -44,8 +45,9 @@ for query output names that contain commas.
 
 Create checks authority on the parent schema. Load and exists use native metadata visibility;
 drop uses the native deletion policy. A view grants no credentials or access to its base tables.
-Metadata publication and canonical creation share a database transaction. Failed creation can
-leave an unreferenced metadata file; drop retains files. Automatic cleanup is not implemented.
+Create writes the metadata file before locking the schema, then inserts the UC view and its
+metadata location in one database transaction. A failed create can leave an unreferenced file.
+Drop retains metadata files.
 
 Listing, replacement, property updates, rename/register, cloud metadata storage, and secure or
 definer-rights execution are not included.

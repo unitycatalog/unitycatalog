@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.utils.IcebergViewTestUtils;
 import java.net.URI;
 import java.nio.file.Files;
@@ -29,7 +28,7 @@ class ViewMetadataServiceTest {
   void rejectsUnsupportedCreateStateBeforeWritingMetadata() throws Exception {
     var request = IcebergViewTestUtils.request("v", "spark", "select 1 as id");
     var store = new ViewMetadataService(root.toString());
-    var info = new TableInfo().tableId(UUID.randomUUID().toString());
+    UUID id = UUID.randomUUID();
     var spark = request.viewVersion().representations().get(0);
     var trino = ImmutableSQLViewRepresentation.builder().dialect("trino").sql("select 1").build();
     for (List<ViewRepresentation> representations :
@@ -49,7 +48,7 @@ class ViewMetadataServiceTest {
                       .representations(representations)
                       .build())
               .build();
-      assertThatThrownBy(() -> store.create(info, invalid)).isInstanceOf(BadRequestException.class);
+      assertThatThrownBy(() -> store.create(id, invalid)).isInstanceOf(BadRequestException.class);
     }
     for (var invalid :
         List.of(
@@ -67,7 +66,7 @@ class ViewMetadataServiceTest {
                         .defaultNamespace(Namespace.of("a", "b"))
                         .build())
                 .build())) {
-      assertThatThrownBy(() -> store.create(info, invalid)).isInstanceOf(BadRequestException.class);
+      assertThatThrownBy(() -> store.create(id, invalid)).isInstanceOf(BadRequestException.class);
     }
     try (var entries = Files.list(root)) {
       assertThat(entries).isEmpty();
@@ -95,11 +94,9 @@ class ViewMetadataServiceTest {
   @Test
   void loadRejectsMetadataOutsideTheViewOrWithADifferentIdentity() throws Exception {
     var store = new ViewMetadataService(root.toString());
-    String uuid = UUID.randomUUID().toString();
-    var metadata =
-        store.create(
-            new TableInfo().tableId(uuid),
-            IcebergViewTestUtils.request("v", "spark", "select 1 as id"));
+    UUID id = UUID.randomUUID();
+    String uuid = id.toString();
+    var metadata = store.create(id, IcebergViewTestUtils.request("v", "spark", "select 1 as id"));
     assertThat(store.read(uuid, metadata.metadataFileLocation()).uuid()).isEqualTo(uuid);
     assertThatThrownBy(
             () -> store.read(UUID.randomUUID().toString(), metadata.metadataFileLocation()))

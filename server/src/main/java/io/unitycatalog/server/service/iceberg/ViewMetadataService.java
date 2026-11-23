@@ -2,7 +2,6 @@ package io.unitycatalog.server.service.iceberg;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.TableInfo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -12,7 +11,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Supplier;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.rest.requests.CreateViewRequest;
@@ -21,9 +19,12 @@ import org.apache.iceberg.view.SQLViewRepresentation;
 import org.apache.iceberg.view.ViewMetadata;
 import org.apache.iceberg.view.ViewMetadataParser;
 import org.apache.iceberg.view.ViewVersion;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Spark-only view protocol state. SQL and its output schema are supplied by the engine. */
 public final class ViewMetadataService {
+  private static final Logger LOGGER = LoggerFactory.getLogger(ViewMetadataService.class);
   private static final String CONTEXT_COUNT = "view.catalogAndNamespace.numParts";
   private static final String CONTEXT_PART = "view.catalogAndNamespace.part.";
   private final Path root;
@@ -55,7 +56,7 @@ public final class ViewMetadataService {
     }
   }
 
-  public ViewMetadata create(TableInfo info, CreateViewRequest request) {
+  public ViewMetadata create(UUID viewId, CreateViewRequest request) {
     if (request.properties().keySet().stream().anyMatch(k -> k.startsWith("view."))) {
       throw new BadRequestException(
           "Spark view.* properties are server-owned on the Iceberg view API");
@@ -67,14 +68,18 @@ public final class ViewMetadataService {
     if (request.location() != null) {
       throw new BadRequestException("View locations are assigned by the catalog");
     }
-    ViewMetadata metadata =
-        ViewMetadata.builder()
-            .assignUUID(info.getTableId())
-            .setLocation(directory(info.getTableId()).toUri().toString())
-            .setCurrentVersion(request.viewVersion(), request.schema())
-            .setProperties(request.properties())
-            .build();
-    return write(metadata);
+    try {
+      ViewMetadata metadata =
+          ViewMetadata.builder()
+              .assignUUID(viewId.toString())
+              .setLocation(directory(viewId.toString()).toUri().toString())
+              .setCurrentVersion(request.viewVersion(), request.schema())
+              .setProperties(request.properties())
+              .build();
+      return write(metadata);
+    } catch (UnsupportedOperationException | ValidationException e) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, e.getMessage(), e);
+    }
   }
 
   public static Map<String, String> nativeProperties(CreateViewRequest request, String catalog) {
@@ -129,13 +134,30 @@ public final class ViewMetadataService {
     }
   }
 
-  public ViewMetadata read(String uuid, String pointer) {
+  private Path metadataFile(String uuid, String pointer) {
     Path file = Path.of(java.net.URI.create(pointer)).toAbsolutePath().normalize();
     if (!directory(uuid).equals(file.getParent())
         || Files.isSymbolicLink(file.getParent())
         || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
       throw new BaseException(ErrorCode.INTERNAL, "Invalid persisted view metadata location");
     }
+    return file;
+  }
+
+  /** Best-effort cleanup only for a create the catalog definitively rejected. */
+  public void discardUnpublished(ViewMetadata metadata) {
+    try {
+      Path file = metadataFile(metadata.uuid(), metadata.metadataFileLocation());
+      Files.delete(file);
+      Files.delete(file.getParent());
+    } catch (IOException | RuntimeException e) {
+      LOGGER.warn(
+          "Could not remove unpublished view metadata {}", metadata.metadataFileLocation(), e);
+    }
+  }
+
+  public ViewMetadata read(String uuid, String pointer) {
+    Path file = metadataFile(uuid, pointer);
     try {
       ViewMetadata metadata = ViewMetadataParser.fromJson(pointer, Files.readString(file));
       if (!uuid.equals(metadata.uuid())) {
@@ -144,18 +166,6 @@ public final class ViewMetadataService {
       return metadata;
     } catch (IOException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Could not read view metadata", e);
-    }
-  }
-
-  /** Preserve protocol error statuses across the repository's transaction wrapper. */
-  public static <T> T protocolAction(Supplier<T> action) {
-    try {
-      return action.get();
-    } catch (IllegalArgumentException
-        | BadRequestException
-        | UnsupportedOperationException
-        | ValidationException e) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, e.getMessage(), e);
     }
   }
 }

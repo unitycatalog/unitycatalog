@@ -35,6 +35,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -46,6 +47,7 @@ import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.RESTCatalog;
 import org.apache.iceberg.rest.auth.OAuth2Properties;
 import org.apache.iceberg.types.Types;
+import org.apache.iceberg.view.ViewMetadataParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -125,6 +127,10 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
       assertThat(Files.readString(Path.of(URI.create(loaded.metadataLocation())))).isEqualTo(bytes);
       assertIcebergApiException(
           () -> client.createView(CAT, NS, request("v", "spark", "select 1 as id")), 409);
+      Path file = Path.of(URI.create(loaded.metadataLocation()));
+      try (var paths = Files.walk(testDirectoryRoot.resolve("view_metadata"))) {
+        assertThat(paths.skip(1)).containsExactly(file.getParent(), file);
+      }
       catalog.dropView(id);
       assertThat(catalog.viewExists(id)).isFalse();
       assertIcebergApiException(
@@ -135,6 +141,38 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
               client.createView(CAT, NS, request("v", "spark", "select 1 as id")).metadata().uuid())
           .isNotEqualTo(created.uuid().toString());
     }
+  }
+
+  @Test
+  public void viewMetadataIsWrittenBeforeWaitingForTheSchemaLock() throws Exception {
+    var api = TestUtils.createApiClient(serverConfig);
+    UUID schemaId =
+        UUID.fromString(new SchemasApi(api).getSchema(CAT + "." + NS, false).getSchemaId());
+    var request = request("v", "spark", "select 42 as id");
+    Path root = testDirectoryRoot.resolve("view_metadata");
+    var prepared = new ArrayList<Path>();
+    var created =
+        testDatabase.runBlockedByHeldWrite(
+            session -> RepositoryUtils.getForUpdate(session, SchemaInfoDAO.class, schemaId),
+            () -> client.createView(CAT, NS, request),
+            () -> {
+              assertThat(root)
+                  .as("metadata root while the view create waits for the schema lock")
+                  .isDirectory();
+              try (var paths = Files.walk(root)) {
+                prepared.addAll(paths.filter(Files::isRegularFile).toList());
+              }
+              assertThat(prepared).hasSize(1);
+              var file = prepared.get(0);
+              var metadata =
+                  ViewMetadataParser.fromJson(file.toUri().toString(), Files.readString(file));
+              assertThat(metadata.currentVersion().representations())
+                  .isEqualTo(request.viewVersion().representations());
+              return null;
+            });
+    assertThat(prepared).containsExactly(Path.of(URI.create(created.metadataLocation())));
+    assertThat(nativeApi.getTable(CAT + "." + NS + ".v", true, false, false).getTableId())
+        .isEqualTo(created.metadata().uuid());
   }
 
   @ParameterizedTest
@@ -232,7 +270,7 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
   }
 
   @Test
-  public void failedMetadataWriteRollsBackCanonicalCreate() throws Exception {
+  public void failedMetadataWriteDoesNotPublishAView() throws Exception {
     Path root = testDirectoryRoot.resolve("view_metadata");
     Files.writeString(root, "not a directory");
     assertIcebergApiException(
