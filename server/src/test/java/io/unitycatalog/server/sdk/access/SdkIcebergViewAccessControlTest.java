@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -46,16 +47,24 @@ public class SdkIcebergViewAccessControlTest extends SdkAccessControlBaseCRUDTes
     var request =
         IcebergViewTestUtils.request(
             "v", "spark", "select id from " + catalog + "." + namespace + ".base_table");
-    assertIcebergApiException(() -> reader.createView(catalog, namespace, request), 403);
     var created = owner.createView(catalog, namespace, request);
-    assertIcebergApiException(() -> reader.loadView(catalog, namespace, "v"), 403);
+    var readerRequest = IcebergViewTestUtils.request("reader_view", "spark", "select 1 as id");
     grantPermissions(REGULAR_1, SecurableType.CATALOG, catalog, Privileges.USE_CATALOG);
     grantPermissions(
         REGULAR_1, SecurableType.SCHEMA, catalog + "." + namespace, Privileges.USE_SCHEMA);
+    assertIcebergApiException(() -> reader.createView(catalog, namespace, readerRequest), 403);
+    assertIcebergApiException(() -> reader.loadView(catalog, namespace, "v"), 403);
+    assertApiExceptionStatusOnly(() -> reader.viewExists(catalog, namespace, "v"), 403);
+
     grantPermissions(REGULAR_1, SecurableType.TABLE, fullName, Privileges.READ_METADATA);
     assertThat(reader.loadView(catalog, namespace, "v").metadata().uuid())
         .isEqualTo(created.metadata().uuid());
     assertThat(reader.viewExists(catalog, namespace, "v")).isTrue();
+    assertIcebergApiException(() -> reader.createView(catalog, namespace, readerRequest), 403);
+    grantPermissions(
+        REGULAR_1, SecurableType.SCHEMA, catalog + "." + namespace, Privileges.CREATE_TABLE);
+    reader.createView(catalog, namespace, readerRequest);
+    assertThat(reader.viewExists(catalog, namespace, "reader_view")).isTrue();
     assertIcebergApiException(() -> reader.dropView(catalog, namespace, "v"), 403);
     assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, "v"), 403);
     grantPermissions(REGULAR_1, SecurableType.TABLE, fullName, Privileges.SELECT);

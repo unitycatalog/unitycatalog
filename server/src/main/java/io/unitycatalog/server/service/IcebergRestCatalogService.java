@@ -907,6 +907,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @ResponseAuthorizeFilter(isList = false)
   @AuthorizeResourceKey(METASTORE)
   public LoadViewResponse loadView(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -915,12 +916,19 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     ViewMetadataService store =
         viewStore.orElseThrow(
             () -> new NoSuchViewException("View does not exist: %s", namespace + "." + view));
-    TableRepository.IcebergViewState state =
-        tableRepository.getIcebergViewState(catalog, namespace, view);
+    TableRepository.IcebergViewState state = authorizedViewState(catalog, namespace, view);
     return viewResponse(
         state.metadataLocation() == null
             ? store.readNative(state.view())
             : store.read(state.view().getTableId(), state.metadataLocation()));
+  }
+
+  private TableRepository.IcebergViewState authorizedViewState(
+      String catalog, String namespace, String view) {
+    TableRepository.IcebergViewState state =
+        tableRepository.getIcebergViewState(catalog, namespace, view);
+    applyGetResponseFilter(TABLE, state.view(), null);
+    return state;
   }
 
   private ViewMetadataService viewMetadataService() {
@@ -978,13 +986,14 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Head("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
   @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @ResponseAuthorizeFilter(isList = false)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse viewExists(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
       @Param("view") @AuthorizeResourceKey(TABLE) String view) {
     viewMetadataService();
-    tableRepository.getIcebergViewState(catalog, namespace, view);
+    authorizedViewState(catalog, namespace, view);
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 

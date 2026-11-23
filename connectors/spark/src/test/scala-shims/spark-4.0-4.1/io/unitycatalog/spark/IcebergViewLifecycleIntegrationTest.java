@@ -1,6 +1,7 @@
 package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.IcebergViewTestUtils.nativeRequest;
+import static io.unitycatalog.server.utils.IcebergViewTestUtils.request;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME2;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
@@ -16,6 +17,9 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.List;
 import java.util.Map;
+import org.apache.iceberg.catalog.Namespace;
+import org.apache.iceberg.rest.requests.ImmutableCreateViewRequest;
+import org.apache.iceberg.view.ImmutableViewVersion;
 import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
@@ -58,6 +62,51 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
     reader.conf().set(catalog + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken());
     reader.conf().set(catalog + "." + OptionsUtil.WAREHOUSE, CATALOG_NAME);
     return reader;
+  }
+
+  @Test
+  public void absentDefaultCatalogUsesTheReaderCatalogAndSavedNamespace() throws Exception {
+    String alias = "iceberg_alias";
+    session = createSparkSessionWithCatalogs(alias);
+    session.conf().set("spark.sql.catalog." + alias + ".warehouse", CATALOG_NAME);
+    assertThat(session.conf().getOption("spark.sql.catalog." + CATALOG_NAME).isEmpty()).isTrue();
+    String source = alias + ".source_ns.source_view";
+    String view = alias + "." + SCHEMA_NAME + ".relative_view";
+    sql("CREATE NAMESPACE %s.source_ns", alias);
+    sql("CREATE VIEW %s AS SELECT CAST(41 AS BIGINT) AS source_id", source);
+    try {
+      var template = request("relative_view", "spark", "SELECT source_id FROM source_view");
+      var version =
+          ImmutableViewVersion.builder()
+              .from(template.viewVersion())
+              .defaultCatalog(null)
+              .defaultNamespace(Namespace.of("source_ns"))
+              .build();
+      var created =
+          new IcebergRestClient(serverConfig)
+              .createView(
+                  CATALOG_NAME,
+                  SCHEMA_NAME,
+                  ImmutableCreateViewRequest.builder()
+                      .from(template)
+                      .viewVersion(version)
+                      .properties(Map.of("spark.query-column-names", "source_id"))
+                      .build());
+      assertThat(created.metadata().currentVersion().defaultCatalog()).isNull();
+      assertThat(sql("SELECT id FROM %s", view))
+          .extracting(row -> row.getLong(0))
+          .containsExactly(41L);
+      assertThat(
+              nativeSession()
+                  .sql("SELECT id FROM " + CATALOG_NAME + "." + SCHEMA_NAME + ".relative_view")
+                  .collectAsList())
+          .extracting(row -> row.getLong(0))
+          .containsExactly(41L);
+    } finally {
+      sql("DROP VIEW IF EXISTS %s", view);
+      sql("DROP VIEW IF EXISTS %s", source);
+      sql("DROP NAMESPACE %s.source_ns", alias);
+    }
   }
 
   @Test
@@ -204,6 +253,33 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
         api.deleteTable(view);
       }
     } finally {
+      sql("DROP TABLE IF EXISTS %s", source);
+    }
+  }
+
+  @Test
+  public void aliasedReaderResolvesANativeViewWithoutSavedContext() throws Exception {
+    String alias = "iceberg_alias";
+    session = createSparkSessionWithCatalogs(alias);
+    session.conf().set("spark.sql.catalog." + alias + ".warehouse", CATALOG_NAME);
+    String schema = alias + "." + SCHEMA_NAME;
+    String source = schema + ".local_source";
+    sql(
+        "CREATE TABLE %s (source_id BIGINT) USING ICEBERG LOCATION '%s'",
+        source, testDirectoryRoot.resolve("source").toUri());
+    var tables = new TablesApi(createApiClient(serverConfig));
+    sql("INSERT INTO %s VALUES (42)", source);
+    tables.createTable(
+            nativeRequest(
+                    CATALOG_NAME, SCHEMA_NAME, "local_view", "SELECT source_id FROM local_source")
+                .properties(
+                    Map.of("view.query.out.numCols", "1", "view.query.out.col.0", "source_id")));
+    try {
+      assertThat(sql("SELECT id FROM %s.local_view", schema))
+          .extracting(row -> row.getLong(0))
+          .containsExactly(42L);
+    } finally {
+      tables.deleteTable(CATALOG_NAME + "." + SCHEMA_NAME + ".local_view");
       sql("DROP TABLE IF EXISTS %s", source);
     }
   }

@@ -31,7 +31,8 @@ final class NativeViewMetadata {
     }
     Map<String, String> properties = new TreeMap<>(info.getProperties());
     Set<String> supported = new HashSet<>();
-    String catalog = info.getCatalogName();
+    // With no saved catalog, Iceberg resolves names in the catalog that loaded the view.
+    String catalog = null;
     Namespace namespace = Namespace.of(info.getSchemaName());
     if (properties.containsKey(CONTEXT_COUNT)) {
       int count = count(properties, CONTEXT_COUNT);

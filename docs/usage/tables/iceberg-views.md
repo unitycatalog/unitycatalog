@@ -53,8 +53,10 @@ Drop retains metadata files.
 ## Reading native UC views
 
 Existing UC views are exposed with dialect `spark`, their canonical UUID and output schema, and
-their saved catalog and namespace context. The querying engine must have those catalog names
-configured. It evaluates the SQL and obtains each base table's credentials as the caller.
+their saved catalog and namespace context. The querying engine must have any saved catalog name
+configured. Without a saved context, unqualified names resolve in the view's UC schema under the
+catalog used to load the view. The engine evaluates the SQL and obtains each base table's
+credentials as the caller.
 
 IRC selects the saved query output names in their original order. When no query names were
 saved, it uses the declared column names. This keeps a view over `SELECT *` bound to the same

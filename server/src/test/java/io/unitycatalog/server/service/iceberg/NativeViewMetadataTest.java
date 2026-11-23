@@ -132,10 +132,10 @@ class NativeViewMetadataTest {
   }
 
   @Test
-  void usesCanonicalContextByDefaultAndAllowsCatalogOnlyContext() {
+  void usesTheViewSchemaByDefaultAndAllowsCatalogOnlyContext() {
     var info = view(Map.of());
     var metadata = NativeViewMetadata.from(info, "file:/views/");
-    assertThat(metadata.currentVersion().defaultCatalog()).isEqualTo("catalog");
+    assertThat(metadata.currentVersion().defaultCatalog()).isNull();
     assertThat(metadata.currentVersion().defaultNamespace()).isEqualTo(Namespace.of("schema"));
     info.setProperties(
         Map.of(
@@ -145,6 +145,7 @@ class NativeViewMetadataTest {
             "creation_catalog"));
     info.setUpdatedAt(456L);
     metadata = NativeViewMetadata.from(info, "file:/views/");
+    assertThat(metadata.currentVersion().defaultCatalog()).isEqualTo("creation_catalog");
     assertThat(metadata.currentVersion().defaultNamespace()).isEqualTo(Namespace.empty());
     assertThat(metadata.currentVersion().timestampMillis()).isEqualTo(456L);
   }
