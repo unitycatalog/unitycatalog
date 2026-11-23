@@ -3,12 +3,16 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.spark.UCProxyTestFixture.CATALOG_NAME;
 import static io.unitycatalog.spark.UCProxyTestFixture.NAMESPACE;
 import static io.unitycatalog.spark.UCProxyTestFixture.SCHEMA_NAME;
+import static io.unitycatalog.spark.UCProxyTestFixture.routeToProxy;
+import static io.unitycatalog.spark.UCProxyTestFixture.sessionWithCatalog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.ApiException;
@@ -25,6 +29,8 @@ import io.unitycatalog.client.model.TableType;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
@@ -60,6 +66,7 @@ import org.mockito.ArgumentCaptor;
  */
 public class UCViewProxySuite {
 
+  private UCProxyTestFixture fixture;
   private TablesApi mockTablesApi;
   private TableCatalog proxy;
   private RelationCatalog proxyRelations;
@@ -67,7 +74,7 @@ public class UCViewProxySuite {
 
   @BeforeEach
   public void setUp() throws Exception {
-    UCProxyTestFixture fixture = new UCProxyTestFixture().build();
+    fixture = new UCProxyTestFixture().build();
     mockTablesApi = fixture.mockTablesApi;
     proxy = fixture.proxy;
     // These casts succeed only on the Spark 4.2 build, where UCProxy's UCProxyViewSupport mixes in
@@ -801,6 +808,63 @@ public class UCViewProxySuite {
     verify(mockTablesApi).deleteTable(eq("test_catalog.test_schema.v1"));
   }
 
+  @Test
+  public void testViewPathsRejectEmptyNamespaceBeforeAnyRpc() {
+    String[] empty = new String[0];
+    View view = plainViewBuilder().build();
+
+    assertThatThrownBy(() -> proxyViews.listViews(empty))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("Empty namespaces are not supported: name a schema, as in catalog.schema");
+    assertThatThrownBy(() -> proxyRelations.listTableSummaries(empty))
+        .isInstanceOf(ApiException.class)
+        .hasMessage("Empty namespaces are not supported: name a schema, as in catalog.schema");
+    assertThatThrownBy(() -> proxyViews.createView(Identifier.of(empty, "v1"), view))
+        .isInstanceOf(ApiException.class)
+        .hasMessage(
+            "Empty namespaces are not supported: name a schema for v1, as in catalog.schema.v1");
+    verifyNoInteractions(mockTablesApi);
+  }
+
+  /**
+   * A view created while a UC catalog is current records that catalog and schema default as its
+   * creation context, which Spark uses to resolve the view's unqualified names when it is read.
+   */
+  @Test
+  public void testCreateViewRecordsDefaultSchemaAsCreationContext() throws Exception {
+    TableInfo ucView = plainViewRow();
+    AtomicReference<CreateTable> created = new AtomicReference<>();
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.v1"), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenAnswer(
+            invocation -> {
+              if (created.get() == null) {
+                throw new ApiException(404, "Not Found");
+              }
+              return ucView;
+            });
+    when(mockTablesApi.createTable(any(CreateTable.class)))
+        .thenAnswer(
+            invocation -> {
+              created.set(invocation.getArgument(0));
+              return ucView;
+            });
+    SparkSession spark = sessionWithCatalog(CATALOG_NAME);
+    try {
+      routeToProxy(spark, CATALOG_NAME, (UCProxy) fixture.proxyObj);
+      spark.sql("SET CATALOG " + CATALOG_NAME);
+
+      spark.sql("CREATE VIEW test_catalog.test_schema.v1 AS " + PLAIN_VIEW_QUERY);
+
+      assertThat(created.get().getProperties())
+          .containsEntry("view.catalogAndNamespace.numParts", "2")
+          .containsEntry("view.catalogAndNamespace.part.0", CATALOG_NAME)
+          .containsEntry("view.catalogAndNamespace.part.1", "default");
+    } finally {
+      spark.stop();
+    }
+  }
+
   // -- schema mode round-trip --
 
   @Test
@@ -861,8 +925,16 @@ public class UCViewProxySuite {
 
   /** Builds a UC {@code VIEW} row named {@code v1} and stubs {@code getTable} to return it. */
   private TableInfo stubPlainView() throws Exception {
-    TableInfo ucView =
-        new TableInfo()
+    TableInfo ucView = plainViewRow();
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.v1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
+        .thenReturn(ucView);
+    return ucView;
+  }
+
+  /** Builds a UC {@code VIEW} row named {@code v1} matching {@link #plainViewBuilder()}. */
+  private static TableInfo plainViewRow() {
+    return new TableInfo()
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .name("v1")
@@ -879,10 +951,6 @@ public class UCViewProxySuite {
                                 + "\"metadata\":{}}")
                         .nullable(true)
                         .position(0)));
-    when(mockTablesApi.getTable(
-            eq("test_catalog.test_schema.v1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
-        .thenReturn(ucView);
-    return ucView;
   }
 
   private static void setCatalogField(UCSingleCatalog catalog, String fieldName, Object value) {

@@ -25,6 +25,7 @@ import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
@@ -40,6 +41,7 @@ import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -154,6 +156,30 @@ public class UCSingleCatalogStagingTableTest {
 
     verify(mockDelegate, never()).loadTable(nested);
     verify(mockDelegate).tableExists(nested);
+  }
+
+  @Test
+  public void testEmptyNamespaceIsRejectedBeforeDelegate() throws Exception {
+    Identifier unqualified = Identifier.of(new String[0], "t");
+    Column[] columns = {Column.create("id", DataTypes.IntegerType)};
+    List<ThrowingCallable> calls =
+        List.of(
+            () -> catalog.createTable(unqualified, columns, PARTITIONS, MANAGED_DELTA_PROPS),
+            () -> catalog.stageCreate(unqualified, SCHEMA, PARTITIONS, MANAGED_DELTA_PROPS),
+            () -> catalog.stageReplace(unqualified, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS),
+            () ->
+                catalog.stageCreateOrReplace(unqualified, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS));
+
+    for (ThrowingCallable call : calls) {
+      assertThatThrownBy(call)
+          .isInstanceOf(ApiException.class)
+          .hasMessage(
+              "Empty namespaces are not supported: name a schema for t, as in catalog.schema.t");
+    }
+    assertThatThrownBy(() -> catalog.loadTable(unqualified))
+        .isExactlyInstanceOf(NoSuchTableException.class);
+
+    verifyNoInteractions(mockDelegate);
   }
 
   @AfterEach

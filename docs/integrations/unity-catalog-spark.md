@@ -256,7 +256,8 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
     As noted in [Unity Catalog 101](https://www.unitycatalog.io/blogs/unity-catalog-oss), UC has a three-part naming
     convention of [`catalog`].[`schema`].[`asset`]. In the following examples, you can use the three-part notation such
     as `SELECT * FROM <catalog_name>.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the
-    `defaultCatalog` is already configured.
+    `defaultCatalog` is already configured. A name without a schema, such as `SELECT * FROM marksheet;`, uses the
+    `default` schema of that catalog until `USE <schema_name>` selects another, so that schema must exist.
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 

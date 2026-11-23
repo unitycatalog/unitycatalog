@@ -3,16 +3,20 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.spark.UCProxyTestFixture.CATALOG_NAME;
 import static io.unitycatalog.spark.UCProxyTestFixture.NAMESPACE;
 import static io.unitycatalog.spark.UCProxyTestFixture.SCHEMA_NAME;
+import static io.unitycatalog.spark.UCProxyTestFixture.routeToProxy;
+import static io.unitycatalog.spark.UCProxyTestFixture.sessionWithCatalog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.ApiException;
@@ -27,19 +31,20 @@ import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
-import io.unitycatalog.spark.utils.OptionsUtil;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.spark.sql.AnalysisException;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.catalyst.catalog.CatalogTable;
 import org.apache.spark.sql.connector.catalog.Column;
-import org.apache.spark.sql.connector.catalog.DelegatingCatalogExtension;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.Table;
@@ -51,12 +56,14 @@ import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.MetadataBuilder;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import scala.Option;
 import scala.jdk.javaapi.CollectionConverters;
 
@@ -642,6 +649,34 @@ public class UCProxySuite {
         .isInstanceOf(TableAlreadyExistsException.class);
   }
 
+  /**
+   * A namespace without a schema must fail before any RPC, with an error that names the problem.
+   */
+  @Test
+  public void testEmptyNamespaceIsRejectedBeforeAnyRpc() {
+    String[] empty = new String[0];
+    Identifier unqualified = Identifier.of(empty, "t1");
+    Column[] columns = {Column.create("c", DataTypes.StringType)};
+    List<ThrowingCallable> namespaceCalls =
+        List.of(
+            () -> proxy.listTables(empty),
+            () -> proxyNs.loadNamespaceMetadata(empty),
+            () -> proxyNs.createNamespace(empty, Map.of()),
+            () -> proxyNs.dropNamespace(empty, false));
+
+    for (ThrowingCallable call : namespaceCalls) {
+      assertThatThrownBy(call)
+          .isInstanceOf(ApiException.class)
+          .hasMessage("Empty namespaces are not supported: name a schema, as in catalog.schema");
+    }
+    assertThatThrownBy(
+            () -> proxy.createTable(unqualified, columns, new Transform[0], PARQUET_AT_LOCATION))
+        .isInstanceOf(ApiException.class)
+        .hasMessage(
+            "Empty namespaces are not supported: name a schema for t1, as in catalog.schema.t1");
+    verifyNoInteractions(mockTablesApi, mockSchemasApi);
+  }
+
   private static ApiException badRequest(String body) {
     return new ApiException(400, "Bad Request", null, body);
   }
@@ -677,19 +712,99 @@ public class UCProxySuite {
       assertThat(readId(spark, tableName)).isEqualTo(0);
 
       spark.sql("DROP TABLE " + tableName);
-      tables.put(tableName, parquetTable(catalogName, table, writeId(spark, dir, 1)));
+      tables.put(tableName, parquetTable(catalogName, SCHEMA_NAME, table, writeId(spark, dir, 1)));
       assertThat(readId(spark, tableName)).isEqualTo(1);
 
       tables.remove(tableName);
       spark.sql(String.format(createSql, writeId(spark, dir, 2)));
       assertThat(readId(spark, tableName)).isEqualTo(2);
 
-      tables.put(tableName, parquetTable(catalogName, table, writeId(spark, dir, 3)));
+      tables.put(tableName, parquetTable(catalogName, SCHEMA_NAME, table, writeId(spark, dir, 3)));
       spark.sql("REFRESH TABLE " + tableName);
       assertThat(readId(spark, tableName)).isEqualTo(3);
     } finally {
       spark.stop();
     }
+  }
+
+  // -- unqualified names --
+
+  /**
+   * With a UC catalog as the current catalog, chosen at startup or by SET CATALOG, a name without a
+   * schema resolves against schema default, as in Spark's session catalog. USE still picks another
+   * schema. A name with a catalog but no schema still resolves to no table.
+   */
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void testUnqualifiedNamesUseDefaultSchema(boolean defaultCatalogConf, @TempDir Path dir)
+      throws Exception {
+    Map<String, TableInfo> tables = new HashMap<>();
+    fakeTableStore(mockTablesApi, tables);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), anyString(), anyInt(), any(), anyBoolean()))
+        .thenAnswer(
+            invocation -> {
+              String prefix = CATALOG_NAME + "." + invocation.getArgument(1) + ".";
+              return new ListTablesResponse()
+                  .tables(
+                      tables.entrySet().stream()
+                          .filter(entry -> entry.getKey().startsWith(prefix))
+                          .map(Map.Entry::getValue)
+                          .collect(Collectors.toList()));
+            });
+    when(mockSchemasApi.getSchema(CATALOG_NAME + ".other", false))
+        .thenReturn(new SchemaInfo().catalogName(CATALOG_NAME).name("other").properties(Map.of()));
+    SparkSession spark = sessionWithCatalog(CATALOG_NAME);
+    try {
+      routeToProxy(spark, CATALOG_NAME, (UCProxy) proxy);
+      String createSql = "CREATE TABLE t (id INT) USING PARQUET LOCATION '%s'";
+      String location0 = writeId(spark, dir, 0);
+      String location1 = writeId(spark, dir, 1);
+      if (defaultCatalogConf) {
+        spark.conf().set("spark.sql.defaultCatalog", CATALOG_NAME);
+      } else {
+        spark.sql("SET CATALOG " + CATALOG_NAME);
+      }
+
+      assertThat(spark.sql("SELECT current_schema()").head().getString(0)).isEqualTo("default");
+      spark.sql(String.format(createSql, location0));
+      assertThat(tables).containsOnlyKeys(CATALOG_NAME + ".default.t");
+      assertThat(readId(spark, "t")).isEqualTo(0);
+      assertThat(spark.sql("SHOW TABLES").select("tableName").as(Encoders.STRING()).collectAsList())
+          .containsExactly("t");
+
+      String noSchema = CATALOG_NAME + ".t";
+      spark.sql("DROP TABLE IF EXISTS " + noSchema);
+      assertTableOrViewNotFound(() -> spark.sql("DROP TABLE " + noSchema));
+      assertTableOrViewNotFound(() -> spark.sql("SELECT * FROM " + noSchema));
+      assertThatThrownBy(
+              () ->
+                  spark.sql(
+                      "CREATE TABLE IF NOT EXISTS "
+                          + noSchema
+                          + String.format(" (id INT) USING PARQUET LOCATION '%s'", location1)))
+          .isInstanceOf(ApiException.class)
+          .hasMessage(
+              "Empty namespaces are not supported: name a schema for t, as in catalog.schema.t");
+      assertThat(tables).containsOnlyKeys(CATALOG_NAME + ".default.t");
+
+      spark.sql("USE other");
+      spark.sql(String.format(createSql, location1));
+      assertThat(tables).containsOnlyKeys(CATALOG_NAME + ".default.t", CATALOG_NAME + ".other.t");
+      assertThat(readId(spark, "t")).isEqualTo(1);
+
+      spark.sql("DROP TABLE t");
+      spark.sql("DROP TABLE IF EXISTS t");
+      assertThat(tables).containsOnlyKeys(CATALOG_NAME + ".default.t");
+    } finally {
+      spark.stop();
+    }
+  }
+
+  private static void assertTableOrViewNotFound(ThrowingCallable sql) {
+    assertThatThrownBy(sql)
+        .isInstanceOfSatisfying(
+            AnalysisException.class,
+            e -> assertThat(e.getCondition()).isEqualTo("TABLE_OR_VIEW_NOT_FOUND"));
   }
 
   private static void fakeTableStore(TablesApi tablesApi, Map<String, TableInfo> tables)
@@ -709,7 +824,10 @@ public class UCProxySuite {
               CreateTable create = invocation.getArgument(0);
               TableInfo table =
                   parquetTable(
-                      create.getCatalogName(), create.getName(), create.getStorageLocation());
+                      create.getCatalogName(),
+                      create.getSchemaName(),
+                      create.getName(),
+                      create.getStorageLocation());
               tables.put(
                   String.join(
                       ".", create.getCatalogName(), create.getSchemaName(), create.getName()),
@@ -720,33 +838,11 @@ public class UCProxySuite {
         .thenAnswer(invocation -> tables.remove(invocation.<String>getArgument(0)));
   }
 
-  /** Builds a new session, never another test's, with {@code catalogName} as a UC catalog. */
-  private static SparkSession sessionWithCatalog(String catalogName) {
-    SparkSession.clearActiveSession();
-    SparkSession.clearDefaultSession();
-    String catalogConf = "spark.sql.catalog." + catalogName;
-    return SparkSession.builder()
-        .master("local[1]")
-        .config(catalogConf, UCSingleCatalog.class.getName())
-        .config(catalogConf + "." + OptionsUtil.URI, "http://localhost:8080")
-        .config(catalogConf + "." + OptionsUtil.TOKEN, "token")
-        // Delta's own UC client would load tables from the server instead of the fake proxy.
-        .config(catalogConf + "." + OptionsUtil.DELTA_API_ENABLED, "false")
-        .getOrCreate();
-  }
-
-  /** Points the session's {@link UCSingleCatalog}, through its Delta catalog, at {@code proxy}. */
-  private static void routeToProxy(SparkSession spark, String catalogName, UCProxy proxy) {
-    UCSingleCatalog catalog =
-        (UCSingleCatalog) spark.sessionState().catalogManager().catalog(catalogName);
-    catalog.ucProxy_$eq(proxy);
-    ((DelegatingCatalogExtension) catalog.delegate()).setDelegateCatalog(proxy);
-  }
-
-  private static TableInfo parquetTable(String catalogName, String table, String location) {
+  private static TableInfo parquetTable(
+      String catalogName, String schemaName, String table, String location) {
     return new TableInfo()
         .catalogName(catalogName)
-        .schemaName(SCHEMA_NAME)
+        .schemaName(schemaName)
         .name(table)
         .tableId("table-id-" + table)
         .tableType(TableType.EXTERNAL)

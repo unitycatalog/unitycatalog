@@ -200,6 +200,9 @@ class UCSingleCatalog
 
   override def name(): String = delegate.name()
 
+  /** Names without a schema resolve against schema `default`, as in Spark's session catalog. */
+  override def defaultNamespace(): Array[String] = Array("default")
+
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
   override def loadTable(ident: Identifier): Table = {
@@ -238,24 +241,32 @@ class UCSingleCatalog
    *
    * Delta and Iceberg path identifiers remain delegated so DeltaCatalog can resolve
    * `delta.`path`` via `loadPathTable` and `iceberg.`path`` via `newIcebergPathTable`.
-   * Nested namespaces fail with [[UCSingleCatalog.checkUnsupportedNestedNamespace]] on load so
-   * they are not mistaken for a missing table.
+   * An empty namespace, as in `<catalog>.t`, is reported as `NoSuchTableException` rather than
+   * rejected, because that is the only exception Spark treats as a missing table. Every table load
+   * comes through here, including reads, time travel, write targets and `loadRelation`, so SELECT,
+   * DESCRIBE, INSERT and the other table commands report `TABLE_OR_VIEW_NOT_FOUND`, and
+   * `DROP TABLE IF EXISTS` stays a no-op where Spark resolves it through `loadRelation`. Nested
+   * namespaces fail with [[UCSingleCatalog.checkSingleLevelNamespace]] on load so they are not
+   * mistaken for a missing table.
    */
   private def requireAddressableTableNameOrPathTable(ident: Identifier): Unit = {
     if (isDeltaOrIcebergPath(ident)) {
       return
     }
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (ident.namespace().isEmpty) {
+      throw new NoSuchTableException(ident)
+    }
+    UCSingleCatalog.checkSingleLevelNamespace(ident)
     if (!UCSingleCatalog.isAddressableTableName(ident)) {
       throw new NoSuchTableException(ident)
     }
   }
 
   /**
-   * Parquet-style path identifiers are absent (so Spark can fall through to SQL-on-file). Nested
-   * names still go to the delegate: Delta 4.3+ rejects them client-side with
+   * Parquet-style path identifiers are absent (so Spark can fall through to SQL-on-file). Empty
+   * and nested names still go to the delegate: Delta 4.3+ rejects nested names client-side with
    * IllegalArgumentException, which Spark DROP/EXISTS tests expect. Do not throw
-   * [[UCSingleCatalog.checkUnsupportedNestedNamespace]] here.
+   * [[UCSingleCatalog.checkSingleLevelNamespace]] here.
    */
   override def tableExists(ident: Identifier): Boolean = {
     if (isDeltaOrIcebergPath(ident) || ident.namespace().length != 1) {
@@ -282,7 +293,7 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
     val schema = CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns)
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    UCSingleCatalog.checkSingleLevelNamespace(ident)
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     if (hasExternalClause && !hasLocationClause) {
@@ -694,7 +705,7 @@ class UCSingleCatalog
   private def resolveExistingTableForReplace(
       ident: Identifier,
       allowMissingTable: Boolean): Option[UCTableInfo] = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    UCSingleCatalog.checkSingleLevelNamespace(ident)
     val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
     try {
       Some(tablesApi.getTable(fullTableName,
@@ -765,7 +776,7 @@ class UCSingleCatalog
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    UCSingleCatalog.checkSingleLevelNamespace(ident)
     val stagingCatalog = requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)")
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
       if (hasDeltaProvider(properties)) {
@@ -955,10 +966,35 @@ object UCSingleCatalog extends Logging {
     !hasExternalClause && !hasLocationClause && !isPathTable
   }
 
-  def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
+  /**
+   * Rejects a namespace that is not exactly one schema name.
+   *
+   * @param namespace the namespace Spark passed to the catalog
+   * @throws ApiException if the namespace is empty or nested
+   */
+  def checkSingleLevelNamespace(namespace: Array[String]): Unit = {
+    if (namespace.isEmpty) {
+      throw new ApiException(
+        "Empty namespaces are not supported: name a schema, as in catalog.schema")
+    }
     if (namespace.length > 1) {
       throw new ApiException("Nested namespaces are not supported: " + namespace.mkString("."))
     }
+  }
+
+  /**
+   * Rejects an identifier whose namespace is not exactly one schema name.
+   *
+   * @param ident the table or view identifier Spark passed to the catalog
+   * @throws ApiException if the identifier's namespace is empty or nested
+   */
+  def checkSingleLevelNamespace(ident: Identifier): Unit = {
+    if (ident.namespace().isEmpty) {
+      throw new ApiException(
+        s"Empty namespaces are not supported: name a schema for ${ident.name()}, as in " +
+          s"catalog.schema.${ident.name()}")
+    }
+    checkSingleLevelNamespace(ident.namespace())
   }
 
   /**
@@ -978,10 +1014,10 @@ object UCSingleCatalog extends Logging {
    * @param catalogName the name of the catalog
    * @param ident the table identifier containing the namespace (schema) and table name
    * @return a fully qualified table name in the format "catalog.schema.table"
-   * @throws ApiException if the identifier contains nested namespaces (more than one level)
+   * @throws ApiException if the identifier's namespace is empty or nested
    */
   def fullTableNameForApi(catalogName: String, ident: Identifier): String = {
-    checkUnsupportedNestedNamespace(ident.namespace())
+    checkSingleLevelNamespace(ident)
     Seq(catalogName, ident.namespace()(0), ident.name()).mkString(".")
   }
 
@@ -1036,7 +1072,7 @@ private[spark] class UCProxy(
   }
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkSingleLevelNamespace(namespace)
     // Which view-like rows to hide from the table surface is version-specific: on Spark 4.2 all
     // view-like types are served via listViews, while on 4.0/4.1 plain views remain here so they
     // stay readable without a v2 view catalog.
@@ -1213,7 +1249,7 @@ private[spark] class UCProxy(
    * point; this legacy 4-arg method carries all the create-table logic.
    */
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    UCSingleCatalog.checkSingleLevelNamespace(ident)
     UCSingleCatalog.requireProviderSpecified("CREATE TABLE", properties)
 
     val createTable = new CreateTable()
@@ -1411,7 +1447,7 @@ private[spark] class UCProxy(
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkSingleLevelNamespace(namespace)
     val schema = try {
       schemasApi.getSchema(name + "." + namespace(0), /* includeBrowse = */ false)
     } catch {
@@ -1434,7 +1470,7 @@ private[spark] class UCProxy(
   }
 
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkSingleLevelNamespace(namespace)
     val createSchema = new CreateSchema()
     createSchema.setCatalogName(this.name)
     createSchema.setName(namespace.head)
@@ -1461,7 +1497,7 @@ private[spark] class UCProxy(
   }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkSingleLevelNamespace(namespace)
     schemasApi.deleteSchema(name + "." + namespace.head, cascade)
     true
   }
