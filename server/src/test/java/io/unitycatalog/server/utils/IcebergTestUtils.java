@@ -24,6 +24,12 @@ public final class IcebergTestUtils {
 
   /** Creates an empty table; the caller closes its FileIO after use. */
   public static BaseTable createTable(Path directory, Schema schema) {
+    return createTable(directory, schema, Map.of());
+  }
+
+  /** Creates an empty table with the given properties; the caller closes its FileIO after use. */
+  public static BaseTable createTable(
+      Path directory, Schema schema, Map<String, String> properties) {
     String location = NormalizedURL.from(directory.toUri()).toString();
     FileIO fileIO = new SimpleLocalFileIO(directory);
     var operations =
@@ -52,7 +58,8 @@ public final class IcebergTestUtils {
         };
     operations.commit(
         null,
-        TableMetadata.newTableMetadata(schema, PartitionSpec.unpartitioned(), location, Map.of()));
+        TableMetadata.newTableMetadata(
+            schema, PartitionSpec.unpartitioned(), location, properties));
     return new BaseTable(operations, location);
   }
 

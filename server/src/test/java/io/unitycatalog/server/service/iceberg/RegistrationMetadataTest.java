@@ -16,10 +16,12 @@ import io.unitycatalog.server.utils.IcebergTestUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileMetadata;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.data.GenericRecord;
@@ -54,6 +56,20 @@ class RegistrationMetadataTest {
   @AfterEach
   void tearDown() {
     table.io().close();
+  }
+
+  @Test
+  void rejectsMetadataWithoutTableUuid() throws Exception {
+    TableMetadata metadata =
+        TableMetadata.newTableMetadata(
+            table.schema(),
+            table.spec(),
+            table.location(),
+            Map.of(TableProperties.FORMAT_VERSION, "1"));
+    ObjectNode json =
+        (ObjectNode) new ObjectMapper().readTree(TableMetadataParser.toJson(metadata));
+    json.remove("table-uuid");
+    assertRejected(json, "must contain table-uuid");
   }
 
   @ParameterizedTest

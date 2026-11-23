@@ -90,6 +90,9 @@ Send the table name and the path of its current Iceberg metadata file:
 Use `POST /v1/catalogs/{catalog}/namespaces/{namespace}/register`. Local absolute paths and
 `file://` URLs are also accepted when they are inside configured storage.
 
+The metadata file must contain `table-uuid`, including for format-v1 tables. A file without it
+returns HTTP 400 before the table is registered. Registration does not add a UUID or rewrite the file.
+
 The metadata file must be inside the table directory declared by the metadata. That directory must
 be below an external location, the destination catalog or schema's assigned `storage_location`, or
 the server's default managed table directory under `storage-root.tables/__unitystorage`. Paths under

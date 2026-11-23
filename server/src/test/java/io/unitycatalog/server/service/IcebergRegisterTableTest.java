@@ -4,6 +4,8 @@ import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.CredentialsApi;
@@ -58,6 +60,7 @@ import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.avro.Avro;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.data.GenericRecord;
@@ -236,9 +239,14 @@ public class IcebergRegisterTableTest extends BaseServerTest {
     assertThat(sibling).hasContent("keep");
   }
 
-  @Test
-  public void icebergClientCanRegisterAndCommit() throws Exception {
-    var source = IcebergTestUtils.createTable(externalRoot.resolve("client_table"), SCHEMA);
+  @ParameterizedTest
+  @ValueSource(ints = {1, 2})
+  public void icebergClientCanRegisterAndCommit(int formatVersion) throws Exception {
+    var source =
+        IcebergTestUtils.createTable(
+            externalRoot.resolve("client_table"),
+            SCHEMA,
+            Map.of(TableProperties.FORMAT_VERSION, Integer.toString(formatVersion)));
     Path file;
     try (var ignored = source.io()) {
       GenericRecord record = GenericRecord.create(SCHEMA);
@@ -249,6 +257,23 @@ public class IcebergRegisterTableTest extends BaseServerTest {
           .commit();
       file =
           Path.of(NormalizedURL.from(source.operations().current().metadataFileLocation()).toUri());
+    }
+    if (formatVersion == 1) {
+      String original = Files.readString(file);
+      ObjectNode json = (ObjectNode) new ObjectMapper().readTree(original);
+      json.remove("table-uuid");
+      String withoutUuid = json.toString();
+      Files.writeString(file, withoutUuid);
+      assertIcebergApiException(
+          () -> client.registerTable(CATALOG, NAMESPACE, request("client_table", file.toString())),
+          400,
+          "must contain table-uuid");
+      assertThat(file).hasContent(withoutUuid);
+      try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+        assertThat(session.createSelectionQuery("FROM TableInfoDAO", TableInfoDAO.class).list())
+            .isEmpty();
+      }
+      Files.writeString(file, original);
     }
     try (RESTCatalog catalog =
         new RESTCatalog() {
@@ -284,8 +309,10 @@ public class IcebergRegisterTableTest extends BaseServerTest {
         assertThat(files.hasNext()).isFalse();
       }
       table.updateProperties().set("registered", "true").commit();
-      assertThat(client.loadTable(CATALOG, NAMESPACE, "client_table").tableMetadata().properties())
-          .containsEntry("registered", "true");
+      TableMetadata committed =
+          client.loadTable(CATALOG, NAMESPACE, "client_table").tableMetadata();
+      assertThat(committed.formatVersion()).isEqualTo(formatVersion);
+      assertThat(committed.properties()).containsEntry("registered", "true");
     }
     assertThat(file).exists();
   }

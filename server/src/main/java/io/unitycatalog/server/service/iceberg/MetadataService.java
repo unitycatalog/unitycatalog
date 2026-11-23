@@ -81,6 +81,11 @@ public class MetadataService {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "Cannot read Iceberg metadata from " + metadataLocation, e);
     }
+    // REST clients require a table UUID to build commit requirements, including for format v1.
+    ValidationUtils.checkArgument(
+        metadata.uuid() != null,
+        "Iceberg metadata at '%s' must contain table-uuid before registration.",
+        metadataLocation);
     NormalizedURL tableLocation = NormalizedURL.from(metadata.location());
     validateMetadataLocation(tableLocation, storageRoot);
     validateMetadataLocation(metadataLocation, tableLocation);
