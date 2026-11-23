@@ -1253,7 +1253,9 @@ paths:
         A `gcp_service_account_key` credential holds a Google Cloud service account key: the server
         encrypts its `private_key` with `server.credential-encryption-key` and never returns it, and
         its external locations must be `gs://` paths. A request for access under such a location is
-        vended from the stored key, and fails with `FAILED_PRECONDITION` if Google rejects the key.
+        vended from the stored key. It fails with `FAILED_PRECONDITION` if Google rejects or refuses
+        the key, `INVALID_ARGUMENT` if Google rejects the location, `UNAVAILABLE` if Google cannot be
+        reached, and `INTERNAL` if Google rejects the server's clock.
 
         EXPERIMENTAL: `s3_compatible` is available only when the server property
         `server.s3-compatible-storage.enabled` is `true`. Otherwise a create or update request that

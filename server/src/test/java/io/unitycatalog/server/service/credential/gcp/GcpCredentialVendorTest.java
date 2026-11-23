@@ -99,7 +99,11 @@ public class GcpCredentialVendorTest {
         .containsExactly("inRole:roles/storage.objectViewer");
   }
 
-  /** A percent-encoded dot or slash is decoded into the object name, never resolved as a path. */
+  /**
+   * A percent-encoded dot or slash is decoded into the object name, never resolved as a path. This
+   * checks the condition the server emits; how Google matches it against object names is not
+   * covered here.
+   */
   @ParameterizedTest
   @CsvSource({
     "gs://test-bucket/data/%2e%2e/other/table, data/../other/table",
