@@ -12,7 +12,10 @@ import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 public class DeltaCredentialsMapperTest {
 
@@ -95,6 +98,28 @@ public class DeltaCredentialsMapperTest {
         .contains("\"s3.endpoint\":\"http://storage.example.com:9000\"")
         .contains("\"expiration-time-ms\":1700000000000")
         .doesNotContain("s3.access-key-id");
+  }
+
+  static Stream<TemporaryCredentials> credentialsWithoutExpiration() {
+    return Stream.of(
+        new TemporaryCredentials().url("file:///tmp/uc/tbl"),
+        new TemporaryCredentials()
+            .url("s3://bucket/path")
+            .awsTempCredentials(
+                new AwsCredentials()
+                    .accessKeyId("key-id-1")
+                    .secretAccessKey("key-value-1")
+                    .sessionToken("session-1")));
+  }
+
+  @ParameterizedTest
+  @MethodSource("credentialsWithoutExpiration")
+  public void testCredentialWithoutExpirationOmitsTheKey(TemporaryCredentials uc) throws Exception {
+    String json =
+        DeltaApiMappers.MAPPER.writeValueAsString(
+            DeltaCredentialsMapper.toCredentialsResponse(uc, DeltaCredentialOperation.READ));
+
+    assertThat(json).contains("\"prefix\":\"" + uc.getUrl() + "\"").doesNotContain("expiration");
   }
 
   @Test
