@@ -15,12 +15,11 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UuidEntity;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.hibernate.LockMode;
@@ -209,11 +208,11 @@ public class RepositoryUtils {
   }
 
   /**
-   * Runs a locking read; a lock timeout or deadlock victim becomes {@code UNAVAILABLE} (503): the
-   * row was not changed, and the request can be retried. The Iceberg REST spec lists 503, not 409,
-   * for drop table, and the Iceberg client reads a 409 on drop as "already exists".
+   * Runs a locking operation; a lock timeout or deadlock victim becomes {@code UNAVAILABLE} (503).
+   * The caller must roll back its transaction before retrying. The Iceberg REST spec lists 503, not
+   * 409, for drop table, and the Iceberg client reads a 409 on drop as "already exists".
    */
-  private static <R> R unavailableOnLockFailure(String description, Supplier<R> lockingRead) {
+  public static <R> R unavailableOnLockFailure(String description, Supplier<R> lockingRead) {
     try {
       return lockingRead.get();
     } catch (RuntimeException e) {
@@ -255,20 +254,31 @@ public class RepositoryUtils {
         || failure instanceof org.hibernate.exception.LockAcquisitionException;
   }
 
+  /**
+   * Sets the stored properties of an entity on its API model. Leaves the model unchanged when the
+   * entity has no properties.
+   *
+   * @param entityInfo the API model to fill in
+   * @param setProperties the model's properties setter, for example {@code
+   *     CatalogInfo::setProperties}
+   * @param uuid the entity's id
+   * @param entityType the entity type the properties are stored under, for example {@code
+   *     Constants.CATALOG}
+   * @param session the session to read the properties with
+   * @return {@code entityInfo}
+   */
   public static <T> T attachProperties(
-      T entityInfo, String uuid, String entityType, Session session) {
-    try {
-      List<PropertyDAO> propertyDAOList =
-          PropertyRepository.findProperties(session, UUID.fromString(uuid), entityType);
-      if (propertyDAOList.isEmpty()) {
-        return entityInfo;
-      }
-      Method setPropertiesMethod = entityInfo.getClass().getMethod("setProperties", Map.class);
-      setPropertiesMethod.invoke(entityInfo, PropertyDAO.toMap(propertyDAOList));
-      return entityInfo;
-    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-      throw new RuntimeException(e);
+      T entityInfo,
+      BiConsumer<T, Map<String, String>> setProperties,
+      String uuid,
+      String entityType,
+      Session session) {
+    List<PropertyDAO> propertyDAOList =
+        PropertyRepository.findProperties(session, UUID.fromString(uuid), entityType);
+    if (!propertyDAOList.isEmpty()) {
+      setProperties.accept(entityInfo, PropertyDAO.toMap(propertyDAOList));
     }
+    return entityInfo;
   }
 
   public static boolean isViewLike(String tableTypeValue) {

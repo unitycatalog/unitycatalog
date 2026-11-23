@@ -22,6 +22,7 @@ import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -52,6 +53,7 @@ class CredentialRepositoryTest {
   @TempDatabase private TestDatabase testDatabase;
 
   private final RecordingSecretStore secretStore = new RecordingSecretStore();
+  private Repositories repositories;
   private CredentialRepository credentialRepository;
   private SafeCloseable requestContext;
 
@@ -74,9 +76,13 @@ class CredentialRepositoryTest {
   @BeforeEach
   void setUp() {
     requestContext = ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/")).push();
+    repositories =
+        new Repositories(
+            testDatabase.sessionFactory(),
+            serverProperties(/* isS3CompatibleStorageEnabled= */ true));
     credentialRepository =
         new CredentialRepository(
-            /* repositories= */ null,
+            repositories,
             testDatabase.sessionFactory(),
             serverProperties(/* isS3CompatibleStorageEnabled= */ true),
             secretStore);
@@ -84,6 +90,7 @@ class CredentialRepositoryTest {
 
   @AfterEach
   void tearDown() {
+    repositories.getOwnedCloudCredentialVendor().ifPresent(CloudCredentialVendor::close);
     requestContext.close();
   }
 
@@ -99,7 +106,7 @@ class CredentialRepositoryTest {
   void testS3CompatibleNeedsTheExperimentalFlag() {
     CredentialRepository disabled =
         new CredentialRepository(
-            /* repositories= */ null,
+            repositories,
             testDatabase.sessionFactory(),
             serverProperties(/* isS3CompatibleStorageEnabled= */ false),
             secretStore);
@@ -145,7 +152,7 @@ class CredentialRepositoryTest {
     ServerProperties flagOff = serverProperties(/* isS3CompatibleStorageEnabled= */ false);
     CredentialRepository disabled =
         new CredentialRepository(
-            /* repositories= */ null,
+            repositories,
             testDatabase.sessionFactory(),
             flagOff,
             EncryptedCredentialSecretStore.from(flagOff));
@@ -214,7 +221,7 @@ class CredentialRepositoryTest {
 
   private CredentialRepository repositoryWithKey(Optional<String> key) {
     return new CredentialRepository(
-        /* repositories= */ null,
+        repositories,
         testDatabase.sessionFactory(),
         serverProperties(/* isS3CompatibleStorageEnabled= */ true),
         new EncryptedCredentialSecretStore(key));

@@ -53,6 +53,11 @@ public class TransactionManager {
    * 4xx or a {@link TransactionRollbackException}, which the error handler does not log, it is
    * logged as a warning with these failures.
    *
+   * <p>A {@link BaseException} with a 4xx status means nothing was committed: it comes only from
+   * the operation or from a database error that {@link DatabaseErrors} maps, both raised before or
+   * during the commit, never after it. Callers rely on this to undo the side effects of a rejected
+   * write, so a failure whose commit outcome is unknown must not be mapped to a 4xx.
+   *
    * @param sessionFactory the Hibernate session factory
    * @param operation the database operation to execute
    * @param errorMessage the error message to use if the operation fails

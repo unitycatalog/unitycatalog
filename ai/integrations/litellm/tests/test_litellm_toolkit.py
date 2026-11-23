@@ -19,7 +19,11 @@ from unitycatalog.ai.test_utils.client_utils import (
     requires_databricks,
     set_default_client,
 )
-from unitycatalog.ai.test_utils.function_utils import CATALOG, create_function_and_cleanup
+from unitycatalog.ai.test_utils.function_utils import (
+    CATALOG,
+    create_function_and_cleanup,
+    mock_schema_with_inaccessible_function,
+)
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_litellm_test")
 
@@ -105,7 +109,7 @@ def test_uc_function_to_litellm_tool(function_info, client):
     "filter_accessible_functions",
     [True, False],
 )
-def uc_function_to_litellm_tool_permission_denied(filter_accessible_functions):
+def test_uc_function_to_litellm_tool_permission_denied(filter_accessible_functions):
     client = get_client()
     # Permission Error should be caught
     with patch(
@@ -137,6 +141,29 @@ def uc_function_to_litellm_tool_permission_denied(filter_accessible_functions):
                 function_name=f"{CATALOG}.{SCHEMA}.test",
                 filter_accessible_functions=filter_accessible_functions,
             )
+
+
+@pytest.mark.parametrize(
+    "function_names",
+    [["catalog.schema.*"], ["catalog.schema.inaccessible", "catalog.schema.accessible"]],
+)
+def test_toolkit_skips_inaccessible_functions(function_names):
+    client = get_client()
+    with mock_schema_with_inaccessible_function(client):
+        toolkit = UCFunctionToolkit(
+            function_names=function_names, client=client, filter_accessible_functions=True
+        )
+
+    assert [tool["name"] for tool in toolkit.tools] == ["catalog__schema__accessible"]
+
+
+def test_toolkit_raises_for_inaccessible_functions_without_filter():
+    client = get_client()
+    with (
+        mock_schema_with_inaccessible_function(client),
+        pytest.raises(PermissionError, match=r"^Permission denied: catalog\.schema\.inaccessible$"),
+    ):
+        UCFunctionToolkit(function_names=["catalog.schema.*"], client=client)
 
 
 @pytest.mark.parametrize("execution_mode", ["serverless", "local"])

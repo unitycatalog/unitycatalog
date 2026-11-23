@@ -21,7 +21,8 @@ connectrpc = { version = "=0.9.0", features = ["axum"] }
 percent-encoding = "2"
 protovalidate-buffa = "=0.7.2"
 # Generated CEL `matches()` validators reference `::regex` directly; codegen
-# 0.10.1+ uses the protovalidate-buffa re-export instead.
+# 0.10.1+ uses the protovalidate-buffa re-export instead. `config.rs` also uses
+# it to check the `GOOGLE_CLIENT_ID` shape, so keep it after that upgrade.
 regex = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

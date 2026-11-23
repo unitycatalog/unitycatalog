@@ -219,8 +219,8 @@ public class HttpRetryHandlerTest {
     RetryPolicy retryPolicy =
         JitterDelayRetryPolicy.builder()
             .maxAttempts(3)
-            .initDelayMs(10L)
-            .delayMultiplier(1.0)
+            .initDelayMs(100L)
+            .delayMultiplier(2.0)
             .delayJitterFactor(0.0)
             .build();
 
@@ -235,6 +235,7 @@ public class HttpRetryHandlerTest {
             ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenReturn(response429);
 
+    Instant start = clock.now();
     HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
@@ -245,6 +246,103 @@ public class HttpRetryHandlerTest {
     assertThat(result.statusCode()).isEqualTo(429);
     // Body from the original response survives the retry loop.
     assertThat(result.body()).isEqualTo("Rate limit body");
+    // Only the 2 retries sleep (100ms + 200ms), not the final failed attempt.
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(300)));
+  }
+
+  @Test
+  public void testSingleAttemptPolicyDoesNotSleep() throws IOException, InterruptedException {
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder().maxAttempts(1).initDelayMs(100L).build();
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/unavailable")).build();
+    HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenReturn(response503);
+
+    Instant start = clock.now();
+    HttpResponse<String> result =
+        new HttpRetryHandler(retryPolicy, clock)
+            .call(mockClient, mockRequest, HttpResponse.BodyHandlers.ofString());
+
+    verify(mockClient, times(1))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    assertThat(result.statusCode()).isEqualTo(503);
+    assertThat(clock.now()).isEqualTo(start);
+  }
+
+  @Test
+  public void testSingleAttemptPolicyRethrowsWithoutSleeping()
+      throws IOException, InterruptedException {
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder().maxAttempts(1).initDelayMs(100L).build();
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/slow")).build();
+    java.net.SocketTimeoutException timeout = new java.net.SocketTimeoutException("timed out");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenThrow(timeout);
+
+    Instant start = clock.now();
+    HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
+
+    assertThatThrownBy(
+            () -> handler.call(mockClient, mockRequest, HttpResponse.BodyHandlers.ofString()))
+        .isSameAs(timeout);
+    verify(mockClient, times(1))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    assertThat(clock.now()).isEqualTo(start);
+  }
+
+  @Test
+  public void testCustomPolicyCanStopRetryingBeforeMaxAttempts()
+      throws IOException, InterruptedException {
+    RetryPolicy retryPolicy =
+        new RetryPolicy() {
+          @Override
+          public int maxAttempts() {
+            return 5;
+          }
+
+          @Override
+          public Duration sleepTime(int attempt) {
+            return Duration.ofMillis(100);
+          }
+
+          @Override
+          public boolean allowRetry(int attempt) {
+            return attempt < 2;
+          }
+        };
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/unavailable")).build();
+    HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenReturn(response503);
+
+    Instant start = clock.now();
+    HttpResponse<String> result =
+        new HttpRetryHandler(retryPolicy, clock)
+            .call(mockClient, mockRequest, HttpResponse.BodyHandlers.ofString());
+
+    verify(mockClient, times(2))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    assertThat(result.statusCode()).isEqualTo(503);
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(100)));
   }
 
   @Test
@@ -274,8 +372,11 @@ public class HttpRetryHandlerTest {
       throw new RuntimeException(e);
     }
 
+    Instant start = clock.now();
     HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
     assertThatThrownBy(() -> handler.call(mockClient, mockRequest, bodyHandler)).isSameAs(timeout);
+    // Only the single retry sleeps, not the final failed attempt.
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(10)));
   }
 
   @Test

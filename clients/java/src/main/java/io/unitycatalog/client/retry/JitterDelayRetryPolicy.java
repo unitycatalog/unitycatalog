@@ -67,7 +67,7 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
   /**
    * Calculates the sleep time before the next retry attempt using exponential backoff with jitter.
    *
-   * @param attempt the current attempt number (1-indexed)
+   * @param attempt the number of the attempt that just failed (1-indexed)
    * @return the duration to sleep before retrying
    */
   @Override

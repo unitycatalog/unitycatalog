@@ -155,6 +155,30 @@ a reporting tool. If `--upgrade-schema` stays at a step for long, look for such 
 them: `SELECT pid, state, query FROM pg_stat_activity WHERE datname = current_database()` on
 PostgreSQL, `SHOW PROCESSLIST` on MySQL.
 
+### Credentials as text
+
+Schema step V4 widens `uc_credentials.credential` from `tinytext` to `mediumtext` on MySQL, and
+changes nothing on H2. On PostgreSQL it stores each credential as text instead of a large object,
+read as UTF-8, so a database whose encoding cannot hold a stored credential's characters fails the
+step.
+
+Step V4 reads every credential's large object, so `--upgrade-schema` must connect as a user that
+can read them: their owner, or a user granted `SELECT` on each of them
+(`GRANT SELECT ON LARGE OBJECT <oid> TO <user>`). It connects as `hibernate.connection.username`,
+or `hibernate.connection.user` when that is not set. Step V4 fails, and leaves `uc_credentials` as
+it was, in two cases; steps before it that succeeded stay applied:
+
+- The user cannot read a large object: grant `SELECT` on it, or run `--upgrade-schema` as the
+  owner, then run it again.
+- A large object is missing: restore it, or restore the backup, then run `--upgrade-schema` again.
+
+The large objects stay in the database afterwards, holding the credentials as the earlier release
+stored them, including earlier versions of updated ones: remove them with `vacuumlo -v ucdb`.
+`vacuumlo` removes every large object that no column references, not only the credentials' ones, so
+run it only when the database holds nothing but Unity Catalog, and check first with
+`vacuumlo -n -v ucdb`. On PostgreSQL a release from before schema step V4 cannot read the converted
+column, so going back to it needs the backup.
+
 ## Backing up the database
 
 Take the backup with all servers stopped, so that it holds no half-written change. The examples use
@@ -174,7 +198,9 @@ To go back, stop the new release's servers and restore the backup you took befor
 
 Do not start the baseline release on the upgraded database as it is: its Hibernate setting
 `hibernate.hbm2ddl.auto=update` changes column types back (it narrows the column that step 2
-widened) while the schema history still records the step.
+widened) while the schema history still records the steps. On PostgreSQL it also cannot read the
+credentials that schema step V4 stored as text (see [Credentials as text](#credentials-as-text)),
+so restore the backup.
 
 ## Messages
 
