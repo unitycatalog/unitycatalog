@@ -238,7 +238,7 @@ IntelliJ is the recommended IDE to use when developing Unity Catalog. The below 
 3. Under `Import project from external model` select `sbt`. Click `Next`.
 4. Click `Finish`.
 
-Java code adheres to the [Google style](https://google.github.io/styleguide/javaguide.html), which is verified via `build/sbt javafmtCheckAll` during builds.
+Java code adheres to the [Google style](https://google.github.io/styleguide/javaguide.html), which `build/sbt javafmtAll` applies (compiling a module runs it too) and CI checks with `build/sbt javafmtCheck`.
 In order to automatically fix Java code style issues, please use `build/sbt javafmtAll`.
 
 The build uses [sbt-java-formatter](https://github.com/sbt/sbt-java-formatter) 0.13.1 with

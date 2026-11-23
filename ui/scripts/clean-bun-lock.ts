@@ -34,7 +34,7 @@ const matches = original.match(PROXY_RESOLUTION)?.length ?? 0;
 if (checkOnly) {
   if (matches > 0) {
     console.error(
-      `bun.lock contains ${matches} proxied resolution URL(s). Run: bun run strip-lock-proxy`,
+      `bun.lock contains ${matches} proxied resolution URL(s). Run: bun run scripts/clean-bun-lock.ts`,
     );
     process.exit(1);
   }
