@@ -147,8 +147,9 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
    * two modes.
    *
    * <p>A {@code gcp_service_account_key} credential is not vended yet: a request under its external
-   * location fails with {@code UNIMPLEMENTED}. Its id and fingerprint are part of the key already,
-   * so that once vending lands, entries are replaced when the key changes.
+   * location fails with {@code UNIMPLEMENTED}. Its id and fingerprint are part of the key, so a
+   * token cached for the server's {@code gcs.*} settings cannot satisfy that request, and once
+   * vending lands, entries are replaced when the key changes.
    */
   private record Key(
       List<NormalizedURL> locations,
