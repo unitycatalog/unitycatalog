@@ -127,12 +127,12 @@ public class StoredGcpKeyVendingTest extends BaseCRUDTest {
   public void testPathUnderLocationIsVendedFromTheStoredKey() throws ApiException {
     String path = LOCATION + "/table";
     TemporaryCredentials read = vend(path, PathOperation.PATH_READ);
-    // The token is for the stored key, for reading, for the requested path only.
+    // The generator was asked for the stored key, for reading, for the requested path.
     assertThat(read.getGcpOauthToken().getOauthToken())
         .isEqualTo(EMAIL + " " + PRIVATE_KEY_ID + " [SELECT] [" + path + "]");
     assertThat(read.getExpirationTime()).isGreaterThan(System.currentTimeMillis());
 
-    // Writing asks for the write role.
+    // Writing asks the generator for the write privilege.
     assertThat(vend(path, PathOperation.PATH_READ_WRITE).getGcpOauthToken().getOauthToken())
         .contains("UPDATE");
 
@@ -217,16 +217,15 @@ public class StoredGcpKeyVendingTest extends BaseCRUDTest {
   }
 
   /**
-   * {@code ..} written as {@code %2e%2e} is part of the location's literal path, so it is accepted,
-   * and the token is limited to that literal object name: GCS does not resolve {@code ..}, so it
-   * cannot reach {@code other/}.
+   * {@code ..} written as {@code %2e%2e} is part of the location's literal path, so it is accepted.
+   * What the access boundary holds for it is checked in {@code GcpCredentialVendorTest}.
    */
   @Test
-  public void testEncodedDotDotStaysInsideTheLocation() throws ApiException {
+  public void testEncodedDotDotIsAcceptedAsALiteralPath() throws ApiException {
     String path = "gs://uc-test-bucket/data/%2e%2e/other/table";
 
     String token = vend(path, PathOperation.PATH_READ).getGcpOauthToken().getOauthToken();
 
-    assertThat(token).endsWith("[" + path + "]").doesNotContain("/..");
+    assertThat(token).endsWith("[" + path + "]");
   }
 }

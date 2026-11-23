@@ -2,6 +2,7 @@ package io.unitycatalog.server.service.credential.gcp;
 
 import static java.lang.String.format;
 
+import com.google.auth.Retryable;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.CredentialAccessBoundary;
 import com.google.auth.oauth2.DownscopedCredentials;
@@ -301,6 +302,8 @@ public class GcpCredentialVendor {
    *       administrator to fix: {@code FAILED_PRECONDITION}, saying to contact the administrator;
    *   <li>Google rejecting the server's timestamps, which is clock skew that no key fixes, is
    *       {@code INTERNAL};
+   *   <li>any other answer from Google that the library marks as not worth retrying, such as a 403,
+   *       is {@code FAILED_PRECONDITION} too;
    *   <li>any other failure, such as a network error, is {@code UNAVAILABLE}, since a retry may
    *       succeed.
    * </ul>
@@ -332,10 +335,27 @@ public class GcpCredentialVendor {
               + " it may have been disabled, deleted or revoked. Contact the server administrator.",
           e);
     }
+    if (isPermanentFailure(e)) {
+      return new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "Google refused to issue an access token for the storage credential of this location."
+              + " Contact the server administrator.",
+          e);
+    }
     return new BaseException(
         ErrorCode.UNAVAILABLE,
         "Could not get a Google access token for this location. Try again.",
         e);
+  }
+
+  /** Whether google-auth says that asking again cannot succeed, e.g. an HTTP 403 or 400. */
+  private static boolean isPermanentFailure(Throwable failure) {
+    for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+      if (cause instanceof Retryable retryable && !retryable.isRetryable()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static String causeMessages(Throwable failure) {
