@@ -10,6 +10,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from google.generativeai import GenerativeModel, protos
+from google.generativeai import client as generativeai_client
 from google.generativeai.types import CallableFunctionDeclaration, GenerateContentResponse
 from pydantic import ValidationError
 
@@ -601,8 +602,8 @@ def test_automatic_function_calling_runs_the_called_same_named_function(
         model_response(protos.Part(text="done")),
     ]
 
-    with mock.patch(
-        "google.generativeai.client.get_default_generative_client", return_value=gemini_client
+    with mock.patch.object(
+        generativeai_client, "get_default_generative_client", return_value=gemini_client
     ):
         response = model.start_chat(enable_automatic_function_calling=True).send_message("hi")
 
