@@ -149,6 +149,13 @@ public final class AuthorizeExpressions {
         && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE))
       """;
 
+  /** Adopting existing files as managed storage requires permission to read and delete them. */
+  public static final String REGISTER_ICEBERG_STORAGE =
+      """
+      #authorize(#principal, #external_location, OWNER) ||
+      #authorizeAll(#principal, #external_location, CREATE_MANAGED_STORAGE, READ_FILES, WRITE_FILES)
+      """;
+
   /**
    * Authorization policy for creating a table (UC REST {@code POST /tables} and UC Delta API {@code
    * createTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either schema {@code OWNER} or

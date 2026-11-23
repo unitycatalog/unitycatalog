@@ -61,6 +61,7 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 |--------|----------------------------------------------------------------------------|-------------------|---------------------------------------------------------------------------------------------------------------------------------|-------|
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables`                     | `listTables`      | List tables                                                                                                                     |       |
 | POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables`                     | `createTable`     | Create a table. Set `stage-create` to `true` to stage the create; the table is not registered until a commit with `assert-create` arrives. | Yes   |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/register`                   | `registerTable`   | Register an existing metadata file as a managed Iceberg table, without moving or rewriting files. | Yes   |
 | HEAD   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `tableExists`     | Check if a table exists                                                                                                         |       |
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `loadTable`       | Load table metadata                                                                                                             |       |
 | POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `updateTable`     | Commit changes to a table                                                                                                       | Yes   |
@@ -74,6 +75,45 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 | Method | Path                                                         | Operation  | Description                    |
 |--------|--------------------------------------------------------------|------------|--------------------------------|
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `loadView` | Always returns 404 (see below) |
+
+## Register an existing table
+
+Send the table name and the path of its current Iceberg metadata file:
+
+```json
+{
+  "name": "orders",
+  "metadata-location": "s3://warehouse/existing/orders/metadata/v1.metadata.json"
+}
+```
+
+Use `POST /v1/catalogs/{catalog}/namespaces/{namespace}/register`. Local absolute paths and
+`file://` URLs are also accepted when they are inside configured storage.
+
+The metadata file must be inside the table directory declared by the metadata. That directory must
+be below an external location, the destination catalog or schema's assigned `storage_location`, or
+the server's default managed table directory under `storage-root.tables/__unitystorage`. Paths under
+a configured `storage_root` but outside its assigned `storage_location` use the covering external
+location and require its privileges. A different catalog or schema's assigned managed directory
+cannot be used through a covering external location.
+
+The caller needs `USE_CATALOG` on the destination catalog and `USE_SCHEMA` plus `CREATE_TABLE` on the
+destination schema. Ownership satisfies the corresponding catalog or schema tier. For an external
+location, the caller must also own the location or hold all three privileges: `CREATE_MANAGED_STORAGE`,
+`READ_FILES`, and `WRITE_FILES`. UC checks these privileges before reading the metadata file.
+
+Registration rejects directory overlaps with tables, volumes, models, uncommitted staging tables,
+and pending storage cleanup. It also rejects shared storage roots and directories that contain them.
+Concurrent table and volume creates and registrations check paths under a shared database lock.
+
+Registration keeps the metadata file, table UUID, snapshots, schema, and properties. UC assigns a
+separate catalog table ID. The table becomes `MANAGED`: dropping it schedules deletion of its original
+directory after the normal storage cleanup delay. Stop other catalogs and writers from using this
+directory before registering it. Registration does not copy files or coordinate with another catalog.
+
+A taken table name returns HTTP 409. `overwrite=true` returns HTTP 400; use normal Iceberg commits to
+update a registered table. Both `server.iceberg-table.enabled` and `server.managed-table.enabled` must
+be enabled.
 
 ## Limitations
 

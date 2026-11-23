@@ -13,6 +13,7 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.Date;
 import java.util.Objects;
 import java.util.Optional;
@@ -91,6 +92,7 @@ public class StagingTableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
+          ExternalLocationUtils.lockTableStorage(session);
           RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
               RepositoryUtils.getCatalogAndSchemaDaoOrThrow(
                   session, createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
@@ -100,6 +102,7 @@ public class StagingTableRepository {
           NormalizedURL stagingLocation =
               ExternalLocationUtils.getManagedLocationForTable(
                   parentStorageLocation, stagingTableId);
+          ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, stagingLocation);
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 
@@ -118,7 +121,8 @@ public class StagingTableRepository {
               createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
         },
         "Error creating table: " + getTableFullName(createStagingTable),
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   /**

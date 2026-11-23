@@ -12,6 +12,7 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
+import io.unitycatalog.server.persist.dao.MetastoreDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
@@ -21,6 +22,7 @@ import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +31,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.fs.Path;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -737,6 +740,181 @@ public class ExternalLocationUtils {
             /* includeSubdir= */ true)
         .getResultList()
         .isEmpty();
+  }
+
+  /** A configured storage boundary for adopting an Iceberg table in place. */
+  public record RegistrationStorage(NormalizedURL location, Optional<UUID> externalLocationId) {}
+
+  /**
+   * Resolves a path before reading registration metadata. Managed directories belonging to another
+   * catalog or schema cannot be adopted through a covering external location.
+   *
+   * @param session the caller's transaction
+   * @param parents the destination catalog and schema
+   * @param path the metadata file or table directory
+   * @param defaultRoot the server's managed table storage root, if configured
+   * @return the storage boundary and, for external storage, the location to authorize
+   * @throws BaseException if the path has no permitted storage boundary
+   */
+  public static RegistrationStorage resolveRegistrationStorage(
+      Session session,
+      RepositoryUtils.CatalogAndSchemaDao parents,
+      NormalizedURL path,
+      Optional<NormalizedURL> defaultRoot) {
+    LocalStorageLocationValidator.validateCanonicalLocalLocation(path);
+    validateRegistrationPathAvailable(session, path);
+    var managedOwners =
+        getAllEntityDAOsWithURLOverlap(
+            session,
+            path,
+            MANAGED_SECURABLE_TYPE_CONTAINERS,
+            Integer.MAX_VALUE,
+            /* includeParent= */ true,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ false);
+    for (var owner : managedOwners) {
+      UUID expected =
+          owner.getLeft() == SecurableType.CATALOG
+              ? parents.catalogInfoDAO().getId()
+              : parents.schemaInfoDAO().getId();
+      if (!expected.equals(owner.getRight().getId())) {
+        throw new BaseException(
+            ErrorCode.PERMISSION_DENIED,
+            "The path is inside another catalog or schema's managed storage.");
+      }
+    }
+    Optional<NormalizedURL> managedRoot =
+        Stream.of(
+                parents.schemaInfoDAO().getStorageLocation(),
+                parents.catalogInfoDAO().getStorageLocation(),
+                defaultRoot.map(root -> root + "/" + Constants.MANAGED_STORAGE_PREFIX).orElse(null))
+            .filter(java.util.Objects::nonNull)
+            .map(NormalizedURL::from)
+            .filter(root -> isStrictSubpath(path, root))
+            .max(Comparator.comparingInt(root -> root.toString().length()));
+    if (managedRoot.isPresent()) {
+      if (Stream.of(
+              ManagedResourceType.TABLE,
+              ManagedResourceType.VOLUME,
+              ManagedResourceType.REGISTERED_MODEL)
+          .anyMatch(type -> path.toString().equals(managedRoot.get() + "/" + type.pathSegment()))) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "The table path must not equal a shared managed storage directory.");
+      }
+      return new RegistrationStorage(managedRoot.get(), Optional.empty());
+    }
+    validateNotSameOrUnderManagedStoragePrefix(path);
+    List<ExternalLocationDAO> locations =
+        getEntityDAOsWithURLOverlap(
+            session,
+            path,
+            SecurableType.EXTERNAL_LOCATION,
+            1,
+            /* includeParent= */ true,
+            /* includeSelf= */ false,
+            /* includeSubdir= */ false);
+    if (locations.isEmpty()) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "The path must be inside an external location or the destination's managed storage"
+              + " root.");
+    }
+    ExternalLocationDAO location = locations.get(0);
+    return new RegistrationStorage(
+        NormalizedURL.from(location.getUrl()), Optional.of(location.getId()));
+  }
+
+  /** Rejects adoption of an occupied directory, a shared storage boundary, or pending cleanup. */
+  private static void validateRegistrationPathAvailable(Session session, NormalizedURL path) {
+    if (!getAllEntityDAOsWithURLOverlap(
+                session,
+                path,
+                DATA_SECURABLE_TYPES,
+                1,
+                /* includeParent= */ true,
+                /* includeSelf= */ true,
+                /* includeSubdir= */ true)
+            .isEmpty()
+        || !generateEntitiesDAOsWithURLOverlapQuery(
+                session,
+                path,
+                UNCOMMITTED_STAGING_TABLE_DAO_INFO,
+                1,
+                /* includeParent= */ true,
+                /* includeSelf= */ true,
+                /* includeSubdir= */ true)
+            .getResultList()
+            .isEmpty()
+        || hasPendingCleanupOverlap(session, path)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "The path overlaps an existing table, volume, model, staging table, or pending storage"
+              + " cleanup.");
+    }
+    if (!getAllEntityDAOsWithURLOverlap(
+            session,
+            path,
+            List.of(SecurableType.CATALOG, SecurableType.SCHEMA, SecurableType.EXTERNAL_LOCATION),
+            1,
+            /* includeParent= */ false,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ true)
+        .isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "The table path must not contain or equal a shared storage location.");
+    }
+  }
+
+  /** Serializes table and volume path allocation with registration; use READ COMMITTED. */
+  public static void lockTableStorage(Session session) {
+    session
+        .createSelectionQuery("FROM MetastoreDAO", MetastoreDAO.class)
+        .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
+        .getSingleResult();
+  }
+
+  /** Prevents later creates from claiming an adopted directory, including after a drop. */
+  public static void validateNotOverlapWithRegisteredTables(Session session, NormalizedURL path) {
+    List<TableInfoDAO> overlaps =
+        ExternalLocationUtils.<TableInfoDAO>generateEntitiesDAOsWithURLOverlapQuery(
+                session,
+                path,
+                new DaoClassInfo(
+                    TableInfoDAO.class, "url", "type='MANAGED' AND dataSourceFormat='ICEBERG'"),
+                Integer.MAX_VALUE,
+                /* includeParent= */ true,
+                /* includeSelf= */ true,
+                /* includeSubdir= */ true)
+            .getResultList();
+    boolean pending =
+        !generateEntitiesDAOsWithURLOverlapQuery(
+                session,
+                path,
+                new DaoClassInfo(
+                    StorageCleanupTaskDAO.class,
+                    "storageLocation",
+                    "resourceType='REGISTERED_TABLE'"),
+                1,
+                /* includeParent= */ true,
+                /* includeSelf= */ true,
+                /* includeSubdir= */ true)
+            .getResultList()
+            .isEmpty();
+    if (pending
+        || overlaps.stream()
+            .anyMatch(
+                table ->
+                    ManagedResourceType.forTable(table) == ManagedResourceType.REGISTERED_TABLE)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "The path overlaps a registered managed table or its pending storage cleanup.");
+    }
+  }
+
+  private static boolean isStrictSubpath(NormalizedURL path, NormalizedURL root) {
+    return !path.equals(root) && stillCovers(root, path);
   }
 
   /**

@@ -13,12 +13,20 @@ import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.RequestHeaders;
+import io.unitycatalog.client.api.ExternalLocationsApi;
+import io.unitycatalog.client.api.SchemasApi;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.UpdateExternalLocation;
+import io.unitycatalog.client.model.UpdatePermissions;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,8 +35,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
 import org.apache.iceberg.MetadataUpdate;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -38,6 +48,7 @@ import org.apache.iceberg.metrics.ImmutableScanReport;
 import org.apache.iceberg.metrics.ScanMetrics;
 import org.apache.iceberg.metrics.ScanMetricsResult;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.ImmutableRegisterTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
@@ -78,6 +89,115 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
         .when(operations)
         .getFileIOConfig(any(), any(), any());
     return operations;
+  }
+
+  @Test
+  @SneakyThrows
+  public void testRegisterTableAccessControl() {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema(CAT, SCHEMA);
+    IcebergRestClient reader = icebergClientFor(REGULAR_1);
+    Path root = testDirectoryRoot.resolve("registration");
+    createExternalLocationWithCredential(
+        "registration_credential", "registration_storage", root.toUri().toString());
+    Path file = registrationMetadata(root.resolve("orders"));
+    var request =
+        ImmutableRegisterTableRequest.builder()
+            .name("orders")
+            .metadataLocation(file.toString())
+            .build();
+    assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, CAT, Privileges.USE_CATALOG);
+    assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, CAT + "." + SCHEMA, Privileges.CREATE_TABLE);
+    assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, CAT + "." + SCHEMA, Privileges.USE_SCHEMA);
+    assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+    // A configured raw storage root does not grant access to files outside its assigned location.
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, CAT, Privileges.CREATE_SCHEMA);
+    grantPermissions(
+        REGULAR_1,
+        SecurableType.EXTERNAL_LOCATION,
+        "registration_storage",
+        Privileges.CREATE_MANAGED_STORAGE);
+    new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)))
+        .createSchema(
+            new CreateSchema()
+                .catalogName(CAT)
+                .name("raw_storage")
+                .storageRoot(root.toUri().toString()));
+    assertDenied(() -> reader.registerTable(CAT, "raw_storage", request));
+    grantPermissions(
+        REGULAR_1,
+        SecurableType.EXTERNAL_LOCATION,
+        "registration_storage",
+        Privileges.CREATE_MANAGED_STORAGE,
+        Privileges.READ_FILES,
+        Privileges.WRITE_FILES);
+    for (Privilege missing :
+        List.of(Privilege.CREATE_MANAGED_STORAGE, Privilege.READ_FILES, Privilege.WRITE_FILES)) {
+      grantsApi.update(
+          SecurableType.EXTERNAL_LOCATION,
+          "registration_storage",
+          new UpdatePermissions()
+              .changes(
+                  List.of(
+                      new PermissionsChange()
+                          .principal(REGULAR_1)
+                          .add(List.of())
+                          .remove(List.of(missing)))));
+      assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+      grantPermissions(
+          REGULAR_1,
+          SecurableType.EXTERNAL_LOCATION,
+          "registration_storage",
+          Privileges.fromPrivilege(
+              io.unitycatalog.server.model.Privilege.fromValue(missing.getValue())));
+    }
+    assertThat(reader.registerTable(CAT, SCHEMA, request).config())
+        .containsAllEntriesOf(READ_WRITE_CREDENTIAL_CONFIG);
+    assertThat(reader.loadTable(CAT, SCHEMA, "orders").config())
+        .containsAllEntriesOf(READ_WRITE_CREDENTIAL_CONFIG);
+    reader.dropTable(CAT, SCHEMA, "orders");
+
+    // Schema and location ownership satisfy both tiers without individual grants.
+    new ExternalLocationsApi(TestUtils.createApiClient(adminConfig))
+        .updateExternalLocation(
+            "registration_storage", new UpdateExternalLocation().owner(PRINCIPAL_1));
+    Path ownerFile = registrationMetadata(root.resolve("owner_table"));
+    icebergClientFor(PRINCIPAL_1)
+        .registerTable(
+            CAT,
+            SCHEMA,
+            ImmutableRegisterTableRequest.builder()
+                .name("owner_table")
+                .metadataLocation(ownerFile.toString())
+                .build());
+
+    // CREATE_TABLE grants access to the destination's managed root without external-file grants.
+    Path managedFile =
+        registrationMetadata(testDirectoryRoot.resolve("__unitystorage/managed_registration"));
+    reader.registerTable(
+        CAT,
+        SCHEMA,
+        ImmutableRegisterTableRequest.builder()
+            .name("managed_registration")
+            .metadataLocation(managedFile.toString())
+            .build());
+  }
+
+  private static Path registrationMetadata(Path directory) throws Exception {
+    Path file = directory.resolve("metadata/v1.metadata.json");
+    Files.createDirectories(file.getParent());
+    Files.writeString(
+        file,
+        TableMetadataParser.toJson(
+            TableMetadata.newTableMetadata(
+                new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+                PartitionSpec.unpartitioned(),
+                NormalizedURL.from(directory.toUri()).toString(),
+                Map.of())));
+    return file;
   }
 
   @Test

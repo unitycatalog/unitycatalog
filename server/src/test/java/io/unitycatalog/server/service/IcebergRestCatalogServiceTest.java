@@ -27,12 +27,14 @@ import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils.RegistrationStorage;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
@@ -46,6 +48,7 @@ import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.ImmutableRegisterTableRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
@@ -87,6 +90,49 @@ public class IcebergRestCatalogServiceTest {
     service =
         new IcebergRestCatalogService(
             authorizer, tableConfigService, metadataService, repositories, serverProperties);
+  }
+
+  @Test
+  public void registrationChecksStoragePrivilegesBeforeReadingMetadata() {
+    when(serverProperties.isAuthorizationEnabled()).thenReturn(true);
+    when(tableRepository.getTable("cat.ns.t"))
+        .thenThrow(new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found"));
+    when(tableRepository.getIcebergRegistrationStorage(any(), any(), any()))
+        .thenReturn(
+            new RegistrationStorage(
+                NormalizedURL.from(TABLE_LOCATION), Optional.of(UUID.randomUUID())));
+    assertThatThrownBy(
+            () ->
+                service.registerTable(
+                    "cat",
+                    "ns",
+                    ImmutableRegisterTableRequest.builder()
+                        .name("t")
+                        .metadataLocation(TABLE_LOCATION + "/metadata/v1.metadata.json")
+                        .build()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Access denied");
+    verifyNoInteractions(metadataService, tableConfigService);
+    verify(tableRepository, never()).registerTableForIceberg(any(), any(), any());
+  }
+
+  @Test
+  public void registrationRejectsDisabledManagedTablesBeforeReadingMetadata() {
+    doThrow(new BaseException(ErrorCode.INVALID_ARGUMENT, "Managed tables are disabled"))
+        .when(serverProperties)
+        .checkManagedTableEnabled();
+    assertThatThrownBy(
+            () ->
+                service.registerTable(
+                    "cat",
+                    "ns",
+                    ImmutableRegisterTableRequest.builder()
+                        .name("t")
+                        .metadataLocation(TABLE_LOCATION + "/metadata/v1.metadata.json")
+                        .build()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Managed tables are disabled");
+    verifyNoInteractions(metadataService, tableRepository, tableConfigService);
   }
 
   @Test

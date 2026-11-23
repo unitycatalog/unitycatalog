@@ -7,6 +7,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.io.UncheckedIOException;
 import java.nio.file.Paths;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -14,6 +15,7 @@ import java.util.regex.Pattern;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
+import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.io.FileIO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +48,27 @@ public class MetadataService {
     }
     validateTableMetadataLocation(tableMetadata, persistedTableLocation);
     return tableMetadata;
+  }
+
+  /**
+   * Reads existing metadata within an authorized storage boundary. The table directory must be a
+   * child of that boundary and must contain the metadata file; registration never rewrites it.
+   */
+  public TableMetadata readRegistrationMetadata(
+      NormalizedURL metadataLocation, NormalizedURL storageRoot) {
+    validateMetadataLocation(metadataLocation, storageRoot);
+    TableMetadata metadata;
+    try (FileIO fileIO = fileOperations.getFileIO(storageRoot)) {
+      metadata = TableMetadataParser.read(fileIO, metadataLocation.toString());
+    } catch (NotFoundException | UncheckedIOException | IllegalArgumentException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Cannot read Iceberg metadata from " + metadataLocation, e);
+    }
+    NormalizedURL tableLocation = NormalizedURL.from(metadata.location());
+    validateMetadataLocation(tableLocation, storageRoot);
+    validateMetadataLocation(metadataLocation, tableLocation);
+    validateTableMetadataLocation(metadata, tableLocation);
+    return metadata;
   }
 
   /** Writes metadata only within the table location persisted by UC. */

@@ -189,6 +189,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/properties\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
+                + "\"POST /v1/{prefix}/namespaces/{namespace}/register\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"POST /v1/{prefix}/tables/rename\""

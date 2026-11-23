@@ -29,6 +29,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
@@ -54,6 +55,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils.RegistrationStorage;
 import io.unitycatalog.server.persist.utils.LocalStorageLocationValidator;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -99,6 +101,7 @@ import org.apache.iceberg.rest.RESTUtil;
 import org.apache.iceberg.rest.credentials.ImmutableCredential;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
@@ -143,6 +146,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_DELETE_NAMESPACE,
           Endpoint.V1_UPDATE_NAMESPACE,
           Endpoint.V1_CREATE_TABLE,
+          Endpoint.V1_REGISTER_TABLE,
           Endpoint.V1_UPDATE_TABLE,
           Endpoint.V1_DELETE_TABLE,
           Endpoint.V1_RENAME_TABLE);
@@ -154,12 +158,14 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   private final StagingTableRepository stagingTableRepository;
   private final TableRepository tableRepository;
   private final ExternalLocationUtils externalLocationUtils;
+  private final UnityAccessEvaluator registrationAccessEvaluator;
 
   @Override
   public ExceptionHandlerFunction exceptionHandler() {
     return IcebergRestExceptionHandler.INSTANCE;
   }
 
+  @lombok.SneakyThrows
   public IcebergRestCatalogService(
       UnityCatalogAuthorizer authorizer,
       TableConfigService tableConfigService,
@@ -174,6 +180,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     this.stagingTableRepository = repositories.getStagingTableRepository();
     this.tableRepository = repositories.getTableRepository();
     this.externalLocationUtils = repositories.getExternalLocationUtils();
+    this.registrationAccessEvaluator =
+        new UnityAccessEvaluator(authorizer, serverProperties.isStrictPrivilegeChecksEnabled());
   }
 
   // Config APIs
@@ -582,6 +590,65 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
     return finalizeIcebergTableCreation(
         catalog, namespace, request.name(), tableType, tableMetadata, false);
+  }
+
+  /** Adopts an existing Iceberg table in place, including managed-table deletion semantics. */
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/register")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_STAGING_TABLE)
+  @AuthorizeResourceKey(METASTORE)
+  public LoadTableResponse registerTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      RegisterTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    serverProperties.checkManagedTableEnabled();
+    request.validate();
+    if (request.overwrite()) {
+      throw new BadRequestException("Registering with overwrite=true is not supported.");
+    }
+    schemaRepository.getSchemaIdOrThrow(catalog, namespace);
+    if (ucTableExists(catalog, namespace, request.name())) {
+      throw new AlreadyExistsException("Table already exists: %s.%s", namespace, request.name());
+    }
+    NormalizedURL metadataLocation = NormalizedURL.from(request.metadataLocation());
+    RegistrationStorage storage =
+        tableRepository.getIcebergRegistrationStorage(catalog, namespace, metadataLocation);
+    // The file determines the table directory, so authorize its configured boundary before I/O.
+    if (serverProperties.isAuthorizationEnabled()
+        && storage.externalLocationId().isPresent()
+        && !registrationAccessEvaluator.evaluate(
+            userRepository.findPrincipalId(),
+            AuthorizeExpressions.REGISTER_ICEBERG_STORAGE,
+            Map.of(EXTERNAL_LOCATION, storage.externalLocationId().get()),
+            Map.of())) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    }
+    TableMetadata metadata =
+        metadataService.readRegistrationMetadata(metadataLocation, storage.location());
+    TableInfo tableInfo =
+        tableRepository.registerTableForIceberg(
+            new CreateTable()
+                .name(request.name())
+                .catalogName(catalog)
+                .schemaName(namespace)
+                .tableType(TableType.MANAGED)
+                .dataSourceFormat(DataSourceFormat.ICEBERG)
+                .columns(IcebergSchemaConverter.toColumnInfos(metadata.schema()))
+                .storageLocation(metadata.location())
+                .properties(metadata.properties()),
+            metadataLocation,
+            storage);
+    initializeHierarchicalAuthorization(
+        tableInfo.getTableId(), schemaRepository.getSchemaIdOrThrow(catalog, namespace).toString());
+    return LoadTableResponse.builder()
+        .withTableMetadata(metadata)
+        .addAllConfig(
+            tableConfigService.getTableConfig(
+                NormalizedURL.from(tableInfo.getStorageLocation()),
+                READ_WRITE,
+                credentialsEndpoint(catalog, namespace, request.name())))
+        .build();
   }
 
   /**

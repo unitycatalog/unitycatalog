@@ -26,11 +26,13 @@ import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
+import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils.RegistrationStorage;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -44,6 +46,7 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -767,6 +770,47 @@ public class TableRepository {
         (session, dao, tableInfo) -> tableInfo);
   }
 
+  /** Resolves an unused registration path to configured storage before any file is read. */
+  public RegistrationStorage getIcebergRegistrationStorage(
+      String catalog, String schema, NormalizedURL path) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> resolveRegistrationStorage(session, catalog, schema, path),
+        "Failed to resolve Iceberg registration storage",
+        /* readOnly= */ true);
+  }
+
+  private RegistrationStorage resolveRegistrationStorage(
+      Session session, String catalog, String schema, NormalizedURL path) {
+    return ExternalLocationUtils.resolveRegistrationStorage(
+        session,
+        RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalog, schema),
+        path,
+        Optional.ofNullable(serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
+            .map(NormalizedURL::from));
+  }
+
+  /**
+   * Adopts existing Iceberg storage as a managed table. The transaction rechecks the authorized
+   * boundary and path overlaps while holding the lock shared with table creation.
+   */
+  public TableInfo registerTableForIceberg(
+      CreateTable createTable, NormalizedURL metadataLocation, RegistrationStorage storage) {
+    ValidationUtils.checkArgument(
+        createTable.getTableType() == TableType.MANAGED
+            && createTable.getDataSourceFormat() == DataSourceFormat.ICEBERG,
+        "Registration requires a managed Iceberg table.");
+    TableInfo result =
+        persistTable(
+            createTable,
+            Optional.empty(),
+            Optional.of(metadataLocation),
+            Optional.of(storage),
+            (session, dao, tableInfo) -> tableInfo);
+    tableMetrics.recordTableCreated();
+    return result;
+  }
+
   /**
    * Create a table and return the UC Delta API {@link DeltaLoadTableResponse} in a single
    * transaction. The DAO persisted during create is the same one used to build the response, so
@@ -818,7 +862,9 @@ public class TableRepository {
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
       CreateResultMapper<T> mapper) {
-    T result = persistTable(createTable, uniformFields, nativeIcebergMetadataLocation, mapper);
+    T result =
+        persistTable(
+            createTable, uniformFields, nativeIcebergMetadataLocation, Optional.empty(), mapper);
     tableMetrics.recordTableCreated();
     return result;
   }
@@ -827,6 +873,7 @@ public class TableRepository {
       CreateTable createTable,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
+      Optional<RegistrationStorage> registrationStorage,
       CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -844,6 +891,9 @@ public class TableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
+          if (createTable.getStorageLocation() != null) {
+            ExternalLocationUtils.lockTableStorage(session);
+          }
           String catalogName = createTable.getCatalogName();
           String schemaName = createTable.getSchemaName();
           UUID schemaId =
@@ -861,7 +911,7 @@ public class TableRepository {
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
           // `tableUUID` is the table's primary key. The shape is uniform across the three
           // creatable branches (external, managed, metric view); the only divergence is the
-          // source of the UUID (random for external/metric-view, staging-table id for managed).
+          // source of the UUID (the staging id for staged creates, otherwise a new UUID).
           // The string form is generated exactly once below at `tableInfo.tableId(...)`.
           UUID tableUUID;
           NormalizedURL storageLocation;
@@ -872,6 +922,7 @@ public class TableRepository {
                 "External table storage location must include a non-empty path prefix: %s",
                 createTable.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
+            ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, storageLocation);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());
@@ -882,13 +933,26 @@ public class TableRepository {
                   ErrorCode.INVALID_ARGUMENT,
                   "Managed table creation is only supported for Delta and Iceberg formats.");
             }
-            // Find and commit the staging table with the same staging location. This single
-            // transaction validates ownership and prevents a staging location from being reused.
-            StagingTableDAO stagingTableDAO =
-                repositories
-                    .getStagingTableRepository()
-                    .commitStagingTable(session, callerId, storageLocation);
-            tableUUID = stagingTableDAO.getId();
+            if (registrationStorage.isPresent()) {
+              registrationStorage
+                  .get()
+                  .externalLocationId()
+                  .ifPresent(
+                      id -> RepositoryUtils.getForUpdate(session, ExternalLocationDAO.class, id));
+              RegistrationStorage current =
+                  resolveRegistrationStorage(session, catalogName, schemaName, storageLocation);
+              ValidationUtils.checkArgument(
+                  current.equals(registrationStorage.get()),
+                  "The registration storage boundary changed; retry the request.");
+              tableUUID = UUID.randomUUID();
+            } else {
+              // Commit the caller's staging table in the same transaction to prevent reuse.
+              StagingTableDAO stagingTableDAO =
+                  repositories
+                      .getStagingTableRepository()
+                      .commitStagingTable(session, callerId, storageLocation);
+              tableUUID = stagingTableDAO.getId();
+            }
             if (createTable.getDataSourceFormat() == DataSourceFormat.DELTA) {
               // MANAGED tables (created via either UC REST or Delta REST) must carry UC_TABLE_ID
               // in their properties, matching the staging UUID. UC has the staging UUID as the
@@ -954,8 +1018,8 @@ public class TableRepository {
           nativeIcebergMetadataLocation.ifPresent(
               location -> tableInfoDAO.setIcebergMetadataLocation(location.toString()));
           session.persist(tableInfoDAO);
-          if (tableType != TableType.MANAGED) {
-            // Managed tables retain the owner grant saved when their staging table was created.
+          if (tableType != TableType.MANAGED || registrationStorage.isPresent()) {
+            // Only staged managed creates already have a persisted owner grant.
             repositories
                 .getOwnershipRepository()
                 .initializeOwner(session, tableUUID, callerId, schemaId);
@@ -979,7 +1043,8 @@ public class TableRepository {
           return mapper.apply(session, tableInfoDAO, tableInfo);
         },
         "Error creating table: " + fullName,
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   @FunctionalInterface
@@ -1329,7 +1394,7 @@ public class TableRepository {
           .getStorageCleanupTaskRepository()
           .create(
               session,
-              ManagedResourceType.TABLE,
+              ManagedResourceType.forTable(tableInfoDAO),
               tableInfoDAO.getId(),
               tableInfoDAO.getName(),
               tableInfoDAO.getUrl());

@@ -43,11 +43,7 @@ public final class LocalStorageLocationValidator {
     if (UriScheme.fromURI(uri) != UriScheme.FILE) {
       return;
     }
-    if (!isCanonical(uri)) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "Local location must not contain unneeded escapes: " + location);
-    }
+    validateCanonicalLocalLocation(location);
     // Path comparison is per segment, so /data/root-sibling is not under /data/root.
     Path path = localPath(uri);
     if (isUnderExternalLocation(location, path, externalLocationUtils)
@@ -60,6 +56,18 @@ public final class LocalStorageLocationValidator {
             "Local location '%s' must be under an external location or under a root listed in"
                 + " '%s'.",
             location, ServerProperties.Property.EXTERNAL_LOCAL_ROOTS.getKey()));
+  }
+
+  /**
+   * Rejects local URL aliases before path ownership or overlap checks; cloud URLs are unchanged.
+   */
+  public static void validateCanonicalLocalLocation(NormalizedURL location) {
+    URI uri = location.toUri();
+    if (UriScheme.fromURI(uri) == UriScheme.FILE && !isCanonical(uri)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Local location must not contain unneeded escapes: " + location);
+    }
   }
 
   /**
