@@ -338,13 +338,24 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
                 "gcp_service_account_key.private_key_id is longer than 1024 characters."),
             new InvalidCreate(
                 gcpRequest("p".repeat(4097)),
-                "gcp_service_account_key.private_key is longer than 4096 characters."));
+                "gcp_service_account_key.private_key is longer than 4096 characters."),
+            // At the limit the length passes, so the next check, the key's format, is the one that
+            // fails.
+            new InvalidCreate(
+                gcpRequest("p".repeat(4096)),
+                "gcp_service_account_key.private_key is not a PEM-encoded PKCS#8 private key."));
     for (InvalidCreate c : invalidCreates) {
       assertApiException(
           () -> credentialOperations.createCredential(c.request()),
           ErrorCode.INVALID_ARGUMENT,
           c.error());
     }
+    // An email and a key id of exactly the limit are accepted.
+    credentialOperations.createCredential(
+        gcpRequest(privateKey)
+            .gcpServiceAccountKey(
+                gcpKey(privateKey).email("e".repeat(1024)).privateKeyId("k".repeat(1024))));
+    credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.empty());
     // A rejected key is left out of the message.
     assertThatThrownBy(() -> credentialOperations.createCredential(gcpRequest("not-a-key")))
         .isInstanceOf(ApiException.class)

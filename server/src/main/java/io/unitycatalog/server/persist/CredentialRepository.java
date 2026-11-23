@@ -199,9 +199,10 @@ public class CredentialRepository {
               "Storage credential '%s' is a gcp_service_account_key credential, so aws_iam_role and"
                   + " s3_compatible cannot be set on it.",
               name);
-          // Every part of a credential can change while external locations use it, including its
-          // type and S3 endpoint, as long as each location stays reachable with it (s3:// only for
-          // s3_compatible); the paths under those locations then reach storage the new way.
+          // An aws_iam_role or s3_compatible credential can change in every part while external
+          // locations use it, including its type and S3 endpoint, as long as each location stays
+          // reachable with it (s3:// only for s3_compatible); the paths under those locations then
+          // reach storage the new way.
           if (updateCredential.getAwsIamRole() != null) {
             existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
           } else if (updateCredential.getS3Compatible() != null) {
