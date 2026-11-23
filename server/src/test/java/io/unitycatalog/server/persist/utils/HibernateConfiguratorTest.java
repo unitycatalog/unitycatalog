@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -105,15 +107,19 @@ class HibernateConfiguratorTest {
   @Test
   void refusesASchemaActionSetAsASystemProperty() throws Exception {
     String setting = "jakarta.persistence.schema-generation.database.action";
-    Process child =
-        new ProcessBuilder(
-                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                "-D" + setting + "=drop-and-create",
-                "-cp",
-                System.getProperty("java.class.path"),
-                HibernateConfiguratorTest.class.getName())
-            .redirectErrorStream(true)
-            .start();
+    List<String> command = new ArrayList<>();
+    command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+    // A coverage run tells this JVM where to write its coverage data. The child gets the same
+    // classes, so it gets the same file, instead of writing jacoco.exec to the working directory.
+    String coverageFile = System.getProperty("jacoco-agent.destfile");
+    if (coverageFile != null) {
+      command.add("-Djacoco-agent.destfile=" + coverageFile);
+    }
+    command.add("-D" + setting + "=drop-and-create");
+    command.add("-cp");
+    command.add(System.getProperty("java.class.path"));
+    command.add(HibernateConfiguratorTest.class.getName());
+    Process child = new ProcessBuilder(command).redirectErrorStream(true).start();
     String output = new String(child.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 
     assertThat(child.waitFor()).isZero();

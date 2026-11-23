@@ -90,13 +90,19 @@ public class SampleDatabaseTest {
     Path file = dir.resolve("h2db.mv.db");
     // An environment that makes any server configuration without OPA authorization settings
     // invalid.
-    ProcessBuilder build =
-        new ProcessBuilder(
-            Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-            "-cp",
-            System.getProperty("java.class.path"),
-            SampleDatabase.class.getName(),
-            file.toString());
+    List<String> command = new ArrayList<>();
+    command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+    // A coverage run tells this JVM where to write its coverage data. The child gets the same
+    // classes, so it gets the same file, instead of writing jacoco.exec to the working directory.
+    String coverageFile = System.getProperty("jacoco-agent.destfile");
+    if (coverageFile != null) {
+      command.add("-Djacoco-agent.destfile=" + coverageFile);
+    }
+    command.add("-cp");
+    command.add(System.getProperty("java.class.path"));
+    command.add(SampleDatabase.class.getName());
+    command.add(file.toString());
+    ProcessBuilder build = new ProcessBuilder(command);
     build.environment().put("UC_SERVER_AUTHORIZATION_PROVIDER", "opa");
     build.redirectErrorStream(true).redirectOutput(dir.resolve("build.log").toFile());
 
