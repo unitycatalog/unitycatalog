@@ -55,10 +55,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.iceberg.view.ViewMetadata;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -753,7 +751,11 @@ public class TableRepository {
   public TableInfo createTable(CreateTable createTable) {
     requireNonIcebergFormat(createTable, "createTable");
     return createTableImpl(
-        createTable, Optional.empty(), Optional.empty(), (session, dao, tableInfo) -> tableInfo);
+        createTable,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        (session, dao, tableInfo) -> tableInfo);
   }
 
   public TableInfo createTableForIceberg(CreateTable createTable, NormalizedURL metadataLocation) {
@@ -764,13 +766,14 @@ public class TableRepository {
         createTable,
         Optional.empty(),
         Optional.of(metadataLocation),
+        Optional.empty(),
         (session, dao, tableInfo) -> tableInfo);
   }
 
-  public record CreatedIcebergView(TableInfo view, ViewMetadata metadata) {}
+  private record NewIcebergView(UUID viewId, String metadataLocation) {}
 
-  public CreatedIcebergView createViewForIceberg(
-      CreateTable request, Function<TableInfo, ViewMetadata> metadataWriter) {
+  /** Register the view and its previously written metadata pointer in the same transaction. */
+  public TableInfo createViewForIceberg(CreateTable request, UUID viewId, String metadataLocation) {
     if (request.getTableType() != TableType.VIEW) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Expected an ordinary view");
     }
@@ -778,11 +781,8 @@ public class TableRepository {
         request,
         Optional.empty(),
         Optional.empty(),
-        (session, dao, info) -> {
-          ViewMetadata metadata = metadataWriter.apply(info);
-          dao.setIcebergViewMetadataLocation(metadata.metadataFileLocation());
-          return new CreatedIcebergView(info, metadata);
-        });
+        Optional.of(new NewIcebergView(viewId, metadataLocation)),
+        (session, dao, tableInfo) -> tableInfo);
   }
 
   public record IcebergViewState(TableInfo view, String metadataLocation) {}
@@ -837,6 +837,7 @@ public class TableRepository {
         createTable,
         uniformFields,
         Optional.empty(),
+        Optional.empty(),
         (session, dao, tableInfo) ->
             buildLoadTableResponse(
                 session,
@@ -869,8 +870,11 @@ public class TableRepository {
       CreateTable createTable,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
+      Optional<NewIcebergView> icebergView,
       CreateResultMapper<T> mapper) {
-    T result = persistTable(createTable, uniformFields, nativeIcebergMetadataLocation, mapper);
+    T result =
+        persistTable(
+            createTable, uniformFields, nativeIcebergMetadataLocation, icebergView, mapper);
     tableMetrics.recordTableCreated();
     return result;
   }
@@ -879,6 +883,7 @@ public class TableRepository {
       CreateTable createTable,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
+      Optional<NewIcebergView> icebergView,
       CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -908,10 +913,7 @@ public class TableRepository {
                 ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
-          // `tableUUID` is the table's primary key. The shape is uniform across the three
-          // creatable branches (external, managed, metric view); the only divergence is the
-          // source of the UUID (random for external/metric-view, staging-table id for managed).
-          // The string form is generated exactly once below at `tableInfo.tableId(...)`.
+          // A managed table keeps its staging ID. An IRC view keeps the ID in its metadata file.
           UUID tableUUID;
           NormalizedURL storageLocation;
           if (tableType == TableType.EXTERNAL) {
@@ -954,7 +956,7 @@ public class TableRepository {
           } else if (tableType == TableType.VIEW) {
             storageLocation = null;
             validateView(session, createTable);
-            tableUUID = UUID.randomUUID();
+            tableUUID = icebergView.map(NewIcebergView::viewId).orElseGet(UUID::randomUUID);
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
@@ -1002,6 +1004,8 @@ public class TableRepository {
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           nativeIcebergMetadataLocation.ifPresent(
               location -> tableInfoDAO.setIcebergMetadataLocation(location.toString()));
+          icebergView.ifPresent(
+              view -> tableInfoDAO.setIcebergViewMetadataLocation(view.metadataLocation()));
           session.persist(tableInfoDAO);
           if (tableType != TableType.MANAGED) {
             // Managed tables retain the owner grant saved when their staging table was created.

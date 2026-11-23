@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_ONLY;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
+import static io.unitycatalog.server.utils.IcebergViewTestUtils.request;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,8 +29,10 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.service.iceberg.ViewMetadataService;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
@@ -40,6 +43,8 @@ import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 
 public class IcebergRestCatalogServiceTest {
 
@@ -61,13 +66,36 @@ public class IcebergRestCatalogServiceTest {
     when(repositories.getStagingTableRepository()).thenReturn(mock(StagingTableRepository.class));
     when(repositories.getTableRepository()).thenReturn(tableRepository);
     when(repositories.getSessionFactory()).thenReturn(mock(SessionFactory.class));
-    service =
-        new IcebergRestCatalogService(
-            authorizer,
-            tableConfigService,
-            mock(MetadataService.class),
-            repositories,
-            serverProperties);
+    service = newService();
+  }
+
+  private IcebergRestCatalogService newService() {
+    return new IcebergRestCatalogService(
+        authorizer,
+        tableConfigService,
+        mock(MetadataService.class),
+        repositories,
+        serverProperties);
+  }
+
+  @Test
+  public void unknownViewCreateOutcomeRetainsMetadata(@TempDir Path root) {
+    when(serverProperties.isIcebergViewEnabled()).thenReturn(true);
+    when(serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT))
+        .thenReturn(root.toString());
+    var views = newService();
+    var failure = new BaseException(ErrorCode.COMMIT_STATE_UNKNOWN, "Commit outcome unknown");
+    when(tableRepository.createViewForIceberg(any(), any(), any())).thenThrow(failure);
+
+    assertThatThrownBy(() -> views.createView("cat", "ns", request("v", "spark", "select 1 as id")))
+        .isSameAs(failure);
+
+    var viewId = ArgumentCaptor.forClass(UUID.class);
+    var pointer = ArgumentCaptor.forClass(String.class);
+    verify(tableRepository).createViewForIceberg(any(), viewId.capture(), pointer.capture());
+    String expectedId = viewId.getValue().toString();
+    var metadata = new ViewMetadataService(root.toString()).read(expectedId, pointer.getValue());
+    assertThat(metadata.uuid()).isEqualTo(expectedId);
   }
 
   @Test

@@ -11,6 +11,7 @@ import io.unitycatalog.server.utils.IcebergViewTestUtils;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
@@ -62,6 +63,8 @@ public class SdkIcebergViewAccessControlTest extends SdkAccessControlBaseCRUDTes
     assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, "base_table"), 403);
     owner.dropView(catalog, namespace, "v");
     assertThat(owner.viewExists(catalog, namespace, "v")).isFalse();
+    assertIcebergApiException(
+        () -> owner.loadView(catalog, namespace, "v"), 404, NoSuchViewException.class, "v");
 
     var nativeApi =
         new TablesApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));

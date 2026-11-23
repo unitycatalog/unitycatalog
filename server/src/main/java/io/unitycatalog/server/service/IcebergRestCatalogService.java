@@ -7,7 +7,6 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_ONLY;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
-import static io.unitycatalog.server.service.iceberg.ViewMetadataService.protocolAction;
 
 import com.google.common.hash.Hashing;
 import com.linecorp.armeria.common.HttpHeaderNames;
@@ -152,6 +151,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
+  private final Optional<ViewMetadataService> viewStore;
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
   private final StagingTableRepository stagingTableRepository;
@@ -172,6 +172,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     super(authorizer, repositories, serverProperties);
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
+    this.viewStore =
+        serverProperties.isIcebergViewEnabled()
+            ? Optional.of(
+                new ViewMetadataService(
+                    serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT)))
+            : Optional.empty();
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.stagingTableRepository = repositories.getStagingTableRepository();
@@ -199,7 +205,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     if (serverProperties.isIcebergTableEnabled()) {
       endpoints.addAll(WRITE_ENDPOINTS);
     }
-    if (serverProperties.isIcebergViewEnabled()) {
+    if (viewStore.isPresent()) {
       endpoints.addAll(
           List.of(Endpoint.V1_VIEW_EXISTS, Endpoint.V1_CREATE_VIEW, Endpoint.V1_DELETE_VIEW));
     }
@@ -906,10 +912,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
       @Param("view") @AuthorizeResourceKey(TABLE) String view) {
-    if (!serverProperties.isIcebergViewEnabled()) {
-      throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
-    }
-    ViewMetadataService store = viewMetadataService();
+    ViewMetadataService store =
+        viewStore.orElseThrow(
+            () -> new NoSuchViewException("View does not exist: %s", namespace + "." + view));
     TableRepository.IcebergViewState state =
         tableRepository.getIcebergViewState(catalog, namespace, view);
     return viewResponse(
@@ -919,11 +924,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   }
 
   private ViewMetadataService viewMetadataService() {
-    if (!serverProperties.isIcebergViewEnabled()) {
-      throw new BaseException(ErrorCode.UNIMPLEMENTED, "Iceberg views are disabled");
-    }
-    return new ViewMetadataService(
-        serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT));
+    return viewStore.orElseThrow(
+        () -> new BaseException(ErrorCode.UNIMPLEMENTED, "Iceberg views are disabled"));
   }
 
   private static LoadViewResponse viewResponse(ViewMetadata metadata) {
@@ -955,13 +957,23 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             .columns(IcebergSchemaConverter.toColumnInfos(request.schema()))
             .comment(request.properties().get("comment"))
             .properties(ViewMetadataService.nativeProperties(request, catalog));
-    TableRepository.CreatedIcebergView created =
-        tableRepository.createViewForIceberg(
-            create, canonical -> protocolAction(() -> store.create(canonical, request)));
+    UUID viewId = UUID.randomUUID();
+    ViewMetadata metadata = store.create(viewId, request);
+    TableInfo view;
+    try {
+      view = tableRepository.createViewForIceberg(create, viewId, metadata.metadataFileLocation());
+    } catch (BaseException e) {
+      // If the commit outcome is unknown, the database may already reference this file.
+      switch (e.getErrorCode()) {
+        case TABLE_ALREADY_EXISTS, CATALOG_NOT_FOUND, SCHEMA_NOT_FOUND, INVALID_ARGUMENT ->
+            store.discardUnpublished(metadata);
+        default -> {}
+      }
+      throw e;
+    }
     initializeHierarchicalAuthorization(
-        created.view().getTableId(),
-        schemaRepository.getSchema(catalog + "." + namespace).getSchemaId());
-    return viewResponse(created.metadata());
+        view.getTableId(), schemaRepository.getSchema(catalog + "." + namespace).getSchemaId());
+    return viewResponse(metadata);
   }
 
   @Head("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
