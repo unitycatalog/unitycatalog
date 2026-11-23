@@ -41,7 +41,8 @@ As you can see, there are currently four (4) Delta tables pre-loaded in this cat
 To create a table storage format table such as Parquet, ORC, Avro, CSV, JSON, or TEXT, use the
 `bin/uc table create ...` command with the `--format` flag.
 
-The following creates a new table in the `path/to/storage` LOCATION two colummns: `some_numbers` and `some_letters`
+The following registers a table over the files at `/path/to/storage` with two columns: `some_numbers` and
+`some_letters`.
 
 === "Parquet"
 
@@ -97,10 +98,12 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
        --format TEXT
     ```
 
+For these formats, `bin/uc table create` only registers the table and its columns in Unity Catalog. It does not
+write anything to the storage location or create it, so point it at the directory that already holds your data files.
+
 !!! Note "Setting your /path/to/storage"
-    You will need to manually set the `/path/to/storage` to the correct storage location. If you don't know where
-    Unity Catalog is storing your files, then take a look at the metadata of an existing table using
-    `bin/uc table get --full_name <catalog.schema.table>` to see its storage location.
+    Replace `/path/to/storage` with the directory that holds your data files. Unity Catalog only records
+    that location and does not copy or move the files.
 
 After you run the `table create` command, your output should look similar to the following *abridged* output of a JSON
 table:

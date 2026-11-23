@@ -466,6 +466,8 @@ bin/uc table create \
    (e.g., `"id INT, price DECIMAL(10,2)"`).
 3. `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
 4. `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
+   For `DELTA`, the CLI creates a Delta table at the storage location unless one is already there. For any other
+   format, it only registers the table, and it neither writes to nor creates the storage location.
 5. `properties`: _\[Optional\]_ The properties of the table in JSON format
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
    For non-Delta tables read or written through the Unity Catalog Spark connector, only keys prefixed with `option.`
