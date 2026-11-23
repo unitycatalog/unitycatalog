@@ -43,11 +43,12 @@ public class GcpCredentialVendorTest {
       new GcpCredentialVendor(new ServerProperties(new Properties()));
 
   private AccessBoundaryRule ruleFor(String location) {
+    return ruleFor(location, CredentialContext.Privilege.SELECT);
+  }
+
+  private AccessBoundaryRule ruleFor(String location, CredentialContext.Privilege privilege) {
     CredentialContext context =
-        CredentialContext.create(
-            NormalizedURL.from(location),
-            Set.of(CredentialContext.Privilege.SELECT),
-            Optional.empty());
+        CredentialContext.create(NormalizedURL.from(location), Set.of(privilege), Optional.empty());
     DownscopedCredentials credentials =
         (DownscopedCredentials)
             credentialVendor.downscopeGcpCreds(
@@ -84,6 +85,30 @@ public class GcpCredentialVendorTest {
                 + " resource.name.startsWith(\"projects/_/buckets/test-bucket/objects/team/data/\")"
                 + " || api.getAttribute('storage.googleapis.com/objectListPrefix',"
                 + " '').startsWith(\"team/data/\")");
+  }
+
+  @Test
+  public void testWriteGetsTheObjectAdminRoleAndReadTheObjectViewerRole() {
+    assertThat(
+            ruleFor("gs://test-bucket/t", CredentialContext.Privilege.UPDATE)
+                .getAvailablePermissions())
+        .containsExactly("inRole:roles/storage.objectAdmin");
+    assertThat(
+            ruleFor("gs://test-bucket/t", CredentialContext.Privilege.SELECT)
+                .getAvailablePermissions())
+        .containsExactly("inRole:roles/storage.objectViewer");
+  }
+
+  /** A percent-encoded dot or slash is decoded into the object name, never resolved as a path. */
+  @ParameterizedTest
+  @CsvSource({
+    "gs://test-bucket/data/%2e%2e/other/table, data/../other/table",
+    "gs://test-bucket/data%2Fother/table, data/other/table",
+  })
+  public void testEncodedPathCharactersStayLiteralInTheBoundary(
+      String location, String objectPath) {
+    assertThat(availabilityConditionFor(location))
+        .isEqualTo(expectedCondition("test-bucket", objectPath));
   }
 
   @Test
@@ -219,6 +244,7 @@ public class GcpCredentialVendorTest {
         Arguments.of(400, client, ErrorCode.FAILED_PRECONDITION),
         Arguments.of(400, unauthorized, ErrorCode.FAILED_PRECONDITION),
         Arguments.of(400, clockSkew, ErrorCode.INTERNAL),
+        Arguments.of(403, "{\"error\": \"access_denied\"}", ErrorCode.FAILED_PRECONDITION),
         Arguments.of(503, "{\"error\": \"backend_error\"}", ErrorCode.UNAVAILABLE),
         Arguments.of(500, "upstream failure", ErrorCode.UNAVAILABLE));
   }
@@ -241,7 +267,7 @@ public class GcpCredentialVendorTest {
     // Whoever asks for access may not read the credential, so the message names none of it.
     assertThat(error.getMessage()).doesNotContain(STORED_KEY_EMAIL).doesNotContain("key-id-1");
     if (expected == ErrorCode.FAILED_PRECONDITION) {
-      assertThat(error.getMessage()).contains("Google rejected the service account key");
+      assertThat(error.getMessage()).contains("Contact the server administrator");
     } else if (expected == ErrorCode.INTERNAL) {
       // A clock problem is not about the key.
       assertThat(error.getMessage()).doesNotContain("service account key");
