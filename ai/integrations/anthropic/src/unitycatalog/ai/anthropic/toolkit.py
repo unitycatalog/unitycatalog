@@ -112,12 +112,15 @@ class UCFunctionToolkit(BaseModel):
             raise e
 
         fn_schema = generate_function_input_params_schema(function_info)
+        json_schema = fn_schema.pydantic_model.model_json_schema()
 
         input_schema = {
             "type": "object",
-            "properties": fn_schema.pydantic_model.model_json_schema().get("properties", {}),
-            "required": fn_schema.pydantic_model.model_json_schema().get("required", []),
+            "properties": json_schema.get("properties", {}),
+            "required": json_schema.get("required", []),
         }
+        if "$defs" in json_schema:
+            input_schema["$defs"] = json_schema["$defs"]
 
         return AnthropicTool(
             name=get_tool_name(function_name),

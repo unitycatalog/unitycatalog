@@ -11,6 +11,7 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
@@ -20,8 +21,10 @@ from unitycatalog.ai.test_utils.client_utils import (
 )
 from unitycatalog.ai.test_utils.function_utils import (
     create_function_and_cleanup,
+    generate_function_info_with_params,
     mock_schema_with_inaccessible_function,
 )
+from unitycatalog.ai.test_utils.function_utils_oss import generate_function_info_with_params_oss
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
@@ -280,6 +283,35 @@ def generate_function_info(parameters, catalog="catalog", schema="schema"):
     )
 
 
+def _resolve_refs(schema, defs):
+    if "$ref" in schema:
+        target = defs[schema["$ref"].removeprefix("#/$defs/")]
+        siblings = {key: value for key, value in schema.items() if key != "$ref"}
+        return _resolve_refs({**target, **siblings}, defs)
+    return {
+        key: _resolve_schema_entry(key, value, defs)
+        for key, value in schema.items()
+        if key != "title"
+    }
+
+
+def _resolve_schema_entry(key, value, defs):
+    if key == "properties":
+        return {name: _resolve_refs(field, defs) for name, field in value.items()}
+    if isinstance(value, dict):
+        return _resolve_refs(value, defs)
+    if isinstance(value, list):
+        return [_resolve_refs(item, defs) if isinstance(item, dict) else item for item in value]
+    return value
+
+
+INT_STRUCT_TYPE_JSON = {
+    "type": "struct",
+    "fields": [{"name": "a", "type": "integer", "nullable": False, "metadata": {}}],
+}
+INT_STRUCT_SCHEMA = {"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]}
+
+
 def test_anthropic_tool_definition_generation():
     client = get_client()
     with set_default_client(client):
@@ -323,6 +355,88 @@ def test_anthropic_tool_definition_generation():
                 "required": [],
             },
         }
+
+
+@pytest.mark.parametrize(
+    ("type_text", "type_json", "expected_property"),
+    [
+        ("struct<a:int>", INT_STRUCT_TYPE_JSON, INT_STRUCT_SCHEMA),
+        (
+            "array<struct<a:int>>",
+            {"type": "array", "elementType": INT_STRUCT_TYPE_JSON, "containsNull": False},
+            {"type": "array", "items": INT_STRUCT_SCHEMA},
+        ),
+        (
+            "map<string,struct<a:int>>",
+            {
+                "type": "map",
+                "keyType": "string",
+                "valueType": INT_STRUCT_TYPE_JSON,
+                "valueContainsNull": False,
+            },
+            {"type": "object", "additionalProperties": INT_STRUCT_SCHEMA},
+        ),
+        (
+            "struct<b:struct<title:string>>",
+            {
+                "type": "struct",
+                "fields": [
+                    {
+                        "name": "b",
+                        "type": {
+                            "type": "struct",
+                            "fields": [
+                                {
+                                    "name": "title",
+                                    "type": "string",
+                                    "nullable": False,
+                                    "metadata": {},
+                                }
+                            ],
+                        },
+                        "nullable": False,
+                        "metadata": {},
+                    }
+                ],
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "b": {
+                        "type": "object",
+                        "properties": {"title": {"type": "string"}},
+                        "required": ["title"],
+                    }
+                },
+                "required": ["b"],
+            },
+        ),
+    ],
+    ids=["struct", "array-of-structs", "map-of-structs", "nested-struct"],
+)
+@pytest.mark.parametrize(
+    "generate_function_info_for_client",
+    [generate_function_info_with_params, generate_function_info_with_params_oss],
+    ids=["databricks", "oss"],
+)
+def test_anthropic_tool_definition_keeps_struct_definitions(
+    generate_function_info_for_client, type_text, type_json, expected_property
+):
+    function_info = generate_function_info_for_client({"point": (type_text, type_json)})
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+
+    tool = UCFunctionToolkit.uc_function_to_anthropic_tool(
+        function_name=function_info.full_name, client=client
+    )
+
+    input_schema = tool.to_dict()["input_schema"]
+    resolved = _resolve_refs(
+        {"properties": input_schema["properties"]}, input_schema.get("$defs", {})
+    )
+    assert resolved["properties"] == {
+        "point": {**expected_property, "default": None, "description": ""}
+    }
 
 
 @pytest.mark.parametrize(
