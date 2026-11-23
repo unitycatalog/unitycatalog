@@ -379,9 +379,11 @@ Optional tuning:
 | `server.authorization.policy-refresh-interval` | `PT1M` | How often each instance polls `casbin_rule` |
 | `server.authorization.policy-refresh-min-probe-interval` | `PT1S` | Minimum gap between deny-path `max(id)` probes. Quiet traffic is unlikely to wait. Lower toward `PT0S` under heavy 403 load for faster grant visibility; that increases `casbin_rule` queries. |
 
-Revocations propagate on the poll interval. A stale deny can trigger one `max(id)` probe
-before returning 403. Concurrent denials and list-filter items share a probe that started after the
-request.
+Each poll compares the policy row count and maximum row ID. Concurrent commits can leave both
+values unchanged, so a poll can miss an ownership transfer until another detectable policy change
+or a restart. The poll interval is not a guaranteed revocation deadline. A stale deny can trigger
+one `max(id)` probe before returning 403. Concurrent denials and list-filter items share a probe
+that started after the request.
 
 ### Valid privilege grants
 
@@ -422,7 +424,8 @@ to use the correct object types before adding or reapplying grants.
 ### MANAGE
 
 `MANAGE` permits full metadata and grant inspection, grant changes, supported metadata updates,
-and deletion. Managers can grant themselves other privileges, including data access.
+deletion, and ownership transfer. Managers can grant themselves other privileges, including data
+access.
 
 Catalog and schema grants also cover their children. Usage grants are required only above the
 scope where `MANAGE` is granted. A schema grant needs `USE CATALOG`. A grant on an object inside
@@ -448,6 +451,35 @@ BROWSE does not permit data access, credentials, changes, or engine table loads.
 
 Lists can mix full and browse-only objects. A filtered page can be empty and still have a
 `next_page_token`; continue until the token is absent.
+
+### Ownership transfer
+
+Set `owner` in an object's PATCH request to transfer ownership to an existing user. Table and
+function PATCH requests support only ownership changes. For views, functions, and models, a user
+can transfer ownership to themselves; a metastore admin can transfer to another user.
+
+Omit `owner` when updating other fields. In v0.3.0, credential and external location PATCH
+requests accepted `owner` but ignored it. These requests now transfer ownership when `owner`
+is set. Update clients that copy an object's old owner into PATCH requests. No database
+migration is required.
+
+Catalog, schema, volume, and registered model PATCH requests also accept `owner` for ownership
+transfer.
+
+The object owner and its `OWNER` grant are saved in one database transaction. After commit,
+the server reloads its local permission cache. Enable [policy refresh](#multiple-server-instances)
+on every instance to detect changes from other servers, subject to its concurrent-commit limitation.
+
+If the local reload fails, the request returns `UNAVAILABLE` even though the transfer may have
+committed. With native authorization, permission checks on this instance deny every user,
+including metastore admins, until a reload succeeds. A denied request retries the reload even
+when policy refresh is disabled. Native grant changes and permission listings also retry the
+reload. Read the owner after recovery before retrying a transfer.
+
+Creation also saves its `OWNER` grant and any parent permission link in the resource transaction.
+A failed cache load returns `UNAVAILABLE` after creation commits. Later denied requests and native
+grant operations retry the load, even when policy refresh is disabled. Read the object after
+recovery before retrying creation.
 
 ### Restart the UC Server
 

@@ -398,6 +398,14 @@ class AuditorTest {
   }
 
   @Test
+  void ownerLoadForwardsWithoutRecordingAnotherGrant() {
+    UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
+    auditor.wrap(delegate).loadOwner(ID);
+    verify(delegate).loadOwner(ID);
+    assertThat(CapturingAuditSink.RECORDS).isEmpty();
+  }
+
+  @Test
   void permissionChangeThatThrowsIsNotRecorded() {
     UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
     UUID principal = UUID.randomUUID();

@@ -46,6 +46,23 @@ public interface UnityCatalogAuthorizer {
   Map<UUID, List<Privileges>> listAuthorizations(UUID resource);
 
   /**
+   * Loads the saved OWNER grant and parent link for a created resource without writing them again.
+   *
+   * <p>Creation saves the native policies in the resource transaction before this call.
+   * Implementations with a separate grant store must handle creation explicitly. The default only
+   * reloads policy.
+   */
+  default void loadOwner(UUID resource) {
+    reloadAuthorizations();
+  }
+
+  /**
+   * Reloads native policy after a committed ownership transfer. Wrappers must forward this to the
+   * authorizer that maintains native grants, even when it does not make permission decisions.
+   */
+  default void reloadAuthorizations() {}
+
+  /**
    * Reload cached authorization state after a deny, if supported. Default is a no-op.
    *
    * @param operationStartNanos {@link System#nanoTime()} from the start of the denied operation

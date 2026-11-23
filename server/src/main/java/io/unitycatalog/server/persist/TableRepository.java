@@ -20,6 +20,7 @@ import io.unitycatalog.server.model.DependencyList;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.observability.TableMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
@@ -253,7 +254,11 @@ public class TableRepository {
           TableInfoDAO tableInfoDAO = findTableOrThrow(session, catalogName, schemaName, tableName);
           TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
-              tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+              tableInfo,
+              TableInfo::setProperties,
+              tableInfo.getTableId(),
+              Constants.TABLE,
+              session);
           RepositoryUtils.attachDependencies(
               tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
           return tableInfo;
@@ -949,6 +954,12 @@ public class TableRepository {
           nativeIcebergMetadataLocation.ifPresent(
               location -> tableInfoDAO.setIcebergMetadataLocation(location.toString()));
           session.persist(tableInfoDAO);
+          if (tableType != TableType.MANAGED) {
+            // Managed tables retain the owner grant saved when their staging table was created.
+            repositories
+                .getOwnershipRepository()
+                .initializeOwner(session, tableUUID, callerId, schemaId);
+          }
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
             // view_dependencies is optional (see validateViewLike); treat an absent list as empty.
@@ -1212,6 +1223,44 @@ public class TableRepository {
       result.add(tableInfo);
     }
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
+  }
+
+  /** Transfers ownership, validating view recipients against the locked table. */
+  public TableInfo updateTable(
+      String fullName,
+      UpdateTable updateTable,
+      boolean canTransferViewToRecipient,
+      Runnable beforeCommit) {
+    String[] parts = ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, parts[0], parts[1]);
+          TableInfoDAO dao = findBySchemaIdAndName(session, schemaId, parts[2]);
+          if (dao == null) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + fullName);
+          }
+          String owner =
+              repositories
+                  .getOwnershipRepository()
+                  .updateOwner(session, dao, updateTable.getOwner(), beforeCommit);
+          if (RepositoryUtils.isViewLike(dao.getType()) && !canTransferViewToRecipient) {
+            throw new BaseException(
+                ErrorCode.PERMISSION_DENIED,
+                "Only a metastore admin can transfer a view, function, or model to another user.");
+          }
+          dao.setOwner(owner);
+          dao.setUpdatedAt(new Date());
+          dao.setUpdatedBy(IdentityUtils.findPrincipalEmailAddress());
+          TableInfo result = dao.toTableInfo(true, parts[0], parts[1]);
+          RepositoryUtils.attachDependencies(
+              result, dao, session, repositories.getDependencyRepository());
+          return RepositoryUtils.attachProperties(
+              result, TableInfo::setProperties, result.getTableId(), Constants.TABLE, session);
+        },
+        "Failed to update table owner",
+        /* readOnly= */ false);
   }
 
   /**

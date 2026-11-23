@@ -28,6 +28,8 @@ import java.net.URI;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
+import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
+import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.StagedTable;
 import org.apache.spark.sql.connector.catalog.StagingTableCatalog;
@@ -44,6 +46,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
@@ -366,6 +369,59 @@ public class UCSingleCatalogStagingTableTest {
         .hasMessageContaining("Invalid property value 'bogus'");
 
     verify(mockDelegate, never()).stageCreate(eq(IDENT), eq(SCHEMA), any(), any());
+  }
+
+  /**
+   * UC REST rejects a taken name with 400 TABLE_ALREADY_EXISTS, and a 409 means the same. Both
+   * managed create paths must turn it into TableAlreadyExistsException, the only error CREATE TABLE
+   * IF NOT EXISTS ignores.
+   */
+  @ParameterizedTest
+  @CsvSource({"true, 400", "false, 400", "true, 409", "false, 409"})
+  public void testManagedCreateMapsTakenNameToTableAlreadyExists(boolean stageCreate, int status)
+      throws Exception {
+    TablesApi tablesApi = mock(TablesApi.class);
+    mockMissingTableLookup(tablesApi);
+    String body =
+        status == 400
+            ? "{\"error_code\":\"TABLE_ALREADY_EXISTS\",\"message\":\"Table already exists:"
+                + " table\"}"
+            : null;
+    when(tablesApi.createStagingTable(any(CreateStagingTable.class)))
+        .thenThrow(new ApiException(status, "createStagingTable call failed", null, body));
+
+    assertThatThrownBy(() -> createManagedDeltaTable(stageCreate))
+        .isInstanceOf(TableAlreadyExistsException.class);
+  }
+
+  /** A 400 with another error code is not a taken name, so both managed paths rethrow it as is. */
+  @ParameterizedTest(name = "stageCreate={0}")
+  @ValueSource(booleans = {true, false})
+  public void testManagedCreateKeepsUnrelatedStagingError(boolean stageCreate) throws Exception {
+    TablesApi tablesApi = mock(TablesApi.class);
+    mockMissingTableLookup(tablesApi);
+    ApiException error =
+        new ApiException(
+            400,
+            "createStagingTable call failed",
+            null,
+            "{\"error_code\":\"INVALID_ARGUMENT\",\"message\":\"Invalid name\"}");
+    when(tablesApi.createStagingTable(any(CreateStagingTable.class))).thenThrow(error);
+
+    assertThatThrownBy(() -> createManagedDeltaTable(stageCreate)).isSameAs(error);
+  }
+
+  private void createManagedDeltaTable(boolean stageCreate) throws Exception {
+    Map<String, String> props = Map.of(TableCatalog.PROP_PROVIDER, "delta");
+    if (stageCreate) {
+      catalog.stageCreate(IDENT, SCHEMA, PARTITIONS, props);
+    } else {
+      catalog.createTable(
+          IDENT,
+          new Column[] {Column.create("id", DataTypes.IntegerType, false)},
+          PARTITIONS,
+          props);
+    }
   }
 
   @Test

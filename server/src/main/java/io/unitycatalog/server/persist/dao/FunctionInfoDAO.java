@@ -17,10 +17,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.SQLRestriction;
 
 // Hibernate annotations
 @Entity
+@DynamicUpdate
 @Table(name = "uc_functions")
 // Lombok annotations
 @Getter
@@ -54,7 +56,7 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "data_type")
   private ColumnTypeName dataType;
 
-  @Column(name = "full_data_type")
+  @Column(name = "full_data_type", length = 16777215)
   private String fullDataType;
 
   @Column(name = "external_language")

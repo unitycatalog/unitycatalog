@@ -114,8 +114,13 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
       @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
           UpdateExternalLocation updateRequest) {
-    return HttpResponse.ofJson(
-        externalLocationRepository.updateExternalLocation(name, updateRequest));
+    ExternalLocationInfo result =
+        updateWithOwnerReload(
+            updateRequest.getOwner(),
+            beforeCommit ->
+                externalLocationRepository.updateExternalLocation(
+                    name, updateRequest, beforeCommit));
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{name}")

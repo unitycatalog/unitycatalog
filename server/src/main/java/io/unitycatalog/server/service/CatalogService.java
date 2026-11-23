@@ -114,15 +114,27 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   @Patch("/{name}")
   @AuthorizeExpression(
       """
-      #authorizeAny(#principal, #catalog, OWNER, MANAGE) &&
-      (#new_name == null || #authorize(#principal, #catalog, OWNER) ||
-        #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG))
-      """)
+      (#authorizeAny(#principal, #catalog, OWNER, MANAGE) || (
+      """
+          + AuthorizeExpressions.UPDATE_OWNER
+          + """
+          )) &&
+          (#new_name == null || #authorize(#principal, #catalog, OWNER) ||
+            #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,
-      @AuthorizeKey(key = "new_name") UpdateCatalog updateCatalog) {
-    return HttpResponse.ofJson(catalogRepository.updateCatalog(name, updateCatalog));
+      @AuthorizeKey(key = "owner")
+          @AuthorizeKey(key = "new_name")
+          @AuthorizeKey(key = "comment")
+          @AuthorizeKey(key = "properties")
+          UpdateCatalog updateCatalog) {
+    CatalogInfo result =
+        updateWithOwnerReload(
+            updateCatalog.getOwner(),
+            beforeCommit -> catalogRepository.updateCatalog(name, updateCatalog, beforeCommit));
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{name}")

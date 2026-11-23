@@ -9,6 +9,8 @@ import scala.collection.convert.ImplicitConversions._
 import scala.collection.mutable.ArrayBuffer
 import scala.language.existentials
 
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.unitycatalog.client.api.{SchemasApi, TablesApi}
 import io.unitycatalog.client.auth.TokenProvider
 import io.unitycatalog.client.model.{
@@ -27,7 +29,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.catalyst.TableIdentifier
+import org.apache.spark.sql.catalyst.{QualifiedTableName, TableIdentifier}
 import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException, TableAlreadyExistsException, ViewAlreadyExistsException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
@@ -317,7 +319,12 @@ class UCSingleCatalog
       .catalogName(name())
       .schemaName(ident.namespace().head)
       .name(ident.name())
-    val stagingTableInfo = tablesApi.createStagingTable(createStagingTable)
+    val stagingTableInfo = try {
+      tablesApi.createStagingTable(createStagingTable)
+    } catch {
+      case e: ApiException if UCSingleCatalog.isTableAlreadyExists(e) =>
+        throw new TableAlreadyExistsException(ident)
+    }
     val stagingLocation = stagingTableInfo.getStagingLocation
     val stagingTableId = stagingTableInfo.getId
 
@@ -563,6 +570,8 @@ class UCSingleCatalog
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
 
+  override def invalidateTable(ident: Identifier): Unit = delegate.invalidateTable(ident)
+
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
     throw new UnsupportedOperationException("Renaming a table is not supported yet")
   }
@@ -777,7 +786,7 @@ class UCSingleCatalog
   }
 }
 
-object UCSingleCatalog {
+object UCSingleCatalog extends Logging {
   // DeltaCatalog loading status for testing purpose.
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
@@ -834,6 +843,38 @@ object UCSingleCatalog {
       props
     }
   }
+
+  private val errorResponseMapper = new ObjectMapper()
+
+  /**
+   * Whether a UC REST error response carries `errorCode` in its `error_code` field. UC REST
+   * reports a taken name as 400, the same status as an invalid request, so only the error code
+   * tells them apart.
+   *
+   * @param e the error from a UC REST call
+   * @param errorCode the expected error code, for example `TABLE_ALREADY_EXISTS`
+   * @return false when the body is missing, is not JSON or carries another error code
+   */
+  private[spark] def hasErrorCode(e: ApiException, errorCode: String): Boolean =
+    Option(e.getResponseBody).exists { body =>
+      try {
+        errorResponseMapper.readTree(body).path("error_code").asText() == errorCode
+      } catch {
+        case parseError: JsonProcessingException =>
+          logDebug("Cannot parse the UC error response; keeping the API exception", parseError)
+          false
+      }
+    }
+
+  /**
+   * Whether a table create failed because the name is taken: 400 with `TABLE_ALREADY_EXISTS`
+   * from UC REST, or 409.
+   *
+   * @param e the error from a UC REST table create call
+   * @return true when the error means a table or view already holds the name
+   */
+  private[spark] def isTableAlreadyExists(e: ApiException): Boolean =
+    e.getCode == 409 || hasErrorCode(e, "TABLE_ALREADY_EXISTS")
 
   /**
    * HTTP statuses that mean the path is not usable via UC (unmanaged / no permission) and may
@@ -1169,9 +1210,7 @@ private[spark] class UCProxy(
 
   /**
    * Spark 4.2's `TableCatalog` made `createTable(ident, TableInfo)` the canonical entry
-   * point; this legacy 4-arg method carries all the create-table logic, which keeps the diff
-   * vs. main scoped to "add the new overload + 409 -> TableAlreadyExistsException catch required
-   * by the relation catalog's active-rejection contract".
+   * point; this legacy 4-arg method carries all the create-table logic.
    */
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
@@ -1229,12 +1268,12 @@ private[spark] class UCProxy(
     try {
       tablesApi.createTable(createTable)
     } catch {
-      // RelationCatalog's active-rejection contract: createTable must throw
-      // TableAlreadyExistsException when a view (or another table, race) already sits at
-      // `ident`. UC returns 409 in both cases.
-      case e: ApiException if e.getCode == 409 =>
+      // Spark ignores only TableAlreadyExistsException for CREATE TABLE IF NOT EXISTS, and
+      // RelationCatalog requires it when a view (or a table created concurrently) holds `ident`.
+      case e: ApiException if UCSingleCatalog.isTableAlreadyExists(e) =>
         throw new TableAlreadyExistsException(ident)
     }
+    invalidateTable(ident)
     loadTable(ident)
   }
 
@@ -1324,7 +1363,29 @@ private[spark] class UCProxy(
     // `deleteTable` returns the (empty) response body, not an HTTP status; a real failure throws
     // ApiException. Issue the delete for its side effect and report success.
     tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    invalidateTable(ident)
     true
+  }
+
+  /**
+   * Drops the relation Spark caches for a table this catalog loads as a [[V1Table]], so the next
+   * read uses the table's current location. Spark caches that relation under the table's name and,
+   * unlike for its built-in session catalog, never drops it when a catalog plugin drops, creates
+   * or refreshes the table. Only the active session's entry is dropped: another session that read
+   * the table keeps reading its old location until it refreshes the table.
+   */
+  override def invalidateTable(ident: Identifier): Unit = {
+    if (UCSingleCatalog.isAddressableTableName(ident)) {
+      SparkSession.getActiveSession match {
+        case Some(spark) =>
+          // Must match the identifier `loadV1Table` builds, which Spark keys the relation by.
+          spark.sessionState.catalog.invalidateCachedTable(
+            QualifiedTableName(name(), ident.namespace().head, ident.name()))
+        case None =>
+          logWarning(
+            s"No active SparkSession, so the cached relation of table $ident was not invalidated.")
+      }
+    }
   }
 
   // UC OSS does not currently expose a rename endpoint for tables or views; stub until UC adds

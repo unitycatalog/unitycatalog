@@ -99,6 +99,9 @@ public class VolumeRepository {
                   .volumeType(createVolumeRequest.getVolumeType().getValue())
                   .build();
           session.persist(volumeInfoDAO);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, volumeInfoDAO.getId(), callerId, schemaId);
           LOGGER.info("Added volume: {}", volumeInfoDAO.getName());
           return volumeInfoDAO.toVolumeInfo(
               createVolumeRequest.getCatalogName(), createVolumeRequest.getSchemaName());
@@ -208,6 +211,11 @@ public class VolumeRepository {
   }
 
   public VolumeInfo updateVolume(String name, UpdateVolumeRequestContent updateVolumeRequest) {
+    return updateVolume(name, updateVolumeRequest, () -> {});
+  }
+
+  public VolumeInfo updateVolume(
+      String name, UpdateVolumeRequestContent updateVolumeRequest, Runnable beforeCommit) {
     if (updateVolumeRequest.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateVolumeRequest.getNewName());
     }
@@ -222,6 +230,13 @@ public class VolumeRepository {
           if (volumeInfo == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + name);
           }
+          if (updateVolumeRequest.getOwner() != null) {
+            volumeInfo.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(
+                        session, volumeInfo, updateVolumeRequest.getOwner(), beforeCommit));
+          }
           if (updateVolumeRequest.getNewName() != null) {
             VolumeInfoDAO existingVolume =
                 getVolumeDAO(session, catalog, schema, updateVolumeRequest.getNewName());
@@ -232,6 +247,7 @@ public class VolumeRepository {
             }
           }
           if (updateVolumeRequest.getNewName() == null
+              && updateVolumeRequest.getOwner() == null
               && updateVolumeRequest.getComment() == null) {
             return volumeInfo.toVolumeInfo(catalog, schema);
           }

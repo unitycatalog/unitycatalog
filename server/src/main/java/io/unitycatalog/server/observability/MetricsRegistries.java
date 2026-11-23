@@ -1,5 +1,8 @@
 package io.unitycatalog.server.observability;
 
+import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariPoolMXBean;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
@@ -99,5 +102,36 @@ public final class MetricsRegistries {
     new JvmThreadMetrics().bindTo(registry);
     new ProcessorMetrics().bindTo(registry);
     return new PrometheusMetrics(registry, jvmGcMetrics);
+  }
+
+  /**
+   * Adds gauges for the HikariCP pool, using HikariCP's usual metric names. We use gauges and not
+   * setMetricRegistry because a pool takes a registry only once, and tests can start more than one
+   * server with the same pool.
+   */
+  public static void bindHikariPool(PrometheusMeterRegistry registry, HikariDataSource dataSource) {
+    HikariPoolMXBean pool = dataSource.getHikariPoolMXBean();
+    String poolName = dataSource.getPoolName();
+    Gauge.builder("hikaricp.connections.active", pool, HikariPoolMXBean::getActiveConnections)
+        .description("Active connections")
+        .tag("pool", poolName)
+        .register(registry);
+    Gauge.builder("hikaricp.connections.idle", pool, HikariPoolMXBean::getIdleConnections)
+        .description("Idle connections")
+        .tag("pool", poolName)
+        .register(registry);
+    Gauge.builder(
+            "hikaricp.connections.pending", pool, HikariPoolMXBean::getThreadsAwaitingConnection)
+        .description("Threads waiting for a connection")
+        .tag("pool", poolName)
+        .register(registry);
+    Gauge.builder("hikaricp.connections", pool, HikariPoolMXBean::getTotalConnections)
+        .description("Total connections")
+        .tag("pool", poolName)
+        .register(registry);
+    Gauge.builder("hikaricp.connections.max", dataSource, HikariDataSource::getMaximumPoolSize)
+        .description("Maximum connections")
+        .tag("pool", poolName)
+        .register(registry);
   }
 }

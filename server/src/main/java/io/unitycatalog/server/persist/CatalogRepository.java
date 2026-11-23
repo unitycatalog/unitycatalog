@@ -80,6 +80,9 @@ public class CatalogRepository {
           PropertyDAO.from(catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
               .forEach(session::persist);
           session.persist(catalogInfoDAO);
+          repositories
+              .getOwnershipRepository()
+              .initializeOwner(session, catalogInfoDAO.getId(), callerId);
           LOGGER.info("Added catalog: {}", catalogInfo.getName());
           return catalogInfo;
         },
@@ -112,7 +115,7 @@ public class CatalogRepository {
     for (CatalogInfoDAO catalogInfoDAO : catalogInfoDAOList) {
       CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
       RepositoryUtils.attachProperties(
-          catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+          catalogInfo, CatalogInfo::setProperties, catalogInfo.getId(), Constants.CATALOG, session);
       result.add(catalogInfo);
     }
     return new ListCatalogsResponse().catalogs(result).nextPageToken(nextPageToken);
@@ -125,7 +128,11 @@ public class CatalogRepository {
           CatalogInfoDAO catalogInfoDAO = getCatalogDaoOrThrow(session, name);
           CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
           return RepositoryUtils.attachProperties(
-              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+              catalogInfo,
+              CatalogInfo::setProperties,
+              catalogInfo.getId(),
+              Constants.CATALOG,
+              session);
         },
         "Failed to get catalog",
         /* readOnly= */ true);
@@ -143,6 +150,11 @@ public class CatalogRepository {
   }
 
   public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
+    return updateCatalog(name, updateCatalog, () -> {});
+  }
+
+  public CatalogInfo updateCatalog(
+      String name, UpdateCatalog updateCatalog, Runnable beforeCommit) {
     if (updateCatalog.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
     }
@@ -152,13 +164,24 @@ public class CatalogRepository {
         sessionFactory,
         session -> {
           CatalogInfoDAO catalogInfoDAO = getCatalogDaoOrThrow(session, name);
+          if (updateCatalog.getOwner() != null) {
+            catalogInfoDAO.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(session, catalogInfoDAO, updateCatalog.getOwner(), beforeCommit));
+          }
           if (updateCatalog.getNewName() == null
+              && updateCatalog.getOwner() == null
               && updateCatalog.getComment() == null
               && (updateCatalog.getProperties() == null
                   || updateCatalog.getProperties().isEmpty())) {
             CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
             return RepositoryUtils.attachProperties(
-                catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+                catalogInfo,
+                CatalogInfo::setProperties,
+                catalogInfo.getId(),
+                Constants.CATALOG,
+                session);
           }
           if (updateCatalog.getNewName() != null
               && RepositoryUtils.getCatalogDaoOpt(session, updateCatalog.getNewName())
@@ -186,7 +209,11 @@ public class CatalogRepository {
           session.merge(catalogInfoDAO);
           CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
           return RepositoryUtils.attachProperties(
-              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+              catalogInfo,
+              CatalogInfo::setProperties,
+              catalogInfo.getId(),
+              Constants.CATALOG,
+              session);
         },
         "Failed to update catalog",
         /* readOnly= */ false);

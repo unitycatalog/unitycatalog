@@ -156,8 +156,10 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeExpression(
       "("
           + AuthorizeExpressions.UPDATE_VOLUME
+          + " || ("
+          + AuthorizeExpressions.UPDATE_OWNER
           + """
-          ) &&
+          )) &&
           (#new_name == null ||
             (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
               #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
@@ -173,8 +175,14 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
-      @AuthorizeKey(key = "new_name") UpdateVolumeRequestContent updateVolumeRequest) {
-    return HttpResponse.ofJson(volumeRepository.updateVolume(fullName, updateVolumeRequest));
+      @AuthorizeKey(key = "new_name") @AuthorizeKey(key = "owner") @AuthorizeKey(key = "comment")
+          UpdateVolumeRequestContent updateVolumeRequest) {
+    VolumeInfo result =
+        updateWithOwnerReload(
+            updateVolumeRequest.getOwner(),
+            beforeCommit ->
+                volumeRepository.updateVolume(fullName, updateVolumeRequest, beforeCommit));
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{full_name}")

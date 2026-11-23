@@ -14,6 +14,8 @@ pub mod config;
 mod mapping;
 mod proxy;
 mod services;
+#[cfg(test)]
+mod test_logs;
 mod upstream;
 
 pub mod proto {
@@ -94,9 +96,10 @@ pub fn app(state: AppState) -> Router {
 }
 
 /// CORS is only needed when the SPA is served from a different origin than the
-/// bridge (uncommon). Same-origin (prod) and the Vite dev proxy need none, so an
-/// empty allowlist yields no CORS layer. Cookie auth requires explicit origins
-/// with credentials (never a wildcard).
+/// bridge (uncommon). When a reverse proxy or the Vite dev proxy puts the SPA
+/// and the bridge on one origin, none is needed, so an empty allowlist yields
+/// no CORS layer. Cookie auth requires explicit origins with credentials
+/// (never a wildcard).
 fn build_cors(origins: &[String]) -> Option<CorsLayer> {
     if origins.is_empty() {
         return None;
