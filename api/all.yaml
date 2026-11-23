@@ -1247,6 +1247,7 @@ paths:
       summary: Create a credential
       description: |-
         Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+        `purpose` defaults to `STORAGE` when it is not set.
         Set exactly one of `aws_iam_role` and `s3_compatible`; otherwise the request fails with
         `INVALID_ARGUMENT`.
 

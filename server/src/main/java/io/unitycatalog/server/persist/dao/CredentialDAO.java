@@ -29,6 +29,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.HexFormat;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -117,7 +118,8 @@ public class CredentialDAO extends IdentifiableDAO {
         CredentialDAO.builder()
             .id(UUID.randomUUID())
             .name(createRequest.getName())
-            .purpose(createRequest.getPurpose())
+            .purpose(
+                Objects.requireNonNullElse(createRequest.getPurpose(), CredentialPurpose.STORAGE))
             .comment(createRequest.getComment())
             .owner(callerId)
             .createdAt(now)
