@@ -18,7 +18,7 @@ import org.apache.iceberg.data.avro.DataWriter;
 import org.apache.iceberg.io.FileAppender;
 import org.apache.iceberg.io.FileIO;
 
-/** Builds real local Iceberg files without a catalog server or Hadoop runtime. */
+/** Builds real Iceberg files without a catalog server or Hadoop runtime. */
 public final class IcebergTestUtils {
   private IcebergTestUtils() {}
 
@@ -30,8 +30,16 @@ public final class IcebergTestUtils {
   /** Creates an empty table with the given properties; the caller closes its FileIO after use. */
   public static BaseTable createTable(
       Path directory, Schema schema, Map<String, String> properties) {
-    String location = NormalizedURL.from(directory.toUri()).toString();
-    FileIO fileIO = new SimpleLocalFileIO(directory);
+    return createTable(
+        NormalizedURL.from(directory.toUri()).toString(),
+        schema,
+        properties,
+        new SimpleLocalFileIO(directory));
+  }
+
+  /** Creates an empty table at the given location; the caller closes its FileIO after use. */
+  public static BaseTable createTable(
+      String location, Schema schema, Map<String, String> properties, FileIO fileIO) {
     var operations =
         new BaseMetastoreTableOperations() {
           private String metadataLocation;

@@ -119,7 +119,7 @@ class RegistrationMetadataTest {
       snapshot.remove("manifest-list");
       snapshot.putArray("manifests").add(outside);
     }
-    assertRejected(json, "must be at or below");
+    assertRejected(json, "must be strictly below");
   }
 
   @ParameterizedTest
@@ -148,7 +148,8 @@ class RegistrationMetadataTest {
         }
       }
     }
-    assertRejected(json, "must be at or below");
+    assertRejected(
+        json, field.startsWith("write.") ? "must be at or below" : "must be strictly below");
   }
 
   @Test

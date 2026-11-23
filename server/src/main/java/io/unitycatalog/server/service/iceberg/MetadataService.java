@@ -104,18 +104,24 @@ public class MetadataService {
             TableProperties.OBJECT_STORE_PATH)) {
       String location = metadata.properties().get(property);
       if (location != null) {
-        validateRegistrationLocation(location, tableLocation);
+        validateRegistrationLocation(location, tableLocation, /* isDirectory= */ true);
       }
     }
     metadata
         .previousFiles()
-        .forEach(file -> validateRegistrationLocation(file.file(), tableLocation));
+        .forEach(
+            file ->
+                validateRegistrationLocation(file.file(), tableLocation, /* isDirectory= */ false));
     metadata
         .statisticsFiles()
-        .forEach(file -> validateRegistrationLocation(file.path(), tableLocation));
+        .forEach(
+            file ->
+                validateRegistrationLocation(file.path(), tableLocation, /* isDirectory= */ false));
     metadata
         .partitionStatisticsFiles()
-        .forEach(file -> validateRegistrationLocation(file.path(), tableLocation));
+        .forEach(
+            file ->
+                validateRegistrationLocation(file.path(), tableLocation, /* isDirectory= */ false));
     if (metadata.snapshots().isEmpty()) {
       return;
     }
@@ -123,10 +129,11 @@ public class MetadataService {
     try (FileIO fileIO = fileOperations.getFileIO(readLocation)) {
       for (Snapshot snapshot : metadata.snapshots()) {
         if (snapshot.manifestListLocation() != null) {
-          validateRegistrationLocation(snapshot.manifestListLocation(), tableLocation);
+          validateRegistrationLocation(
+              snapshot.manifestListLocation(), tableLocation, /* isDirectory= */ false);
         }
         for (ManifestFile manifest : snapshot.allManifests(fileIO)) {
-          validateRegistrationLocation(manifest.path(), tableLocation);
+          validateRegistrationLocation(manifest.path(), tableLocation, /* isDirectory= */ false);
           if (checkedManifests.add(manifest.path())) {
             validateRegistrationManifest(metadata, tableLocation, fileIO, manifest);
           }
@@ -148,17 +155,25 @@ public class MetadataService {
         }) {
       reader
           .select(List.of("file_path"))
-          .forEach(file -> validateRegistrationLocation(file.location(), tableLocation));
+          .forEach(
+              file ->
+                  validateRegistrationLocation(
+                      file.location(), tableLocation, /* isDirectory= */ false));
     }
   }
 
-  private static void validateRegistrationLocation(String path, NormalizedURL tableLocation) {
+  private static void validateRegistrationLocation(
+      String path, NormalizedURL tableLocation, boolean isDirectory) {
     NormalizedURL location = NormalizedURL.from(path);
     LocalStorageLocationValidator.validateCanonicalLocalLocation(location);
+    // Cleanup deletes descendants of the table directory, so only directory properties may equal
+    // it.
     ValidationUtils.checkArgument(
-        location.equals(tableLocation) || location.toString().startsWith(tableLocation + "/"),
-        "Iceberg registration location ('%s') must be at or below the table location ('%s').",
+        (isDirectory && location.equals(tableLocation))
+            || location.toString().startsWith(tableLocation + "/"),
+        "Iceberg registration location ('%s') must be %s the table location ('%s').",
         location,
+        isDirectory ? "at or below" : "strictly below",
         tableLocation);
   }
 

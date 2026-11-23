@@ -104,8 +104,9 @@ storage boundary are reserved for UC allocation. Registration cannot adopt them 
 including directories of resources whose cleanup has completed.
 
 All files referenced by retained snapshots must also be inside the table directory, including
-manifest lists, manifests, data files, and delete files. Previous metadata files, statistics files,
-and configured data directories must be inside it too. Registration reads the retained snapshots'
+manifest lists, manifests, data files, and delete files. Previous metadata files and statistics files
+must also be strict descendants of the table directory. Configured data directories may equal the
+table directory or be below it. Registration reads the retained snapshots'
 manifests to check these paths and rejects layouts that need access outside the table directory.
 Bucket-root and container-root external locations are supported; the metadata read uses a child
 directory within that boundary.

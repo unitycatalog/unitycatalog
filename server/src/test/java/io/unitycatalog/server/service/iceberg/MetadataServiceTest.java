@@ -22,6 +22,7 @@ import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendorImpl;
+import io.unitycatalog.server.utils.IcebergTestUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.InputStream;
@@ -32,12 +33,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.SneakyThrows;
+import org.apache.iceberg.DataFiles;
+import org.apache.iceberg.FileMetadata;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
-import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.aws.s3.S3FileIO;
+import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -106,27 +109,30 @@ public class MetadataServiceTest {
 
   @ParameterizedTest
   @ValueSource(strings = {"", "/warehouse"})
-  public void registrationUsesChildCloudScope(String prefix) {
+  public void registrationUsesChildCloudScope(String prefix) throws Exception {
     String bucket = "registration-" + (prefix.isEmpty() ? "bucket" : "prefix");
     mockS3Client.createBucket(builder -> builder.bucket(bucket));
     NormalizedURL storageRoot = NormalizedURL.from("s3://" + bucket + prefix);
     String tableLocation = storageRoot + "/orders";
-    String metadataPath = tableLocation + "/metadata/v1.metadata.json";
-    TableMetadata original =
-        TableMetadata.newTableMetadata(
-            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
-            PartitionSpec.unpartitioned(),
-            tableLocation,
-            Map.of());
-    mockS3Client.putObject(
-        builder ->
-            builder
-                .bucket(bucket)
-                .key(
-                    prefix.replaceFirst("^/", "")
-                        + (prefix.isEmpty() ? "" : "/")
-                        + "orders/metadata/v1.metadata.json"),
-        RequestBody.fromString(TableMetadataParser.toJson(original)));
+    TableMetadata original;
+    try (var fileIO = new S3FileIO(S3_MOCK::createS3ClientV2)) {
+      var table =
+          IcebergTestUtils.createTable(
+              tableLocation,
+              new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+              Map.of(
+                  TableProperties.WRITE_DATA_LOCATION, tableLocation,
+                  TableProperties.WRITE_FOLDER_STORAGE_LOCATION, tableLocation,
+                  TableProperties.OBJECT_STORE_PATH, tableLocation),
+              fileIO);
+      GenericRecord record = GenericRecord.create(table.schema());
+      record.setField("id", 42L);
+      table
+          .newFastAppend()
+          .appendFile(IcebergTestUtils.writeDataFile(table, "record", record))
+          .commit();
+      original = table.operations().current();
+    }
     CloudCredentialVendor cloudVendor = mock();
     when(cloudVendor.vendCredential(any())).thenReturn(new TemporaryCredentials());
     var vendor =
@@ -137,15 +143,81 @@ public class MetadataServiceTest {
             invocation -> {
               vendor.vendCredential(
                   invocation.getArgument(0), CredentialContext.READ_ONLY, CredentialUse.SERVER);
-              return new S3FileIO(() -> mockS3Client);
+              return new S3FileIO(S3_MOCK::createS3ClientV2);
             });
 
-    assertThat(
-            metadataService
-                .readRegistrationMetadata(NormalizedURL.from(metadataPath), storageRoot)
-                .uuid())
-        .isEqualTo(original.uuid());
+    TableMetadata registered =
+        metadataService.readRegistrationMetadata(
+            NormalizedURL.from(original.metadataFileLocation()), storageRoot);
+    assertThat(registered.uuid()).isEqualTo(original.uuid());
+    assertThat(registered.snapshots()).hasSize(1);
     verify(mockFileOperations).getFileIO(NormalizedURL.from(tableLocation + "/metadata"));
+    verify(mockFileOperations).getFileIO(NormalizedURL.from(tableLocation));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"data", "delete"})
+  public void registrationRejectsFileAtTableRoot(String kind) throws Exception {
+    String bucket = "registration-root-" + kind;
+    mockS3Client.createBucket(builder -> builder.bucket(bucket));
+    String tableLocation = "s3://" + bucket + "/orders";
+    TableMetadata metadata;
+    try (var fileIO = new S3FileIO(S3_MOCK::createS3ClientV2)) {
+      var table =
+          IcebergTestUtils.createTable(
+              tableLocation,
+              new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+              Map.of(),
+              fileIO);
+      GenericRecord record = GenericRecord.create(table.schema());
+      record.setField("id", 42L);
+      var dataFile = IcebergTestUtils.writeDataFile(table, "record", record);
+      mockS3Client.copyObject(
+          builder ->
+              builder
+                  .sourceBucket(bucket)
+                  .sourceKey("orders/data/record.avro")
+                  .destinationBucket(bucket)
+                  .destinationKey("orders"));
+      if (kind.equals("data")) {
+        table
+            .newFastAppend()
+            .appendFile(
+                DataFiles.builder(table.spec()).copy(dataFile).withPath(tableLocation).build())
+            .commit();
+      } else {
+        table
+            .newRowDelta()
+            .addDeletes(
+                FileMetadata.deleteFileBuilder(table.spec())
+                    .ofPositionDeletes()
+                    .withPath(tableLocation)
+                    .withFormat("avro")
+                    .withFileSizeInBytes(dataFile.fileSizeInBytes())
+                    .withRecordCount(1)
+                    .build())
+            .commit();
+      }
+      metadata = table.operations().current();
+    }
+    when(mockFileOperations.getFileIO(any()))
+        .thenAnswer(invocation -> new S3FileIO(S3_MOCK::createS3ClientV2));
+    assertThatThrownBy(
+            () ->
+                metadataService.readRegistrationMetadata(
+                    NormalizedURL.from(metadata.metadataFileLocation()),
+                    NormalizedURL.from("s3://" + bucket)))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(failure).hasMessageContaining("must be strictly below", tableLocation);
+            });
+    assertThat(
+            mockS3Client
+                .headObject(builder -> builder.bucket(bucket).key("orders"))
+                .contentLength())
+        .isPositive();
   }
 
   @SneakyThrows
