@@ -130,7 +130,7 @@ the experimental `s3_compatible` credentials need it; `s3_compatible` also needs
 `server.s3-compatible-storage.enabled=true` (in the chart, under `server.config.extraProperties`). Whenever a key is
 set, the server refuses to start if it is malformed, and without one it cannot create or use such credentials. See the
 chart's
-[README](https://github.com/unitycatalog/unitycatalog/blob/main/helm/README.md#s3-compatible-storage-credentials) for a
+[README](https://github.com/unitycatalog/unitycatalog/blob/main/helm/README.md#storage-credentials-that-need-an-encryption-key) for a
 complete example.
 
 !!! warning "Deprecated: secrets in properties files"

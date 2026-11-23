@@ -393,7 +393,7 @@ server:
     # is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`, `${S3_SECRET_KEY_<n>}` or
     # `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated too: the server reads
     # `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment. For the
-    # encryption key, see [S3-compatible storage credentials](#s3-compatible-storage-credentials).
+    # encryption key, see [Storage credentials that need an encryption key](#storage-credentials-that-need-an-encryption-key).
     #
     override:
 
@@ -775,7 +775,7 @@ server:
     # start with a malformed key. Keep the same key for as long as such credentials exist: values
     # stored with a key cannot be read with another. The chart passes the key to the server container as
     # `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY`. See
-    # [S3-compatible storage credentials](#s3-compatible-storage-credentials) for a complete example.
+    # [Storage credentials that need an encryption key](#storage-credentials-that-need-an-encryption-key) for a complete example.
     #
     name:
 
