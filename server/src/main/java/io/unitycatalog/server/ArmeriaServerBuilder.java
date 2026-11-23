@@ -144,7 +144,8 @@ public class ArmeriaServerBuilder {
     this.apiVirtualHost = armeriaServerBuilder.virtualHost(port);
     this.apiVirtualHost.serviceUnder("/docs", new DocService());
     // Named so the service label in /metrics stays the same across restarts; a lambda's class name
-    // changes on every JVM start.
+    // changes on every JVM start. The class name is today's label without the lambda suffix, so
+    // existing queries that match on ArmeriaServerBuilder keep working.
     this.apiVirtualHost
         .route()
         .path("/")

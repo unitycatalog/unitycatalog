@@ -92,6 +92,8 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
         "GET",
         200,
         1.0);
+    assertThat(httpRequestMetrics())
+        .allSatisfy(line -> assertThat(line).doesNotContain("$$Lambda"));
   }
 
   private void assertHealthAndPortIsolation() throws Exception {
