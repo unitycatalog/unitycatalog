@@ -756,7 +756,7 @@ $$;
 
 def _base_type_name(sql_type: str) -> str:
     """Returns the base type name, e.g. DECIMAL for DECIMAL(38, 18) and ARRAY for ARRAY<LONG>."""
-    return re.split(r"[<( ]", sql_type, maxsplit=1)[0]
+    return re.split(r"[<(\s]", sql_type, maxsplit=1)[0]
 
 
 def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:

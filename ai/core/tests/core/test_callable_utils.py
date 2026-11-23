@@ -2467,6 +2467,8 @@ class FakeParam:
         ("decimal(10,2)", "Decimal"),
         ("INTERVAL DAY TO SECOND", "datetime.timedelta"),
         ("interval hour to second", "datetime.timedelta"),
+        ("INTERVAL	DAY TO SECOND", "datetime.timedelta"),
+        ("STRING	COLLATE UTF8_BINARY", "str"),
         ("INTERVAL YEAR TO MONTH", "interval year to month"),
         ("interval month", "interval month"),
         ("INTERVAL YEAR", "interval year"),
