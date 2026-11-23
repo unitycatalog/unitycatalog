@@ -48,22 +48,29 @@ server:
       server.audit.sink: io.unitycatalog.server.audit.FileAuditSink
 ```
 
-## S3-compatible storage credentials
-The experimental `s3_compatible` storage credentials need both the server flag and a key that the
-server encrypts their secret values with in its database. Create the key once and keep it for as
-long as such credentials exist:
+## Storage credentials that need an encryption key
+The `gcp_service_account_key` storage credentials and the experimental `s3_compatible` ones need a
+key that the server encrypts their secret values with in its database. Create the key once and keep
+it for as long as such credentials exist:
 
 ```sh
 kubectl create secret generic uc-credential-encryption \
   --from-literal=encryptionKey="$(openssl rand -base64 32)"
 ```
 
-Then set both values:
+Then set the Secret:
 
 ```yaml
 server:
   credentialEncryptionKeySecret:
     name: uc-credential-encryption
+```
+
+That is all `gcp_service_account_key` credentials need. The `s3_compatible` ones also need the
+server flag:
+
+```yaml
+server:
   config:
     extraProperties:
       server.s3-compatible-storage.enabled: "true"

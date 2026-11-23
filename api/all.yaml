@@ -3209,9 +3209,11 @@ components:
     GcpServiceAccountEmail:
       description: The email of the Google Cloud service account.
       type: string
+      maxLength: 1024
     GcpPrivateKeyId:
       description: The ID of the service account key.
       type: string
+      maxLength: 1024
     GcpServiceAccountKeyRequest:
       description: |
         A key of a Google Cloud service account with access to Google Cloud Storage, with the fields
@@ -3231,6 +3233,8 @@ components:
         private_key:
           description: The PEM-encoded PKCS#8 private key of the service account key. Write-only; never returned.
           type: string
+          maxLength: 4096
+          writeOnly: true
     GcpServiceAccountKeyResponse:
       description: The service account key of a `gcp_service_account_key` credential, without its write-only `private_key`.
       type: object
