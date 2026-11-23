@@ -132,6 +132,14 @@ public class ApiClientFactoryTest {
   }
 
   @Test
+  public void testBaseUriIgnoresTrailingSlashOfCatalogUri() {
+    ApiClient client =
+        ApiClientFactory.createApiClient(
+            RETRY_POLICY, URI.create("https://example.com:8443/uc/"), UC_TOKEN_PROVIDER);
+    assertThat(client.getBaseUri()).isEqualTo("https://example.com:8443/uc/api/2.1/unity-catalog");
+  }
+
+  @Test
   public void testAppEngineVersionsContainsExpectedKeys() {
     Map<String, String> versions = ApiClientFactory.appEngineVersions();
     assertThat(versions).containsKeys("Spark", "Delta", "Java", "Scala");
