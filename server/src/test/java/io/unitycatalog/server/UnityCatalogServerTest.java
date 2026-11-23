@@ -34,6 +34,8 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.ServerSocket;
 import java.net.URI;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -324,24 +326,19 @@ public class UnityCatalogServerTest extends BaseServerTest {
       assertThat(missing.resolve("token.txt")).isNotEmptyFile();
     }
 
-    // An empty relative configuration folder is the working directory, which has no parent path.
-    // The JVM cannot change its working directory, so keep a token.txt already there.
-    Path tokenFile = Path.of("token.txt");
-    byte[] existingToken = Files.exists(tokenFile) ? Files.readAllBytes(tokenFile) : null;
-    try (UnityCatalogServer server =
-        UnityCatalogServer.builder()
-            .port(0)
-            .serverProperties(new ServerProperties(properties))
-            .hibernateConfigurator(hibernateConfigurator)
-            .configurationFolder(Path.of(""))
-            .build()) {
-      assertThat(tokenFile).isNotEmptyFile();
-    } finally {
-      if (existingToken == null) {
-        Files.deleteIfExists(tokenFile);
-      } else {
-        Files.write(tokenFile, existingToken);
-      }
+    // An empty relative configuration folder has no parent path. A zip file system under @TempDir
+    // gives one without the working directory, which a test cannot change.
+    try (FileSystem zip =
+            FileSystems.newFileSystem(
+                configurationFolder.resolve("conf.zip"), Map.of("create", "true"));
+        UnityCatalogServer server =
+            UnityCatalogServer.builder()
+                .port(0)
+                .serverProperties(new ServerProperties(properties))
+                .hibernateConfigurator(hibernateConfigurator)
+                .configurationFolder(zip.getPath(""))
+                .build()) {
+      assertThat(zip.getPath("token.txt")).isNotEmptyFile();
     }
   }
 
