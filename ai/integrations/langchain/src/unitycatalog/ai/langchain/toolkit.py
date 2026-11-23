@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+from langchain_core.runnables.config import run_in_executor
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, model_validator
 
@@ -24,6 +25,15 @@ class UnityCatalogTool(StructuredTool):
     client_config: Dict[str, Any] = Field(
         description="Configuration of the client for managing the tool",
     )
+
+    # LangChain injects its `run_manager` and a `RunnableConfig` parameter (`config` in
+    # StructuredTool) into `_run` and `_arun` when their signatures declare them, which would
+    # overwrite UC function parameters with those names.
+    def _run(self, *args: Any, **kwargs: Any) -> Any:
+        return self.func(*args, **kwargs)
+
+    async def _arun(self, *args: Any, **kwargs: Any) -> Any:
+        return await run_in_executor(None, self._run, *args, **kwargs)
 
 
 class UCFunctionToolkit(BaseModel):
