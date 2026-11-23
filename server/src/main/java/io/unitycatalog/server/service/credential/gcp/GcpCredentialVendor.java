@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.credential.gcp;
 import static java.lang.String.format;
 
 import com.google.auth.Retryable;
+import com.google.auth.http.HttpTransportFactory;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.CredentialAccessBoundary;
 import com.google.auth.oauth2.DownscopedCredentials;
@@ -46,6 +47,8 @@ public class GcpCredentialVendor {
       new ConcurrentHashMap<>();
   private final CredentialSecretStore secretStore;
   private final Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> keyGenerators;
+  // How Google's token endpoints are reached, or null for the library's default; tests pass a mock.
+  private final HttpTransportFactory transportFactory;
 
   public GcpCredentialVendor(ServerProperties serverProperties) {
     this(serverProperties, CredentialSecretStore.from(serverProperties), null);
@@ -60,9 +63,22 @@ public class GcpCredentialVendor {
       ServerProperties serverProperties,
       CredentialSecretStore secretStore,
       Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> keyGenerators) {
+    this(serverProperties, secretStore, keyGenerators, null);
+  }
+
+  /**
+   * @param transportFactory how the stored key signs in and how its token is downscoped, or null
+   *     for the library's default; tests pass one that does not call Google
+   */
+  GcpCredentialVendor(
+      ServerProperties serverProperties,
+      CredentialSecretStore secretStore,
+      Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> keyGenerators,
+      HttpTransportFactory transportFactory) {
     this.gcsConfigurations = serverProperties.getGcsConfigurations();
     this.secretStore = secretStore;
     this.keyGenerators = keyGenerators != null ? keyGenerators : this::createKeyGenerator;
+    this.transportFactory = transportFactory;
   }
 
   public AccessToken vendGcpCredential(CredentialContext credentialContext) {
@@ -157,7 +173,10 @@ public class GcpCredentialVendor {
     return new ServiceAccountCredentialGenerator(
         () -> {
           try {
-            return GcpServiceAccountKeys.credentialsOf(key);
+            ServiceAccountCredentials credentials = GcpServiceAccountKeys.credentialsOf(key);
+            return transportFactory == null
+                ? credentials
+                : credentials.toBuilder().setHttpTransportFactory(transportFactory).build();
           } catch (IOException e) {
             // The key was checked when the credential was created, so this is the server's fault.
             throw new BaseException(
@@ -270,10 +289,14 @@ public class GcpCredentialVendor {
                       .build());
             });
 
-    return DownscopedCredentials.newBuilder()
-        .setSourceCredential(credentials)
-        .setCredentialAccessBoundary(boundaryBuilder.build())
-        .build();
+    DownscopedCredentials.Builder downscoped =
+        DownscopedCredentials.newBuilder()
+            .setSourceCredential(credentials)
+            .setCredentialAccessBoundary(boundaryBuilder.build());
+    if (transportFactory != null) {
+      downscoped.setHttpTransportFactory(transportFactory);
+    }
+    return downscoped.build();
   }
 
   /**
