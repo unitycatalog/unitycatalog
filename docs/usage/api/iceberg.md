@@ -65,6 +65,7 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `loadTable`       | Load table metadata                                                                                                             |       |
 | POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `updateTable`     | Commit changes to a table                                                                                                       | Yes   |
 | DELETE | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `dropTable`       | Drop a table                                                                                                                    | Yes   |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/unregister`  | `unregisterTable` | Remove a managed Iceberg table from the catalog and preserve all its files                                                       | Yes   |
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials` | `loadCredentials` | Get temporary storage credentials                                                                                               |       |
 | POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics`     | `reportMetrics`   | Report scan or commit metrics                                                                                                   |       |
 | POST   | `/v1/catalogs/{catalog}/tables/rename`                                     | `renameTable`     | Rename a table                                                                                                                  | Yes   |
@@ -74,6 +75,21 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 | Method | Path                                                         | Operation  | Description                    |
 |--------|--------------------------------------------------------------|------------|--------------------------------|
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `loadView` | Always returns 404 (see below) |
+
+## Unregistering a managed Iceberg table
+
+`POST /v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/unregister` removes a managed
+Iceberg table from the catalog without deleting data or metadata files or scheduling storage cleanup.
+It returns HTTP 200 with `metadata-location` and `metadata` for the table's final committed state.
+Commits after unregister fail because the table no longer exists in this catalog.
+
+This operation requires the same privileges as dropping a table and is disabled when
+`server.iceberg-table.enabled=false`. It applies only to native Iceberg tables with table type `MANAGED`;
+external tables and Delta tables, including UniForm tables, return HTTP 400. A missing table returns HTTP 404.
+If the server cannot read the final metadata, it leaves the table registered.
+
+After unregister, the caller is responsible for the retained files and access to them. The response does not
+contain storage credentials. The `dropTable` operation and its storage cleanup behavior are unchanged.
 
 ## Limitations
 

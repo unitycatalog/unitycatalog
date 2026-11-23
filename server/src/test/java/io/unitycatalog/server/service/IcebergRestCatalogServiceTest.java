@@ -26,6 +26,7 @@ import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
@@ -34,6 +35,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
@@ -87,6 +89,43 @@ public class IcebergRestCatalogServiceTest {
     service =
         new IcebergRestCatalogService(
             authorizer, tableConfigService, metadataService, repositories, serverProperties);
+  }
+
+  @Test
+  public void unregisterClearsTablePermissionsAndHierarchyWithoutVendingCredentials() {
+    UUID id = UUID.randomUUID();
+    UUID schemaId = UUID.randomUUID();
+    String metadataLocation = TABLE_LOCATION + "/metadata/00000.json";
+    TableInfoDAO table =
+        TableInfoDAO.builder()
+            .id(id)
+            .schemaId(schemaId)
+            .url(TABLE_LOCATION)
+            .icebergMetadataLocation(metadataLocation)
+            .build();
+    TableMetadata metadata =
+        TableMetadata.buildFrom(
+                TableMetadata.newTableMetadata(
+                    SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of()))
+            .discardChanges()
+            .withMetadataLocation(metadataLocation)
+            .build();
+    when(tableRepository.unregisterManagedIcebergTable(eq("cat"), eq("ns"), eq("tbl"), any()))
+        .thenAnswer(
+            invocation -> {
+              Function<TableInfoDAO, ?> loadMetadata = invocation.getArgument(3);
+              return loadMetadata.apply(table);
+            });
+    when(metadataService.readTableMetadata(
+            NormalizedURL.from(metadataLocation), NormalizedURL.from(TABLE_LOCATION)))
+        .thenReturn(metadata);
+
+    assertThat(service.unregisterTable("cat", "ns", "tbl").metadataLocation())
+        .isEqualTo(metadataLocation);
+
+    verify(authorizer).clearAuthorizationsForResource(id);
+    verify(authorizer).removeHierarchyChild(schemaId, id);
+    verifyNoInteractions(tableConfigService);
   }
 
   @Test

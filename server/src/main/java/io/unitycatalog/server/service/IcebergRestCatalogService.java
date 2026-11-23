@@ -79,6 +79,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.SortOrder;
@@ -145,6 +146,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
           Endpoint.V1_DELETE_TABLE,
+          Endpoint.create("POST", "/v1/{prefix}/namespaces/{namespace}/tables/{table}/unregister"),
           Endpoint.V1_RENAME_TABLE);
 
   private final TableConfigService tableConfigService;
@@ -756,6 +758,36 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         "Keeping Iceberg metadata file {}: the commit that wrote it may have succeeded ({})",
         metadataLocation,
         failure.toString());
+  }
+
+  /**
+   * Removes a managed Iceberg table's registration and returns its final metadata, preserving
+   * files.
+   */
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/unregister")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @AuthorizeResourceKey(METASTORE)
+  public LoadTableResponse unregisterTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table) {
+    serverProperties.checkIcebergTableEnabled();
+    Pair<TableInfoDAO, TableMetadata> unregistered =
+        tableRepository.unregisterManagedIcebergTable(
+            catalog,
+            namespace,
+            table,
+            dao ->
+                Pair.of(
+                    dao,
+                    metadataService.readTableMetadata(
+                        NormalizedURL.from(dao.getIcebergMetadataLocation()),
+                        NormalizedURL.from(dao.getUrl()))));
+    TableInfoDAO dao = unregistered.getLeft();
+    removeHierarchicalAuthorizations(dao.getId().toString(), dao.getSchemaId().toString());
+    // The unregister response uses the metadata fields of a load response, without credentials.
+    return LoadTableResponse.builder().withTableMetadata(unregistered.getRight()).build();
   }
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")

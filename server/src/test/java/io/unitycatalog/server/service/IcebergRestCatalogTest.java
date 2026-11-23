@@ -33,6 +33,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
@@ -191,6 +192,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
+                + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/unregister\","
                 + "\"POST /v1/{prefix}/tables/rename\""
                 + "]}");
 
@@ -803,6 +805,145 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       icebergClient.dropTable(
           TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "managed_iceberg_table");
     }
+  }
+
+  @Test
+  public void testUnregisterManagedIcebergTablePreservesFiles() throws Exception {
+    createCatalogAndNamespace();
+    LoadTableResponse created = createManagedIcebergTable("unregister");
+    LoadTableResponse committed =
+        icebergClient.updateTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            "unregister",
+            new UpdateTableRequest(
+                List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("last", "commit")))));
+    UUID id =
+        UUID.fromString(
+            tableOperations
+                .getTable(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".unregister")
+                .getTableId());
+    Path location = Path.of(URI.create(created.tableMetadata().location()));
+    Files.createDirectories(location.resolve("data"));
+    Path data = Files.writeString(location.resolve("data/part-00000.parquet"), "table data");
+    Path metadata = Path.of(NormalizedURL.from(committed.metadataLocation()).toUri());
+    byte[] metadataBytes = Files.readAllBytes(metadata);
+
+    LoadTableResponse unregistered =
+        icebergClient.unregisterTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "unregister");
+
+    assertThat(NormalizedURL.from(unregistered.metadataLocation()))
+        .isEqualTo(NormalizedURL.from(committed.metadataLocation()));
+    assertThat(unregistered.tableMetadata().properties()).containsEntry("last", "commit");
+    assertThat(unregistered.config()).isEmpty();
+    assertThat(Files.readAllBytes(metadata)).isEqualTo(metadataBytes);
+    assertThat(Path.of(NormalizedURL.from(created.metadataLocation()).toUri())).exists();
+    assertThat(Files.readString(data)).isEqualTo("table data");
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(session.get(TableInfoDAO.class, id)).isNull();
+      assertThat(session.get(StorageCleanupTaskDAO.class, id)).isNull();
+      assertThat(
+              session
+                  .createQuery(
+                      "select count(*) from ColumnInfoDAO where table.id = :id", Long.class)
+                  .setParameter("id", id)
+                  .getSingleResult())
+          .isZero();
+      assertThat(
+              session
+                  .createQuery("select count(*) from PropertyDAO where entityId = :id", Long.class)
+                  .setParameter("id", id)
+                  .getSingleResult())
+          .isZero();
+    }
+    assertThat(
+            icebergClient.tableExists(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "unregister"))
+        .isFalse();
+    assertErrorType(
+        () ->
+            icebergClient.unregisterTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "unregister"),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        () ->
+            icebergClient.updateTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                "unregister",
+                new UpdateTableRequest(
+                    List.of(),
+                    List.of(new MetadataUpdate.SetProperties(Map.of("after", "unregister"))))),
+        404,
+        NoSuchTableException.class);
+
+    createManagedIcebergTable("drop");
+    UUID dropId =
+        UUID.fromString(
+            tableOperations
+                .getTable(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".drop")
+                .getTableId());
+    icebergClient.dropTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "drop");
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(session.get(StorageCleanupTaskDAO.class, dropId)).isNotNull();
+    }
+  }
+
+  @Test
+  public void testUnregisterRejectsExternalAndUniformTables() throws Exception {
+    createUniformIcebergTable();
+    assertUnregisterRejected(TestUtils.TABLE_NAME);
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName("external")
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .withLocation(testDirectoryRoot.resolve("external").toUri().toString())
+            .build());
+    assertUnregisterRejected("external");
+  }
+
+  private void assertUnregisterRejected(String name) throws Exception {
+    String fullName = TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + name;
+    TestUtils.assertIcebergApiException(
+        () -> icebergClient.unregisterTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, name),
+        400,
+        "Only managed Iceberg tables can be unregistered: " + fullName);
+    assertThat(tableOperations.getTable(fullName)).isNotNull();
+  }
+
+  @Test
+  public void testUnregisterKeepsTableWhenMetadataCannotBeRead() throws Exception {
+    createCatalogAndNamespace();
+    LoadTableResponse created = createManagedIcebergTable("unreadable");
+    Path metadata = Path.of(NormalizedURL.from(created.metadataLocation()).toUri());
+    Files.writeString(metadata, "invalid metadata");
+
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.unregisterTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "unreadable"),
+        500);
+
+    TableInfo table =
+        tableOperations.getTable(
+            TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".unreadable");
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(session.get(StorageCleanupTaskDAO.class, UUID.fromString(table.getTableId())))
+          .isNull();
+    }
+    assertThat(metadata).hasContent("invalid metadata");
+  }
+
+  private LoadTableResponse createManagedIcebergTable(String name) throws ApiException {
+    return icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName(name)
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .build());
   }
 
   @Test

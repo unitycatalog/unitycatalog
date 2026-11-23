@@ -159,6 +159,12 @@ public class IcebergRestClient {
         post(tablePath(catalog, namespace, table), toJson(request)), LoadTableResponse.class);
   }
 
+  public LoadTableResponse unregisterTable(String catalog, String namespace, String table)
+      throws ApiException {
+    return parse(
+        post(tablePath(catalog, namespace, table) + "/unregister", ""), LoadTableResponse.class);
+  }
+
   public void dropTable(String catalog, String namespace, String table) throws ApiException {
     checkSuccess(delete(tablePath(catalog, namespace, table)));
   }

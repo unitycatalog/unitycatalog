@@ -397,6 +397,23 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     p2.dropTable(CAT, SCHEMA_P2, "tbl_p2_r1"); // schema OWNER + USE_CATALOG (not table owner)
     r1.dropTable(CAT, SCHEMA, "tbl_r1own"); // table OWNER (creator) + USE_CATALOG + USE_SCHEMA
 
+    // Unregister uses the same DELETE_TABLE gate, but only accepts managed Iceberg tables.
+    assertDenied(() -> admin.unregisterTable(CAT, SCHEMA, "tbl_drop_deny"));
+    assertDenied(() -> r1.unregisterTable(CAT, SCHEMA, "tbl_drop_deny"));
+    createTable(p2, SCHEMA_P2, "unregister_catalog");
+    p1.unregisterTable(CAT, SCHEMA_P2, "unregister_catalog"); // catalog OWNER
+    grantPermissions(
+        REGULAR_1,
+        SecurableType.SCHEMA,
+        CAT + "." + SCHEMA_P2,
+        Privileges.USE_SCHEMA,
+        Privileges.CREATE_TABLE);
+    createTable(r1, SCHEMA_P2, "unregister_schema");
+    p2.unregisterTable(CAT, SCHEMA_P2, "unregister_schema"); // schema OWNER + USE_CATALOG
+    createTable(r1, SCHEMA, "unregister_table");
+    r1.unregisterTable(CAT, SCHEMA, "unregister_table"); // table OWNER + both usage grants
+    assertThat(r1.tableExists(CAT, SCHEMA, "unregister_table")).isFalse();
+
     // ===== renameTable (RENAME_TABLE = DELETE_TABLE on the source + create in the schema) =====
     // Rename needs BOTH the right to drop the source name and to create the new name: metastore
     // owner alone is not enough, and create rights without delete rights on the source are not
