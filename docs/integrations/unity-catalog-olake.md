@@ -4,25 +4,12 @@ This page shows you how to use [OLake Go](https://olake.io/) to replicate data f
 
 OLake Go is a high-performance, open-source EL (Extract–Load) platform that bridges operational databases and open lakehouse storage, writing Apache Iceberg tables or Parquet files on Amazon S3. It supports incremental sync, change data capture (CDC), and stateful, resumable syncs. OLake Go connects to Unity Catalog through the [Iceberg REST Catalog API](../usage/api/iceberg.md).
 
-## Supported sources
-
-| Source | Full Load | CDC | Incremental |
-|---|---|---|---|
-| PostgreSQL | Yes | Yes | Yes |
-| MySQL | Yes | Yes | Yes |
-| MongoDB | Yes | Yes | Yes |
-| MSSQL | Yes | Yes | Yes |
-| Oracle | Yes | — | Yes |
-| DB2 | Yes | — | Yes |
-| Amazon S3 | Yes | — | Yes |
-| Kafka | — | — | Bounded |
-
-See the [OLake connectors documentation](https://olake.io/docs/connectors/overview/) for details on each source.
+OLake Go supports PostgreSQL, MySQL, MongoDB, MSSQL, and other sources. See the [OLake connectors documentation](https://olake.io/docs/connectors/overview/) for the full list and sync-mode details.
 
 ## Prerequisites
 
 - A running Unity Catalog server with Iceberg REST API write access enabled (on by default; see [Iceberg REST API](../usage/api/iceberg.md)).
-- Object storage (such as AWS S3) configured as an [external location](../server/aws.md) in Unity Catalog.
+- A **storage root** configured on the target catalog or schema (or the deprecated `storage-root.tables` server property). OLake does not send a table `location` on create, so Unity Catalog creates managed tables and needs a storage root to assign their location. See [Deploy for AWS](../server/aws.md) for configuring S3-backed storage.
 - OLake Go installed via [Docker Compose](https://olake.io/docs/getting-started/quickstart/) (recommended) or [standalone Docker](https://olake.io/docs/install/docker-cli/).
 
 ## Destination configuration
@@ -57,13 +44,15 @@ Example `destination.json`:
 | `rest_catalog_url` | Yes | Unity Catalog Iceberg REST endpoint. |
 | `iceberg_s3_path` | Yes | The name of the catalog in Unity Catalog (e.g. `unity`). Despite the parameter name, this is used as the Iceberg warehouse identifier. |
 | `aws_region` | Yes | AWS region of the S3 bucket backing the Unity Catalog tables. |
-| `aws_access_key` | No | AWS access key. Optional with IAM roles or instance profiles. |
-| `aws_secret_key` | No | AWS secret key. Optional with IAM roles or instance profiles. |
+| `aws_access_key` | No | AWS access key for direct S3 access. OLake uses these static credentials to write data files to S3; it does not use the temporary credentials that Unity Catalog vends from the `loadCredentials` endpoint. Optional when using IAM roles or instance profiles. |
+| `aws_secret_key` | No | AWS secret key (paired with `aws_access_key`). |
 | `arrow_writes` | No | Enable the Arrow-based writer. Defaults to `false`. |
 
 ### Authentication
 
-If Unity Catalog has [OAuth authentication](../server/auth.md) enabled, add a bearer token to the configuration:
+By default, Unity Catalog runs with authorization disabled and no token is needed.
+
+When Unity Catalog has [authorization enabled](../server/auth.md), add a Unity Catalog access token to the configuration. Obtain a token from the `POST /auth/tokens` endpoint (see [Auth](../server/auth.md)):
 
 ```json
 {
@@ -76,13 +65,16 @@ If Unity Catalog has [OAuth authentication](../server/auth.md) enabled, add a be
     "aws_region": "<AWS_REGION>",
     "aws_access_key": "<AWS_ACCESS_KEY>",
     "aws_secret_key": "<AWS_SECRET_KEY>",
-    "token": "<BEARER_TOKEN>",
+    "token": "<UC_ACCESS_TOKEN>",
     "arrow_writes": false
   }
 }
 ```
 
-See the [OLake REST catalog configuration](https://olake.io/docs/writers/iceberg/catalog/rest/) for all available authentication options including OAuth2.
+!!! note
+    The `token` field takes a Unity Catalog access token, not an OAuth2 client-credentials token. The Iceberg REST endpoint does not support OAuth2 token exchange.
+
+See the [OLake REST catalog configuration](https://olake.io/docs/writers/iceberg/catalog/rest/) for all available OLake authentication options.
 
 ## Running a sync
 
@@ -100,7 +92,9 @@ Open `http://localhost:8000`, configure a source and the Unity Catalog destinati
 
 ### Docker CLI
 
-First, discover the available streams from the source:
+Place a `source.json` for your database in a local `config/` directory. See the OLake source configuration for [PostgreSQL](https://olake.io/docs/connectors/postgres/), [MySQL](https://olake.io/docs/connectors/mysql/), or [other connectors](https://olake.io/docs/connectors/overview/).
+
+Then discover the available streams:
 
 ```sh
 docker run --pull=always \
