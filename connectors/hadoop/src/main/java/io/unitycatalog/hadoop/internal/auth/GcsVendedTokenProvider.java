@@ -11,8 +11,6 @@ import org.apache.hadoop.util.Preconditions;
 public class GcsVendedTokenProvider extends GenericCredentialProvider
     implements AccessTokenProvider {
 
-  public static final String ACCESS_TOKEN_KEY = "fs.gs.auth.access.token.credential";
-  public static final String ACCESS_TOKEN_EXPIRATION_KEY = "fs.gs.auth.access.token.expiration";
   private Configuration conf;
 
   public GcsVendedTokenProvider() {}

@@ -1141,6 +1141,8 @@ def _parse_sql_data_type(type_str: str) -> str:
         if mapped is None or (
             base_type == "INTERVAL" and re.search(r"\b(YEAR|MONTH)\b", type_str.upper())
         ):
+            # TODO(#2335): year-month INTERVAL, SMALLINT, TINYINT, VARCHAR(n) and TIMESTAMP_LTZ
+            # fall back to SQL text that cannot be loaded, as does the unimported `Variant`.
             return type_str.lower()
         return _python_type_annotation(mapped[0] if isinstance(mapped, tuple) else mapped)
 

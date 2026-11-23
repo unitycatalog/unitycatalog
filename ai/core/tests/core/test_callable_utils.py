@@ -2707,14 +2707,17 @@ def test_reconstructed_source_starts_with_the_imports_its_annotations_need(
     assert namespace["test"].__doc__.split("Returns:", 1)[1].strip() == expected_returns
 
 
-def test_year_month_interval_still_fails_to_load():
+def test_year_month_interval_is_not_annotated_as_timedelta():
+    # Loading still fails for this type, tracked in #2335.
     function_info = generate_function_info_with_params_oss(
         {"span": ("INTERVAL YEAR TO MONTH", "interval year to month")},
         routine_definition="return None",
     )
 
-    with pytest.raises(SyntaxError):
-        compile(dynamically_construct_python_function(function_info), "<source>", "exec")
+    source = dynamically_construct_python_function(function_info)
+
+    assert "span: interval year to month" in source
+    assert "timedelta" not in source
 
 
 # ---------------------------
