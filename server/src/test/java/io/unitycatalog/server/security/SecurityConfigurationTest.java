@@ -23,6 +23,7 @@ import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class SecurityConfigurationTest {
@@ -67,15 +68,36 @@ class SecurityConfigurationTest {
     }
   }
 
-  @Test
-  void rejectsAnEncryptedPrivateKey() throws Exception {
-    Path privateKey =
-        Files.writeString(
-            keyDirectory.resolve("signing.key"),
-            pem("ENCRYPTED PRIVATE" + " KEY", newKeyPair().getPrivate().getEncoded()));
+  // Each row hits a different way a key file is unusable; the error names the file and nothing is
+  // written to the configuration folder.
+  @ParameterizedTest
+  @CsvSource({
+    "encrypted PKCS #8, is encrypted",
+    "encrypted PKCS #1, is encrypted",
+    "certificate only, No PRIVATE KEY PEM block",
+    "garbage bytes, Cannot read the RSA private key"
+  })
+  void rejectsAnUnusablePrivateKey(String problem, String message) throws Exception {
+    byte[] der = newKeyPair().getPrivate().getEncoded();
+    Path privateKey = keyDirectory.resolve("signing.key");
+    switch (problem) {
+      case "encrypted PKCS #8" ->
+          Files.writeString(privateKey, pem("ENCRYPTED PRIVATE" + " KEY", der));
+      case "encrypted PKCS #1" ->
+          Files.writeString(
+              privateKey,
+              pem("RSA PRIVATE" + " KEY", der)
+                  .replace("\n", "\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,00\n\n"));
+      case "certificate only" -> Files.writeString(privateKey, pem("CERTIFICATE", der));
+      default -> Files.write(privateKey, new byte[] {1, 2, 3});
+    }
 
     assertThatThrownBy(() -> SecurityConfiguration.load(settings(privateKey), configurationFolder))
-        .hasMessageContaining("is encrypted");
+        .hasMessageContaining(message)
+        .hasMessageContaining(privateKey.toString());
+    try (var files = Files.list(configurationFolder)) {
+      assertThat(files).isEmpty();
+    }
   }
 
   @Test
