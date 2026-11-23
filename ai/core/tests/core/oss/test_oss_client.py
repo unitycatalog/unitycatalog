@@ -3003,10 +3003,14 @@ def function_client(host: str) -> UnitycatalogFunctionClient:
 
 class CloseRecordingRESTClient(RESTClientObject):
     closed = []
+    slow_close = False
 
     async def close(self):
-        CloseRecordingRESTClient.closed.append(self)
+        if self.slow_close:
+            # Slow enough that a close that isn't waited for is still running when the client returns.
+            await asyncio.sleep(0.5)
         await super().close()
+        CloseRecordingRESTClient.closed.append(self)
 
 
 @pytest.mark.asyncio
@@ -3017,6 +3021,7 @@ async def test_close_releases_the_client_and_later_calls_raise(not_found_server,
     api_client = ApiClient(configuration=Configuration(host=not_found_server))
     await api_client.rest_client.close()
     replaced_rest_client = CloseRecordingRESTClient(api_client.configuration)
+    replaced_rest_client.slow_close = True
     api_client.rest_client = replaced_rest_client
     client = UnitycatalogFunctionClient(api_client=api_client)
     with pytest.raises(NotFoundException):
@@ -3030,9 +3035,7 @@ async def test_close_releases_the_client_and_later_calls_raise(not_found_server,
         else:
             await api_client.close()
 
-    await eventually(
-        lambda: len(CloseRecordingRESTClient.closed) == 2, "the original session was not closed"
-    )
+    assert len(CloseRecordingRESTClient.closed) == 2, "the original session was not closed"
     assert CloseRecordingRESTClient.closed.count(replaced_rest_client) == 1
     assert client_threads() == threads_before
     assert client_errors(caplog) == []
@@ -3053,28 +3056,23 @@ async def test_close_closes_the_original_session_on_its_own_loop(
         if used:
             with pytest.raises(NotFoundException):
                 await FunctionsApi(api_client).delete_function("catalog.schema.missing")
+        session = getattr(api_client.rest_client, "pool_manager", None)
         # The client is built on the loop that owns the session, as the docs say to do.
-        return api_client, UnitycatalogFunctionClient(api_client=api_client)
+        return session, UnitycatalogFunctionClient(api_client=api_client)
 
     try:
         if owner == "running":
             thread.start()
-            api_client, client = asyncio.run_coroutine_threadsafe(build_api_client(), loop).result(
-                30
-            )
+            session, client = asyncio.run_coroutine_threadsafe(build_api_client(), loop).result(30)
         else:
-            api_client, client = await asyncio.to_thread(
-                loop.run_until_complete, build_api_client()
-            )
+            session, client = await asyncio.to_thread(loop.run_until_complete, build_api_client())
             if owner == "closed":
                 loop.close()
-        session = getattr(api_client.rest_client, "pool_manager", None)
+        assert session is not None
 
         await asyncio.wait_for(client.close_async(), 30)
 
-        await eventually(
-            lambda: session is None or session.closed, "the original session was not closed"
-        )
+        assert session.closed, "the original session was not closed"
         if used and owner == "running":
             await eventually(
                 lambda: KeepAliveNotFoundHandler.closed_ports
