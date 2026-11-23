@@ -21,6 +21,8 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -148,10 +150,11 @@ public class ExternalLocationUtils {
 
   @VisibleForTesting
   Map<SecurableType, UUID> getMapResourceIdsForPath(Session session, NormalizedURL url) {
-    // 1. Fail if the path overlaps a pending cleanup task.
+    // 1. Cleanup tasks and completed registration cleanups reserve their paths.
     if (hasPendingCleanupOverlap(session, url)) {
       throw new BaseException(
-          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+          ErrorCode.PERMISSION_DENIED,
+          "Input path overlaps pending storage cleanup or a retired registered directory.");
     }
 
     // 2. Fail if it's parent of any of the data securable or external location
@@ -723,11 +726,11 @@ public class ExternalLocationUtils {
   }
 
   /**
-   * Checks whether a pending cleanup task is above, equal to, or below the given path.
+   * Checks whether pending cleanup or a retired registered directory overlaps the given path.
    *
    * @param session the caller's Hibernate session
    * @param url the normalized path to check
-   * @return whether the path overlaps pending cleanup
+   * @return whether the path overlaps a cleanup reservation
    */
   public static boolean hasPendingCleanupOverlap(Session session, NormalizedURL url) {
     return !generateEntitiesDAOsWithURLOverlapQuery(
@@ -762,6 +765,7 @@ public class ExternalLocationUtils {
       NormalizedURL path,
       Optional<NormalizedURL> defaultRoot) {
     LocalStorageLocationValidator.validateCanonicalLocalLocation(path);
+    validateNoLocalRegistrationAliases(session, path);
     validateRegistrationPathAvailable(session, path);
     var managedOwners =
         getAllEntityDAOsWithURLOverlap(
@@ -793,14 +797,20 @@ public class ExternalLocationUtils {
             .filter(root -> isStrictSubpath(path, root))
             .max(Comparator.comparingInt(root -> root.toString().length()));
     if (managedRoot.isPresent()) {
-      if (Stream.of(
-              ManagedResourceType.TABLE,
-              ManagedResourceType.VOLUME,
-              ManagedResourceType.REGISTERED_MODEL)
-          .anyMatch(type -> path.toString().equals(managedRoot.get() + "/" + type.pathSegment()))) {
+      // ID-based directories can have old cleanup calls in flight after their task is removed.
+      if (Stream.concat(
+              Stream.of(
+                      ManagedResourceType.TABLE,
+                      ManagedResourceType.VOLUME,
+                      ManagedResourceType.REGISTERED_MODEL)
+                  .map(ManagedResourceType::pathSegment),
+              Stream.of("catalogs", "schemas"))
+          .anyMatch(
+              segment ->
+                  stillCovers(NormalizedURL.from(managedRoot.get() + "/" + segment), path))) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
-            "The table path must not equal a shared managed storage directory.");
+            "The table path must not use a shared managed storage directory.");
       }
       return new RegistrationStorage(managedRoot.get(), Optional.empty());
     }
@@ -825,7 +835,51 @@ public class ExternalLocationUtils {
         NormalizedURL.from(location.getUrl()), Optional.of(location.getId()));
   }
 
-  /** Rejects adoption of an occupied directory, a shared storage boundary, or pending cleanup. */
+  /** Legacy local URLs can name the same directory with a spelling the SQL checks cannot match. */
+  private static void validateNoLocalRegistrationAliases(Session session, NormalizedURL path) {
+    if (UriScheme.fromURI(path.toUri()) != UriScheme.FILE) {
+      return;
+    }
+    var localPath = Paths.get(path.toUri());
+    List<DaoClassInfo> types =
+        Stream.concat(
+                SECURABLE_TYPE_TO_DAO_MAP.values().stream(),
+                Stream.of(UNCOMMITTED_STAGING_TABLE_DAO_INFO, STORAGE_CLEANUP_TASK_DAO_INFO))
+            .toList();
+    for (DaoClassInfo type : types) {
+      String filter = type.filterCondition.isEmpty() ? "" : type.filterCondition + " AND ";
+      try (Stream<String> locations =
+          session
+              .createSelectionQuery(
+                  "SELECT "
+                      + type.urlFieldName
+                      + " FROM "
+                      + type.clazz.getSimpleName()
+                      + " WHERE "
+                      + filter
+                      + type.urlFieldName
+                      + " LIKE 'file:%'",
+                  String.class)
+              .getResultStream()) {
+        boolean overlapsAlias =
+            locations.anyMatch(
+                stored -> {
+                  var uri = NormalizedURL.from(stored).toUri();
+                  var storedPath = Paths.get(uri);
+                  return !LocalStorageLocationValidator.isCanonical(uri)
+                      && (localPath.startsWith(storedPath) || storedPath.startsWith(localPath));
+                });
+        if (overlapsAlias) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Registration path overlaps a stored local URL with unneeded escapes."
+                  + " Resolve the existing storage entry before registration.");
+        }
+      }
+    }
+  }
+
+  /** Rejects adoption of occupied, shared, or cleanup-reserved storage. */
   private static void validateRegistrationPathAvailable(Session session, NormalizedURL path) {
     if (!getAllEntityDAOsWithURLOverlap(
                 session,
@@ -849,8 +903,8 @@ public class ExternalLocationUtils {
         || hasPendingCleanupOverlap(session, path)) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "The path overlaps an existing table, volume, model, staging table, or pending storage"
-              + " cleanup.");
+          "The path overlaps an existing table, volume, model, staging table, pending storage"
+              + " cleanup, or a retired registered directory.");
     }
     if (!getAllEntityDAOsWithURLOverlap(
             session,
@@ -877,6 +931,7 @@ public class ExternalLocationUtils {
 
   /** Prevents later creates from claiming an adopted directory, including after a drop. */
   public static void validateNotOverlapWithRegisteredTables(Session session, NormalizedURL path) {
+    LocalStorageLocationValidator.validateCanonicalLocalLocation(path);
     List<TableInfoDAO> overlaps =
         ExternalLocationUtils.<TableInfoDAO>generateEntitiesDAOsWithURLOverlapQuery(
                 session,
@@ -909,7 +964,8 @@ public class ExternalLocationUtils {
                     ManagedResourceType.forTable(table) == ManagedResourceType.REGISTERED_TABLE)) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "The path overlaps a registered managed table or its pending storage cleanup.");
+          "The path overlaps a registered managed table, its pending storage cleanup,"
+              + " or its retired directory.");
     }
   }
 

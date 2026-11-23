@@ -20,6 +20,7 @@ import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -35,6 +36,8 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
 import io.unitycatalog.server.utils.IcebergRestClient;
@@ -50,9 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import lombok.SneakyThrows;
 import org.apache.iceberg.CatalogProperties;
@@ -237,6 +237,15 @@ public class IcebergRegisterTableTest extends BaseServerTest {
     }
     assertThat(directory).doesNotExist();
     assertThat(sibling).hasContent("keep");
+    assertThat(
+            StorageCleanupTestSupport.findTask(hibernateConfigurator.getSessionFactory(), id)
+                .getCompletedAt())
+        .isNotNull();
+    Path recreated = writeMetadata(directory);
+    assertIcebergApiException(
+        () -> client.registerTable(CATALOG, NAMESPACE, request("reused", recreated.toString())),
+        400,
+        "retired registered directory");
   }
 
   @ParameterizedTest
@@ -529,12 +538,15 @@ public class IcebergRegisterTableTest extends BaseServerTest {
           400,
           "overlaps");
     }
-    for (String segment : List.of("tables", "volumes", "models")) {
-      Path file = writeMetadata(testDirectoryRoot.resolve("__unitystorage").resolve(segment));
-      assertIcebergApiException(
-          () -> client.registerTable(CATALOG, NAMESPACE, request("shared", file.toString())),
-          400,
-          "shared managed storage directory");
+    for (String segment : List.of("tables", "volumes", "models", "catalogs", "schemas")) {
+      Path shared = testDirectoryRoot.resolve("__unitystorage").resolve(segment);
+      for (Path directory : List.of(shared, shared.resolve(UUID.randomUUID().toString()))) {
+        Path file = writeMetadata(directory);
+        assertIcebergApiException(
+            () -> client.registerTable(CATALOG, NAMESPACE, request("shared", file.toString())),
+            400,
+            "shared managed storage directory");
+      }
     }
     assertThat(client.listTables(CATALOG, NAMESPACE).identifiers())
         .containsExactly(TableIdentifier.of(NAMESPACE, "existing"));
@@ -580,70 +592,148 @@ public class IcebergRegisterTableTest extends BaseServerTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"register", "table", "catalog", "schema", "model"})
-  public void concurrentRegistrationClaimsOneDirectory(String operation) throws Exception {
-    Path file =
-        writeMetadata(externalRoot.resolve(operation.equals("model") ? "model_root" : "orders"));
-    var models = new RegisteredModelsApi(TestUtils.createApiClient(serverConfig));
-    var barrier = new CyclicBarrier(2);
-    var executor = Executors.newFixedThreadPool(2);
-    try {
-      var results =
-          List.of("first", "second").stream()
-              .map(
-                  name ->
-                      executor.submit(
-                          () -> {
-                            barrier.await(30, TimeUnit.SECONDS);
-                            try {
-                              if (operation.equals("table") && name.equals("second")) {
-                                client.createTable(
-                                    CATALOG,
-                                    NAMESPACE,
-                                    CreateTableRequest.builder()
-                                        .withName(name)
-                                        .withSchema(SCHEMA)
-                                        .withLocation(file.getParent().getParent().toString())
-                                        .build());
-                              } else if (operation.equals("catalog") && name.equals("second")) {
-                                catalogs.createCatalog(
-                                    new CreateCatalog()
-                                        .name(name)
-                                        .storageRoot(file.getParent().getParent().toString()));
-                              } else if (operation.equals("schema") && name.equals("second")) {
-                                schemas.createSchema(
-                                    new CreateSchema()
-                                        .catalogName(CATALOG)
-                                        .name(name)
-                                        .storageRoot(file.getParent().getParent().toString()));
-                              } else if (operation.equals("model") && name.equals("second")) {
-                                models.createRegisteredModel(
-                                    new CreateRegisteredModel()
-                                        .catalogName(CATALOG)
-                                        .schemaName(NAMESPACE)
-                                        .name(name));
-                              } else {
-                                client.registerTable(
-                                    CATALOG, NAMESPACE, request(name, file.toString()));
-                              }
-                              return 200;
-                            } catch (ApiException e) {
-                              return e.getCode();
-                            }
-                          }))
-              .toList();
-      assertThat(
-              List.of(
-                  results.get(0).get(30, TimeUnit.SECONDS),
-                  results.get(1).get(30, TimeUnit.SECONDS)))
-          .containsExactlyInAnyOrder(200, 400);
-    } finally {
-      executor.shutdownNow();
+  @ValueSource(strings = {"table", "volume"})
+  public void nativeAllocationRejectsNoncanonicalLocalUrls(String kind) throws Exception {
+    String alias = externalRoot.resolve("alias").toUri().toString().replace("alias", "%61lias");
+    assertThatThrownBy(() -> createNativeExternal(kind, alias))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            e -> {
+              assertThat(e.getCode()).isEqualTo(400);
+              assertThat(e.getResponseBody()).contains("INVALID_ARGUMENT", "unneeded escapes");
+            });
+    assertThat(client.listTables(CATALOG, NAMESPACE).identifiers()).isEmpty();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"table", "volume"})
+  public void registrationRejectsLegacyLocalAliases(String kind) throws Exception {
+    Path directory = externalRoot.resolve("legacy");
+    String canonical = NormalizedURL.from(directory.toUri()).toString();
+    UUID id = createNativeExternal(kind, canonical);
+    // Model a URL accepted by an earlier server; new allocations reject this spelling.
+    String stored = canonical.replace("legacy", "l%65gacy");
+    hibernateConfigurator
+        .getSessionFactory()
+        .inTransaction(
+            session -> {
+              if (kind.equals("table")) {
+                session.get(TableInfoDAO.class, id).setUrl(stored);
+              } else {
+                session.get(VolumeInfoDAO.class, id).setStorageLocation(stored);
+              }
+            });
+    Path file = writeMetadata(directory);
+    assertIcebergApiException(
+        () -> client.registerTable(CATALOG, NAMESPACE, request("imported", file.toString())),
+        400,
+        "stored local URL");
+    Path sibling = writeMetadata(externalRoot.resolve("legacy-sibling"));
+    client.registerTable(CATALOG, NAMESPACE, request("sibling", sibling.toString()));
+    assertThat(file).exists();
+  }
+
+  private UUID createNativeExternal(String kind, String location) throws ApiException {
+    if (kind.equals("table")) {
+      return UUID.fromString(
+          tables
+              .createTable(
+                  new CreateTable()
+                      .catalogName(CATALOG)
+                      .schemaName(NAMESPACE)
+                      .name("native")
+                      .tableType(TableType.EXTERNAL)
+                      .dataSourceFormat(DataSourceFormat.PARQUET)
+                      .storageLocation(location))
+              .getTableId());
     }
+    return UUID.fromString(
+        new VolumesApi(TestUtils.createApiClient(serverConfig))
+            .createVolume(
+                new CreateVolumeRequestContent()
+                    .catalogName(CATALOG)
+                    .schemaName(NAMESPACE)
+                    .name("native")
+                    .volumeType(VolumeType.EXTERNAL)
+                    .storageLocation(location))
+            .getVolumeId());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"register", "table", "volume", "catalog", "schema", "model"})
+  public void allocationWaitsForRegistrationStorageLock(String operation) throws Exception {
+    Path original = writeMetadata(externalRoot.resolve("first_table"));
+    client.registerTable(CATALOG, NAMESPACE, request("first", original.toString()));
+    UUID firstId =
+        UUID.fromString(
+            tables.getTable(CATALOG + "." + NAMESPACE + ".first", null, null, null).getTableId());
+    Path directory = externalRoot.resolve(operation.equals("model") ? "model_root" : "orders");
+    Path file = writeMetadata(directory);
+    var api = TestUtils.createApiClient(serverConfig);
+    int status =
+        runBlockedByHeldWrite(
+            session -> {
+              ExternalLocationUtils.lockTableStorage(session);
+              TableInfoDAO table = session.get(TableInfoDAO.class, firstId);
+              table.setUrl(NormalizedURL.from(directory.toUri()).toString());
+              table.setIcebergMetadataLocation(NormalizedURL.from(file.toUri()).toString());
+            },
+            () -> {
+              try {
+                switch (operation) {
+                  case "table" ->
+                      client.createTable(
+                          CATALOG,
+                          NAMESPACE,
+                          CreateTableRequest.builder()
+                              .withName("second")
+                              .withSchema(SCHEMA)
+                              .withLocation(directory.toString())
+                              .build());
+                  case "volume" ->
+                      new VolumesApi(api)
+                          .createVolume(
+                              new CreateVolumeRequestContent()
+                                  .catalogName(CATALOG)
+                                  .schemaName(NAMESPACE)
+                                  .name("second")
+                                  .volumeType(VolumeType.EXTERNAL)
+                                  .storageLocation(directory.toString()));
+                  case "catalog" ->
+                      catalogs.createCatalog(
+                          new CreateCatalog().name("second").storageRoot(directory.toString()));
+                  case "schema" ->
+                      schemas.createSchema(
+                          new CreateSchema()
+                              .catalogName(CATALOG)
+                              .name("second")
+                              .storageRoot(directory.toString()));
+                  case "model" ->
+                      new RegisteredModelsApi(api)
+                          .createRegisteredModel(
+                              new CreateRegisteredModel()
+                                  .catalogName(CATALOG)
+                                  .schemaName(NAMESPACE)
+                                  .name("second"));
+                  default ->
+                      client.registerTable(CATALOG, NAMESPACE, request("second", file.toString()));
+                }
+                return 200;
+              } catch (ApiException e) {
+                assertThat(e.getResponseBody()).contains("overlap");
+                return e.getCode();
+              }
+            });
+    assertThat(status).isEqualTo(400);
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       long count = 0;
       for (String entity :
-          List.of("TableInfoDAO", "SchemaInfoDAO", "CatalogInfoDAO", "RegisteredModelInfoDAO")) {
+          List.of(
+              "TableInfoDAO",
+              "VolumeInfoDAO",
+              "SchemaInfoDAO",
+              "CatalogInfoDAO",
+              "RegisteredModelInfoDAO")) {
         count +=
             session
                 .createSelectionQuery(
@@ -652,6 +742,8 @@ public class IcebergRegisterTableTest extends BaseServerTest {
                 .getSingleResult();
       }
       assertThat(count).isEqualTo(1);
+      assertThat(session.get(TableInfoDAO.class, firstId).getUrl())
+          .isEqualTo(NormalizedURL.from(directory.toUri()).toString());
     }
     assertThat(file).exists();
   }

@@ -264,7 +264,10 @@ public class ExternalLocationUtilsTest {
             BaseException.class,
             exception -> {
               assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED);
-              assertThat(exception).hasMessage("Input path overlaps pending storage cleanup.");
+              assertThat(exception)
+                  .hasMessage(
+                      "Input path overlaps pending storage cleanup or a retired registered"
+                          + " directory.");
             });
   }
 

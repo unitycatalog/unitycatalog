@@ -11,9 +11,11 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.CleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.CleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.Date;
@@ -28,6 +30,8 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 public class StorageCleanupTaskRepositoryTest {
   private static final Duration INITIAL_DELAY = Duration.ofHours(1);
@@ -242,10 +246,15 @@ public class StorageCleanupTaskRepositoryTest {
     assertThat(repository.claim(LEASE_DURATION, Duration.ZERO)).isEmpty();
   }
 
-  @Test
-  void staleWorkerCannotReportOrFinishReclaimedTask() {
+  @ParameterizedTest
+  @EnumSource(
+      value = ManagedResourceType.class,
+      names = {"TABLE", "REGISTERED_TABLE"})
+  void staleWorkerCannotReportOrFinishReclaimedTask(ManagedResourceType type) {
     StorageCleanupTaskDAO task =
         create("s3://bucket/stale", add(databaseNow(), Duration.ofMinutes(-1)));
+    sessionFactory.inTransaction(
+        session -> session.get(StorageCleanupTaskDAO.class, task.getId()).setResourceType(type));
     Claim stale = repository.claim(LEASE_DURATION, Duration.ZERO).orElseThrow();
     setState(task.getId(), stale.leaseToken(), add(databaseNow(), Duration.ofMillis(-1)), 0);
     Claim current = repository.claim(LEASE_DURATION, Duration.ZERO).orElseThrow();
@@ -256,7 +265,34 @@ public class StorageCleanupTaskRepositoryTest {
         .isFalse();
     assertThat(repository.finish(task.getId(), stale.leaseToken())).isFalse();
     assertThat(repository.finish(task.getId(), current.leaseToken())).isTrue();
-    assertThat(find(task.getId())).isEmpty();
+    assertThat(repository.finish(task.getId(), stale.leaseToken())).isFalse();
+    assertThat(
+            repository.reportFailure(
+                task.getId(),
+                current.leaseToken(),
+                new CleanupFailureReport("late", RETRY_BACKOFF)))
+        .isFalse();
+    assertThat(repository.claim(LEASE_DURATION, Duration.ZERO)).isEmpty();
+    if (type == ManagedResourceType.REGISTERED_TABLE) {
+      StorageCleanupTaskDAO completed = get(task.getId());
+      assertThat(completed.getCompletedAt()).isNotNull();
+      assertThat(completed.getLeaseToken()).isNull();
+      assertThat(completed.getLeaseExpiresAt()).isNull();
+      try (Session session = sessionFactory.openSession()) {
+        assertThatThrownBy(
+                () ->
+                    ExternalLocationUtils.validateNotOverlapWithRegisteredTables(
+                        session, NormalizedURL.from(task.getStorageLocation())))
+            .isInstanceOfSatisfying(
+                BaseException.class,
+                e -> {
+                  assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+                  assertThat(e).hasMessageContaining("retired directory");
+                });
+      }
+    } else {
+      assertThat(find(task.getId())).isEmpty();
+    }
   }
 
   private StorageCleanupTaskDAO create(String location) {

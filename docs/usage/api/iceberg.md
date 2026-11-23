@@ -99,6 +99,9 @@ the server's default managed table directory under `storage-root.tables/__unitys
 a configured `storage_root` but outside its assigned `storage_location` use the covering external
 location and require its privileges. A different catalog or schema's assigned managed directory
 cannot be used through a covering external location.
+The `tables`, `volumes`, `models`, `catalogs`, and `schemas` directories directly under a managed
+storage boundary are reserved for UC allocation. Registration cannot adopt them or their children,
+including directories of resources whose cleanup has completed.
 
 All files referenced by retained snapshots must also be inside the table directory, including
 manifest lists, manifests, data files, and delete files. Previous metadata files, statistics files,
@@ -116,11 +119,17 @@ Registration rejects directory overlaps with tables, volumes, models, uncommitte
 and pending storage cleanup. It also rejects shared storage roots and directories that contain them.
 Table, volume, model, catalog, and schema storage allocation checks registered directories and
 pending cleanup under a shared database lock, including when authorization is disabled.
+Local allocation URLs must use their canonical spelling. Registration also rejects an overlap with
+a legacy local URL whose spelling differs from the filesystem path. Recreate affected storage entries
+with canonical URLs where needed; occupied directories still cannot be adopted.
 
 Registration keeps the metadata file, table UUID, snapshots, schema, and properties. UC assigns a
 separate catalog table ID. The table becomes `MANAGED`: dropping it schedules deletion of its original
 directory after the normal storage cleanup delay. Stop other catalogs and writers from using this
 directory before registering it. Registration does not copy files or coordinate with another catalog.
+After cleanup completes, UC permanently reserves the registered directory. Do not reuse it for
+another table, volume, model, or managed namespace: a storage delete from an expired cleanup attempt
+may still be in flight. Completed reservations are not retried by the cleanup worker.
 
 A taken table name returns HTTP 409. `overwrite=true` returns HTTP 400; use normal Iceberg commits to
 update a registered table. Both `server.iceberg-table.enabled` and `server.managed-table.enabled` must

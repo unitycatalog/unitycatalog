@@ -1,0 +1,2 @@
+- check uc_storage_cleanup_tasks (((resource_type)::text = ANY ((ARRAY['TABLE'::character varying, 'VOLUME'::character varying, 'REGISTERED_MODEL'::character varying, 'MODEL_VERSION'::character varying, 'STAGING_TABLE'::character varying])::text[])))
++ check uc_storage_cleanup_tasks (((resource_type)::text = ANY ((ARRAY['TABLE'::character varying, 'REGISTERED_TABLE'::character varying, 'VOLUME'::character varying, 'REGISTERED_MODEL'::character varying, 'MODEL_VERSION'::character varying, 'STAGING_TABLE'::character varying])::text[])))

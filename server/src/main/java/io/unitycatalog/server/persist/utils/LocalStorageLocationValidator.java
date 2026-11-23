@@ -76,7 +76,7 @@ public final class LocalStorageLocationValidator {
    * compare locations as strings, while the server opens the decoded path, so each local directory
    * must have one accepted spelling.
    */
-  private static boolean isCanonical(URI uri) {
+  static boolean isCanonical(URI uri) {
     // Locations and stored URLs are already normalized, so compare the strings.
     return NormalizedURL.from(localPath(uri).toUri()).toString().equals(uri.toString());
   }

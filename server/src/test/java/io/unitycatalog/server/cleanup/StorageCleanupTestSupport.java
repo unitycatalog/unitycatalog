@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import io.unitycatalog.server.audit.AuditRecord;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.audit.CapturingAuditSink;
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -70,14 +71,15 @@ public final class StorageCleanupTestSupport {
   }
 
   /**
-   * Waits until all paths are absent and the cleanup task is removed, asserting both on timeout.
+   * Waits until all paths are absent and the task is removed or retains a completed registration
+   * reservation, asserting both on timeout.
    */
   public static void awaitCleanup(
       SessionFactory sessionFactory, UUID resourceId, Duration timeout, Path... paths)
       throws InterruptedException {
     long deadline = System.nanoTime() + timeout.toNanos();
     while (System.nanoTime() < deadline) {
-      if (allGone(paths) && findTask(sessionFactory, resourceId) == null) {
+      if (allGone(paths) && isComplete(findTask(sessionFactory, resourceId))) {
         return;
       }
       Thread.sleep(10);
@@ -85,7 +87,13 @@ public final class StorageCleanupTestSupport {
     for (Path path : paths) {
       assertThat(path).doesNotExist();
     }
-    assertThat(findTask(sessionFactory, resourceId)).isNull();
+    assertThat(isComplete(findTask(sessionFactory, resourceId))).isTrue();
+  }
+
+  private static boolean isComplete(StorageCleanupTaskDAO task) {
+    return task == null
+        || (task.getResourceType() == ManagedResourceType.REGISTERED_TABLE
+            && task.getCompletedAt() != null);
   }
 
   /** Sets a 10 ms poll interval and 1 ms task-eligibility delay for live-worker tests. */

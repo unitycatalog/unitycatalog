@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
-/** A pending cleanup task whose ID and name are copied from the deleted resource. */
+/** A cleanup task or completed directory reservation, keyed by the deleted resource's ID. */
 @Entity
 @Table(
     name = "uc_storage_cleanup_tasks",
@@ -44,6 +44,10 @@ public class StorageCleanupTaskDAO extends IdentifiableDAO {
 
   @Column(name = "deleted_at", nullable = false)
   private Date deletedAt;
+
+  /** Completed registered-table cleanup; its directory stays reserved against stale deletes. */
+  @Column(name = "completed_at")
+  private Date completedAt;
 
   /** Active lease expiry when a token exists; earliest retry time otherwise. */
   @Column(name = "lease_expires_at")
