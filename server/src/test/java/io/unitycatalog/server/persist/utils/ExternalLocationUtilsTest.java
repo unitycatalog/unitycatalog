@@ -2,28 +2,41 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.RETURNS_SELF;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.dao.MetastoreDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.nio.file.Path;
+import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
+import org.hibernate.query.SelectionQuery;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Tests for ExternalLocationUtils including both unit tests for static helper methods and
@@ -90,6 +103,137 @@ public class ExternalLocationUtilsTest {
             ExternalLocationUtils.stillCovers(
                 NormalizedURL.from("s3://b/a"), NormalizedURL.from("s3://b/ab")))
         .isFalse();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"abfs", "abfss"})
+  public void azureSchemesShareOverlapAndCleanupReservations(String storedScheme) {
+    session.beginTransaction();
+    String stored = storedScheme + "://container@account.dfs.core.windows.net/warehouse/orders";
+    String alias =
+        (storedScheme.equals("abfs") ? "abfss" : "abfs")
+            + "://container@account.dfs.core.windows.net/warehouse/orders";
+    TableInfoDAO table =
+        TableInfoDAO.builder()
+            .id(UUID.randomUUID())
+            .name("orders")
+            .type("MANAGED")
+            .dataSourceFormat("ICEBERG")
+            .url(stored)
+            .build();
+    session.persist(table);
+    for (String path :
+        List.of(alias, alias + "/data", alias.substring(0, alias.lastIndexOf('/')))) {
+      NormalizedURL location = NormalizedURL.from(path);
+      assertThat(
+              ExternalLocationUtils.<TableInfoDAO>getEntityDAOsWithURLOverlap(
+                  session, location, SecurableType.TABLE, 1, true, true, true))
+          .extracting(TableInfoDAO::getId)
+          .containsExactly(table.getId());
+      assertInvalidRegistrationOverlap(location);
+    }
+    assertThat(
+            ExternalLocationUtils.stillCovers(
+                NormalizedURL.from(stored), NormalizedURL.from(alias)))
+        .isTrue();
+    assertThat(
+            ExternalLocationUtils.stillCovers(
+                NormalizedURL.from(stored), NormalizedURL.from(alias + "/data")))
+        .isTrue();
+    assertThat(
+            ExternalLocationUtils.stillCovers(
+                NormalizedURL.from(stored), NormalizedURL.from(alias + "-sibling")))
+        .isFalse();
+
+    session.remove(table);
+    StorageCleanupTaskDAO task =
+        new StorageCleanupTaskRepository(sessionFactory)
+            .create(session, ManagedResourceType.REGISTERED_TABLE, table.getId(), "orders", stored);
+    for (boolean completed : List.of(false, true)) {
+      if (completed) {
+        task.setCompletedAt(new Date());
+      }
+      NormalizedURL location = NormalizedURL.from(alias);
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, location)).isTrue();
+      assertInvalidRegistrationOverlap(location);
+    }
+    for (String path : List.of(alias + "-sibling", alias.replace("container@", "other@"))) {
+      NormalizedURL location = NormalizedURL.from(path);
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, location)).isFalse();
+      ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, location);
+    }
+  }
+
+  private void assertInvalidRegistrationOverlap(NormalizedURL location) {
+    assertThatThrownBy(
+            () -> ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, location))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(failure).hasMessageContaining("overlaps a registered managed table");
+            });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"table", "model"})
+  public void registrationCannotContainDefaultAllocationStorage(String kind) {
+    session.beginTransaction();
+    session.persist(
+        ExternalLocationDAO.builder()
+            .id(UUID.randomUUID())
+            .name("warehouse")
+            .url("s3://bucket")
+            .credentialId(UUID.randomUUID())
+            .build());
+    var parents =
+        new RepositoryUtils.CatalogAndSchemaDao(
+            CatalogInfoDAO.builder().id(UUID.randomUUID()).build(),
+            SchemaInfoDAO.builder().id(UUID.randomUUID()).build());
+    NormalizedURL root = NormalizedURL.from("s3://bucket/warehouse");
+    Optional<NormalizedURL> tableRoot = kind.equals("table") ? Optional.of(root) : Optional.empty();
+    Optional<NormalizedURL> modelRoot = kind.equals("model") ? Optional.of(root) : Optional.empty();
+    for (String path : List.of("s3://bucket", root.toString(), root + "/__unitystorage")) {
+      assertThatThrownBy(
+              () ->
+                  ExternalLocationUtils.resolveRegistrationStorage(
+                      session, parents, NormalizedURL.from(path), tableRoot, modelRoot))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              failure -> {
+                assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+                assertThat(failure)
+                    .hasMessageContaining(
+                        "must not contain or equal a shared managed storage directory");
+              });
+    }
+    assertThat(
+            ExternalLocationUtils.resolveRegistrationStorage(
+                    session, parents, NormalizedURL.from(root + "/imported"), tableRoot, modelRoot)
+                .location())
+        .isEqualTo(NormalizedURL.from("s3://bucket"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("io.unitycatalog.server.persist.utils.RepositoryUtilsTest#lockAcquisitionFailures")
+  @SuppressWarnings("unchecked")
+  public void storageLockFailureIsRetryable(RuntimeException lockFailure) {
+    Session lockedSession = mock();
+    SelectionQuery<MetastoreDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
+    when(lockedSession.createSelectionQuery("FROM MetastoreDAO", MetastoreDAO.class))
+        .thenReturn(query);
+    when(query.getSingleResult()).thenThrow(lockFailure);
+    assertThatThrownBy(() -> ExternalLocationUtils.lockTableStorage(lockedSession))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+              assertThat(failure.getErrorCode().getHttpStatus().code()).isEqualTo(503);
+              assertThat(failure)
+                  .hasCause(lockFailure)
+                  .hasMessage(
+                      "Concurrent modification in progress on managed storage; retry the request.");
+            });
   }
 
   @Test

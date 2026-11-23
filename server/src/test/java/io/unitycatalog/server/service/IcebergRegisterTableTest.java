@@ -465,31 +465,21 @@ public class IcebergRegisterTableTest extends BaseServerTest {
   }
 
   @Test
-  public void rejectsModelAllocationInRegisteredStorage() throws Exception {
+  public void rejectsRegistrationContainingDefaultModelStorage() throws Exception {
     Path directory = externalRoot.resolve("model_root");
     Path file = writeMetadata(directory);
-    client.registerTable(CATALOG, NAMESPACE, request("orders", file.toString()));
+    assertIcebergApiException(
+        () -> client.registerTable(CATALOG, NAMESPACE, request("orders", file.toString())),
+        400,
+        "must not contain or equal a shared managed storage directory");
+    assertThat(client.listTables(CATALOG, NAMESPACE).identifiers()).isEmpty();
+    assertThat(file).exists();
     RegisteredModelsApi models = new RegisteredModelsApi(TestUtils.createApiClient(serverConfig));
-    for (boolean dropped : List.of(false, true)) {
-      if (dropped) {
-        client.dropTable(CATALOG, NAMESPACE, "orders");
-      }
-      assertThatThrownBy(
-              () ->
-                  models.createRegisteredModel(
-                      new CreateRegisteredModel()
-                          .catalogName(CATALOG)
-                          .schemaName(NAMESPACE)
-                          .name("model")))
-          .isInstanceOfSatisfying(
-              ApiException.class,
-              e -> {
-                assertThat(e.getCode()).isEqualTo(400);
-                assertThat(e.getResponseBody()).contains("INVALID_ARGUMENT", "overlaps");
-              });
-      assertThat(directory.resolve("__unitystorage")).doesNotExist();
-      assertThat(file).exists();
-    }
+    var model =
+        models.createRegisteredModel(
+            new CreateRegisteredModel().catalogName(CATALOG).schemaName(NAMESPACE).name("model"));
+    assertThat(model.getStorageLocation())
+        .startsWith(NormalizedURL.from(directory.toUri()) + "/__unitystorage/models/");
   }
 
   @Test

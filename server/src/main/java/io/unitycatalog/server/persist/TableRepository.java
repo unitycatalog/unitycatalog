@@ -787,6 +787,8 @@ public class TableRepository {
         RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalog, schema),
         path,
         Optional.ofNullable(serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
+            .map(NormalizedURL::from),
+        Optional.ofNullable(serverProperties.get(ServerProperties.Property.MODEL_STORAGE_ROOT))
             .map(NormalizedURL::from));
   }
 

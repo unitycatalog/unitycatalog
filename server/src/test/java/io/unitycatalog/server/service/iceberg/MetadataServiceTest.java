@@ -38,6 +38,7 @@ import org.apache.iceberg.FileMetadata;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.data.GenericRecord;
@@ -48,6 +49,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -121,7 +123,7 @@ public class MetadataServiceTest {
               tableLocation,
               new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
               Map.of(
-                  TableProperties.WRITE_DATA_LOCATION, tableLocation,
+                  TableProperties.WRITE_DATA_LOCATION, tableLocation + "/",
                   TableProperties.WRITE_FOLDER_STORAGE_LOCATION, tableLocation,
                   TableProperties.OBJECT_STORE_PATH, tableLocation),
               fileIO);
@@ -153,6 +155,74 @@ public class MetadataServiceTest {
     assertThat(registered.snapshots()).hasSize(1);
     verify(mockFileOperations).getFileIO(NormalizedURL.from(tableLocation + "/metadata"));
     verify(mockFileOperations).getFileIO(NormalizedURL.from(tableLocation));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "data,/data/./record.avro",
+    "delete,/data//delete.avro",
+    "location,/.",
+    "write.data.path,/data?version=1",
+    "write.metadata.path,/metadata#fragment"
+  })
+  public void registrationRejectsNoncanonicalCloudLocations(String kind, String suffix)
+      throws Exception {
+    String bucket = "registration-canonical-" + kind.replace('.', '-');
+    mockS3Client.createBucket(builder -> builder.bucket(bucket));
+    String tableLocation = "s3://" + bucket + "/orders";
+    String path = tableLocation + suffix;
+    String metadataPath = tableLocation + "/metadata/import.metadata.json";
+    try (var fileIO = new S3FileIO(S3_MOCK::createS3ClientV2)) {
+      var table =
+          IcebergTestUtils.createTable(
+              tableLocation,
+              new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+              Map.of(),
+              fileIO);
+      if (kind.equals("data")) {
+        table
+            .newFastAppend()
+            .appendFile(
+                DataFiles.builder(table.spec())
+                    .withPath(path)
+                    .withFormat("avro")
+                    .withFileSizeInBytes(1)
+                    .withRecordCount(1)
+                    .build())
+            .commit();
+      } else if (kind.equals("delete")) {
+        table
+            .newRowDelta()
+            .addDeletes(
+                FileMetadata.deleteFileBuilder(table.spec())
+                    .ofPositionDeletes()
+                    .withPath(path)
+                    .withFormat("avro")
+                    .withFileSizeInBytes(1)
+                    .withRecordCount(1)
+                    .build())
+            .commit();
+      }
+      TableMetadata metadata = table.operations().current();
+      if (kind.equals("location")) {
+        metadata = TableMetadata.buildFrom(metadata).setLocation(path).build();
+      } else if (kind.startsWith("write.")) {
+        metadata = TableMetadata.buildFrom(metadata).setProperties(Map.of(kind, path)).build();
+      }
+      TableMetadataParser.write(metadata, fileIO.newOutputFile(metadataPath));
+    }
+    when(mockFileOperations.getFileIO(any()))
+        .thenAnswer(invocation -> new S3FileIO(S3_MOCK::createS3ClientV2));
+    assertThatThrownBy(
+            () ->
+                metadataService.readRegistrationMetadata(
+                    NormalizedURL.from(metadataPath), NormalizedURL.from("s3://" + bucket)))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(failure).hasMessageContaining("canonical cloud object path", path);
+            });
   }
 
   @ParameterizedTest

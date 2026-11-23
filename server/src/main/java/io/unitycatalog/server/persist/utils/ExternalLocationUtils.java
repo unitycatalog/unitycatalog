@@ -467,6 +467,15 @@ public class ExternalLocationUtils {
     String inCondition = String.format("%s IN (:matchPaths)", daoClassInfo.urlFieldName);
     String likeCondition =
         String.format("%s LIKE :likePattern ESCAPE '\\'", daoClassInfo.urlFieldName);
+    List<NormalizedURL> spellings = storageLocationSpellings(url);
+    if (includeSubdir && spellings.size() > 1) {
+      likeCondition =
+          "("
+              + likeCondition
+              + " OR "
+              + daoClassInfo.urlFieldName
+              + " LIKE :alternateLikePattern ESCAPE '\\')";
+    }
     String condition = null;
     if (hasInCondition && hasLikeCondition) {
       condition = inCondition + " OR " + likeCondition;
@@ -490,11 +499,19 @@ public class ExternalLocationUtils {
 
     Query<T> query = session.createQuery(queryString, (Class<T>) daoClassInfo.clazz);
     if (!matchPaths.isEmpty()) {
-      List<String> matchPathsList = matchPaths.stream().map(NormalizedURL::toString).toList();
+      List<String> matchPathsList =
+          matchPaths.stream()
+              .flatMap(path -> storageLocationSpellings(path).stream())
+              .map(NormalizedURL::toString)
+              .toList();
       query.setParameter("matchPaths", matchPathsList);
     }
     if (!likePattern.isEmpty()) {
       query.setParameter("likePattern", likePattern);
+      if (spellings.size() > 1) {
+        query.setParameter(
+            "alternateLikePattern", escapeLikePattern(spellings.get(1).toString()) + "/%");
+      }
     }
     query.setMaxResults(limit);
     return query;
@@ -712,7 +729,21 @@ public class ExternalLocationUtils {
    * parent. A narrowed or unrelated URL does not, so the in-use check applies to it.
    */
   public static boolean stillCovers(NormalizedURL newUrl, NormalizedURL currentUrl) {
-    return currentUrl.equals(newUrl) || getParentPathsList(currentUrl).contains(newUrl);
+    List<NormalizedURL> spellings = storageLocationSpellings(newUrl);
+    return spellings.contains(currentUrl)
+        || getParentPathsList(currentUrl).stream().anyMatch(spellings::contains);
+  }
+
+  /** ADLS uses the same account, container, and path for both supported URI schemes. */
+  private static List<NormalizedURL> storageLocationSpellings(NormalizedURL url) {
+    String location = url.toString();
+    if (location.startsWith("abfs://")) {
+      return List.of(url, NormalizedURL.from("abfss" + location.substring("abfs".length())));
+    }
+    if (location.startsWith("abfss://")) {
+      return List.of(url, NormalizedURL.from("abfs" + location.substring("abfss".length())));
+    }
+    return List.of(url);
   }
 
   /** Returns whether the parent paths of {@code url} can be built, which fails for s3:///. */
@@ -756,6 +787,7 @@ public class ExternalLocationUtils {
    * @param parents the destination catalog and schema
    * @param path the metadata file or table directory
    * @param defaultRoot the server's managed table storage root, if configured
+   * @param defaultModelRoot the server's managed model storage root, if configured
    * @return the storage boundary and, for external storage, the location to authorize
    * @throws BaseException if the path has no permitted storage boundary
    */
@@ -763,8 +795,18 @@ public class ExternalLocationUtils {
       Session session,
       RepositoryUtils.CatalogAndSchemaDao parents,
       NormalizedURL path,
-      Optional<NormalizedURL> defaultRoot) {
+      Optional<NormalizedURL> defaultRoot,
+      Optional<NormalizedURL> defaultModelRoot) {
     LocalStorageLocationValidator.validateCanonicalLocalLocation(path);
+    // Default roots have no namespace row. Keep their allocation directories reserved after
+    // cleanup.
+    if (Stream.concat(defaultRoot.stream(), defaultModelRoot.stream())
+        .map(root -> NormalizedURL.from(root + "/" + Constants.MANAGED_STORAGE_PREFIX))
+        .anyMatch(root -> stillCovers(path, root))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "The table path must not contain or equal a shared managed storage directory.");
+    }
     validateNoLocalRegistrationAliases(session, path);
     validateRegistrationPathAvailable(session, path);
     var managedOwners =
@@ -923,10 +965,13 @@ public class ExternalLocationUtils {
 
   /** Serializes storage allocation with table registration; use READ COMMITTED. */
   public static void lockTableStorage(Session session) {
-    session
-        .createSelectionQuery("FROM MetastoreDAO", MetastoreDAO.class)
-        .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
-        .getSingleResult();
+    RepositoryUtils.unavailableOnLockFailure(
+        "managed storage",
+        () ->
+            session
+                .createSelectionQuery("FROM MetastoreDAO", MetastoreDAO.class)
+                .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
+                .getSingleResult());
   }
 
   /** Prevents later creates from claiming an adopted directory, including after a drop. */
@@ -970,7 +1015,7 @@ public class ExternalLocationUtils {
   }
 
   private static boolean isStrictSubpath(NormalizedURL path, NormalizedURL root) {
-    return !path.equals(root) && stillCovers(root, path);
+    return stillCovers(root, path) && !stillCovers(path, root);
   }
 
   /**

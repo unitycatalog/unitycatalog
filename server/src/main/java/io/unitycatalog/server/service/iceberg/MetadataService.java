@@ -86,7 +86,8 @@ public class MetadataService {
         metadata.uuid() != null,
         "Iceberg metadata at '%s' must contain table-uuid before registration.",
         metadataLocation);
-    NormalizedURL tableLocation = NormalizedURL.from(metadata.location());
+    NormalizedURL tableLocation =
+        registrationLocation(metadata.location(), /* isDirectory= */ true);
     validateMetadataLocation(tableLocation, storageRoot);
     validateMetadataLocation(metadataLocation, tableLocation);
     validateTableMetadataLocation(metadata, tableLocation);
@@ -99,6 +100,7 @@ public class MetadataService {
       TableMetadata metadata, NormalizedURL tableLocation, NormalizedURL readLocation) {
     for (String property :
         List.of(
+            TableProperties.WRITE_METADATA_LOCATION,
             TableProperties.WRITE_DATA_LOCATION,
             TableProperties.WRITE_FOLDER_STORAGE_LOCATION,
             TableProperties.OBJECT_STORE_PATH)) {
@@ -164,8 +166,7 @@ public class MetadataService {
 
   private static void validateRegistrationLocation(
       String path, NormalizedURL tableLocation, boolean isDirectory) {
-    NormalizedURL location = NormalizedURL.from(path);
-    LocalStorageLocationValidator.validateCanonicalLocalLocation(location);
+    NormalizedURL location = registrationLocation(path, isDirectory);
     // Cleanup deletes descendants of the table directory, so only directory properties may equal
     // it.
     ValidationUtils.checkArgument(
@@ -175,6 +176,21 @@ public class MetadataService {
         location,
         isDirectory ? "at or below" : "strictly below",
         tableLocation);
+  }
+
+  /** Cloud object keys must retain the spelling that FileIO reads and cleanup deletes. */
+  private static NormalizedURL registrationLocation(String path, boolean isDirectory) {
+    NormalizedURL location = NormalizedURL.from(path);
+    LocalStorageLocationValidator.validateCanonicalLocalLocation(location);
+    if (UriScheme.fromURI(location.toUri()) != UriScheme.FILE) {
+      ValidationUtils.checkArgument(
+          (path.equals(location.toString()) || (isDirectory && path.equals(location + "/")))
+              && location.toUri().getRawQuery() == null
+              && location.toUri().getRawFragment() == null,
+          "Iceberg registration location ('%s') must use its canonical cloud object path.",
+          path);
+    }
+    return location;
   }
 
   /** Writes metadata only within the table location persisted by UC. */

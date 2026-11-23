@@ -102,14 +102,19 @@ cannot be used through a covering external location.
 The `tables`, `volumes`, `models`, `catalogs`, and `schemas` directories directly under a managed
 storage boundary are reserved for UC allocation. Registration cannot adopt them or their children,
 including directories of resources whose cleanup has completed.
+Registration also rejects a table directory that contains the default managed table or model
+allocation directory, even when a covering external location grants access to it.
 
 All files referenced by retained snapshots must also be inside the table directory, including
 manifest lists, manifests, data files, and delete files. Previous metadata files and statistics files
 must also be strict descendants of the table directory. Configured data directories may equal the
-table directory or be below it. Registration reads the retained snapshots'
-manifests to check these paths and rejects layouts that need access outside the table directory.
+table directory or be below it. Configured metadata directories must be below it. Registration reads
+the retained snapshots' manifests to check these paths and rejects layouts that need access outside
+the table directory.
 Bucket-root and container-root external locations are supported; the metadata read uses a child
 directory within that boundary.
+Cloud locations must preserve their object-key spelling: dot segments, repeated path separators,
+queries, and fragments are rejected. Directory properties may have a trailing slash.
 
 The caller needs `USE_CATALOG` on the destination catalog and `USE_SCHEMA` plus `CREATE_TABLE` on the
 destination schema. Ownership satisfies the corresponding catalog or schema tier. For an external
@@ -120,6 +125,8 @@ Registration rejects directory overlaps with tables, volumes, models, uncommitte
 and pending storage cleanup. It also rejects shared storage roots and directories that contain them.
 Table, volume, model, catalog, and schema storage allocation checks registered directories and
 pending cleanup under a shared database lock, including when authorization is disabled.
+Overlap checks treat `abfs` and `abfss` URLs for the same account, container, and path as one location,
+including URLs stored before registration was supported.
 Local allocation URLs must use their canonical spelling. Registration also rejects an overlap with
 a legacy local URL whose spelling differs from the filesystem path. Recreate affected storage entries
 with canonical URLs where needed; occupied directories still cannot be adopted.
