@@ -1414,6 +1414,20 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   @Test
   public void testBackfillOnlyCommitOnUniformTable() throws ApiException, IOException {
     String enabledFormats = TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS;
+    // Before UniForm is on, a uniform block without a commit is rejected the same way, also when
+    // its timestamp can't be parsed.
+    assertApiException(
+        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(1L).uniform(uniformAt(1L))),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata requires an accompanying commit.");
+    DeltaUniform unparseableTimestamp = uniformAt(1L);
+    unparseableTimestamp.getIceberg().convertedDeltaTimestamp("not-a-timestamp");
+    assertApiException(
+        () ->
+            deltaCommitsApi.commit(
+                createBackfillOnlyCommitObject(1L).uniform(unparseableTimestamp)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata requires an accompanying commit.");
     deltaCommitsApi.commit(
         commitWithProperties(1L, Map.of(enabledFormats, "iceberg")).uniform(uniformAt(1L)));
     for (long v = 2; v <= 10; v++) {
@@ -1425,6 +1439,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         "Max number of commits per table reached");
     writePublishedCommitFiles(1L, 10L);
 
+    // The uniform block is rejected before it is read, so its version doesn't matter here.
     assertApiException(
         () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(10L).uniform(uniformAt(9L))),
         ErrorCode.INVALID_ARGUMENT,

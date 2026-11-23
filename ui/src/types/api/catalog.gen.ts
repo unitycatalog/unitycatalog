@@ -1768,6 +1768,8 @@ export interface components {
        *     keeping the conversion state synchronized with the Delta version.
        *     Uniform enables Delta tables to be read by other table formats (e.g., Iceberg) without data conversion.
        *     Independent of the `metadata` field, both can be provided together or separately.
+       *     Must not be set without `commit_info`. A request that only sets `latest_backfilled_version`
+       *     adds no commit to convert.
        *      */
       uniform?: components['schemas']['DeltaUniform'];
     };
