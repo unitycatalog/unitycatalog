@@ -42,7 +42,7 @@ bin/uc table list           # exercise the CLI against it
 cd ui && bun install && bun run start
 ```
 
-Java follows the Google Java Format (a format check runs in CI; run `build/sbt javafmtAll` before pushing). Scala follows the Apache Spark Scala Style Guide. The UI has its own format check (`bun run test:format` in `ui/`). `CONTRIBUTING.md` lists every format and lint check CI runs (Java format and Checkstyle, UI format and lock file, `ai/` ruff and yamllint, Helm chart lint).
+Java follows the Google Java Format (a format check runs in CI; run `build/sbt javafmtAll` before pushing). Scala follows the Apache Spark Scala Style Guide. The UI has its own format check (`bun run test:format` in `ui/`). The format and lint checks CI runs, and the command that fixes each, are in `CONTRIBUTING.md` under "Formatting and lint".
 
 **CI checks a pull request must satisfy:** unit tests across an engine/format matrix (currently Spark 4.0/4.1/4.2 with the pinned Delta release, plus informational non-blocking runs against a Delta development snapshot; the primary combination also runs license and connector tests), the Java and UI format checks, the cross-Spark build, and the Python client generation and tests. The development-snapshot runs do not block, but a failure there signals an upcoming incompatibility worth understanding.
 
@@ -88,7 +88,7 @@ Key points: HTTP verb annotations (`@Post`, `@Get`, `@Patch`, `@Delete`) with `@
 | `examples/cli/` | The `uc` command-line client. |
 | `examples/sample-database/` | Builds the sample H2 database (`etc/db/h2db.mv.db`) that the quickstart examples use. |
 | `integration-tests/` | Cross-module and end-to-end tests. |
-| `ui/` | The web UI (React, built with Bun). |
+| `ui/` | The web UI (React, managed and run with Bun). |
 | `docs/` | User documentation, published with MkDocs (`mkdocs.yml`). |
 | `ai/` | The Unity Catalog AI library: function-calling integrations for various frameworks. A separate Python subproject with its own `uv`-based toolchain. It is not the catalog server; do not confuse `ai/` with server code. |
 | `bin/` | `bin/start-uc-server`, `bin/uc`. |

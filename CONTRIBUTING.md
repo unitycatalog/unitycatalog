@@ -33,15 +33,16 @@ CI runs these checks on pull requests. Run the ones for the code you changed bef
 
 | Code | Check (what CI runs) | Fix | CI workflow (runs when) |
 |---|---|---|---|
-| Java | `build/sbt javafmtCheck` | `build/sbt javafmtAll` | `lint-check.yml` (every pull request to `main`) |
-| Java (server, Java client tests) | Checkstyle with `dev/checkstyle-config.xml`, run by the build: `build/sbt server/checkstyle server/Test/checkstyle client/Test/checkstyle` | Fix what the report lists | `unit-tests.yml` (every pull request), as part of compile and test |
+| Java | `build/sbt javafmtCheck` (main sources only; `build/sbt javafmtCheckAll` also checks test sources) | `build/sbt javafmtAll` (formats main and test sources) | `lint-check.yml` (every pull request to `main`) |
+| Java (server, cli, sampleDatabase, spark, hadoop, integrationTests; Java client tests only) | Checkstyle with `dev/checkstyle-config.xml` runs during compile and `Test/compile` of each module that enables it, and the build fails on a violation, for example `build/sbt server/compile server/Test/compile`. Running `build/sbt server/checkstyle` alone only writes a report and exits 0. | Fix what the build reports | `unit-tests.yml` (pull requests to `main` or `branch-*`), as part of compile and test |
 | UI (`ui/`) | `cd ui && bun install --frozen-lockfile && bun run test:format` | `cd ui && bun run format` | `lint-check.yml` (every pull request to `main`) |
 | UI lock file | `cd ui && bun run scripts/clean-bun-lock.ts --check` | `cd ui && bun run scripts/clean-bun-lock.ts` | `lint-check.yml` (every pull request to `main`) |
-| Python (`ai/`) | `cd ai && ruff check . && ruff format --check .` | `cd ai && ruff check --fix . && ruff format .` | `ucai-core-tests.yml` (pull requests that change `ai/`) |
-| YAML (`ai/`) | `cd ai && yamllint .` | Fix what it reports | `ucai-core-tests.yml` (pull requests that change `ai/`) |
+| Python (`ai/`) | `cd ai && ruff check . && ruff format --check .` | `cd ai && ruff check --fix . && ruff format .` | `ucai-core-tests.yml` (pull requests that change `ai/` or `.github/workflows/ucai-*.yml`) |
+| YAML (`ai/`) | `cd ai && yamllint .` | Fix what it reports | `ucai-core-tests.yml` (pull requests that change `ai/` or `.github/workflows/ucai-*.yml`) |
+| Helm chart README (`helm/README.md`) | helm-docs v1.14.2 regenerates it, and CI fails if anything under `helm/` changes | `pre-commit run helm-docs --all-files` | `helm-chart-tests.yml` (pull requests that change the chart or what it runs) |
 | Helm chart (`helm/`) | `ct lint --charts helm --validate-maintainers=false --check-version-increment=false` ([chart-testing](https://github.com/helm/chart-testing)) | Fix what it reports | `helm-chart-tests.yml` (pull requests that change the chart or what it runs) |
 
-The `ai/` linters are pinned in `ai/requirements/lint-requirements.lock` (`uv pip install --require-hashes -r requirements/lint-requirements.lock`). Compiling a module that has the Java formatter enabled also runs `javafmtAll`, so `build/sbt compile` formats the Java files it builds.
+The `ai/` linters are pinned in `ai/requirements/lint-requirements.lock` (from `ai/`, in a virtualenv: `uv pip install --require-hashes -r requirements/lint-requirements.lock`). In `server`, `cli`, `sampleDatabase`, `spark`, `hadoop` and `integrationTests`, compile also runs `javafmtAll` on main and test sources. Compiling the Java client does not, so run `build/sbt javafmtAll` before you push.
 
 # Sign your work
 
