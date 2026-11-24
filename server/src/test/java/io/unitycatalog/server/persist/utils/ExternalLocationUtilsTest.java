@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
@@ -294,6 +295,103 @@ public class ExternalLocationUtilsTest {
                     session, parents, NormalizedURL.from(root + "/imported"), tableRoot, modelRoot)
                 .location())
         .isEqualTo(NormalizedURL.from("s3://bucket"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"default", "catalog", "schema"})
+  public void registrationReservesLocalSharedDirectoriesWithoutAllocationRows(String owner)
+      throws Exception {
+    session.beginTransaction();
+    Path managedDirectory = Files.createDirectory(tempDir.resolve("__unitystorage"));
+    NormalizedURL managedRoot = NormalizedURL.from(managedDirectory.toUri());
+    CatalogInfoDAO catalog = CatalogInfoDAO.builder().id(UUID.randomUUID()).build();
+    SchemaInfoDAO schema = SchemaInfoDAO.builder().id(UUID.randomUUID()).build();
+    if (owner.equals("catalog")) {
+      catalog.setStorageLocation(managedRoot.toString());
+    } else if (owner.equals("schema")) {
+      schema.setStorageLocation(managedRoot.toString());
+    }
+    var parents = new RepositoryUtils.CatalogAndSchemaDao(catalog, schema);
+    Optional<NormalizedURL> defaultRoot =
+        owner.equals("default")
+            ? Optional.of(NormalizedURL.from(tempDir.toUri()))
+            : Optional.empty();
+    for (String segment : List.of("tables", "volumes", "models", "catalogs", "schemas")) {
+      Path reserved = Files.createDirectory(managedDirectory.resolve(segment));
+      Path alias =
+          Files.createDirectories(managedDirectory.resolve(segment.toUpperCase(Locale.ROOT)));
+      for (Path spelling : List.of(reserved, alias)) {
+        boolean isReserved = Files.isSameFile(reserved, spelling);
+        for (Path path : List.of(spelling, spelling.resolve("child"))) {
+          if (isReserved) {
+            assertThatThrownBy(
+                    () ->
+                        ExternalLocationUtils.resolveRegistrationStorage(
+                            session,
+                            parents,
+                            NormalizedURL.from(path.toUri()),
+                            defaultRoot,
+                            Optional.empty()))
+                .isInstanceOfSatisfying(
+                    BaseException.class,
+                    failure -> {
+                      assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+                      assertThat(failure).hasMessageContaining("shared managed storage directory");
+                    });
+          } else {
+            assertThat(
+                    ExternalLocationUtils.resolveRegistrationStorage(
+                            session,
+                            parents,
+                            NormalizedURL.from(path.toUri()),
+                            defaultRoot,
+                            Optional.empty())
+                        .location())
+                .isEqualTo(managedRoot);
+          }
+        }
+      }
+    }
+    assertThat(
+            ExternalLocationUtils.resolveRegistrationStorage(
+                    session,
+                    parents,
+                    NormalizedURL.from(managedDirectory.resolve("tables-sibling").toUri()),
+                    defaultRoot,
+                    Optional.empty())
+                .location())
+        .isEqualTo(managedRoot);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"table", "model"})
+  public void registrationRejectsCaseAliasesOfDefaultAllocationStorage(String kind)
+      throws Exception {
+    Path managedDirectory = Files.createDirectory(tempDir.resolve("__unitystorage"));
+    Path alias = tempDir.resolve("__UNITYSTORAGE");
+    assumeTrue(
+        Files.exists(alias) && Files.isSameFile(managedDirectory, alias),
+        "Requires a case-insensitive filesystem");
+    session.beginTransaction();
+    var parents =
+        new RepositoryUtils.CatalogAndSchemaDao(
+            CatalogInfoDAO.builder().id(UUID.randomUUID()).build(),
+            SchemaInfoDAO.builder().id(UUID.randomUUID()).build());
+    NormalizedURL root = NormalizedURL.from(tempDir.toUri());
+    Optional<NormalizedURL> tableRoot = kind.equals("table") ? Optional.of(root) : Optional.empty();
+    Optional<NormalizedURL> modelRoot = kind.equals("model") ? Optional.of(root) : Optional.empty();
+    for (Path path : List.of(alias, alias.resolve("child"))) {
+      assertThatThrownBy(
+              () ->
+                  ExternalLocationUtils.resolveRegistrationStorage(
+                      session, parents, NormalizedURL.from(path.toUri()), tableRoot, modelRoot))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              failure -> {
+                assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+                assertThat(failure).hasMessageContaining("shared managed storage directory");
+              });
+    }
   }
 
   @ParameterizedTest

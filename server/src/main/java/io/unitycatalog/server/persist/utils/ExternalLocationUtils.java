@@ -802,7 +802,7 @@ public class ExternalLocationUtils {
     // cleanup.
     if (Stream.concat(defaultRoot.stream(), defaultModelRoot.stream())
         .map(root -> NormalizedURL.from(root + "/" + Constants.MANAGED_STORAGE_PREFIX))
-        .anyMatch(root -> stillCovers(path, root))) {
+        .anyMatch(root -> stillCovers(path, root) || hasLocalStorageAlias(path, root.toString()))) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "The table path must not contain or equal a shared managed storage directory.");
@@ -847,9 +847,9 @@ public class ExternalLocationUtils {
                       ManagedResourceType.REGISTERED_MODEL)
                   .map(ManagedResourceType::pathSegment),
               Stream.of("catalogs", "schemas"))
+          .map(segment -> NormalizedURL.from(managedRoot.get() + "/" + segment))
           .anyMatch(
-              segment ->
-                  stillCovers(NormalizedURL.from(managedRoot.get() + "/" + segment), path))) {
+              root -> stillCovers(root, path) || hasLocalStorageAlias(path, root.toString()))) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
             "The table path must not use a shared managed storage directory.");
@@ -922,6 +922,10 @@ public class ExternalLocationUtils {
 
   private static boolean hasLocalStorageAlias(NormalizedURL path, String stored) {
     NormalizedURL storedUrl = NormalizedURL.from(stored);
+    if (UriScheme.fromURI(path.toUri()) != UriScheme.FILE
+        || UriScheme.fromURI(storedUrl.toUri()) != UriScheme.FILE) {
+      return false;
+    }
     // The SQL overlap checks already handle these spellings, including authorized containers.
     if (stillCovers(path, storedUrl) || stillCovers(storedUrl, path)) {
       return false;

@@ -102,6 +102,8 @@ cannot be used through a covering external location.
 The `tables`, `volumes`, `models`, `catalogs`, and `schemas` directories directly under a managed
 storage boundary are reserved for UC allocation. Registration cannot adopt them or their children,
 including directories of resources whose cleanup has completed.
+These local directories are reserved by filesystem identity, including case aliases, even when no
+table, volume, model, or cleanup task remains at the path.
 Registration also rejects a table directory that contains the default managed table or model
 allocation directory, even when a covering external location grants access to it.
 
