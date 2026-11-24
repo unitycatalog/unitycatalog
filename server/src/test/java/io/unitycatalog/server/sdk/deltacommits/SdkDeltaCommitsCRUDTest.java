@@ -1566,6 +1566,24 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
             .uniform(invalidUniform6);
     assertApiException(
         () -> deltaCommitsApi.commit(commit6), ErrorCode.INVALID_ARGUMENT, "must be a subpath");
+
+    // Test 7: converted_delta_timestamp without the trailing Z
+    DeltaUniformIceberg invalidIceberg7 =
+        new DeltaUniformIceberg()
+            .metadataLocation(URI.create(uniformMetadataLocation(1L)))
+            .convertedDeltaVersion(1L)
+            .convertedDeltaTimestamp("2025-01-04T03:13:11.423");
+    DeltaCommit commit7 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .metadata(uniformEnablingMetadata)
+            .uniform(new DeltaUniform().iceberg(invalidIceberg7));
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit7),
+        ErrorCode.INVALID_ARGUMENT,
+        "uniform.iceberg.converted_delta_timestamp must be an ISO 8601 UTC instant from year 1000"
+            + " to 9999, such as 2025-01-04T03:13:11.423Z, but was '2025-01-04T03:13:11.423'.");
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 0);
+    verifyIcebergMetadata(Optional.empty());
   }
 
   @Test
