@@ -125,11 +125,20 @@ location, the caller must also own the location or hold all three privileges: `C
 `READ_FILES`, and `WRITE_FILES`. UC checks these privileges before reading the metadata file.
 
 Registration rejects directory overlaps with tables, volumes, models, uncommitted staging tables,
-and pending storage cleanup. It also rejects shared storage roots and directories that contain them.
+pending storage cleanup, and external staged-write reservations. It also rejects shared storage roots
+and directories that contain them. The discovered table root is checked before manifest traversal
+and is checked again in the write transaction.
 Table, volume, model, catalog, and schema storage allocation checks registered directories and
-pending cleanup under a shared database lock, including when authorization is disabled.
+pending cleanup under a shared database lock, including when authorization is disabled. This is a
+server-wide allocation lock on the singleton metastore row: storage allocations serialize across
+namespaces and server instances that share the database, even when registration is disabled. This
+keeps a later registration from racing an allocation; it can reduce allocation throughput.
 Overlap checks treat `abfs` and `abfss` URLs for the same account, container, and path as one location,
 including URLs stored before registration was supported.
+Registration accepts these Azure scheme aliases in embedded file paths and directory properties too.
+Cloud registration paths cannot contain percent escapes, queries, or fragments. Azure storage
+allocation and path-credential requests apply the same restriction. Their spelling must
+identify the same object prefix for reads, overlap checks, and cleanup.
 Local allocation URLs must use their canonical spelling. Registration and later allocation also
 check filesystem aliases, including case aliases on case-insensitive filesystems and existing
 ancestors of new directories. Registration rejects an overlap with a legacy local URL whose spelling
@@ -144,6 +153,19 @@ directory before registering it. Registration does not copy files or coordinate 
 After cleanup completes, UC permanently reserves the registered directory. Do not reuse it for
 another table, volume, model, or managed namespace: a storage delete from an expired cleanup attempt
 may still be in flight. Completed reservations are not retried by the cleanup worker.
+They do not keep the covering external location in use after cleanup completes. A new catalog or
+schema can use a parent raw storage root if its generated storage directory is disjoint. Path
+credentials remain blocked for the retired directory and its ancestors and descendants, because
+credentials for an ancestor could allow writes into the retired directory.
+
+An external Iceberg create reserves its directory under the allocation lock before storage writes
+or staged credential vending. A successful create replaces that reservation with the external table
+row. An abandoned staged create keeps its reservation: its writer can still hold write access.
+Registration cannot adopt an overlapping directory while that reservation exists. Dropping a
+committed external table preserves its files and permits later registration after other writers stop.
+
+Malformed metadata or manifests return HTTP 400. Wrapped transport I/O failures return HTTP 503 so
+clients can retry. Legacy format-v1 metadata with embedded manifest paths remains supported.
 
 A taken table name returns HTTP 409. `overwrite=true` returns HTTP 400; use normal Iceberg commits to
 update a registered table. Both `server.iceberg-table.enabled` and `server.managed-table.enabled` must

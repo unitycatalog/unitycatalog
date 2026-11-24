@@ -13,15 +13,22 @@ import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.RequestHeaders;
+import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.SchemasApi;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
+import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.PermissionsChange;
 import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.server.persist.ManagedResourceType;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
@@ -30,6 +37,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -190,6 +198,82 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
             .name("managed_registration")
             .metadataLocation(managedFile.toString())
             .build());
+  }
+
+  @Test
+  public void retiredDirectoriesAllowDisjointNamespacesAndLocationLifecycle() throws Exception {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema(CAT, SCHEMA);
+    Path root = testDirectoryRoot.resolve("retired_storage");
+    createExternalLocationWithCredential(
+        "retired_credential", "retired_storage", root.toUri().toString());
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      var task =
+          new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory())
+              .create(
+                  session,
+                  ManagedResourceType.REGISTERED_TABLE,
+                  UUID.randomUUID(),
+                  "retired",
+                  root.resolve("orders").toUri().toString());
+      task.setCompletedAt(new Date());
+      session.getTransaction().commit();
+    }
+    var api = TestUtils.createApiClient(adminConfig);
+    grantPermissions(
+        PRINCIPAL_1,
+        SecurableType.EXTERNAL_LOCATION,
+        "retired_storage",
+        Privileges.CREATE_MANAGED_STORAGE);
+    var schemas =
+        new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));
+    var catalogs = new CatalogsApi(api);
+    assertThat(
+            schemas
+                .createSchema(
+                    new CreateSchema()
+                        .catalogName(CAT)
+                        .name("disjoint")
+                        .storageRoot(root.toString()))
+                .getStorageLocation())
+        .startsWith(NormalizedURL.from(root.toUri()) + "/__unitystorage/schemas/");
+    assertThat(
+            catalogs
+                .createCatalog(new CreateCatalog().name("disjoint").storageRoot(root.toString()))
+                .getStorageLocation())
+        .startsWith(NormalizedURL.from(root.toUri()) + "/__unitystorage/catalogs/");
+    TestUtils.assertPermissionDenied(
+        () ->
+            schemas.createSchema(
+                new CreateSchema()
+                    .catalogName(CAT)
+                    .name("overlap")
+                    .storageRoot(root.resolve("orders").toString())),
+        "retired registered directory");
+    var credentials = new TemporaryCredentialsApi(api);
+    for (PathOperation operation :
+        List.of(
+            PathOperation.PATH_READ,
+            PathOperation.PATH_READ_WRITE,
+            PathOperation.PATH_CREATE_TABLE)) {
+      TestUtils.assertPermissionDenied(
+          () ->
+              credentials.generateTemporaryPathCredentials(
+                  new GenerateTemporaryPathCredential().url(root.toString()).operation(operation)),
+          "retired registered directory");
+    }
+    schemas.deleteSchema(CAT + ".disjoint", true);
+    catalogs.deleteCatalog("disjoint", true);
+    var locations = new ExternalLocationsApi(api);
+    assertThat(
+            locations
+                .updateExternalLocation(
+                    "retired_storage",
+                    new UpdateExternalLocation().url(root.resolve("sibling").toUri().toString()))
+                .getUrl())
+        .isEqualTo(NormalizedURL.from(root.resolve("sibling").toUri()).toString());
+    locations.deleteExternalLocation("retired_storage", false);
   }
 
   private static Path registrationMetadata(Path directory) throws Exception {

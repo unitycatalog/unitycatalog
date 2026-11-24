@@ -29,6 +29,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -222,7 +223,12 @@ public class MetadataServiceTest {
             BaseException.class,
             failure -> {
               assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
-              assertThat(failure).hasMessageContaining("canonical cloud object path", path);
+              assertThat(failure)
+                  .hasMessageContaining(
+                      kind.equals("write.metadata.path")
+                          ? "must be a subpath"
+                          : "canonical cloud object path",
+                      path);
             });
   }
 
@@ -463,6 +469,20 @@ public class MetadataServiceTest {
                     metadataWithWrongTableRoot, tableLocation))
         .isInstanceOf(RuntimeException.class)
         .hasMessageContaining("must match the persisted table location");
+  }
+
+  @Test
+  public void rejectsMetadataQueriesAndFragmentsOnSharedPaths() {
+    NormalizedURL root = NormalizedURL.from("s3://bucket/table");
+    for (String suffix : List.of("?version=one", "#fragment", "?redirect=/metadata/file.json")) {
+      assertThatThrownBy(
+              () ->
+                  MetadataService.validateMetadataLocation(
+                      NormalizedURL.from(root + "/metadata/file.json" + suffix), root))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT));
+    }
   }
 
   @Test

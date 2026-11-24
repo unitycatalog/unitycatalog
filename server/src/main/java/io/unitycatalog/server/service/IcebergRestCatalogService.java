@@ -70,6 +70,7 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -584,6 +585,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       if (tableType == TableType.EXTERNAL && ucTableExists(catalog, namespace, request.name())) {
         throw new AlreadyExistsException("Table already exists: %s.%s", namespace, request.name());
       }
+      if (tableType == TableType.EXTERNAL) {
+        stagingTableRepository.reserveExternalIcebergWrites(location);
+      }
       metadataService.prepareTableLocation(tableMetadata, location);
       return LoadTableResponse.builder()
           .withTableMetadata(tableMetadata)
@@ -631,7 +635,15 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
     }
     TableMetadata metadata =
-        metadataService.readRegistrationMetadata(metadataLocation, storage.location());
+        metadataService.readRegistrationMetadata(
+            metadataLocation,
+            storage.location(),
+            location ->
+                ValidationUtils.checkArgument(
+                    storage.equals(
+                        tableRepository.getIcebergRegistrationStorage(
+                            catalog, namespace, location)),
+                    "The registration storage boundary changed; retry the request."));
     TableInfo tableInfo =
         tableRepository.registerTableForIceberg(
             new CreateTable()
@@ -690,6 +702,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             .columns(IcebergSchemaConverter.toColumnInfos(committed.schema()))
             .storageLocation(committed.location())
             .properties(committed.properties());
+    if (tableType == TableType.EXTERNAL) {
+      stagingTableRepository.reserveExternalIcebergWrites(tableLocation);
+    }
     metadataService.writeTableMetadata(committed, metadataLocation, tableLocation);
     TableInfo tableInfo;
     try {

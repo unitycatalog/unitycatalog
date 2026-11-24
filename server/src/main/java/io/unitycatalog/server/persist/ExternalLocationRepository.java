@@ -329,7 +329,7 @@ public class ExternalLocationRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          ExternalLocationDAO existingLocation = getExternalLocationDAO(session, name);
+          ExternalLocationDAO existingLocation = getExternalLocationDAOForUpdate(session, name);
           if (existingLocation == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
@@ -348,7 +348,8 @@ public class ExternalLocationRepository {
           return existingLocation;
         },
         "Failed to delete external location",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   /**

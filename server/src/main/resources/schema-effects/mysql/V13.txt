@@ -1,0 +1,6 @@
++ column uc_iceberg_write_reservations.id type=binary size=16 nullable=NO default=null
++ column uc_iceberg_write_reservations.name type=varchar size=255 nullable=NO default=null
++ column uc_iceberg_write_reservations.storage_location type=varchar size=4096 nullable=NO default=null
++ index uc_iceberg_write_reservations.primary unique=true column=id#1
++ pk uc_iceberg_write_reservations.id#1
++ table uc_iceberg_write_reservations

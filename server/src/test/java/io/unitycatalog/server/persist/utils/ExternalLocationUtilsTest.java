@@ -158,7 +158,8 @@ public class ExternalLocationUtilsTest {
         task.setCompletedAt(new Date());
       }
       NormalizedURL location = NormalizedURL.from(alias);
-      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, location)).isTrue();
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, location))
+          .isEqualTo(!completed);
       assertInvalidRegistrationOverlap(location);
     }
     for (String path : List.of(alias + "-sibling", alias.replace("container@", "other@"))) {
@@ -451,6 +452,68 @@ public class ExternalLocationUtilsTest {
     assertThat(externalLocationUtils.getMapResourceIdsForPath(releasedPath))
         .containsOnlyKeys(SecurableType.EXTERNAL_LOCATION)
         .containsEntry(SecurableType.EXTERNAL_LOCATION, externalLocation.getId());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"abfs", "abfss"})
+  public void azureAllocationAndPathCredentialsRejectAmbiguousUris(String scheme) {
+    for (String suffix :
+        List.of("/%6frders", "/orders%2fchild", "/orders?query=1", "/orders#fragment")) {
+      NormalizedURL path = NormalizedURL.from(scheme + "://c@a.dfs.core.windows.net/root" + suffix);
+      for (Runnable operation :
+          List.<Runnable>of(
+              () -> externalLocationUtils.getMapResourceIdsForPath(path),
+              () -> ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, path))) {
+        assertThatThrownBy(operation::run)
+            .isInstanceOfSatisfying(
+                BaseException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+            .hasMessageContaining("must not contain percent escapes, a query, or a fragment");
+      }
+    }
+  }
+
+  @Test
+  public void completedReservationAllowsLifecycleAndDisjointNamespaceAllocation() {
+    session.beginTransaction();
+    ExternalLocationDAO external =
+        ExternalLocationDAO.builder()
+            .id(UUID.randomUUID())
+            .name("warehouse")
+            .url("s3://bucket/warehouse")
+            .credentialId(UUID.randomUUID())
+            .build();
+    session.persist(external);
+    StorageCleanupTaskDAO task =
+        new StorageCleanupTaskRepository(sessionFactory)
+            .create(
+                session,
+                ManagedResourceType.REGISTERED_TABLE,
+                UUID.randomUUID(),
+                "orders",
+                external.getUrl() + "/orders");
+    task.setCompletedAt(new Date());
+    session.getTransaction().commit();
+    NormalizedURL root = NormalizedURL.from(external.getUrl());
+    NormalizedURL retired = NormalizedURL.from(task.getStorageLocation());
+    assertThat(externalLocationUtils.getMapResourceIdsForPath(root, true))
+        .containsEntry(SecurableType.EXTERNAL_LOCATION, external.getId());
+    for (String path : List.of(retired.toString(), retired + "/child")) {
+      assertPendingCleanupDenied(
+          () -> externalLocationUtils.getMapResourceIdsForPath(NormalizedURL.from(path), true));
+    }
+    // The same parent must still refuse broad read/write path credentials.
+    assertPendingCleanupDenied(() -> externalLocationUtils.getMapResourceIdsForPath(root));
+    session.beginTransaction();
+    assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, root)).isFalse();
+    assertThat(ExternalLocationUtils.findLocationUse(session, root).inUse()).isFalse();
+    ExternalLocationUtils.validateExternalLocationNotInUse(session, root);
+    ExternalLocationUtils.validateNotOverlapWithRegisteredTables(
+        session, NormalizedURL.from(root + "/__unitystorage/catalogs/" + UUID.randomUUID()));
+    assertThatThrownBy(
+            () -> ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, retired))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("retired");
   }
 
   @Test

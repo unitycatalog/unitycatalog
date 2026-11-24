@@ -34,6 +34,8 @@ import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.dao.IcebergWriteReservationDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -675,14 +677,27 @@ public class IcebergRegisterTableTest extends BaseServerTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"register", "table", "volume", "catalog", "schema", "model"})
+  @ValueSource(
+      strings = {
+        "register",
+        "table",
+        "staging",
+        "external-staging",
+        "volume",
+        "catalog",
+        "schema",
+        "model"
+      })
   public void allocationWaitsForRegistrationStorageLock(String operation) throws Exception {
     Path original = writeMetadata(externalRoot.resolve("first_table"));
     client.registerTable(CATALOG, NAMESPACE, request("first", original.toString()));
     UUID firstId =
         UUID.fromString(
             tables.getTable(CATALOG + "." + NAMESPACE + ".first", null, null, null).getTableId());
-    Path directory = externalRoot.resolve(operation.equals("model") ? "model_root" : "orders");
+    Path directory =
+        operation.equals("staging")
+            ? testDirectoryRoot.resolve("__unitystorage")
+            : externalRoot.resolve(operation.equals("model") ? "model_root" : "orders");
     Path file = writeMetadata(directory);
     var api = TestUtils.createApiClient(serverConfig);
     int status =
@@ -704,6 +719,17 @@ public class IcebergRegisterTableTest extends BaseServerTest {
                               .withName("second")
                               .withSchema(SCHEMA)
                               .withLocation(directory.toString())
+                              .build());
+                  case "staging", "external-staging" ->
+                      client.createTable(
+                          CATALOG,
+                          NAMESPACE,
+                          CreateTableRequest.builder()
+                              .withName("second")
+                              .withSchema(SCHEMA)
+                              .withLocation(
+                                  operation.equals("staging") ? null : directory.toString())
+                              .stageCreate()
                               .build());
                   case "volume" ->
                       new VolumesApi(api)
@@ -748,7 +774,9 @@ public class IcebergRegisterTableTest extends BaseServerTest {
               "VolumeInfoDAO",
               "SchemaInfoDAO",
               "CatalogInfoDAO",
-              "RegisteredModelInfoDAO")) {
+              "RegisteredModelInfoDAO",
+              "StagingTableDAO",
+              "IcebergWriteReservationDAO")) {
         count +=
             session
                 .createSelectionQuery(
@@ -761,6 +789,179 @@ public class IcebergRegisterTableTest extends BaseServerTest {
           .isEqualTo(NormalizedURL.from(directory.toUri()).toString());
     }
     assertThat(file).exists();
+  }
+
+  @Test
+  public void externalStageReservesWritesAndRejectsRegisteredStorage() throws Exception {
+    Path directory = externalRoot.resolve("staged");
+    var staged =
+        client.createTable(
+            CATALOG,
+            NAMESPACE,
+            CreateTableRequest.builder()
+                .withName("staged")
+                .withSchema(SCHEMA)
+                .withLocation(directory.toString())
+                .stageCreate()
+                .build());
+    assertThat(staged.tableMetadata().location())
+        .isEqualTo(NormalizedURL.from(directory.toUri()).toString());
+    Path metadata = writeMetadata(directory);
+    assertIcebergApiException(
+        () -> client.registerTable(CATALOG, NAMESPACE, request("imported", metadata.toString())),
+        400,
+        "external staged write");
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(
+              session
+                  .createSelectionQuery(
+                      "FROM IcebergWriteReservationDAO", IcebergWriteReservationDAO.class)
+                  .getResultList())
+          .extracting(IcebergWriteReservationDAO::getStorageLocation)
+          .containsExactly(NormalizedURL.from(directory.toUri()).toString());
+    }
+    Path registered = externalRoot.resolve("registered");
+    Path original = writeMetadata(registered);
+    byte[] contents = Files.readAllBytes(original);
+    client.registerTable(CATALOG, NAMESPACE, request("registered", original.toString()));
+    for (boolean stage : List.of(false, true)) {
+      var builder =
+          CreateTableRequest.builder()
+              .withName("overlap")
+              .withSchema(SCHEMA)
+              .withLocation(registered.toString());
+      if (stage) {
+        builder.stageCreate();
+      }
+      assertIcebergApiException(
+          () -> client.createTable(CATALOG, NAMESPACE, builder.build()), 400, "overlap");
+      assertThat(Files.readAllBytes(original)).isEqualTo(contents);
+      assertThat(registered.resolve("data")).doesNotExist();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"staging", "model"})
+  public void registrationRejectsExistingStagingAndModelDirectories(String kind) throws Exception {
+    Path directory;
+    if (kind.equals("staging")) {
+      directory =
+          Path.of(
+              NormalizedURL.from(
+                      client
+                          .createTable(
+                              CATALOG,
+                              NAMESPACE,
+                              CreateTableRequest.builder()
+                                  .withName("staged")
+                                  .withSchema(SCHEMA)
+                                  .stageCreate()
+                                  .build())
+                          .tableMetadata()
+                          .location())
+                  .toUri());
+    } else {
+      var model =
+          new RegisteredModelsApi(TestUtils.createApiClient(serverConfig))
+              .createRegisteredModel(
+                  new CreateRegisteredModel()
+                      .catalogName(CATALOG)
+                      .schemaName(NAMESPACE)
+                      .name("model"));
+      directory = Path.of(NormalizedURL.from(model.getStorageLocation()).toUri());
+    }
+    Path file = writeMetadata(directory);
+    byte[] contents = Files.readAllBytes(file);
+    assertIcebergApiException(
+        () -> client.registerTable(CATALOG, NAMESPACE, request("imported", file.toString())),
+        400,
+        "overlap");
+    assertThat(Files.readAllBytes(file)).isEqualTo(contents);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"catalog", "schema"})
+  public void forcedNamespaceDeleteQueuesRegisteredDirectoryCleanup(String kind) throws Exception {
+    Path directory = externalRoot.resolve("orders");
+    Path file = writeMetadata(directory);
+    client.registerTable(CATALOG, NAMESPACE, request("orders", file.toString()));
+    UUID id =
+        UUID.fromString(
+            tables.getTable(CATALOG + "." + NAMESPACE + ".orders", null, null, null).getTableId());
+    if (kind.equals("catalog")) {
+      catalogs.deleteCatalog(CATALOG, true);
+    } else {
+      schemas.deleteSchema(CATALOG + "." + NAMESPACE, true);
+    }
+    var task = StorageCleanupTestSupport.findTask(hibernateConfigurator.getSessionFactory(), id);
+    assertThat(task.getResourceType()).isEqualTo(ManagedResourceType.REGISTERED_TABLE);
+    assertThat(task.getStorageLocation())
+        .isEqualTo(NormalizedURL.from(directory.toUri()).toString());
+    assertThat(file).exists();
+  }
+
+  @Test
+  public void externalDropPreservesFilesForRegistration() throws Exception {
+    Path directory = externalRoot.resolve("external_table");
+    client.createTable(
+        CATALOG,
+        NAMESPACE,
+        CreateTableRequest.builder()
+            .withName("external_table")
+            .withSchema(SCHEMA)
+            .withLocation(directory.toString())
+            .build());
+    String pointer = client.loadTable(CATALOG, NAMESPACE, "external_table").metadataLocation();
+    Path file = Path.of(NormalizedURL.from(pointer).toUri());
+    byte[] contents = Files.readAllBytes(file);
+    client.dropTable(CATALOG, NAMESPACE, "external_table");
+    client.registerTable(CATALOG, NAMESPACE, request("imported", pointer));
+    assertThat(Files.readAllBytes(file)).isEqualTo(contents);
+    assertThat(
+            tables
+                .getTable(CATALOG + "." + NAMESPACE + ".imported", null, null, null)
+                .getTableType())
+        .isEqualTo(TableType.MANAGED);
+  }
+
+  @Test
+  public void externalLocationDeleteWaitsForRegistrationAndSeesItsUsage() throws Exception {
+    Path directory = externalRoot.resolve("orders");
+    Path file = writeMetadata(directory);
+    ExternalLocationsApi locations =
+        new ExternalLocationsApi(TestUtils.createApiClient(serverConfig));
+    UUID locationId = UUID.fromString(locations.getExternalLocation("warehouse", null).getId());
+    UUID schemaId =
+        UUID.fromString(schemas.getSchema(CATALOG + "." + NAMESPACE, null).getSchemaId());
+    int status =
+        runBlockedByHeldWrite(
+            session -> {
+              io.unitycatalog.server.persist.utils.RepositoryUtils.getForUpdate(
+                  session, ExternalLocationDAO.class, locationId);
+              TableInfoDAO table =
+                  TableInfoDAO.builder()
+                      .id(UUID.randomUUID())
+                      .name("registered")
+                      .schemaId(schemaId)
+                      .type("MANAGED")
+                      .dataSourceFormat("ICEBERG")
+                      .url(NormalizedURL.from(directory.toUri()).toString())
+                      .icebergMetadataLocation(NormalizedURL.from(file.toUri()).toString())
+                      .build();
+              session.persist(table);
+            },
+            () -> {
+              try {
+                locations.deleteExternalLocation("warehouse", false);
+                return 200;
+              } catch (ApiException e) {
+                assertThat(e.getResponseBody()).contains("still used by");
+                return e.getCode();
+              }
+            });
+    assertThat(status).isEqualTo(400);
+    assertThat(locations.getExternalLocation("warehouse", null).getId())
+        .isEqualTo(locationId.toString());
   }
 
   private static RegisterTableRequest request(String name, String location) {

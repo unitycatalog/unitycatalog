@@ -18,7 +18,7 @@ public enum ManagedResourceType {
     this.pathSegment = pathSegment;
   }
 
-  /** Returns the path segment immediately before the resource id. */
+  /** Returns the allocation segment; adopted directories need not contain it or the resource id. */
   public String pathSegment() {
     return pathSegment;
   }

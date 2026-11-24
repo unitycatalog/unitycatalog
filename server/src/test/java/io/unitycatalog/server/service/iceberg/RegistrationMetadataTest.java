@@ -3,7 +3,10 @@ package io.unitycatalog.server.service.iceberg;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +17,7 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
 import io.unitycatalog.server.utils.IcebergTestUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
+import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -21,13 +25,21 @@ import java.util.Map;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileMetadata;
+import org.apache.iceberg.ManifestFile;
+import org.apache.iceberg.ManifestFiles;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
+import org.apache.iceberg.avro.Avro;
+import org.apache.iceberg.avro.GenericAvroWriter;
 import org.apache.iceberg.data.GenericRecord;
+import org.apache.iceberg.exceptions.RuntimeIOException;
+import org.apache.iceberg.io.FileAppender;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,7 +101,7 @@ class RegistrationMetadataTest {
     when(input.newStream())
         .thenAnswer(
             ignored -> org.apache.iceberg.Files.localInput(metadataFile.toFile()).newStream());
-    FileIO fileIO = mock();
+    FileIO fileIO = mock(FileIO.class, CALLS_REAL_METHODS);
     when(fileIO.newInputFile(metadataLocation)).thenReturn(input);
     FileOperations operations = mock();
     when(operations.getFileIO(any())).thenReturn(fileIO);
@@ -103,6 +115,70 @@ class RegistrationMetadataTest {
     assertThat(registered.uuid()).isEqualTo(table.operations().current().uuid());
     assertThat(registered.location()).isEqualTo(tableLocation);
     assertThat(registered.metadataFileLocation()).isEqualTo(metadataLocation);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"abfs", "abfss"})
+  void acceptsAzureAliasesInPropertiesAndRetainedManifests(String scheme) throws Exception {
+    String root = scheme + "://container@account.dfs.core.windows.net/warehouse/orders";
+    String alias =
+        (scheme.equals("abfs") ? "abfss" : "abfs")
+            + "://container@account.dfs.core.windows.net/warehouse/orders";
+    appendRecord();
+    Path localManifest = directory.resolve("table/metadata/alias.avro");
+    try (var writer =
+        ManifestFiles.write(
+            2, table.spec(), org.apache.iceberg.Files.localOutput(localManifest.toFile()), 1L)) {
+      writer.add(
+          DataFiles.builder(table.spec())
+              .withPath(alias + "/data/file.avro")
+              .withFormat("avro")
+              .withFileSizeInBytes(1)
+              .withRecordCount(1)
+              .build());
+    }
+    ObjectNode json = metadataJson();
+    json.put("format-version", 1);
+    json.put("location", root);
+    ObjectNode properties = (ObjectNode) json.get("properties");
+    properties.put(TableProperties.WRITE_METADATA_LOCATION, alias + "/metadata");
+    properties.put(TableProperties.WRITE_DATA_LOCATION, alias);
+    ObjectNode snapshot = (ObjectNode) json.withArray("snapshots").get(0);
+    snapshot.remove("sequence-number");
+    snapshot.remove("manifest-list");
+    snapshot.putArray("manifests").add(alias + "/metadata/alias.avro");
+    json.putArray("metadata-log");
+    Path localMetadata = directory.resolve("table/metadata/azure.metadata.json");
+    Files.writeString(localMetadata, json.toString());
+    FileIO fileIO = mock(FileIO.class, CALLS_REAL_METHODS);
+    when(fileIO.newInputFile(any(String.class)))
+        .thenAnswer(
+            invocation -> {
+              String path = invocation.getArgument(0);
+              String prefix = path.startsWith(root + "/") ? root : alias;
+              Path local = directory.resolve("table").resolve(path.substring(prefix.length() + 1));
+              InputFile input = mock();
+              when(input.location()).thenReturn(path);
+              when(input.getLength()).thenAnswer(ignored -> Files.size(local));
+              when(input.newStream())
+                  .thenAnswer(
+                      ignored -> org.apache.iceberg.Files.localInput(local.toFile()).newStream());
+              return input;
+            });
+    FileOperations operations = mock();
+    when(operations.getFileIO(any())).thenReturn(fileIO);
+    TableMetadata metadata =
+        new MetadataService(operations)
+            .readRegistrationMetadata(
+                NormalizedURL.from(root + "/metadata/azure.metadata.json"),
+                NormalizedURL.from(root.substring(0, root.lastIndexOf('/'))));
+    assertThat(metadata.properties()).containsEntry(TableProperties.WRITE_DATA_LOCATION, alias);
+    assertThat(metadata.snapshots()).hasSize(1);
+    assertThat(
+            IcebergObjectMapper.mapper()
+                .writeValueAsString(
+                    LoadTableResponse.builder().withTableMetadata(metadata).build()))
+        .contains(alias + "/metadata/alias.avro");
   }
 
   @ParameterizedTest
@@ -243,6 +319,186 @@ class RegistrationMetadataTest {
         Path.of(NormalizedURL.from(table.currentSnapshot().manifestListLocation()).toUri());
     Files.delete(manifest);
     assertRejected(metadataJson(), "Cannot read Iceberg manifests");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "s3://bucket",
+        "gs://bucket",
+        "abfs://c@a.dfs.core.windows.net",
+        "abfss://c@a.dfs.core.windows.net"
+      })
+  void rejectsEncodedCloudRegistrationPaths(String root) {
+    for (String escaped : List.of("%20", "%2f", "%2e", "%25")) {
+      assertThatThrownBy(
+              () ->
+                  MetadataService.registrationMetadataLocation(
+                      root + "/table/" + escaped + "/v1.metadata.json"))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+          .hasMessageContaining("canonical cloud object path");
+    }
+  }
+
+  @Test
+  void rejectsInvalidSortOrderAsClientInput() throws Exception {
+    ObjectNode json = metadataJson();
+    json.put("default-sort-order-id", 1);
+    json.putArray("sort-orders")
+        .addObject()
+        .put("order-id", 1)
+        .putArray("fields")
+        .addObject()
+        .put("source-id", 999)
+        .put("transform", "identity")
+        .put("direction", "asc")
+        .put("null-order", "nulls-first");
+    assertRejected(json, "Cannot read Iceberg metadata");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"json", "manifest-list", "manifest", "unknown-spec"})
+  void rejectsMalformedRegistrationFiles(String kind) throws Exception {
+    if (kind.equals("json")) {
+      Path metadata = directory.resolve("table/metadata/broken.metadata.json");
+      Files.writeString(metadata, "{invalid json");
+      assertThatThrownBy(
+              () ->
+                  service.readRegistrationMetadata(
+                      NormalizedURL.from(metadata.toUri()), NormalizedURL.from(directory.toUri())))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT));
+      return;
+    }
+    appendRecord();
+    ObjectNode json = metadataJson();
+    String message = "Cannot read Iceberg manifests";
+    if (kind.equals("unknown-spec")) {
+      PartitionSpec spec = PartitionSpec.builderFor(table.schema()).withSpecId(99).build();
+      String path = table.location() + "/metadata/unknown-spec.avro";
+      ManifestFile manifest;
+      try (var writer = ManifestFiles.write(2, spec, table.io().newOutputFile(path), 1L)) {
+        writer.add(
+            DataFiles.builder(spec)
+                .withPath(table.location() + "/data/file.avro")
+                .withFormat("avro")
+                .withFileSizeInBytes(1)
+                .withRecordCount(1)
+                .build());
+        writer.close();
+        manifest = writer.toManifestFile();
+      }
+      String listPath = table.location() + "/metadata/unknown-spec-list.avro";
+      try (FileAppender<ManifestFile> writer =
+          Avro.write(table.io().newOutputFile(listPath))
+              .schema(ManifestFile.schema())
+              .named("manifest_file")
+              .createWriterFunc(GenericAvroWriter::create)
+              .build()) {
+        writer.add(manifest);
+      }
+      ObjectNode snapshot = (ObjectNode) json.withArray("snapshots").get(0);
+      snapshot.put("manifest-list", listPath);
+      message = "references unknown partition spec 99";
+    } else {
+      String file =
+          kind.equals("manifest-list")
+              ? table.currentSnapshot().manifestListLocation()
+              : table.currentSnapshot().allManifests(table.io()).get(0).path();
+      Files.writeString(Path.of(NormalizedURL.from(file).toUri()), "invalid avro content");
+    }
+    assertRejected(json, message);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void preservesWrappedTransportFailures(boolean manifestRead) throws Exception {
+    appendRecord();
+    FileOperations operations = mock();
+    FileIO unavailable = mock(FileIO.class, CALLS_REAL_METHODS);
+    when(unavailable.newInputFile(any(String.class)))
+        .thenThrow(new RuntimeIOException(new SocketTimeoutException("private endpoint")));
+    if (manifestRead) {
+      when(operations.getFileIO(any())).thenReturn(new SimpleLocalFileIO(directory), unavailable);
+    } else {
+      when(operations.getFileIO(any())).thenReturn(unavailable);
+    }
+    assertThatThrownBy(
+            () ->
+                new MetadataService(operations)
+                    .readRegistrationMetadata(
+                        NormalizedURL.from(table.operations().current().metadataFileLocation()),
+                        NormalizedURL.from(directory.toUri())))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> {
+              assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+              assertThat(e).hasMessage("Failed to access Iceberg storage.");
+            });
+  }
+
+  @Test
+  void checksDiscoveredRootBeforeOpeningManifests() throws Exception {
+    appendRecord();
+    FileOperations operations = mock();
+    when(operations.getFileIO(any())).thenReturn(new SimpleLocalFileIO(directory));
+    BaseException overlap = new BaseException(ErrorCode.INVALID_ARGUMENT, "Directory is occupied");
+    assertThatThrownBy(
+            () ->
+                new MetadataService(operations)
+                    .readRegistrationMetadata(
+                        NormalizedURL.from(table.operations().current().metadataFileLocation()),
+                        NormalizedURL.from(directory.toUri()),
+                        root -> {
+                          throw overlap;
+                        }))
+        .isSameAs(overlap);
+    verify(operations, times(1)).getFileIO(any());
+  }
+
+  @Test
+  void legacyV1ResponseDoesNotRetainValidationFileIO() throws Exception {
+    appendRecord();
+    ObjectNode json = metadataJson();
+    json.put("format-version", 1);
+    ObjectNode snapshot = (ObjectNode) json.withArray("snapshots").get(0);
+    snapshot.remove("manifest-list");
+    snapshot.remove("sequence-number");
+    var manifests = snapshot.putArray("manifests");
+    table.currentSnapshot().allManifests(table.io()).forEach(m -> manifests.add(m.path()));
+    Path metadataFile = directory.resolve("table/metadata/legacy.metadata.json");
+    Files.writeString(metadataFile, json.toString());
+    FileOperations operations = mock();
+    when(operations.getFileIO(any()))
+        .thenAnswer(
+            ignored ->
+                new SimpleLocalFileIO(directory) {
+                  private boolean closed;
+
+                  @Override
+                  public InputFile newInputFile(String path) {
+                    assertThat(closed).as("FileIO must be open during a read").isFalse();
+                    return super.newInputFile(path);
+                  }
+
+                  @Override
+                  public void close() {
+                    closed = true;
+                    super.close();
+                  }
+                });
+    TableMetadata metadata =
+        new MetadataService(operations)
+            .readRegistrationMetadata(
+                NormalizedURL.from(metadataFile.toUri()), NormalizedURL.from(directory.toUri()));
+    String response =
+        IcebergObjectMapper.mapper()
+            .writeValueAsString(LoadTableResponse.builder().withTableMetadata(metadata).build());
+    assertThat(response).contains("manifests", manifests.get(0).asText());
+    assertThat(Files.readString(metadataFile)).isEqualTo(json.toString());
   }
 
   private void appendRecord() throws Exception {
