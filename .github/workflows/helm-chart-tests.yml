@@ -261,7 +261,9 @@ jobs:
           for i in 0 1; do
             key_file="$(sed -n "s/^ *gcs\.jsonKeyFilePath\.$i=//p" <<<"$out")"
             [ -n "$key_file" ]
-            grep -A1 -- "- name: gcs-credentials-$i\$" <<<"$server" | sed -n 's/^ *mountPath: //p' | grep -qxF -- "$key_file"
+            mount_path="$(awk -v n="gcs-credentials-$i" '$0 ~ "- name: " n "$" {f = 1; next}
+              f && /- name:/ {f = 0} f && /mountPath:/ {sub(/^ *mountPath: /, ""); print}' <<<"$server")"
+            [ "$mount_path" = "$key_file" ]
           done
 
       - name: Build the server and UI images
