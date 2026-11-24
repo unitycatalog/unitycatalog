@@ -367,6 +367,11 @@ def test_anthropic_tool_definition_generation():
             {"type": "array", "items": INT_STRUCT_SCHEMA},
         ),
         (
+            "array<struct<a:int>>",
+            {"type": "array", "elementType": INT_STRUCT_TYPE_JSON, "containsNull": True},
+            {"type": "array", "items": {"anyOf": [INT_STRUCT_SCHEMA, {"type": "null"}]}},
+        ),
+        (
             "map<string,struct<a:int>>",
             {
                 "type": "map",
@@ -412,7 +417,13 @@ def test_anthropic_tool_definition_generation():
             },
         ),
     ],
-    ids=["struct", "array-of-structs", "map-of-structs", "nested-struct"],
+    ids=[
+        "struct",
+        "array-of-structs",
+        "array-of-nullable-structs",
+        "map-of-structs",
+        "nested-struct",
+    ],
 )
 @pytest.mark.parametrize(
     "generate_function_info_for_client",
