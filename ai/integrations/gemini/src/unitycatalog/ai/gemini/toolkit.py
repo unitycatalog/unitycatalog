@@ -1,4 +1,5 @@
 import hashlib
+import itertools
 import json
 import logging
 import re
@@ -13,7 +14,6 @@ from pydantic_core import to_jsonable_python
 from unitycatalog.ai.core.client import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
-    get_tool_name,
     param_info_to_pydantic_type,
     process_function_names,
 )
@@ -21,7 +21,7 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
 )
 from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
-from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+from unitycatalog.ai.core.utils.validation_utils import FullFunctionName, mlflow_tracing_enabled
 
 _logger = logging.getLogger(__name__)
 
@@ -37,16 +37,26 @@ def _gemini_function_name(function_name: str) -> str:
     Returns the name Gemini declares a UC function by: its tool name, with every character that
     Gemini does not allow replaced by an underscore, cut to its last 63 characters.
     """
-    name = _GEMINI_NAME_DISALLOWED_CHARACTERS.sub("_", get_tool_name(function_name))
-    return name[-_GEMINI_NAME_MAX_LENGTH:]
+    tool_name = FullFunctionName.validate_full_function_name(function_name).to_tool_name()
+    name = _GEMINI_NAME_DISALLOWED_CHARACTERS.sub("_", tool_name)
+    if len(name) <= _GEMINI_NAME_MAX_LENGTH:
+        return name
+    declared_name = name[-_GEMINI_NAME_MAX_LENGTH:]
+    _logger.warning(
+        f"Function name {name} is too long, truncating to {_GEMINI_NAME_MAX_LENGTH} characters "
+        f"{declared_name}."
+    )
+    return declared_name
 
 
-def _disambiguated_gemini_function_name(name: str, function_name: str) -> str:
+def _disambiguated_gemini_function_name(name: str, function_name: str, attempt: int) -> str:
     """
-    Returns `name` with a short hash of the full function name appended, still within 63
-    characters, for a function whose declared name another function in the toolkit also has.
+    Returns `name` with a short hash of the function name appended, still within 63 characters,
+    for a function whose declared name another function in the toolkit also has. A later attempt
+    hashes the function name with the attempt number, for when an earlier name is taken.
     """
-    digest = hashlib.sha256(function_name.encode("utf-8")).hexdigest()
+    hashed = function_name if attempt == 0 else f"{function_name}#{attempt}"
+    digest = hashlib.sha256(hashed.encode("utf-8")).hexdigest()
     suffix = "_" + digest[:_DISAMBIGUATION_HASH_LENGTH]
     return name[-(_GEMINI_NAME_MAX_LENGTH - len(suffix)) :] + suffix
 
@@ -145,10 +155,16 @@ def _with_unique_names(tools_dict: Dict[str, GeminiTool]) -> Dict[str, GeminiToo
     since Gemini rejects two declarations with the same name.
     """
     counts = Counter(tool.name for tool in tools_dict.values())
+    taken = {name for name, count in counts.items() if count == 1}
     unique_tools = {}
     for function_name, tool in tools_dict.items():
         if counts[tool.name] > 1:
-            name = _disambiguated_gemini_function_name(tool.name, function_name)
+            candidates = (
+                _disambiguated_gemini_function_name(tool.name, function_name, attempt)
+                for attempt in itertools.count()
+            )
+            name = next(candidate for candidate in candidates if candidate not in taken)
+            taken.add(name)
             tool = tool.model_copy(update={"name": name, "schema": {**tool.schema, "name": name}})
         unique_tools[function_name] = tool
     return unique_tools

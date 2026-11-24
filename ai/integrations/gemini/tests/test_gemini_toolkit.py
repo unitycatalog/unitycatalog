@@ -307,8 +307,8 @@ def test_gemini_tool_calling_with_trace_as_retriever():
     if TEST_IN_DATABRICKS:
         import mlflow.tracking._model_registry.utils
 
-        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = lambda: (
-            "databricks-uc"
+        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+            lambda: "databricks-uc"
         )
 
     with (
@@ -918,6 +918,45 @@ def test_functions_whose_declared_names_collide_each_run_their_own_function(
     assert len(set(names)) == 2
     assert all(len(name) <= 63 for name in names)
     assert [declaration.name for declaration in declarations] == names
+    for function_name, name in zip(function_names, names):
+        client.execute_function.reset_mock()
+        response = GenerateContentResponse.from_response(function_call_response(name, {"x": "hi"}))
+        generate_tool_call_messages(model=model, response=response, conversation_history=[])
+        client.execute_function.assert_called_once_with(
+            function_name=function_name, parameters={"x": "hi"}, enable_retriever_tracing=False
+        )
+
+
+@pytest.mark.parametrize(
+    ("function_name", "logged"),
+    [(LONG_FUNCTION_NAME[:-1], False), (LONG_FUNCTION_NAME, True)],
+    ids=["63-characters", "64-characters"],
+)
+@FUNCTION_INFO_GENERATORS
+def test_cut_name_is_logged_as_declared(generate, function_name, logged, caplog):
+    client = mock_client_for(function_infos_named(generate, [function_name]))
+    toolkit = UCFunctionToolkit(function_names=[function_name], client=client)
+    [tool] = toolkit.tools
+
+    assert ("too long" in caplog.text) is logged
+    assert (f"characters {tool.name}." in caplog.text) is logged
+
+
+@FUNCTION_INFO_GENERATORS
+def test_hash_suffixed_name_does_not_take_the_name_of_another_tool(generate):
+    colliding = ["catalog.s.a__b", "catalog.s__a.b"]
+    client = mock_client_for(function_infos_named(generate, colliding))
+    suffixed = UCFunctionToolkit(function_names=colliding, client=client).tools[0].name
+    function_names = [*colliding, "catalog.s." + suffixed.removeprefix("catalog__s__")]
+    client = mock_client_for(function_infos_named(generate, function_names))
+    toolkit = UCFunctionToolkit(function_names=function_names, client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    names = [tool.name for tool in toolkit.tools]
+
+    assert names[2] == suffixed
+    assert len(set(names)) == 3
     for function_name, name in zip(function_names, names):
         client.execute_function.reset_mock()
         response = GenerateContentResponse.from_response(function_call_response(name, {"x": "hi"}))
