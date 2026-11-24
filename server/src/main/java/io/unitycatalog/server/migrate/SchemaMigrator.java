@@ -42,6 +42,7 @@ import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.flywaydb.core.api.migration.JavaMigration;
 import org.flywaydb.core.api.output.MigrateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,12 +89,15 @@ public final class SchemaMigrator implements AutoCloseable {
      * @throws IllegalArgumentException for any other database
      */
     static DatabaseKind of(DataSource dataSource) {
-      String product;
       try (Connection connection = dataSource.getConnection()) {
-        product = connection.getMetaData().getDatabaseProductName();
+        return of(connection);
       } catch (SQLException e) {
         throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
       }
+    }
+
+    static DatabaseKind of(Connection connection) throws SQLException {
+      String product = connection.getMetaData().getDatabaseProductName();
       return switch (product) {
         case "H2" -> H2;
         case "PostgreSQL" -> POSTGRESQL;
@@ -474,11 +478,20 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
+  /** Java migration steps that need runtime catalog lookups (e.g. dropping unnamed CHECKs). */
+  public static JavaMigration[] javaMigrations() {
+    return new JavaMigration[] {
+      new V18__drop_old_function_data_type_check(),
+      new V20__drop_old_function_param_type_name_check()
+    };
+  }
+
   /** This build's Flyway configuration; tests add callbacks to it. */
   FluentConfiguration flyway() {
     return Flyway.configure()
         .dataSource(dataSource)
         .locations(locations)
+        .javaMigrations(javaMigrations())
         .table(HISTORY_TABLE)
         .failOnMissingLocations(true)
         .validateMigrationNaming(true);
@@ -768,7 +781,10 @@ public final class SchemaMigrator implements AutoCloseable {
     return indexes;
   }
 
-  /** The text of {@code step}'s script, from the first of the step locations that has it. */
+  /**
+   * The text of {@code step}'s SQL script, from the first of the step locations that has it, or an
+   * empty string for a Java migration step.
+   */
   private String stepScript(String step) {
     String script =
         resolvedSteps(flyway().load().info()).stream()
@@ -776,6 +792,9 @@ public final class SchemaMigrator implements AutoCloseable {
             .map(MigrationInfo::getScript)
             .findFirst()
             .orElseThrow();
+    if (!script.endsWith(".sql")) {
+      return "";
+    }
     for (String location : locations) {
       String path = location.replaceFirst("^classpath:", "") + "/" + script;
       try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
@@ -790,6 +809,9 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   private static final Pattern CONSTRAINT = Pattern.compile("(?i)\\bconstraint\\s+(\\w+)");
+
+  private static final Pattern NAMED_CHECK_CONSTRAINT =
+      Pattern.compile("(?i)\\bconstraint\\s+(\\w+)\\s+check\\b");
 
   private static final Pattern DROP_CONSTRAINT =
       Pattern.compile("(?i)\\bdrop\\s+constraint\\s+(if\\s+exists\\s+)?(\\w+)");
@@ -819,12 +841,20 @@ public final class SchemaMigrator implements AutoCloseable {
       List<String> pending, boolean adopted, BiConsumer<String, Boolean> onStep) {
     SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
     Set<String> available = pending.isEmpty() ? new HashSet<>() : constraintKeys();
+    Set<String> existingTables = pending.isEmpty() ? Set.of() : tableNamesLowerCase();
     Set<String> checkedTables = new HashSet<>();
     for (String step : pending) {
       boolean runs = !adopted && runs(step, schema);
       onStep.accept(step, runs);
       if (!runs) {
         continue; // its change is already in the database, and so are its names
+      }
+      for (JavaMigration migration : javaMigrations()) {
+        if (migration instanceof DropRangeCheckMigration drop
+            && step.equals(migration.getVersion().getVersion())
+            && existingTables.contains(drop.table())) {
+          drop.verifySingleMatch(dataSource, kind);
+        }
       }
       // One entry per statement (a step's statements do not contain a semicolon otherwise).
       String[] statements = stepScript(step).replaceAll("(?m)--.*$", "").split(";");
@@ -929,9 +959,15 @@ public final class SchemaMigrator implements AutoCloseable {
     Set<String> indexes = namesOf(added, "index ");
     Set<String> foreignKeys = namesOf(added, "fk ");
     Set<String> constraints = new HashSet<>();
-    Matcher m = CONSTRAINT.matcher(stepScript(step));
+    String script = stepScript(step);
+    Matcher m = CONSTRAINT.matcher(script);
     while (m.find()) {
       constraints.add(m.group(1).toLowerCase(Locale.ROOT));
+    }
+    Set<String> checkConstraints = new HashSet<>();
+    Matcher checkMatcher = NAMED_CHECK_CONSTRAINT.matcher(script);
+    while (checkMatcher.find()) {
+      checkConstraints.add(checkMatcher.group(1).toLowerCase(Locale.ROOT));
     }
     String sql =
         switch (kind) {
@@ -960,6 +996,9 @@ public final class SchemaMigrator implements AutoCloseable {
               "SELECT 'foreign key', CONSTRAINT_NAME, TABLE_NAME"
                   + " FROM information_schema.TABLE_CONSTRAINTS"
                   + " WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'"
+                  + " UNION ALL SELECT 'check constraint', CONSTRAINT_NAME, TABLE_NAME"
+                  + " FROM information_schema.TABLE_CONSTRAINTS"
+                  + " WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'CHECK'"
                   + " UNION ALL SELECT 'view', TABLE_NAME, NULL FROM information_schema.TABLES"
                   + " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'VIEW'";
         };
@@ -989,7 +1028,11 @@ public final class SchemaMigrator implements AutoCloseable {
                   holder.equals("type")
                       ? tables.contains(name)
                       : indexes.contains(name) || tables.contains(name);
-              case MYSQL -> (holder.equals("view") ? tables : foreignKeys).contains(name);
+              case MYSQL ->
+                  (holder.equals("view")
+                          ? tables
+                          : holder.equals("check constraint") ? checkConstraints : foreignKeys)
+                      .contains(name);
             };
         if (taken) {
           throw new IllegalStateException(

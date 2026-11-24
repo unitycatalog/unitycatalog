@@ -1092,6 +1092,122 @@ public class SchemaMigratorTest {
   }
 
   @Test
+  void refusesWhenAnotherApplicationsCheckTookV17Name() {
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+    UpgradeTestUtils.execute(
+        db, "ALTER TABLE other_app ADD CONSTRAINT uc_functions_data_type_range CHECK (x > 0)");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    int check = migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8));
+
+    if (db.jdbcUrl().startsWith("jdbc:postgresql:")) {
+      // PostgreSQL CHECK constraint names are per table, so another table's CHECK does not clash.
+      assertThat(check).isZero();
+      assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+      return;
+    }
+    assertThat(check).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains(
+            "Schema step 17 creates a table, index or constraint named"
+                + " uc_functions_data_type_range")
+        .contains("which is not Unity Catalog's");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining(
+            "Schema step 17 creates a table, index or constraint named"
+                + " uc_functions_data_type_range");
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void dropRangeCheckHandlesRenamedCheckConstraint() throws SQLException {
+    UpgradeTestUtils.migrateTo(db, "16");
+    DatabaseKind kind = DatabaseKind.of(db.dataSource());
+    DropRangeCheckMigration v18 = new V18__drop_old_function_data_type_check();
+    try (Connection conn = db.dataSource().getConnection()) {
+      v18.migrate(
+          new org.flywaydb.core.api.migration.Context() {
+            @Override
+            public org.flywaydb.core.api.configuration.Configuration getConfiguration() {
+              return null;
+            }
+
+            @Override
+            public Connection getConnection() {
+              return conn;
+            }
+          });
+    }
+    UpgradeTestUtils.execute(
+        db,
+        "ALTER TABLE uc_functions ADD CONSTRAINT custom_renamed_old_check"
+            + " CHECK (data_type BETWEEN 0 AND 21)");
+
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    assertThat(migrator.upgradeSchema()).isEqualTo(4);
+    assertThat(SchemaSnapshot.of(db.dataSource()))
+        .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+  }
+
+  @Test
+  void dropRangeCheckRefusesZeroMatches() throws SQLException {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    DatabaseKind kind = DatabaseKind.of(db.dataSource());
+    DropRangeCheckMigration v18 = new V18__drop_old_function_data_type_check();
+    assertThatThrownBy(() -> v18.verifySingleMatch(db.dataSource(), kind))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Expected exactly one CHECK constraint")
+        .hasMessageContaining("found []");
+    try (Connection conn = db.dataSource().getConnection()) {
+      assertThatThrownBy(
+              () ->
+                  v18.migrate(
+                      new org.flywaydb.core.api.migration.Context() {
+                        @Override
+                        public org.flywaydb.core.api.configuration.Configuration
+                            getConfiguration() {
+                          return null;
+                        }
+
+                        @Override
+                        public Connection getConnection() {
+                          return conn;
+                        }
+                      }))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("Expected exactly one CHECK constraint")
+          .hasMessageContaining("found []");
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "16, uc_functions, data_type",
+    "18, uc_function_params, type_name",
+  })
+  void dropRangeCheckRefusesDuplicateChecksBeforeRunningPriorAddStep(
+      String baseVersion, String table, String column) {
+    assumeTrue(isH2(), "H2 allows duplicate equivalent CHECK constraints on the same column");
+    UpgradeTestUtils.migrateTo(db, baseVersion);
+    UpgradeTestUtils.execute(
+        db,
+        "ALTER TABLE %s ADD CONSTRAINT dup_old_check CHECK (%s BETWEEN 0 AND 21)"
+            .formatted(table, column));
+
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Expected exactly one CHECK constraint");
+    assertThatThrownBy(migrator::upgradeSchema)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Expected exactly one CHECK constraint");
+    // Preflight refused before the add step ran, so the database stays at baseVersion untouched.
+    assertThat(migrator.recordedVersion()).isEqualTo(baseVersion);
+    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(migrator.expected(baseVersion));
+  }
+
+  @Test
   void readsOnlyTheConfiguredSchema() {
     assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL has no schemas within a database");
     // In a metadata search, "_" matches any character: uc_a would also list ucxa's tables.

@@ -1,0 +1,1 @@
+- check uc_functions "DATA_TYPE" BETWEEN 0 AND 21
