@@ -53,9 +53,7 @@ hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CL
 
 {{- if .Values.server.db.postgresqlConfig.ssl.enabled }}
 {{- $params = merge $params (dict "sslmode" .Values.server.db.postgresqlConfig.ssl.mode) }}
-{{- if or .Values.server.db.postgresqlConfig.ssl.rootCert .Values.server.db.postgresqlConfig.ssl.rootCertConfigMapName }}
 {{- $params = merge $params (dict "sslrootcert" "/home/unitycatalog/etc/conf/dbrootca.crt") }}
-{{- end }}
 {{- end }}
 
 {{- range $key, $value := .Values.server.db.postgresqlConfig.extraParams }}

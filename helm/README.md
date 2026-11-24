@@ -706,8 +706,10 @@ not set
 </td>
 			<td>PostgreSQL JDBC URL params
 
-With `ssl.enabled`, the chart sets `sslmode`, and also `sslrootcert` when `ssl.rootCert` or
-`ssl.rootCertConfigMapName` is set. The render fails when a parameter here repeats one the chart set.
+With `ssl.enabled`, the chart sets `sslmode` and `sslrootcert`, and the render fails when a parameter here
+repeats one of them. Each value must be a string, number or boolean, not a map or list. Quote numbers, for
+example `socketTimeout: "1000000"`, or pass them with `--set-string`, since Helm reads an unquoted number
+from a values file as a float and renders 1000000 as `1e+06`.
 
 Example:
 ```yaml

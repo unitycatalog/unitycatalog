@@ -156,14 +156,15 @@ jobs:
           grep -qF -- '--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           grep -qF 'mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           # Each PostgreSQL extra parameter is a URL parameter of its own, next to the ones ssl sets, with its value
-          # encoded.
+          # encoded and its name as given.
           pg=(-f helm/ci/postgresql-values.yaml --set server.db.postgresqlConfig.ssl.enabled=true
             --set-string server.db.postgresqlConfig.ssl.rootCert=ci-cert)
           out="$(helm template uc helm "${pg[@]}" \
-            --set-string 'server.db.postgresqlConfig.extraParams.ApplicationName=uc ci+test' \
+            --set-string 'server.db.postgresqlConfig.extraParams.ApplicationName=uc ci+test&x=1' \
+            --set-string 'server.db.postgresqlConfig.extraParams.a b=1' \
             --set-string 'server.db.postgresqlConfig.extraParams.currentSchema=uc')"
           url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
-          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?ApplicationName=uc+ci%2Btest&currentSchema=uc&sslmode=verify-full&sslrootcert=%2Fhome%2Funitycatalog%2Fetc%2Fconf%2Fdbrootca.crt' ]
+          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?ApplicationName=uc+ci%2Btest%26x%3D1&a b=1&currentSchema=uc&sslmode=verify-full&sslrootcert=%2Fhome%2Funitycatalog%2Fetc%2Fconf%2Fdbrootca.crt' ]
           # An extra parameter that ssl also sets fails the render, with the root certificate given inline or from a
           # config map. Without ssl, it is passed on.
           pg_cm=(-f helm/ci/postgresql-values.yaml --set server.db.postgresqlConfig.ssl.enabled=true
