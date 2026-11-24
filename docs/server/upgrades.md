@@ -25,9 +25,14 @@ connection pool, which needs at least 4 connections for that: with a smaller poo
 `CREATE TABLE IF NOT EXISTS casbin_rule` at every start, so the database user needs the `CREATE` privilege (on
 PostgreSQL, on the schema) while authorization is enabled.
 
-Startup also creates the [permission lookup index](auth.md#native-policy-storage) if it is missing.
-This requires `INDEX` on MySQL and ownership of `casbin_rule` on PostgreSQL. A database administrator
-can create the index before the server starts so its database user does not need that permission.
+Startup also tries to create the [permission lookup index](auth.md#native-policy-storage) if it is
+missing. This requires `INDEX` on MySQL and ownership of `casbin_rule` on PostgreSQL. If setup fails,
+the server logs a warning and continues. Ownership transfers can still block unrelated grants and
+revokes until a database administrator creates the index using the SQL in the auth guide.
+
+On PostgreSQL, index creation blocks writes to `casbin_rule` while it runs. This can pause grants
+and revokes on running instances during a rolling upgrade. A database administrator can create
+the index before the upgrade during a maintenance window.
 
 Two options of `bin/start-uc-server` check and change the schema. Neither starts the server. Both
 exit with 0 when they succeed, and with 1 and the reasons when they refuse (see

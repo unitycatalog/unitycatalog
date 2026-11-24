@@ -349,14 +349,17 @@ Use the same value on every server instance. Restart each instance after changin
 
 ### Native policy storage
 
-Casbin stores grants in `casbin_rule`. The server adds the index below at startup if it is missing.
-The index limits the rows scanned by permission changes. Creating it requires the `INDEX` privilege
-on MySQL and ownership of `casbin_rule` on PostgreSQL. If the server's database user lacks this
-permission, ask a database administrator to create it before starting the server:
+Casbin stores grants in `casbin_rule`. The server tries to add the index below at startup if it is
+missing. The index limits the rows scanned by permission changes. Creating it requires the `INDEX`
+privilege on MySQL and ownership of `casbin_rule` on PostgreSQL. If setup fails, the server logs a
+warning and continues to start. Ownership transfers can still block unrelated grants and revokes
+until the index exists. Ask a database administrator to run:
 
 ```sql
 CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2);
 ```
+
+Use this exact index name and column order. The server checks the name alone.
 
 ### Multiple server instances
 

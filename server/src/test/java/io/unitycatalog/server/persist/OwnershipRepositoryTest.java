@@ -36,14 +36,19 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.model.UpdateFunction;
+import io.unitycatalog.server.model.UpdateRegisteredModel;
+import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.model.UpdateTable;
+import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.CatalogService;
@@ -76,6 +81,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class OwnershipRepositoryTest {
@@ -436,45 +442,157 @@ public class OwnershipRepositoryTest {
         .containsExactly(tuple(AuditRecord.Action.GRANT, firstId, created));
   }
 
-  @Test
-  void transferringOwnerDoesNotBlockUnrelatedGrantsOrRevokes() throws Exception {
+  @ParameterizedTest
+  @EnumSource(
+      value = SecurableType.class,
+      names = {"CATALOG", "SCHEMA", "VOLUME", "TABLE", "FUNCTION", "REGISTERED_MODEL"})
+  void transferringOwnerDoesNotBlockUnrelatedGrantsOrRevokes(SecurableType type) throws Exception {
+    UUID targetId = UUID.fromString("50000000-0000-0000-0000-000000000000");
+    IdentifiableDAO target =
+        sessionFactory.fromTransaction(
+            session -> {
+              UUID schemaId = UUID.randomUUID();
+              if (type != SecurableType.CATALOG && type != SecurableType.SCHEMA) {
+                session.persist(
+                    SchemaInfoDAO.builder()
+                        .id(schemaId)
+                        .name("schema")
+                        .catalogId(resourceId)
+                        .owner(FIRST_OWNER)
+                        .createdAt(new Date())
+                        .build());
+              }
+              IdentifiableDAO dao =
+                  switch (type) {
+                    case CATALOG ->
+                        CatalogInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .owner(FIRST_OWNER)
+                            .createdAt(new Date())
+                            .build();
+                    case SCHEMA ->
+                        SchemaInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .catalogId(resourceId)
+                            .owner(FIRST_OWNER)
+                            .createdAt(new Date())
+                            .build();
+                    case VOLUME ->
+                        VolumeInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .schemaId(schemaId)
+                            .owner(FIRST_OWNER)
+                            .createdAt(new Date())
+                            .storageLocation("s3://test-bucket/volume")
+                            .volumeType("EXTERNAL")
+                            .build();
+                    case TABLE ->
+                        TableInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .schemaId(schemaId)
+                            .owner(FIRST_OWNER)
+                            .type(TableType.EXTERNAL.getValue())
+                            .build();
+                    case FUNCTION ->
+                        FunctionInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .schemaId(schemaId)
+                            .owner(FIRST_OWNER)
+                            .build();
+                    case REGISTERED_MODEL ->
+                        RegisteredModelInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .schemaId(schemaId)
+                            .owner(FIRST_OWNER)
+                            .build();
+                    default -> throw new IllegalArgumentException("Unsupported target: " + type);
+                  };
+              session.persist(dao);
+              return dao;
+            });
+    authorizer.grantAuthorization(firstId, targetId, Privileges.OWNER);
+    authorizer.grantAuthorization(thirdId, targetId, Privileges.MANAGE);
     UUID adjacent = UUID.fromString("60000000-0000-0000-0000-000000000000");
     UUID unrelated = UUID.fromString("80000000-0000-0000-0000-000000000000");
     authorizer.grantAuthorization(thirdId, unrelated, Privileges.MANAGE);
     authorizer.grantAuthorization(thirdId, unrelated, Privileges.SELECT);
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try {
-      repositories
-          .getCatalogRepository()
-          .updateCatalog(
-              CATALOG,
-              new UpdateCatalog().owner(SECOND_OWNER),
-              () -> {
-                Future<?> changes =
-                    executor.submit(
-                        () -> {
-                          // This resource falls in the index gap after the transferred OWNER.
-                          assertThat(
-                                  authorizer.grantAuthorization(
-                                      thirdId, adjacent, Privileges.MODIFY))
-                              .isTrue();
-                          assertThat(
-                                  authorizer.grantAuthorization(
-                                      thirdId, unrelated, Privileges.MODIFY))
-                              .isTrue();
-                          assertThat(
-                                  authorizer.revokeAuthorization(
-                                      thirdId, unrelated, Privileges.SELECT))
-                              .isTrue();
-                        });
-                assertThatCode(() -> changes.get(10, TimeUnit.SECONDS)).doesNotThrowAnyException();
-              });
+      Runnable beforeCommit =
+          () -> {
+            Future<?> changes =
+                executor.submit(
+                    () -> {
+                      // This resource falls in the index gap after the transferred OWNER.
+                      assertThat(
+                              authorizer.grantAuthorization(thirdId, adjacent, Privileges.MODIFY))
+                          .isTrue();
+                      assertThat(
+                              authorizer.grantAuthorization(thirdId, unrelated, Privileges.MODIFY))
+                          .isTrue();
+                      assertThat(
+                              authorizer.revokeAuthorization(thirdId, unrelated, Privileges.SELECT))
+                          .isTrue();
+                    });
+            assertThatCode(() -> changes.get(10, TimeUnit.SECONDS)).doesNotThrowAnyException();
+          };
+      String fullName = CATALOG + ".schema.target";
+      switch (type) {
+        case CATALOG ->
+            repositories
+                .getCatalogRepository()
+                .updateCatalog("target", new UpdateCatalog().owner(SECOND_OWNER), beforeCommit);
+        case SCHEMA ->
+            repositories
+                .getSchemaRepository()
+                .updateSchema(
+                    CATALOG + ".target", new UpdateSchema().owner(SECOND_OWNER), beforeCommit);
+        case VOLUME ->
+            repositories
+                .getVolumeRepository()
+                .updateVolume(
+                    fullName, new UpdateVolumeRequestContent().owner(SECOND_OWNER), beforeCommit);
+        case TABLE ->
+            repositories
+                .getTableRepository()
+                .updateTable(fullName, new UpdateTable().owner(SECOND_OWNER), true, beforeCommit);
+        case FUNCTION ->
+            repositories
+                .getFunctionRepository()
+                .updateFunction(fullName, new UpdateFunction().owner(SECOND_OWNER), beforeCommit);
+        case REGISTERED_MODEL ->
+            repositories
+                .getModelRepository()
+                .updateRegisteredModel(
+                    fullName, new UpdateRegisteredModel().owner(SECOND_OWNER), beforeCommit);
+        default -> throw new IllegalArgumentException("Unsupported target: " + type);
+      }
     } finally {
       executor.shutdownNow();
       assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
     }
     authorizer.reloadAuthorizations();
-    assertOwnership(SECOND_OWNER, secondId);
+    String savedOwner =
+        sessionFactory.fromSession(
+            session ->
+                session
+                    .createSelectionQuery(
+                        "select owner from "
+                            + target.getClass().getSimpleName()
+                            + " where id = :id",
+                        String.class)
+                    .setParameter("id", targetId)
+                    .getSingleResult());
+    assertThat(savedOwner).isEqualTo(SECOND_OWNER);
+    assertThat(authorizer.listAuthorizations(firstId, targetId)).isEmpty();
+    assertThat(authorizer.listAuthorizations(secondId, targetId)).containsExactly(Privileges.OWNER);
+    assertThat(authorizer.listAuthorizations(thirdId, targetId)).containsExactly(Privileges.MANAGE);
     assertThat(authorizer.listAuthorizations(thirdId, adjacent)).containsExactly(Privileges.MODIFY);
     assertThat(authorizer.listAuthorizations(thirdId, unrelated))
         .containsExactlyInAnyOrder(Privileges.MANAGE, Privileges.MODIFY);

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.zaxxer.hikari.HikariDataSource;
@@ -18,6 +19,7 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.io.StringWriter;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -32,6 +34,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.WriterAppender;
+import org.apache.logging.log4j.core.config.Configurator;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -166,18 +175,98 @@ public class JCasbinAuthorizerTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {false, true})
-  void failedStartupClosesConnectionAndPreservesIndexError(boolean closeFails) throws Exception {
-    SQLException indexError = new SQLException("index creation failed");
-    SQLException closeError = new SQLException("connection close failed");
+  void failedIndexSetupWarnsAndKeepsStarting(boolean recheckFails) throws Exception {
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    authenticator.grantAuthorization(principal, resource, Privileges.OWNER);
     dropOwnerLookupIndex();
-    try (Connection realConnection = hibernateConfigurator.getDataSource().getConnection();
-        Statement realStatement = realConnection.createStatement()) {
-      Statement statement = mock(Statement.class, delegatesTo(realStatement));
-      doThrow(indexError)
-          .when(statement)
-          .executeUpdate("CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2)");
+    SQLException indexError = new SQLException("index creation denied");
+    SQLException recheckError = new SQLException("index metadata recheck failed");
+    AtomicBoolean createFailed = new AtomicBoolean();
+    StringWriter warnings = new StringWriter();
+    WriterAppender appender =
+        WriterAppender.newBuilder()
+            .setName("JCasbinAuthorizerTest")
+            .setLayout(PatternLayout.newBuilder().setPattern("%level %msg%n%throwable").build())
+            .setTarget(warnings)
+            .build();
+    Logger logger = (Logger) LogManager.getLogger(JCasbinAuthorizer.class);
+    Level previousLevel = logger.getLevel();
+    appender.start();
+    try (Connection realConnection = hibernateConfigurator.getDataSource().getConnection()) {
+      Configurator.setLevel(logger.getName(), Level.WARN);
+      logger.addAppender(appender);
       Connection connection = mock(Connection.class, delegatesTo(realConnection));
-      doReturn(statement).when(connection).createStatement();
+      doAnswer(
+              invocation -> {
+                Statement statement =
+                    mock(Statement.class, delegatesTo(realConnection.createStatement()));
+                doAnswer(
+                        create -> {
+                          createFailed.set(true);
+                          throw indexError;
+                        })
+                    .when(statement)
+                    .executeUpdate(
+                        "CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2)");
+                return statement;
+              })
+          .when(connection)
+          .createStatement();
+      if (recheckFails) {
+        doAnswer(
+                invocation -> {
+                  if (createFailed.get()) {
+                    throw recheckError;
+                  }
+                  return realConnection.getMetaData();
+                })
+            .when(connection)
+            .getMetaData();
+      }
+      HikariDataSource dataSource = mock(HikariDataSource.class);
+      doReturn(connection).when(dataSource).getConnection();
+      HibernateConfigurator config =
+          mock(HibernateConfigurator.class, delegatesTo(hibernateConfigurator));
+      doReturn(dataSource).when(config).getDataSource();
+
+      try (JCasbinAuthorizer restarted = new JCasbinAuthorizer(config, serverProperties)) {
+        assertThat(restarted.listAuthorizations(principal, resource))
+            .containsExactly(Privileges.OWNER);
+        assertThat(restarted.authorize(UUID.randomUUID(), METASTORE, resource, Privileges.OWNER))
+            .isFalse();
+        verify(connection, never()).close();
+        assertThat(realConnection.isClosed()).isFalse();
+      }
+      verify(connection).close();
+      assertThat(realConnection.isClosed()).isTrue();
+      assertThat(warnings.toString())
+          .contains(
+              "WARN Could not verify or create the permission lookup index",
+              "Ownership transfers may block unrelated grants and revokes",
+              "CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2)",
+              indexError.getMessage());
+      assertThat(indexError.getSuppressed())
+          .containsExactly(recheckFails ? new Throwable[] {recheckError} : new Throwable[0]);
+      if (recheckFails) {
+        assertThat(warnings.toString()).contains(recheckError.getMessage());
+      }
+    } finally {
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void failedPolicyTableSetupClosesConnectionAndPreservesError(boolean closeFails)
+      throws Exception {
+    SQLException setupError = new SQLException("policy table setup failed");
+    SQLException closeError = new SQLException("connection close failed");
+    try (Connection realConnection = hibernateConfigurator.getDataSource().getConnection()) {
+      Connection connection = mock(Connection.class, delegatesTo(realConnection));
+      doThrow(setupError).when(connection).createStatement();
       doAnswer(
               invocation -> {
                 realConnection.close();
@@ -196,10 +285,10 @@ public class JCasbinAuthorizerTest {
       doReturn(dataSource).when(config).getDataSource();
 
       assertThatThrownBy(() -> new JCasbinAuthorizer(config, serverProperties))
-          .isSameAs(indexError);
+          .isSameAs(setupError);
       verify(connection).close();
       assertThat(realConnection.isClosed()).isTrue();
-      assertThat(indexError.getSuppressed())
+      assertThat(setupError.getSuppressed())
           .containsExactly(closeFails ? new Throwable[] {closeError} : new Throwable[0]);
     }
   }

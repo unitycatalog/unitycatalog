@@ -76,6 +76,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   private static final String HIERARCHY_POLICY = "g2";
   private static final String OWNER_LOOKUP_INDEX = "idx_casbin_rule_resource";
+  private static final String OWNER_LOOKUP_INDEX_SQL =
+      "CREATE INDEX " + OWNER_LOOKUP_INDEX + " ON casbin_rule (ptype, v1, v2)";
   private static final int HIERARCHY_PARENT_INDEX = 0;
   private static final int HIERARCHY_CHILD_INDEX = 1;
 
@@ -129,18 +131,28 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   /** The adapter owns casbin_rule outside the Unity Catalog schema migrations. */
-  private static void ensureOwnerLookupIndex(Connection connection) throws SQLException {
-    if (hasOwnerLookupIndex(connection)) {
-      return;
-    }
-    try (Statement statement = connection.createStatement()) {
-      statement.executeUpdate(
-          "CREATE INDEX " + OWNER_LOOKUP_INDEX + " ON casbin_rule (ptype, v1, v2)");
+  private static void ensureOwnerLookupIndex(Connection connection) {
+    try {
+      if (hasOwnerLookupIndex(connection)) {
+        return;
+      }
+      try (Statement statement = connection.createStatement()) {
+        statement.executeUpdate(OWNER_LOOKUP_INDEX_SQL);
+      }
     } catch (SQLException e) {
       // Another server may have created the index after the metadata check.
-      if (!hasOwnerLookupIndex(connection)) {
-        throw e;
+      try {
+        if (hasOwnerLookupIndex(connection)) {
+          return;
+        }
+      } catch (SQLException recheckError) {
+        e.addSuppressed(recheckError);
       }
+      LOGGER.warn(
+          "Could not verify or create the permission lookup index. Ownership transfers may block"
+              + " unrelated grants and revokes. Ask a database administrator to run: {}",
+          OWNER_LOOKUP_INDEX_SQL,
+          e);
     }
   }
 

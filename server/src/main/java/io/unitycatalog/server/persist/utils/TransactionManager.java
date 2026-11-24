@@ -44,7 +44,10 @@ public class TransactionManager {
         sessionFactory, operation, errorMessage, readOnly, Optional.empty());
   }
 
-  /** Sets isolation before a transaction begins. The pool restores it on connection return. */
+  /**
+   * Rolls back any implicit transaction and sets isolation. Call before starting a transaction or
+   * changing data. The pool restores isolation when the connection returns.
+   */
   public static void setIsolationLevel(Session session, int isolationLevel) {
     // Without autocommit, a pooled connection may carry an open implicit transaction. H2 applies
     // the isolation change to the NEXT transaction, so that transaction must end first.
