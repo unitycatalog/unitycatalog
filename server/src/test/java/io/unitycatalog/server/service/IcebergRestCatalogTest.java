@@ -87,6 +87,7 @@ import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.exceptions.RESTException;
+import org.apache.iceberg.exceptions.RuntimeIOException;
 import org.apache.iceberg.exceptions.ServiceFailureException;
 import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.expressions.Expressions;
@@ -920,11 +921,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     Path metadata = Path.of(NormalizedURL.from(created.metadataLocation()).toUri());
     Files.writeString(metadata, "invalid metadata");
 
-    TestUtils.assertIcebergApiException(
+    assertErrorType(
         () ->
             icebergClient.unregisterTable(
                 TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "unreadable"),
-        500);
+        500,
+        RuntimeIOException.class);
 
     TableInfo table =
         tableOperations.getTable(

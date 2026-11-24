@@ -647,7 +647,13 @@ public class TableRepository {
         });
   }
 
-  /** Returns the managed Iceberg table state to read before attempting unregister. */
+  /**
+   * Returns the managed Iceberg table state to read before attempting unregister.
+   *
+   * @return state with ICEBERG format and a non-null metadata location
+   * @throws BaseException with INVALID_ARGUMENT for other table types, or TABLE_NOT_FOUND if the
+   *     table or its metadata location is absent
+   */
   public IcebergTableState getManagedIcebergTableState(
       String catalogName, String schemaName, String tableName) {
     return getIcebergTableState(
@@ -1297,7 +1303,8 @@ public class TableRepository {
    * lazy fields.
    */
   public TableInfoDAO deleteTable(String catalog, String schema, String table) {
-    return deleteTable(catalog, schema, table, dao -> {}, /* shouldCleanUpStorage= */ true);
+    return deleteTable(
+        catalog, schema, table, dao -> {}, /* shouldCleanUpStorageAndCommits= */ true);
   }
 
   /**
@@ -1310,7 +1317,7 @@ public class TableRepository {
         schema,
         table,
         dao -> requireDeltaTable(dao, catalog, schema, table),
-        /* shouldCleanUpStorage= */ true);
+        /* shouldCleanUpStorageAndCommits= */ true);
   }
 
   /**
@@ -1352,7 +1359,7 @@ public class TableRepository {
                     + "; retry unregister.");
           }
         },
-        /* shouldCleanUpStorage= */ false);
+        /* shouldCleanUpStorageAndCommits= */ false);
   }
 
   private static void requireManagedIcebergTable(
@@ -1378,20 +1385,21 @@ public class TableRepository {
       String schema,
       String table,
       Consumer<TableInfoDAO> check,
-      boolean shouldCleanUpStorage) {
+      boolean shouldCleanUpStorageAndCommits) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          return deleteTable(session, schemaId, table, check, shouldCleanUpStorage);
+          return deleteTable(session, schemaId, table, check, shouldCleanUpStorageAndCommits);
         },
         "Failed to delete table",
         /* readOnly= */ false);
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
-    return deleteTable(session, schemaId, tableName, dao -> {}, /* shouldCleanUpStorage= */ true);
+    return deleteTable(
+        session, schemaId, tableName, dao -> {}, /* shouldCleanUpStorageAndCommits= */ true);
   }
 
   private TableInfoDAO deleteTable(
@@ -1399,7 +1407,7 @@ public class TableRepository {
       UUID schemaId,
       String tableName,
       Consumer<TableInfoDAO> check,
-      boolean shouldCleanUpStorage) {
+      boolean shouldCleanUpStorageAndCommits) {
     TableInfoDAO found = findBySchemaIdAndName(session, schemaId, tableName);
     if (found == null) {
       throw tableNotFound(tableName);
@@ -1416,7 +1424,8 @@ public class TableRepository {
             "table " + tableName,
             () -> tableNotFound(tableName));
     check.accept(tableInfoDAO);
-    if (shouldCleanUpStorage && TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
+    if (shouldCleanUpStorageAndCommits
+        && TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()
           .create(

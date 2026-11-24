@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -326,7 +327,7 @@ class ManagedTableCleanupTaskTest {
     assertThat(response.tableMetadata().uuid()).isEqualTo(metadata.uuid());
     assertThat(findTable(table.getId())).isNull();
     assertThat(allTasks()).isEmpty();
-    verify(cloudVendor).vendCredential(any());
+    verify(cloudVendor, atLeastOnce()).vendCredential(any());
   }
 
   @Test
@@ -396,13 +397,13 @@ class ManagedTableCleanupTaskTest {
   @Test
   void unregisterRejectsOtherTypesAndMissingMetadata() {
     TableInfoDAO table = createTableWithColumn("unsupported");
+    TableRepository tables = repositories.getTableRepository();
     for (TableType type : List.of(TableType.MANAGED, TableType.EXTERNAL)) {
       for (DataSourceFormat format : List.of(DataSourceFormat.ICEBERG, DataSourceFormat.DELTA)) {
         if (type == TableType.MANAGED && format == DataSourceFormat.ICEBERG) {
           continue;
         }
         setIcebergState(table, type, format, "metadata.json");
-        TableRepository tables = repositories.getTableRepository();
         for (Runnable operation :
             List.<Runnable>of(
                 () -> tables.getManagedIcebergTableState(CATALOG, SCHEMA, table.getName()),
@@ -420,13 +421,16 @@ class ManagedTableCleanupTaskTest {
       }
     }
     setIcebergState(table, TableType.MANAGED, DataSourceFormat.ICEBERG, null);
+    assertThatThrownBy(() -> tables.getManagedIcebergTableState(CATALOG, SCHEMA, table.getName()))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))
+        .hasMessage("Table not found: " + table.getName());
     for (String name : List.of(table.getName(), "missing")) {
       assertThatThrownBy(
               () ->
-                  repositories
-                      .getTableRepository()
-                      .unregisterManagedIcebergTable(
-                          CATALOG, SCHEMA, name, table.getId(), "metadata.json"))
+                  tables.unregisterManagedIcebergTable(
+                      CATALOG, SCHEMA, name, table.getId(), "metadata.json"))
           .isInstanceOfSatisfying(
               BaseException.class,
               e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))

@@ -57,6 +57,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 public class IcebergRestCatalogServiceTest {
@@ -125,6 +126,37 @@ public class IcebergRestCatalogServiceTest {
     verify(authorizer).clearAuthorizationsForResource(id);
     verify(authorizer).removeHierarchyChild(schemaId, id);
     verifyNoInteractions(tableConfigService);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void unregisterPreservesPermissionsOnFailure(boolean metadataReadFails) {
+    UUID id = UUID.randomUUID();
+    String metadataLocation = TABLE_LOCATION + "/metadata/00000.json";
+    when(tableRepository.getManagedIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                id, DataSourceFormat.ICEBERG, metadataLocation, TABLE_LOCATION));
+    RuntimeException failure =
+        metadataReadFails
+            ? new IllegalStateException("Could not read metadata")
+            : new BaseException(ErrorCode.UNAVAILABLE, "Table changed while reading metadata");
+    if (metadataReadFails) {
+      when(metadataService.readTableMetadata(any(), any())).thenThrow(failure);
+    } else {
+      when(tableRepository.unregisterManagedIcebergTable("cat", "ns", "tbl", id, metadataLocation))
+          .thenThrow(failure);
+    }
+
+    assertThatThrownBy(() -> service.unregisterTable("cat", "ns", "tbl")).isSameAs(failure);
+
+    verify(authorizer, never()).clearAuthorizationsForResource(any());
+    verify(authorizer, never()).removeHierarchyChild(any(), any());
+    verifyNoInteractions(tableConfigService);
+    if (metadataReadFails) {
+      verify(tableRepository, never())
+          .unregisterManagedIcebergTable(any(), any(), any(), any(), any());
+    }
   }
 
   @Test
