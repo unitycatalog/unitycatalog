@@ -2,6 +2,7 @@ package io.unitycatalog.server.service.iceberg;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.LocalStorageLocationValidator;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -290,7 +291,8 @@ public class MetadataService {
   public static void validateMetadataLocation(
       NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
     ValidationUtils.checkArgument(
-        metadataLocation.toString().startsWith(persistedTableLocation.toString() + "/"),
+        ExternalLocationUtils.stillCovers(persistedTableLocation, metadataLocation)
+            && !ExternalLocationUtils.stillCovers(metadataLocation, persistedTableLocation),
         "Iceberg metadata location ('%s') must be a subpath of the persisted table location"
             + " ('%s').",
         metadataLocation,

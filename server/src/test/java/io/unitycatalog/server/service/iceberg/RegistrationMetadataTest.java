@@ -16,6 +16,7 @@ import io.unitycatalog.server.utils.IcebergTestUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.DataFiles;
@@ -25,6 +26,8 @@ import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.data.GenericRecord;
+import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,6 +73,62 @@ class RegistrationMetadataTest {
         (ObjectNode) new ObjectMapper().readTree(TableMetadataParser.toJson(metadata));
     json.remove("table-uuid");
     assertRejected(json, "must contain table-uuid");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"abfs", "abfss"})
+  void acceptsAzureStorageSchemeAliases(String storageScheme) throws Exception {
+    String tableScheme = storageScheme.equals("abfs") ? "abfss" : "abfs";
+    String storagePath = "://container@account.dfs.core.windows.net/warehouse";
+    String tableLocation = tableScheme + storagePath + "/orders";
+    String metadataLocation = tableLocation + "/metadata/v1.metadata.json";
+    Path metadataFile = directory.resolve("azure.metadata.json");
+    Files.writeString(metadataFile, metadataJson().put("location", tableLocation).toString());
+    InputFile input = mock();
+    when(input.location()).thenReturn(metadataLocation);
+    when(input.newStream())
+        .thenAnswer(
+            ignored -> org.apache.iceberg.Files.localInput(metadataFile.toFile()).newStream());
+    FileIO fileIO = mock();
+    when(fileIO.newInputFile(metadataLocation)).thenReturn(input);
+    FileOperations operations = mock();
+    when(operations.getFileIO(any())).thenReturn(fileIO);
+
+    TableMetadata registered =
+        new MetadataService(operations)
+            .readRegistrationMetadata(
+                NormalizedURL.from(metadataLocation),
+                NormalizedURL.from(storageScheme + storagePath));
+
+    assertThat(registered.uuid()).isEqualTo(table.operations().current().uuid());
+    assertThat(registered.location()).isEqualTo(tableLocation);
+    assertThat(registered.metadataFileLocation()).isEqualTo(metadataLocation);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"abfs", "abfss"})
+  void rejectsAzureMetadataLocationsOutsideStorageRoot(String storageScheme) {
+    String aliasScheme = storageScheme.equals("abfs") ? "abfss" : "abfs";
+    NormalizedURL storageRoot =
+        NormalizedURL.from(storageScheme + "://container@account.dfs.core.windows.net/warehouse");
+    for (String path :
+        List.of(
+            storageRoot.toString(),
+            aliasScheme + "://container@account.dfs.core.windows.net/warehouse",
+            aliasScheme + "://container@account.dfs.core.windows.net",
+            aliasScheme
+                + "://container@account.dfs.core.windows.net/warehouse-sibling/metadata.json",
+            aliasScheme + "://other@account.dfs.core.windows.net/warehouse/metadata.json",
+            aliasScheme + "://container@other.dfs.core.windows.net/warehouse/metadata.json")) {
+      assertThatThrownBy(
+              () -> MetadataService.validateMetadataLocation(NormalizedURL.from(path), storageRoot))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              failure -> {
+                assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+                assertThat(failure).hasMessageContaining("must be a subpath", path);
+              });
+    }
   }
 
   @ParameterizedTest
