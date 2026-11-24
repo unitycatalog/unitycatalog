@@ -287,23 +287,17 @@ public class UnityCatalogServerTest extends BaseServerTest {
               .configurationFolder(configurationFolder)
               .build();
       assertThat(configurationFolder.resolve("token.txt")).doesNotExist();
-      // One it cannot delete stays, and the server is still built.
-      Files.writeString(configurationFolder.resolve("token.txt"), "a stale admin token");
-      configurationFolder.toFile().setWritable(false, false);
-      try {
-        if (!Files.isWritable(configurationFolder)) { // root can write anyway
-          UnityCatalogServer.builder()
-              .port(0)
-              .serverProperties(new ServerProperties(serverProperties))
-              .hibernateConfigurator(hibernateConfigurator)
-              .configurationFolder(configurationFolder)
-              .build()
-              .close();
-          assertThat(configurationFolder.resolve("token.txt")).exists();
-        }
-      } finally {
-        configurationFolder.toFile().setWritable(true, false);
-      }
+      // One it cannot delete stays, and the server is still built. A non-empty directory cannot be
+      // deleted by any user, root included, unlike a file in a read-only folder.
+      Files.createDirectories(configurationFolder.resolve("token.txt").resolve("x"));
+      UnityCatalogServer.builder()
+          .port(0)
+          .serverProperties(new ServerProperties(serverProperties))
+          .hibernateConfigurator(hibernateConfigurator)
+          .configurationFolder(configurationFolder)
+          .build()
+          .close();
+      assertThat(configurationFolder.resolve("token.txt")).isDirectory();
       // BaseServerTest retries only a ServerPortBindException, so the cause is part of the
       // contract, as is a close() that releases what the failed start left behind.
       assertThatThrownBy(server::start)
