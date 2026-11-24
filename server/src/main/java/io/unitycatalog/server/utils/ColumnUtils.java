@@ -500,7 +500,7 @@ public class ColumnUtils {
    * @throws BaseException with {@code INVALID_ARGUMENT} for a geography algorithm Delta does not
    *     define.
    */
-  private static ColumnTypeName resolveGeoTypeName(String primitive) {
+  public static ColumnTypeName resolveGeoTypeName(String primitive) {
     if (GEOMETRY_TYPE.matcher(primitive).matches()) return ColumnTypeName.GEOMETRY;
     Matcher geography = GEOGRAPHY_TYPE.matcher(primitive);
     if (!geography.matches()) return null;
