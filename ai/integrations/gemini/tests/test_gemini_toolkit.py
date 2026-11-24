@@ -307,8 +307,8 @@ def test_gemini_tool_calling_with_trace_as_retriever():
     if TEST_IN_DATABRICKS:
         import mlflow.tracking._model_registry.utils
 
-        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
-            lambda: "databricks-uc"
+        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = lambda: (
+            "databricks-uc"
         )
 
     with (
@@ -497,20 +497,26 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
     }
 
 
-def function_infos_in_schemas(generate, schemas):
+def function_infos_named(generate, full_names):
     function_info = generate({"x": ("STRING", "string")})
-    full_names = {schema: f"catalog.{schema}.test" for schema in schemas}
-    if isinstance(function_info, OSSFunctionInfo):
-        return {
-            full_name: function_info.model_copy(
-                update={"schema_name": schema, "full_name": full_name}
-            )
-            for schema, full_name in full_names.items()
+    infos = {}
+    for full_name in full_names:
+        catalog, schema, name = full_name.split(".")
+        fields = {
+            "catalog_name": catalog,
+            "schema_name": schema,
+            "name": name,
+            "full_name": full_name,
         }
-    return {
-        full_name: dataclasses.replace(function_info, schema_name=schema, full_name=full_name)
-        for schema, full_name in full_names.items()
-    }
+        if isinstance(function_info, OSSFunctionInfo):
+            infos[full_name.lower()] = function_info.model_copy(update=fields)
+        else:
+            infos[full_name.lower()] = dataclasses.replace(function_info, **fields)
+    return infos
+
+
+def function_infos_in_schemas(generate, schemas):
+    return function_infos_named(generate, [f"catalog.{schema}.test" for schema in schemas])
 
 
 def mock_client_for(function_infos):
@@ -851,3 +857,85 @@ INT_STRUCT_TYPE_JSON = {
 )
 def test_restore_integers(value, uc_type_json, expected):
     assert repr(_restore_integers(value, uc_type_json)) == repr(expected)
+
+
+LONG_FUNCTION_NAME = "main.customer_analytics_prod.compute_lifetime_value_by_segment"
+
+
+@pytest.mark.parametrize(
+    ("function_name", "declared_name"),
+    [
+        (
+            LONG_FUNCTION_NAME[:-1],
+            "main__customer_analytics_prod__compute_lifetime_value_by_segmen",
+        ),
+        (LONG_FUNCTION_NAME, "ain__customer_analytics_prod__compute_lifetime_value_by_segment"),
+        ("team@prod.sales.test", "team_prod__sales__test"),
+    ],
+    ids=["63-characters", "64-characters", "at-sign"],
+)
+@FUNCTION_INFO_GENERATORS
+def test_declared_name_follows_the_gemini_name_rules(generate, function_name, declared_name):
+    client = mock_client_for(function_infos_named(generate, [function_name]))
+    toolkit = UCFunctionToolkit(function_names=[function_name], client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    response = GenerateContentResponse.from_response(
+        function_call_response(declared_name, {"x": "hi"})
+    )
+
+    generate_tool_call_messages(model=model, response=response, conversation_history=[])
+
+    assert len(declared_name) <= 63
+    assert [(tool.name, tool.schema["name"]) for tool in toolkit.tools] == [
+        (declared_name, declared_name)
+    ]
+    client.execute_function.assert_called_once_with(
+        function_name=function_name, parameters={"x": "hi"}, enable_retriever_tracing=False
+    )
+
+
+@pytest.mark.parametrize(
+    "function_names",
+    [
+        ["catalog.s.a__b", "catalog.s__a.b"],
+        ["x" + LONG_FUNCTION_NAME, "y" + LONG_FUNCTION_NAME],
+        ["catalog.sales.a@b", "catalog.sales.a_b"],
+    ],
+    ids=["underscore-join", "cut-to-63", "replaced-character"],
+)
+@FUNCTION_INFO_GENERATORS
+def test_functions_whose_declared_names_collide_each_run_their_own_function(
+    generate, function_names
+):
+    client = mock_client_for(function_infos_named(generate, function_names))
+    toolkit = UCFunctionToolkit(function_names=function_names, client=client)
+    declarations = toolkit.generate_callable_tool_list()
+    model = GenerativeModel(model_name="gemini-2.0-flash", tools=declarations)
+    names = [tool.name for tool in toolkit.tools]
+
+    assert len(set(names)) == 2
+    assert all(len(name) <= 63 for name in names)
+    assert [declaration.name for declaration in declarations] == names
+    for function_name, name in zip(function_names, names):
+        client.execute_function.reset_mock()
+        response = GenerateContentResponse.from_response(function_call_response(name, {"x": "hi"}))
+        generate_tool_call_messages(model=model, response=response, conversation_history=[])
+        client.execute_function.assert_called_once_with(
+            function_name=function_name, parameters={"x": "hi"}, enable_retriever_tracing=False
+        )
+
+
+@FUNCTION_INFO_GENERATORS
+def test_same_named_function_infos_are_declared_by_distinct_names(generate):
+    client = mock_client_for({})
+    tools = [
+        UCFunctionToolkit.uc_function_to_gemini_tool(function_info=function_info, client=client)
+        for function_info in function_infos_in_schemas(generate, ["sales", "hr"]).values()
+    ]
+
+    assert [(tool.name, tool.schema["name"]) for tool in tools] == [
+        ("catalog__sales__test", "catalog__sales__test"),
+        ("catalog__hr__test", "catalog__hr__test"),
+    ]
