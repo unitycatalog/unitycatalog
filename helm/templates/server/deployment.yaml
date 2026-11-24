@@ -65,8 +65,11 @@ spec:
                 exit 1
               fi
               # A key file set to a non-empty value through server.config.override or extraProperties is kept.
-              if ! grep -q -E '^[[:space:]]*server\.token-signing-private-key-file(([[:space:]]*[=:][[:space:]]*[^[:space:]])|([[:space:]]+[^[:space:]=:]))' \
-                  /home/unitycatalog/etc/conf/server.properties; then
+              # The server reads the last line that sets it, and extraProperties render after the override.
+              LAST_KEY_FILE="$(grep -E '^[[:space:]]*server\.token-signing-private-key-file([[:space:]=:]|$)' \
+                  /home/unitycatalog/etc/conf/server.properties | tail -n 1)"
+              if ! printf '%s\n' "$LAST_KEY_FILE" | grep -q -E \
+                  '^[[:space:]]*server\.token-signing-private-key-file(([[:space:]]*[=:][[:space:]]*[^[:space:]])|([[:space:]]+[^[:space:]=:]))'; then
                 printf '\nserver.token-signing-private-key-file=%s\n' "$PRIVATE_KEY" >> /home/unitycatalog/etc/conf/server.properties
               fi
 

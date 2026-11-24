@@ -139,7 +139,7 @@ class AuthDecoratorTest {
         JWT.create()
             .withSubject("server")
             .withIssuer(INTERNAL)
-            // A key ID the server never had: earlier versions failed the lookup with a 500.
+            // The key ID is ignored: the token is checked against the server's own key.
             .withKeyId("another-key-id")
             .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
             .withClaim(JwtClaim.SUBJECT.key(), EMAIL)
