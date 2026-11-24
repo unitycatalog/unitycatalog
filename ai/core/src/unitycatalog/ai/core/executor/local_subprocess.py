@@ -54,7 +54,7 @@ def _generate_runner_script(function_source: str, cpu_time_limit: int, memory_li
     function_source = dedent_code(function_source)
     function_name = _extract_function_name(function_source)
     script = f"""
-import sys, base64, cloudpickle, json, traceback, asyncio, os
+import sys, base64, builtins, cloudpickle, json, traceback, asyncio, os
 
 try:
     import resource
@@ -91,16 +91,13 @@ def main():
     except Exception:
         tb = traceback.format_exc()
         output = json.dumps({{"success": False, "error": tb}})
-    with open(result_path, "w", encoding="utf-8") as f:
+    with builtins.open(result_path, "w", encoding="utf-8") as f:
         f.write(output)
 
 if __name__ == "__main__":
     main()
 """
     return script
-
-
-_logger = logging.getLogger(__name__)
 
 
 def _read_result(result_path: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -116,7 +113,7 @@ def _read_result(result_path: str) -> tuple[dict[str, Any] | None, str | None]:
         if not output:
             return None, None
         result_data = json.loads(output)
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RecursionError) as e:
         return None, f"{type(e).__name__}: {e}"
     if not isinstance(result_data, dict):
         return None, f"expected a JSON object, got {type(result_data).__name__}"
@@ -197,14 +194,19 @@ def run_in_sandbox_subprocess(function_source: str, params: dict[str, Any]) -> t
     if proc.returncode < 0:
         return False, TERMINATED_MESSAGE_TEMPLATE.format(signal_num=-proc.returncode)
     if read_error is not None:
-        return False, UNREADABLE_RESULT_MESSAGE_TEMPLATE.format(
+        message = UNREADABLE_RESULT_MESSAGE_TEMPLATE.format(
             exit_code=proc.returncode, error=read_error
         )
-    message = EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE.format(exit_code=proc.returncode)
-    if proc.stderr:
-        message += (
-            "Standard error output of the process "
-            f"(at most the last {_MAX_STDERR_CHARS_IN_MESSAGE} characters):\n"
-            f"{proc.stderr[-_MAX_STDERR_CHARS_IN_MESSAGE:]}"
-        )
-    return False, message
+    else:
+        message = EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE.format(exit_code=proc.returncode)
+    return False, message + _stderr_tail(proc.stderr)
+
+
+def _stderr_tail(stderr: str) -> str:
+    if not stderr:
+        return ""
+    return (
+        "Standard error output of the process "
+        f"(at most the last {_MAX_STDERR_CHARS_IN_MESSAGE} characters):\n"
+        f"{stderr[-_MAX_STDERR_CHARS_IN_MESSAGE:]}"
+    )

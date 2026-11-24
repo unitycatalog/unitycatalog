@@ -114,7 +114,22 @@ def corrupt_result_function():
 
     with open(sys.argv[2], "w") as f:
         f.write("{")
+    sys.stderr.write("writer stopped")
+    sys.stderr.flush()
     os._exit(0)
+
+
+def deeply_nested_result_function():
+    import os
+    import sys
+
+    with open(sys.argv[2], "w") as f:
+        f.write('{"success": true, "result": ' + "[" * 100000 + "]" * 100000 + "}")
+    os._exit(0)
+
+
+def non_ascii_function(x: int, y: int) -> str:
+    return "caf\u00e9 \u2713 \u65e5\u672c"
 
 
 def non_object_result_function():
@@ -174,7 +189,7 @@ def test_function_writing_to_stdout_returns_its_result(function):
 
 @pytest.mark.parametrize(
     ("function", "expected_stdout"),
-    [(printing_function, "debug"), (undecodable_stdout_function, "�")],
+    [(printing_function, "debug"), (undecodable_stdout_function, "")],
 )
 def test_function_stdout_is_logged_at_debug_level(caplog, function, expected_stdout):
     src = inspect.getsource(function)
@@ -186,6 +201,19 @@ def test_function_stdout_is_logged_at_debug_level(caplog, function, expected_std
         and expected_stdout in record.getMessage()
         for record in caplog.records
     )
+
+
+def test_non_ascii_result_round_trips():
+    src = inspect.getsource(non_ascii_function)
+    assert run_in_sandbox_subprocess(src, {"x": 1, "y": 2}) == (
+        True,
+        "caf\u00e9 \u2713 \u65e5\u672c",
+    )
+
+
+def test_function_named_like_a_builtin_used_by_the_runner_returns_its_result():
+    src = "def open(x: int, y: int) -> int:\n    return x + y\n"
+    assert run_in_sandbox_subprocess(src, {"x": 1, "y": 2}) == (True, 3)
 
 
 def test_function_that_prints_then_raises_reports_the_traceback():
@@ -248,6 +276,27 @@ def test_unreadable_result_is_reported_as_an_error(function, error):
         "The function execution process exited with code 0, but its result could not be read: "
         + error
     )
+
+
+def test_unreadable_result_includes_the_standard_error_output():
+    src = inspect.getsource(corrupt_result_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert result.endswith(
+        "Standard error output of the process (at most the last 4096 characters):\nwriter stopped"
+    )
+
+
+def test_deeply_nested_result_is_reported_as_an_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    src = inspect.getsource(deeply_nested_result_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert result.startswith(
+        "The function execution process exited with code 0, but its result could not be read: "
+        "RecursionError: "
+    )
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_unserializable_result_is_reported_as_an_error():

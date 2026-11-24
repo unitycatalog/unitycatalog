@@ -769,7 +769,7 @@ Note that the maximum CPU time limit is not based on wall clock time; rather, it
 the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
 than the wall clock execution time.
 
-Output that the callable writes to stdout, for example with `print()`, is not part of its result. It is logged at debug level by the `unitycatalog.ai.core.executor.local_subprocess` logger.
+Output that the callable writes to stdout, for example with `print()`, is not part of its result. It is logged at debug level by the `unitycatalog.ai.core.executor.local_subprocess` logger when the run finishes. A run that times out logs nothing.
 
 ## Execute a UC Python function locally
 
