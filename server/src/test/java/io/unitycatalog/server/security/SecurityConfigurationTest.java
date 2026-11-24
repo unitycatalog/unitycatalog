@@ -111,6 +111,20 @@ class SecurityConfigurationTest {
         .isEqualTo(generated.rsaPrivateKey());
   }
 
+  @Test
+  void derivesPublicKeyFromPrivateKeyInConfigurationFolder() throws Exception {
+    KeyPair signingKeyPair = newKeyPair();
+    KeyPair mismatchedKeyPair = newKeyPair();
+    Files.write(
+        configurationFolder.resolve("private_key.der"), signingKeyPair.getPrivate().getEncoded());
+    Files.write(
+        configurationFolder.resolve("public_key.der"), mismatchedKeyPair.getPublic().getEncoded());
+
+    SecurityConfiguration configuration = new SecurityConfiguration(configurationFolder);
+
+    assertThat(configuration.rsaPublicKey()).isEqualTo(signingKeyPair.getPublic());
+  }
+
   private static ServerProperties settings(Path privateKey) {
     Properties properties = new Properties();
     properties.setProperty("server.token-signing-private-key-file", privateKey.toString());

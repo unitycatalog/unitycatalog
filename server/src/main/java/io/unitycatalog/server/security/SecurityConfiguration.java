@@ -19,7 +19,6 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.RSAPublicKeySpec;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -72,7 +71,7 @@ public class SecurityConfiguration {
     Path publicKeyFile = configurationFolder.resolve("public_key.der");
     initializeIfMissing(privateKeyFile, publicKeyFile);
     privateKey = readPrivateKey(privateKeyFile);
-    publicKey = readPublicKey(publicKeyFile);
+    publicKey = publicKeyOf(privateKey, privateKeyFile);
   }
 
   private SecurityConfiguration(RSAPrivateKey privateKey, RSAPublicKey publicKey) {
@@ -176,17 +175,6 @@ public class SecurityConfiguration {
 
   public RSAPrivateKey rsaPrivateKey() {
     return privateKey;
-  }
-
-  @SneakyThrows
-  private static RSAPublicKey readPublicKey(Path file) {
-    X509EncodedKeySpec spec = new X509EncodedKeySpec(readKeyFile(file, "PUBLIC KEY"));
-    try {
-      return (RSAPublicKey) KeyFactory.getInstance("RSA").generatePublic(spec);
-    } catch (InvalidKeySpecException e) {
-      throw new IllegalStateException(
-          "Cannot read the RSA public key in " + file.toAbsolutePath(), e);
-    }
   }
 
   @SneakyThrows
