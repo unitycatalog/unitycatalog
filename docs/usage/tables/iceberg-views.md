@@ -10,17 +10,27 @@ View support defaults to disabled. Set both properties in `etc/conf/server.prope
 
 ```properties
 server.iceberg-view.enabled=true
-server.iceberg-view.metadata-root=/absolute/path/to/private/view-metadata
+server.iceberg-view.metadata-root=s3://private-view-metadata
 ```
 
-Enable this option on every server that writes to the same catalog database after upgrading them all.
-An enabled server requires a metadata root at startup.
-Table and view creates and renames then take a lock on the parent schema before checking a name.
-Existing duplicate names are left for the operator to resolve.
+Upgrade all servers that write to the same catalog database, then enable views on all of them.
+With views enabled, table and view creates and renames lock the parent schema before checking
+a name. Existing duplicate names still require manual resolution.
 
-The metadata directory must be durable and owned exclusively by the server. Multiple servers need
-the same shared filesystem and absolute path. Back it up with the catalog database: it holds SQL
-and schema metadata that the database references. Clients receive the metadata inline.
+Use the same durable metadata root on every server and keep its location stable. For S3,
+dedicate a bucket to view metadata. Register the bucket as an admin-only external location
+with a [server storage credential](../../server/aws.md) that can read, write, and delete
+objects under `<root>/__unitystorage/views/`. Keep client IAM roles and keys, user-accessible
+external locations, and table or volume storage out of that bucket. The server returns
+metadata inline to Iceberg clients.
+
+For a local filesystem, set the root to an absolute path or an absolute `file:` URI without a
+host. Restrict the directory to the server and mount it at the same path on every replica.
+
+Back up the metadata root with the catalog database. UC stores the view identity, native
+definition, and grants in the database. For an Iceberg-created view, the row also points to
+the file returned on an Iceberg load. It preserves the submitted SQL, resolution context,
+version timestamp, and summary.
 
 ## API
 
@@ -49,5 +59,5 @@ Create writes the metadata file before locking the schema, then inserts the UC v
 metadata location in one database transaction. A failed create can leave an unreferenced file.
 Drop retains metadata files.
 
-Listing, replacement, property updates, rename/register, cloud metadata storage, and secure or
-definer-rights execution are not included.
+Listing, replacement, property updates, rename/register, and secure or definer-rights execution
+are outside the scope of this release.

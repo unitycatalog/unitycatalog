@@ -177,7 +177,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         serverProperties.isIcebergViewEnabled()
             ? Optional.of(
                 new ViewMetadataService(
-                    serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT)))
+                    serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT),
+                    repositories.getFileOperations()))
             : Optional.empty();
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
@@ -939,6 +940,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
       @Param("view") @AuthorizeResourceKey(TABLE) String view) {
+    // Clients that fall back from a table lookup to a view lookup expect a 404 here.
     ViewMetadataService store =
         viewStore.orElseThrow(
             () -> new NoSuchViewException("View does not exist: %s", namespace + "." + view));
@@ -969,6 +971,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/views")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
+  @ResponseAuthorizeFilter(isList = false)
   @AuthorizeResourceKey(METASTORE)
   public LoadViewResponse createView(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -988,11 +991,15 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             .columns(IcebergSchemaConverter.toColumnInfos(request.schema()))
             .comment(request.properties().get("comment"))
             .properties(ViewMetadataService.nativeProperties(request, catalog));
+    UUID schemaId = schemaRepository.getSchemaIdOrThrow(catalog, namespace);
+    applyGetResponseFilter(SCHEMA, new SchemaInfo().schemaId(schemaId.toString()), null);
     UUID viewId = UUID.randomUUID();
     ViewMetadata metadata = store.create(viewId, request);
     TableInfo view;
     try {
-      view = tableRepository.createViewForIceberg(create, viewId, metadata.metadataFileLocation());
+      view =
+          tableRepository.createViewForIceberg(
+              create, schemaId, viewId, metadata.metadataFileLocation());
     } catch (BaseException e) {
       // If the commit outcome is unknown, the database may already reference this file.
       switch (e.getErrorCode()) {
@@ -1002,8 +1009,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       }
       throw e;
     }
-    initializeHierarchicalAuthorization(
-        view.getTableId(), schemaRepository.getSchema(catalog + "." + namespace).getSchemaId());
+    initializeHierarchicalAuthorization(view.getTableId(), schemaId.toString());
     return viewResponse(metadata);
   }
 

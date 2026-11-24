@@ -1,7 +1,9 @@
 package io.unitycatalog.server.sdk.tempcredential;
 
+import static io.unitycatalog.server.utils.IcebergViewTestUtils.request;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -40,15 +42,19 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.teststorage.TestStorage;
 import io.unitycatalog.server.teststorage.TestStorages;
+import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import org.apache.iceberg.view.ViewMetadataParser;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -59,6 +65,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 /**
  * Checks on real S3-compatible storage that table credentials Unity Catalog vends reach only that
@@ -67,12 +74,14 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
  */
 public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
   private static final String BUCKET = "scope-bucket";
+  private static final String VIEW_BUCKET = "view-metadata-bucket";
   private static final String FILE = "part-0.parquet";
 
   private TestStorage storage;
   private TemporaryCredentialsApi temporaryCredentialsApi;
   // Each test writes under its own prefix, so tests never see each other's objects.
   private String tablesRoot;
+  private final String viewMetadataRoot = "s3://" + VIEW_BUCKET + "/run-" + UUID.randomUUID();
 
   @BeforeAll
   public static void requireS3CompatibleStorage() {
@@ -94,6 +103,8 @@ public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     enableS3CompatibleStorage();
+    serverProperties.setProperty(Property.ICEBERG_VIEW_ENABLED.getKey(), "true");
+    serverProperties.setProperty(Property.ICEBERG_VIEW_METADATA_ROOT.getKey(), viewMetadataRoot);
   }
 
   @BeforeEach
@@ -101,29 +112,11 @@ public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
   public void setUp() {
     super.setUp();
     storage = TestStorages.selected().orElseThrow();
-    storage.createBucket(BUCKET);
     tablesRoot = "run-" + UUID.randomUUID() + "/tables";
     ApiClient apiClient = TestUtils.createApiClient(serverConfig);
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient);
     try {
-      new CredentialsApi(apiClient)
-          .createCredential(
-              new CreateCredentialRequest()
-                  .name("scope_credential")
-                  .purpose(CredentialPurpose.STORAGE)
-                  .s3Compatible(
-                      new S3CompatibleRequest()
-                          .accessKeyId(storage.accessKeyId())
-                          .secretAccessKey(storage.secretAccessKey())
-                          .s3Endpoint(storage.s3Endpoint())
-                          .assumeRole(
-                              new S3AssumeRole().roleArn(storage.roleArn().orElseThrow()))));
-      new ExternalLocationsApi(apiClient)
-          .createExternalLocation(
-              new CreateExternalLocation()
-                  .name("scope_location")
-                  .url("s3://" + BUCKET)
-                  .credentialName("scope_credential"));
+      registerStorageLocation(BUCKET, "scope");
       catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME));
       new SchemasApi(apiClient)
           .createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
@@ -132,13 +125,64 @@ public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
     }
   }
 
+  private void registerStorageLocation(String bucket, String name) throws ApiException {
+    storage.createBucket(bucket);
+    var apiClient = TestUtils.createApiClient(serverConfig);
+    String credentialName = name + "_credential";
+    new CredentialsApi(apiClient)
+        .createCredential(
+            new CreateCredentialRequest()
+                .name(credentialName)
+                .purpose(CredentialPurpose.STORAGE)
+                .s3Compatible(
+                    new S3CompatibleRequest()
+                        .accessKeyId(storage.accessKeyId())
+                        .secretAccessKey(storage.secretAccessKey())
+                        .s3Endpoint(storage.s3Endpoint())
+                        .assumeRole(new S3AssumeRole().roleArn(storage.roleArn().orElseThrow()))));
+    new ExternalLocationsApi(apiClient)
+        .createExternalLocation(
+            new CreateExternalLocation()
+                .name(name + "_location")
+                .url("s3://" + bucket)
+                .credentialName(credentialName));
+  }
+
+  @Test
+  public void viewMetadataIsStoredUnderItsOwnIdAndSurvivesDrop() throws Exception {
+    registerStorageLocation(VIEW_BUCKET, "view_metadata");
+    var iceberg = new IcebergRestClient(serverConfig);
+    var request = request("iceberg_view", "spark", "select 1 as id");
+    var created = iceberg.createView(CATALOG_NAME, SCHEMA_NAME, request);
+    String viewsPrefix = viewMetadataRoot + "/__unitystorage/views/";
+    String pointer = created.metadataLocation();
+    assertThat(pointer).startsWith(viewsPrefix + created.metadata().uuid() + "/");
+    var loaded = iceberg.loadView(CATALOG_NAME, SCHEMA_NAME, request.name());
+    assertThat(loaded.metadataLocation()).isEqualTo(pointer);
+    assertThat(loaded.metadata().uuid()).isEqualTo(created.metadata().uuid());
+    assertThat(loaded.config()).isEmpty();
+    assertIcebergApiException(() -> iceberg.createView(CATALOG_NAME, SCHEMA_NAME, request), 409);
+    iceberg.dropView(CATALOG_NAME, SCHEMA_NAME, request.name());
+    assertThat(iceberg.viewExists(CATALOG_NAME, SCHEMA_NAME, request.name())).isFalse();
+
+    String key = URI.create(pointer).getPath().substring(1);
+    try (S3Client admin = storageClient()) {
+      String prefix = URI.create(viewsPrefix).getPath().substring(1);
+      assertThat(admin.listObjectsV2(b -> b.bucket(VIEW_BUCKET).prefix(prefix)).contents())
+          .extracting(S3Object::key)
+          .containsExactly(key);
+      String json = admin.getObjectAsBytes(b -> b.bucket(VIEW_BUCKET).key(key)).asUtf8String();
+      assertThat(ViewMetadataParser.fromJson(json).uuid()).isEqualTo(created.metadata().uuid());
+    }
+    try (S3Client tableReader =
+        sessionClient(vend(Securable.TABLE, "events", /* isWrite= */ false))) {
+      assertDenied(c -> c.getObject(b -> b.bucket(VIEW_BUCKET).key(key)), tableReader);
+    }
+  }
+
   /** Writes an object in the directory {@code name}, with the storage's own key. */
   private void createDirectoryWithFile(String name) {
-    try (S3Client client =
-        s3Client(
-            storage.s3Endpoint(),
-            null,
-            AwsBasicCredentials.create(storage.accessKeyId(), storage.secretAccessKey()))) {
+    try (S3Client client = storageClient()) {
       client.putObject(b -> b.bucket(BUCKET).key(keyOf(name, FILE)), RequestBody.fromString("x"));
     }
   }
@@ -221,6 +265,13 @@ public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
         .build();
   }
 
+  private S3Client storageClient() {
+    return s3Client(
+        storage.s3Endpoint(),
+        null,
+        AwsBasicCredentials.create(storage.accessKeyId(), storage.secretAccessKey()));
+  }
+
   private static S3Client sessionClient(AwsCredentials vended) {
     return s3Client(
         vended.getS3Endpoint(),
@@ -237,11 +288,7 @@ public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
   }
 
   private boolean exists(String key) {
-    try (S3Client client =
-        s3Client(
-            storage.s3Endpoint(),
-            null,
-            AwsBasicCredentials.create(storage.accessKeyId(), storage.secretAccessKey()))) {
+    try (S3Client client = storageClient()) {
       return !client.listObjectsV2(b -> b.bucket(BUCKET).prefix(key)).contents().isEmpty();
     }
   }
