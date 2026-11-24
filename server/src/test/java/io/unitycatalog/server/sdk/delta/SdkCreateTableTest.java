@@ -136,6 +136,17 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                 managedTableRequest("tbl_no_protocol", "s3://test-bucket0/unused").protocol(null)),
         "protocol is required");
 
+    // -------- EXTERNAL protocol without min-reader-version --------
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                externalTableRequest(
+                        "tbl_ext_no_reader_version", "s3://test-bucket0/external-path/no_reader")
+                    .protocol(new DeltaProtocol().minWriterVersion(2))),
+        "protocol.min-reader-version is required.");
+
     // -------- MANAGED without catalogManaged writer feature rejected --------
     DeltaStagingTableResponse stagingNoCm = createStaging("tbl_no_cm");
     assertDeltaInvalidParam(
