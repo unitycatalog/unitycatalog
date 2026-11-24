@@ -1535,6 +1535,7 @@ public class DeltaCommitRepository {
         tableInfoDAO.getUrl());
     uniformFields.ifPresent(
         uf -> DeltaUniformUtils.requireMetadataLocationSubpath(uf.metadataLocation(), tableUri));
+    // validateCommit has already rejected a uniform block on a request without a commit.
     if (commit.getCommitInfo() != null) {
       validateUniformMetadataPresence(session, commit, tableInfoDAO);
     }
