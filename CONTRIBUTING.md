@@ -29,15 +29,19 @@ We generally follow the [Apache Spark Scala Style Guide](https://spark.apache.or
 
 ## Formatting and lint
 
-CI runs these checks on every pull request to `main` (`.github/workflows/lint-check.yml`). Run them before you push:
+CI runs these checks on pull requests. Run the ones for the code you changed before you push:
 
-| Code | Check (what CI runs) | Fix |
-|---|---|---|
-| Java | `build/sbt javafmtCheck` | `build/sbt javafmtAll` |
-| UI (`ui/`) | `cd ui && bun install --frozen-lockfile && bun run test:format` | `cd ui && bun run format` |
-| UI lock file | `cd ui && bun run scripts/clean-bun-lock.ts --check` | `cd ui && bun run scripts/clean-bun-lock.ts` |
+| Code | Check (what CI runs) | Fix | CI workflow (runs when) |
+|---|---|---|---|
+| Java | `build/sbt javafmtCheck` | `build/sbt javafmtAll` | `lint-check.yml` (every pull request to `main`) |
+| Java (server, Java client tests) | Checkstyle with `dev/checkstyle-config.xml`, run by the build: `build/sbt server/checkstyle server/Test/checkstyle client/Test/checkstyle` | Fix what the report lists | `unit-tests.yml` (every pull request), as part of compile and test |
+| UI (`ui/`) | `cd ui && bun install --frozen-lockfile && bun run test:format` | `cd ui && bun run format` | `lint-check.yml` (every pull request to `main`) |
+| UI lock file | `cd ui && bun run scripts/clean-bun-lock.ts --check` | `cd ui && bun run scripts/clean-bun-lock.ts` | `lint-check.yml` (every pull request to `main`) |
+| Python (`ai/`) | `cd ai && ruff check . && ruff format --check .` | `cd ai && ruff check --fix . && ruff format .` | `ucai-core-tests.yml` (pull requests that change `ai/`) |
+| YAML (`ai/`) | `cd ai && yamllint .` | Fix what it reports | `ucai-core-tests.yml` (pull requests that change `ai/`) |
+| Helm chart (`helm/`) | `ct lint --charts helm --validate-maintainers=false --check-version-increment=false` ([chart-testing](https://github.com/helm/chart-testing)) | Fix what it reports | `helm-chart-tests.yml` (pull requests that change the chart or what it runs) |
 
-Compiling a module that has the Java formatter enabled also runs `javafmtAll`, so `build/sbt compile` formats the Java files it builds.
+The `ai/` linters are pinned in `ai/requirements/lint-requirements.lock` (`uv pip install --require-hashes -r requirements/lint-requirements.lock`). Compiling a module that has the Java formatter enabled also runs `javafmtAll`, so `build/sbt compile` formats the Java files it builds.
 
 # Sign your work
 
