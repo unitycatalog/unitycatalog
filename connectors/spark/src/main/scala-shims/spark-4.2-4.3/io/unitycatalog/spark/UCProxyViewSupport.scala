@@ -17,6 +17,7 @@ import io.unitycatalog.client.model.{
 }
 import io.unitycatalog.client.api.TablesApi
 import org.apache.spark.sql.catalyst.analysis.{
+  NoSuchNamespaceException,
   NoSuchTableException,
   NoSuchViewException,
   SchemaCompensation,
@@ -187,6 +188,8 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     } catch {
       case e: ApiException if e.getCode == 409 =>
         throw new ViewAlreadyExistsException(ident)
+      case e: ApiException if UCSingleCatalog.isNamespaceNotFound(e) =>
+        throw new NoSuchNamespaceException(Array(name(), ident.namespace().head))
     }
     loadView(ident)
   }

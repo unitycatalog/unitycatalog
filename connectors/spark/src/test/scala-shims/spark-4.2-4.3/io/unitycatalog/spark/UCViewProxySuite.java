@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
@@ -578,6 +579,21 @@ public class UCViewProxySuite {
 
     assertThatThrownBy(() -> proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), view))
         .isInstanceOf(ViewAlreadyExistsException.class);
+  }
+
+  @Test
+  public void testCreateViewMapsMissingSchemaToNoSuchNamespaceException() throws Exception {
+    View view = plainViewBuilder().build();
+    Identifier ident = Identifier.of(NAMESPACE, "v1");
+    ApiException tableNotFound = UCProxySuite.notFound("TABLE_NOT_FOUND");
+    when(mockTablesApi.createTable(any(CreateTable.class)))
+        .thenThrow(UCProxySuite.notFound("SCHEMA_NOT_FOUND"))
+        .thenThrow(tableNotFound);
+
+    assertThatThrownBy(() -> proxyViews.createView(ident, view))
+        .isInstanceOf(NoSuchNamespaceException.class)
+        .hasMessageContaining("`" + CATALOG_NAME + "`.`" + SCHEMA_NAME + "`");
+    assertThatThrownBy(() -> proxyViews.createView(ident, view)).isSameAs(tableNotFound);
   }
 
   @Test

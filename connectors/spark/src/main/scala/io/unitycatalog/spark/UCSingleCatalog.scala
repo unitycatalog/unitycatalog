@@ -332,6 +332,8 @@ class UCSingleCatalog
     } catch {
       case e: ApiException if UCSingleCatalog.isTableAlreadyExists(e) =>
         throw new TableAlreadyExistsException(ident)
+      case e: ApiException if UCSingleCatalog.isNamespaceNotFound(e) =>
+        throw new NoSuchNamespaceException(Array(name(), ident.namespace().head))
     }
     val stagingLocation = stagingTableInfo.getStagingLocation
     val stagingTableId = stagingTableInfo.getId
@@ -630,6 +632,7 @@ class UCSingleCatalog
     if (isDeltaOrIcebergPathTable(ident)) {
       return stagingCatalog.stageReplace(ident, schema, partitions, properties)
     }
+    // Reject a name without a schema before the Delta API hand-off. Delta reports nested names.
     if (ident.namespace().isEmpty) UCSingleCatalog.checkSingleLevelNamespace(ident)
     rejectExternalReplace("REPLACE TABLE", ident, properties)
     if (shouldDelegateReplaceToDeltaApi(properties)) {
@@ -671,6 +674,7 @@ class UCSingleCatalog
     if (isDeltaOrIcebergPathTable(ident)) {
       return stagingCatalog.stageCreateOrReplace(ident, schema, partitions, properties)
     }
+    // Reject a name without a schema before the Delta API hand-off. Delta reports nested names.
     if (ident.namespace().isEmpty) UCSingleCatalog.checkSingleLevelNamespace(ident)
     rejectExternalReplace("CREATE OR REPLACE TABLE", ident, properties)
     if (shouldDelegateReplaceToDeltaApi(properties)) {
@@ -887,6 +891,16 @@ object UCSingleCatalog extends Logging {
     e.getCode == 409 || hasErrorCode(e, "TABLE_ALREADY_EXISTS")
 
   /**
+   * Whether a UC REST call failed because its catalog or schema does not exist. Other 404s, such
+   * as `TABLE_NOT_FOUND` for a missing staging table, are not.
+   *
+   * @param e the error from a UC REST call
+   * @return true when the error code is `SCHEMA_NOT_FOUND` or `CATALOG_NOT_FOUND`
+   */
+  private[spark] def isNamespaceNotFound(e: ApiException): Boolean =
+    hasErrorCode(e, "SCHEMA_NOT_FOUND") || hasErrorCode(e, "CATALOG_NOT_FOUND")
+
+  /**
    * HTTP statuses that mean the path is not usable via UC (unmanaged / no permission) and may
    * fall back to ambient Hadoop credentials. 400 covers OSS {@code FAILED_PRECONDITION} when no
    * external location or bucket config covers the path.
@@ -1091,7 +1105,7 @@ private[spark] class UCProxy(
         tablesApi.listTables(
           catalogName, schemaName, /* limit */ 0, pageToken, /* includeBrowse = */ false)
       } catch {
-        case e: ApiException if e.getCode == 404 =>
+        case e: ApiException if UCSingleCatalog.isNamespaceNotFound(e) =>
           throw new NoSuchNamespaceException(Array(catalogName, schemaName))
       }
       tables ++= response.getTables.asScala
@@ -1312,7 +1326,7 @@ private[spark] class UCProxy(
       // RelationCatalog requires it when a view (or a table created concurrently) holds `ident`.
       case e: ApiException if UCSingleCatalog.isTableAlreadyExists(e) =>
         throw new TableAlreadyExistsException(ident)
-      case e: ApiException if e.getCode == 404 =>
+      case e: ApiException if UCSingleCatalog.isNamespaceNotFound(e) =>
         throw new NoSuchNamespaceException(Array(this.name, ident.namespace().head))
     }
     invalidateTable(ident)

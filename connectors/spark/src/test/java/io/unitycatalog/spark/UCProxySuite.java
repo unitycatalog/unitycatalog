@@ -678,10 +678,20 @@ public class UCProxySuite {
     verifyNoInteractions(mockTablesApi, mockSchemasApi);
   }
 
-  /** A schema missing on the server, such as a dropped default, is reported as a missing schema. */
-  @Test
-  public void testMissingSchemaIsReportedAsNoSuchNamespace() throws Exception {
-    ApiException notFound = new ApiException(404, "Not Found");
+  /**
+   * A catalog or schema missing on the server, such as a dropped default, is reported as a missing
+   * schema. Another 404, such as a missing staging table, stays an ApiException.
+   */
+  @ParameterizedTest
+  @CsvSource({
+    "SCHEMA_NOT_FOUND, true",
+    "CATALOG_NOT_FOUND, true",
+    "TABLE_NOT_FOUND, false",
+    ", false"
+  })
+  public void testMissingSchemaIsReportedAsNoSuchNamespace(
+      String errorCode, boolean namespaceMissing) throws Exception {
+    ApiException notFound = notFound(errorCode);
     when(mockTablesApi.listTables(eq(CATALOG_NAME), eq("default"), anyInt(), any(), anyBoolean()))
         .thenThrow(notFound);
     when(mockTablesApi.createTable(any())).thenThrow(notFound);
@@ -693,10 +703,22 @@ public class UCProxySuite {
             () -> proxy.createTable(ident, columns, new Transform[0], PARQUET_AT_LOCATION));
 
     for (ThrowingCallable call : calls) {
-      assertThatThrownBy(call)
-          .isInstanceOf(NoSuchNamespaceException.class)
-          .hasMessageContaining("`" + CATALOG_NAME + "`.`default`");
+      if (namespaceMissing) {
+        assertThatThrownBy(call)
+            .isInstanceOf(NoSuchNamespaceException.class)
+            .hasMessageContaining("`" + CATALOG_NAME + "`.`default`");
+      } else {
+        assertThatThrownBy(call).isSameAs(notFound);
+      }
     }
+  }
+
+  static ApiException notFound(String errorCode) {
+    String body =
+        errorCode == null
+            ? null
+            : "{\"error_code\":\"" + errorCode + "\",\"message\":\"Not found\"}";
+    return new ApiException(404, "Not Found", null, body);
   }
 
   private static ApiException badRequest(String body) {
