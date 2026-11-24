@@ -326,6 +326,21 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .hibernateConfigurator(hibernateConfigurator)
                     .build())
         .hasMessageContaining("No token signing key file");
+
+    // With a key file set, the server generates no key of its own in the configuration folder.
+    Path folder = configurationFolder.resolve("with-key-file");
+    properties.setProperty(
+        "server.token-signing-private-key-file",
+        configurationFolder.resolve("private_key.der").toString());
+    UnityCatalogServer.builder()
+        .port(0)
+        .serverProperties(new ServerProperties(properties))
+        .hibernateConfigurator(hibernateConfigurator)
+        .configurationFolder(folder)
+        .build()
+        .close();
+    assertThat(folder.resolve("private_key.der")).doesNotExist();
+    assertThat(folder.resolve("public_key.der")).doesNotExist();
   }
 
   @Test
