@@ -158,8 +158,10 @@ public class UCSingleCatalogStagingTableTest {
     verify(mockDelegate).tableExists(nested);
   }
 
-  @Test
-  public void testEmptyNamespaceIsRejectedBeforeDelegate() throws Exception {
+  @ParameterizedTest(name = "deltaApiReady={0}")
+  @ValueSource(booleans = {true, false})
+  public void testEmptyNamespaceIsRejectedBeforeDelegate(boolean deltaApiReady) throws Exception {
+    setDeltaApiReady(deltaApiReady);
     Identifier unqualified = Identifier.of(new String[0], "t");
     Column[] columns = {Column.create("id", DataTypes.IntegerType)};
     List<ThrowingCallable> calls =

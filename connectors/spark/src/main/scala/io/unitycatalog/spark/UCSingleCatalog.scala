@@ -242,10 +242,7 @@ class UCSingleCatalog
    * Delta and Iceberg path identifiers remain delegated so DeltaCatalog can resolve
    * `delta.`path`` via `loadPathTable` and `iceberg.`path`` via `newIcebergPathTable`.
    * An empty namespace, as in `<catalog>.t`, is reported as `NoSuchTableException` rather than
-   * rejected, because that is the only exception Spark treats as a missing table. Every table load
-   * comes through here, including reads, time travel, write targets and `loadRelation`, so SELECT,
-   * DESCRIBE, INSERT and the other table commands report `TABLE_OR_VIEW_NOT_FOUND`, and
-   * `DROP TABLE IF EXISTS` stays a no-op where Spark resolves it through `loadRelation`. Nested
+   * rejected, because that is the only exception Spark treats as a missing table. Nested
    * namespaces fail with [[UCSingleCatalog.checkSingleLevelNamespace]] on load so they are not
    * mistaken for a missing table.
    */
@@ -256,7 +253,7 @@ class UCSingleCatalog
     if (ident.namespace().isEmpty) {
       throw new NoSuchTableException(ident)
     }
-    UCSingleCatalog.checkSingleLevelNamespace(ident)
+    UCSingleCatalog.checkSingleLevelNamespace(ident.namespace())
     if (!UCSingleCatalog.isAddressableTableName(ident)) {
       throw new NoSuchTableException(ident)
     }
@@ -264,7 +261,7 @@ class UCSingleCatalog
 
   /**
    * Parquet-style path identifiers are absent (so Spark can fall through to SQL-on-file). Empty
-   * and nested names still go to the delegate: Delta 4.3+ rejects nested names client-side with
+   * and nested names still go to the delegate: Delta rejects nested names client-side with
    * IllegalArgumentException, which Spark DROP/EXISTS tests expect. Do not throw
    * [[UCSingleCatalog.checkSingleLevelNamespace]] here.
    */
@@ -633,6 +630,7 @@ class UCSingleCatalog
     if (isDeltaOrIcebergPathTable(ident)) {
       return stagingCatalog.stageReplace(ident, schema, partitions, properties)
     }
+    if (ident.namespace().isEmpty) UCSingleCatalog.checkSingleLevelNamespace(ident)
     rejectExternalReplace("REPLACE TABLE", ident, properties)
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer load + augment to the Delta-side `buildReplaceProps`. UCSingleCatalog no longer
@@ -673,6 +671,7 @@ class UCSingleCatalog
     if (isDeltaOrIcebergPathTable(ident)) {
       return stagingCatalog.stageCreateOrReplace(ident, schema, partitions, properties)
     }
+    if (ident.namespace().isEmpty) UCSingleCatalog.checkSingleLevelNamespace(ident)
     rejectExternalReplace("CREATE OR REPLACE TABLE", ident, properties)
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer existence-probe + branch (create-staging vs replace) to the Delta catalog.
@@ -1088,8 +1087,13 @@ private[spark] class UCProxy(
     val tables = ArrayBuffer.empty[UCTableInfo]
     var pageToken: String = null
     do {
-      val response = tablesApi.listTables(
-        catalogName, schemaName, /* limit */ 0, pageToken, /* includeBrowse = */ false)
+      val response = try {
+        tablesApi.listTables(
+          catalogName, schemaName, /* limit */ 0, pageToken, /* includeBrowse = */ false)
+      } catch {
+        case e: ApiException if e.getCode == 404 =>
+          throw new NoSuchNamespaceException(Array(catalogName, schemaName))
+      }
       tables ++= response.getTables.asScala
       pageToken = response.getNextPageToken
     } while (pageToken != null && pageToken.nonEmpty)
@@ -1308,6 +1312,8 @@ private[spark] class UCProxy(
       // RelationCatalog requires it when a view (or a table created concurrently) holds `ident`.
       case e: ApiException if UCSingleCatalog.isTableAlreadyExists(e) =>
         throw new TableAlreadyExistsException(ident)
+      case e: ApiException if e.getCode == 404 =>
+        throw new NoSuchNamespaceException(Array(this.name, ident.namespace().head))
     }
     invalidateTable(ident)
     loadTable(ident)

@@ -41,6 +41,7 @@ import java.util.stream.Collectors;
 import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.catalyst.catalog.CatalogTable;
@@ -675,6 +676,27 @@ public class UCProxySuite {
         .hasMessage(
             "Empty namespaces are not supported: name a schema for t1, as in catalog.schema.t1");
     verifyNoInteractions(mockTablesApi, mockSchemasApi);
+  }
+
+  /** A schema missing on the server, such as a dropped default, is reported as a missing schema. */
+  @Test
+  public void testMissingSchemaIsReportedAsNoSuchNamespace() throws Exception {
+    ApiException notFound = new ApiException(404, "Not Found");
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq("default"), anyInt(), any(), anyBoolean()))
+        .thenThrow(notFound);
+    when(mockTablesApi.createTable(any())).thenThrow(notFound);
+    Identifier ident = Identifier.of(new String[] {"default"}, "t1");
+    Column[] columns = {Column.create("c", DataTypes.StringType)};
+    List<ThrowingCallable> calls =
+        List.of(
+            () -> proxy.listTables(new String[] {"default"}),
+            () -> proxy.createTable(ident, columns, new Transform[0], PARQUET_AT_LOCATION));
+
+    for (ThrowingCallable call : calls) {
+      assertThatThrownBy(call)
+          .isInstanceOf(NoSuchNamespaceException.class)
+          .hasMessageContaining("`" + CATALOG_NAME + "`.`default`");
+    }
   }
 
   private static ApiException badRequest(String body) {
