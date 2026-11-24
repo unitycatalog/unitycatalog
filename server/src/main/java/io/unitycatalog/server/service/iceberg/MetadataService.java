@@ -78,8 +78,8 @@ public class MetadataService {
   }
 
   /**
-   * Best-effort cleanup of a metadata file that lost a commit race or whose commit failed,
-   * constrained to the persisted table location.
+   * Best-effort cleanup of a metadata file whose commit was rejected, such as one that lost a
+   * commit race, constrained to the persisted table location.
    */
   public void deleteTableMetadata(
       NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
