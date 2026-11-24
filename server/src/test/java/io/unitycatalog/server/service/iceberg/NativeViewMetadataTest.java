@@ -42,6 +42,8 @@ class NativeViewMetadataTest {
             "1",
             "view.query.out.col.0",
             "id",
+            "view.schemaMode",
+            "COMPENSATION",
             "team",
             "analytics");
     var info = view(properties);
@@ -55,8 +57,8 @@ class NativeViewMetadataTest {
     assertThat(metadata.schema().findField("declared_id").type()).isEqualTo(Types.LongType.get());
     assertThat(metadata.currentVersion().representations()).hasSize(1);
     assertThat(ViewMetadataService.sparkSql(metadata.currentVersion()))
-        .isEqualTo(
-            "SELECT view_source.`id` FROM (\nselect cast(1 as bigint) as id\n) AS view_source");
+        .startsWith("SELECT COALESCE(TRY_CAST(struct(*).`id` AS BIGINT)")
+        .endsWith(" AS `id` FROM (\nselect cast(1 as bigint) as id\n\n) AS view_source");
     assertThat(metadata.properties())
         .containsExactlyInAnyOrderEntriesOf(
             Map.of("team", "analytics", "comment", "a native view"));
@@ -73,9 +75,10 @@ class NativeViewMetadataTest {
     assertThat(
             ViewMetadataService.sparkSql(
                 NativeViewMetadata.from(info, "file:/views/").currentVersion()))
-        .isEqualTo(
-            "SELECT view_source.`select` FROM (\n"
-                + "SELECT /* note */ 1 AS `select` -- comment\n\n"
+        .startsWith("SELECT COALESCE(TRY_CAST(struct(*).`select` AS INT)")
+        .endsWith(
+            " AS `select` FROM (\n"
+                + "SELECT /* note */ 1 AS `select` -- comment\n\n\n"
                 + ") AS view_source");
   }
 

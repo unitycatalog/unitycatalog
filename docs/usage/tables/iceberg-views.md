@@ -10,18 +10,28 @@ View support defaults to disabled. Set both properties in `etc/conf/server.prope
 
 ```properties
 server.iceberg-view.enabled=true
-server.iceberg-view.metadata-root=/absolute/path/to/private/view-metadata
+server.iceberg-view.metadata-root=s3://private-view-metadata
 ```
 
-Enable this option on every server that writes to the same catalog database after upgrading them all.
-An enabled server requires a metadata root at startup.
-Table and view creates and renames then take a lock on the parent schema before checking a name.
-Existing duplicate names are left for the operator to resolve.
+Upgrade all servers that write to the same catalog database, then enable views on all of them.
+With views enabled, table and view creates and renames lock the parent schema before checking
+a name. Existing duplicate names still require manual resolution.
 
-The metadata directory must be durable and owned exclusively by the server. Multiple servers need
-the same shared filesystem and absolute path. Back it up with the catalog database: it holds SQL
-and schema metadata that the database references. Clients receive the metadata inline.
-Native view snapshots also require atomic renames within that directory.
+Use the same durable metadata root on every server and keep its location stable. For S3,
+dedicate a bucket to view metadata. Register the bucket as an admin-only external location
+with a [server storage credential](../../server/aws.md) that can read, write, and delete
+objects under `<root>/__unitystorage/views/`. Keep client IAM roles and keys, user-accessible
+external locations, and table or volume storage out of that bucket. The server returns
+metadata inline to Iceberg clients.
+
+For a local filesystem, set the root to an absolute path or an absolute `file:` URI without a
+host. Restrict the directory to the server and mount it at the same path on every replica. The
+filesystem must support atomic renames to publish snapshots of UC-created views.
+
+Back up the metadata root with the catalog database. UC stores the view identity, native
+definition, and grants in the database. For an Iceberg-created view, the row also points to
+the file returned on an Iceberg load. It preserves the submitted SQL, resolution context,
+version timestamp, and summary.
 
 ## API
 
@@ -52,7 +62,13 @@ Drop retains metadata files.
 
 ## Reading native UC views
 
-Existing UC views are exposed with dialect `spark`, their canonical UUID and output schema, and
+Iceberg REST can read ordinary UC views created through the tables API without saved Spark
+session settings. Spark 4.2 SQL `CREATE VIEW` captures ANSI mode and session time zone, even
+when they have their default values. Iceberg's Spark reader evaluates SQL in its own session
+and cannot apply those saved settings. Loading such a view through Iceberg returns HTTP 400.
+Query these views through the UC Spark connector.
+
+Supported UC views are exposed with dialect `spark`, their canonical UUID and output schema, and
 their saved catalog and namespace context. The querying engine must have any saved catalog name
 configured. Without a saved context, unqualified names resolve in the view's UC schema under the
 catalog used to load the view. The engine evaluates the SQL and obtains each base table's
@@ -66,16 +82,25 @@ regular expression depending on the reader's settings. The SQL may include one t
 Other semicolons, including those in strings and comments, and Spark variable substitutions
 (`${...}`) are rejected.
 
+For views with the default `COMPENSATION` schema mode, the projected SQL converts `INT` and
+`BIGINT` outputs to their declared types. A null stays null, and an out-of-range value raises
+an error even when the reader disables ANSI mode. Other output types use Iceberg's safe
+upcasts. Other saved schema modes and non-default string collations return HTTP 400.
+
 Reads leave the native view's SQL, columns, properties, owner, grants, timestamps, and stored
 metadata pointer unchanged. The server materializes a reusable immutable metadata file named by
-its contents. Missing native snapshots can be rebuilt on a later read. They represent the current
-native definition and do not expose native version history. Files are retained after deletion;
-failed writes can also leave temporary files.
+its contents. On load, UC rebuilds a missing or damaged snapshot from the current UC
+definition at the same location. It reuses a matching file without rewriting it. Snapshots
+represent the current definition and do not expose native version history.
 
-Saved Spark session settings and other resolution properties that Iceberg cannot carry return a
-bad-request error. Native types without an exact Iceberg representation, including `byte`, `short`,
-and `char`, are rejected. Metric views are excluded. Native-created views remain outside IRC drop;
-delete them through the native `/tables` API.
+Operators can reclaim old native snapshots after clients have finished using their returned
+locations. Limit cleanup to files named `native-<64 hex digits>.metadata.json` in view UUID
+directories. These files can also be removed after a native view is deleted. Retain the
+UUID-named metadata files for Iceberg-created views. Their catalog rows reference them directly.
 
-Listing, replacement, property updates, rename/register, cloud metadata storage, and secure or
-definer-rights execution are not included.
+Native types without an exact Iceberg representation, including `byte`, `short`, and `char`,
+return HTTP 400. Metric views are excluded. An authorized Iceberg DROP of a UC-created view
+returns HTTP 400. Delete it through the UC `/tables` API.
+
+Listing, replacement, property updates, rename/register, and secure or definer-rights execution
+are outside the scope of this release.

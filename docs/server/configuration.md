@@ -77,6 +77,10 @@ The server config file is at the location `etc/conf/server.properties` (relative
 - `server.iceberg-table.enabled`: Turns on the write endpoints of the [Iceberg REST catalog](../usage/api/iceberg.md),
     such as creating, committing to, renaming and dropping tables. Defaults to `true`. Set it to `false` to reject
     namespace and table changes through the Iceberg REST catalog. Tables that were already created stay readable.
+- `server.iceberg-view.enabled`: Enables the experimental [Iceberg REST view endpoints](../usage/tables/iceberg-views.md).
+    Defaults to `false`. Configure it consistently on all servers that write to the same catalog database.
+- `server.iceberg-view.metadata-root`: An absolute local path, absolute `file:` URI, or private `s3://` location for
+    Iceberg view metadata. An enabled server requires this setting at startup. See [view storage configuration](../usage/tables/iceberg-views.md#configuration).
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more

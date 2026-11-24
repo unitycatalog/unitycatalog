@@ -163,7 +163,8 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
             CATALOG_NAME,
             SCHEMA_NAME,
             "native_read",
-            "select id as query_id, array(id) as query_values from native_source where id > 1");
+            "select id as query_id, array(id) as query_values from native_source where id > 1"
+                + " -- trailing comment \\");
     request
         .columns(
             List.of(
@@ -214,11 +215,11 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
     String view = CATALOG_NAME + "." + SCHEMA_NAME + ".saved_order";
     sql("CREATE NAMESPACE IF NOT EXISTS %s", sourceSchema);
     sql(
-        "CREATE TABLE %s (a BIGINT, b BIGINT) USING ICEBERG LOCATION '%s'",
+        "CREATE TABLE %s (a BIGINT, `current_user` STRING) USING ICEBERG LOCATION '%s'",
         source, testDirectoryRoot.resolve("reordered").toUri());
     var api = new TablesApi(createApiClient(serverConfig));
     try {
-      sql("INSERT INTO %s VALUES (10, 20)", source);
+      sql("INSERT INTO %s VALUES (10, 'saved user')", source);
       var request =
           nativeRequest(
               CATALOG_NAME,
@@ -229,7 +230,14 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
           .columns(
               List.of(
                   bigintColumn("first_value", 0),
-                  bigintColumn("second_value", 1),
+                  new ColumnInfo()
+                      .name("second_value")
+                      .position(1)
+                      .nullable(true)
+                      .typeName(ColumnTypeName.STRING)
+                      .typeText("string")
+                      .typeJson(
+                          "{\"name\":\"second_value\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}}"),
                   bigintColumn("last_value", 2)))
           .properties(
               Map.of(
@@ -238,17 +246,18 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
                   "view.query.out.col.0",
                   "a",
                   "view.query.out.col.1",
-                  "b",
+                  "current_user",
                   "view.query.out.col.2",
                   "c"));
       api.createTable(request);
       try {
         String query = "SELECT first_value, second_value, last_value FROM " + view;
-        var expected = RowFactory.create(10L, 20L, 30L);
+        var expected = RowFactory.create(10L, "saved user", 30L);
         assertThat(sql(query)).containsExactly(expected);
-        sql("ALTER TABLE %s ALTER COLUMN b FIRST", source);
+        sql("ALTER TABLE %s ALTER COLUMN `current_user` FIRST", source);
         sql("REFRESH TABLE %s", source);
-        assertThat(sql("SELECT * FROM %s", source)).containsExactly(RowFactory.create(20L, 10L));
+        assertThat(sql("SELECT * FROM %s", source))
+            .containsExactly(RowFactory.create("saved user", 10L));
         assertThat(sql(query)).containsExactly(expected);
         var nativeSession = nativeSession();
         assertThat(nativeSession.sql(query).collectAsList()).containsExactly(expected);
@@ -263,10 +272,89 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
         assertThatThrownBy(() -> nativeSession.sql(query).collectAsList())
             .isInstanceOf(AnalysisException.class)
             .hasMessageContaining("INCOMPATIBLE_VIEW_SCHEMA_CHANGE");
+
+        // A missing output must not become the Spark built-in current_user.
+        sql("ALTER TABLE %s DROP COLUMN c", source);
+        sql("ALTER TABLE %s DROP COLUMN `current_user`", source);
+        sql("REFRESH TABLE %s", source);
+        assertThatThrownBy(() -> sql(query))
+            .isInstanceOf(AnalysisException.class)
+            .hasMessageContaining("FIELD_NOT_FOUND")
+            .hasMessageContaining("`current_user`");
+
+        // A missing output must not resolve to a struct field or a reader session variable.
+        sql("ALTER TABLE %s ADD COLUMN `current_user` STRING", source);
+        sql("DECLARE VARIABLE a BIGINT DEFAULT 42");
+        sql("ALTER TABLE %s ADD COLUMN view_source STRUCT<a: BIGINT>", source);
+        sql("ALTER TABLE %s DROP COLUMN a", source);
+        sql("REFRESH TABLE %s", source);
+        assertThatThrownBy(() -> sql(query))
+            .isInstanceOf(AnalysisException.class)
+            .hasMessageContaining("FIELD_NOT_FOUND")
+            .hasMessageContaining("`a`");
       } finally {
         api.deleteTable(view);
       }
     } finally {
+      sql("DROP TABLE IF EXISTS %s", source);
+    }
+  }
+
+  @Test
+  public void compensatesIntegerOutputsAndRejectsOverflowIndependentlyOfReaderAnsi()
+      throws Exception {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME, CATALOG_NAME2);
+    String sourceSchema = CATALOG_NAME2 + "." + SCHEMA_NAME;
+    sql("CREATE NAMESPACE IF NOT EXISTS %s", sourceSchema);
+    String source = sourceSchema + ".widened_source";
+    String view = CATALOG_NAME + "." + SCHEMA_NAME + ".compensated";
+    sql(
+        "CREATE TABLE %s (id INT, amount DECIMAL(21, 1)) USING ICEBERG LOCATION '%s'",
+        source, testDirectoryRoot.resolve("widened").toUri());
+    var tables = new TablesApi(createApiClient(serverConfig));
+    var id =
+        new ColumnInfo()
+            .name("id")
+            .position(0)
+            .nullable(true)
+            .typeName(ColumnTypeName.INT)
+            .typeText("int")
+            .typeJson("{\"name\":\"id\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}");
+    try {
+      tables.createTable(
+          nativeRequest(
+                  CATALOG_NAME, SCHEMA_NAME, "compensated", "SELECT id, amount FROM " + source)
+              .columns(List.of(id, bigintColumn("amount", 1)))
+              .properties(Map.of("view.schemaMode", "COMPENSATION")));
+      sql("ALTER TABLE %s ALTER COLUMN id TYPE BIGINT", source);
+      sql("INSERT INTO %s VALUES (2147483647, -3.9), (-2147483648, 3.9), (NULL, NULL)", source);
+      var nativeReader = nativeSession();
+      for (var reader : List.of(session, nativeReader)) {
+        for (String ansi : List.of("true", "false")) {
+          reader.conf().set("spark.sql.ansi.enabled", ansi);
+          assertThat(
+                  reader.sql("SELECT * FROM " + view + " ORDER BY id NULLS LAST").collectAsList())
+              .containsExactly(
+                  RowFactory.create(Integer.MIN_VALUE, 3L),
+                  RowFactory.create(Integer.MAX_VALUE, -3L),
+                  RowFactory.create(null, null));
+        }
+      }
+      sql("INSERT INTO %s VALUES (2147483648L, 9223372036854775808.0)", source);
+      for (var reader : List.of(session, nativeReader)) {
+        reader.sql("REFRESH TABLE " + source).collectAsList();
+        for (String ansi : List.of("true", "false")) {
+          reader.conf().set("spark.sql.ansi.enabled", ansi);
+          for (String column : List.of("id", "amount")) {
+            assertThatThrownBy(
+                    () -> reader.sql("SELECT " + column + " FROM " + view).collectAsList())
+                .hasStackTraceContaining(
+                    reader == session ? "Cannot cast native view output" : "CAST_OVERFLOW");
+          }
+        }
+      }
+    } finally {
+      tables.deleteTable(view);
       sql("DROP TABLE IF EXISTS %s", source);
     }
   }
@@ -284,10 +372,9 @@ public class IcebergViewLifecycleIntegrationTest extends BaseSparkIntegrationTes
     var tables = new TablesApi(createApiClient(serverConfig));
     sql("INSERT INTO %s VALUES (42)", source);
     tables.createTable(
-            nativeRequest(
-                    CATALOG_NAME, SCHEMA_NAME, "local_view", "SELECT source_id FROM local_source")
-                .properties(
-                    Map.of("view.query.out.numCols", "1", "view.query.out.col.0", "source_id")));
+        nativeRequest(CATALOG_NAME, SCHEMA_NAME, "local_view", "SELECT source_id FROM local_source")
+            .properties(
+                Map.of("view.query.out.numCols", "1", "view.query.out.col.0", "source_id")));
     try {
       assertThat(sql("SELECT id FROM %s.local_view", schema))
           .extracting(row -> row.getLong(0))

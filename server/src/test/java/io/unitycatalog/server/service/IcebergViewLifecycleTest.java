@@ -6,6 +6,7 @@ import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
@@ -28,6 +29,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.service.iceberg.IcebergSchemaConverter;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -43,7 +45,9 @@ import java.util.UUID;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
+import org.apache.iceberg.exceptions.ServiceFailureException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.RESTCatalog;
 import org.apache.iceberg.rest.auth.OAuth2Properties;
@@ -112,12 +116,16 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
                       Types.NestedField.optional(1, "id", Types.LongType.get())))
               .withDefaultNamespace(Namespace.of(NS))
               .withDefaultCatalog(CAT)
+              .withProperty("comment", "View created through Iceberg REST")
               .withQuery("spark", "select cast(1 as bigint) as id")
               .create();
       var nativeView = nativeApi.getTable(CAT + "." + NS + ".v", true, false, false);
       assertThat(nativeView.getTableType()).isEqualTo(TableType.VIEW);
       assertThat(nativeView.getTableId()).isEqualTo(created.uuid().toString());
       assertThat(nativeView.getViewDefinition()).isEqualTo("select cast(1 as bigint) as id");
+      assertThat(nativeView.getComment()).isEqualTo("View created through Iceberg REST");
+      assertThat(nativeView.getProperties())
+          .containsEntry("view.catalogAndNamespace.numParts", "2");
       assertThat(nativeView.getColumns()).extracting(ColumnInfo::getName).containsExactly("id");
       var loaded = client.loadView(CAT, NS, "v");
       String bytes = Files.readString(Path.of(URI.create(loaded.metadataLocation())));
@@ -138,9 +146,53 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
           () -> client.loadView(CAT, NS, "v"), 404, NoSuchViewException.class, "v");
       assertThatThrownBy(() -> nativeApi.getTable(CAT + "." + NS + ".v", true, false, false))
           .isInstanceOf(ApiException.class);
-      assertThat(
-              client.createView(CAT, NS, request("v", "spark", "select 1 as id")).metadata().uuid())
-          .isNotEqualTo(created.uuid().toString());
+      var recreated = client.createView(CAT, NS, request("v", "spark", "select 1 as id"));
+      assertThat(recreated.metadata().uuid()).isNotEqualTo(created.uuid().toString());
+      Path recreatedFile = Path.of(URI.create(recreated.metadataLocation()));
+      String recreatedJson = Files.readString(recreatedFile);
+      nativeApi.deleteTable(CAT + "." + NS + ".v");
+      assertThat(catalog.viewExists(id)).isFalse();
+      assertThat(Files.readString(recreatedFile)).isEqualTo(recreatedJson);
+      nativeApi.createTable(nativeRequest(CAT, NS, "v", "select cast(1 as bigint) as id"));
+      assertThatThrownBy(() -> catalog.dropView(id))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("UC Tables API");
+      assertThat(catalog.viewExists(id)).isTrue();
+    }
+  }
+
+  @Test
+  public void registrationRejectsADifferentSchemaId() {
+    var tables =
+        new Repositories(
+                testDatabase.sessionFactory(),
+                new ServerProperties(serverProperties),
+                cloudCredentialVendor)
+            .getTableRepository();
+    var create =
+        new io.unitycatalog.server.model.CreateTable()
+            .catalogName(CAT)
+            .schemaName(NS)
+            .name("v")
+            .tableType(io.unitycatalog.server.model.TableType.VIEW)
+            .viewDefinition("select 1 as id")
+            .columns(
+                IcebergSchemaConverter.toColumnInfos(
+                    request("v", "spark", "select 1 as id").schema()));
+    UUID viewId = UUID.randomUUID();
+    var context = ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/"));
+    try (var ignored = context.push()) {
+      var error =
+          assertThrows(
+              BaseException.class,
+              () ->
+                  tables.createViewForIceberg(
+                      create, UUID.randomUUID(), viewId, "file:/view.json"));
+      assertThat(error.getErrorCode()).isEqualTo(ErrorCode.SCHEMA_NOT_FOUND);
+      assertThat(error).hasMessage("Schema not found: " + CAT + "." + NS);
+    }
+    try (var session = testDatabase.sessionFactory().openSession()) {
+      assertThat(session.get(TableInfoDAO.class, viewId)).isNull();
     }
   }
 
@@ -279,6 +331,26 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
   }
 
   @Test
+  public void corruptStoredViewMetadataReturnsAServerError() throws Exception {
+    var created = client.createView(CAT, NS, request("v", "spark", "select 1 as id"));
+    Path file = Path.of(URI.create(created.metadataLocation()));
+    for (String corrupt : List.of("{", "{}")) {
+      Files.writeString(file, corrupt);
+      assertIcebergApiException(
+          () -> client.loadView(CAT, NS, "v"),
+          500,
+          ServiceFailureException.class,
+          "Could not read view metadata");
+    }
+    Files.delete(file);
+    assertIcebergApiException(
+        () -> client.loadView(CAT, NS, "v"),
+        500,
+        ServiceFailureException.class,
+        "Invalid persisted view metadata location");
+  }
+
+  @Test
   public void failedMetadataWriteDoesNotPublishAView() throws Exception {
     Path root = testDirectoryRoot.resolve("view_metadata");
     Files.writeString(root, "not a directory");
@@ -331,11 +403,13 @@ public class IcebergViewLifecycleTest extends BaseServerTest {
                       .getIcebergViewMetadataLocation())
               .isNull();
         }
+        assertIcebergApiException(
+            () -> client.dropView(CAT, NS, name), 400, BadRequestException.class, "UC Tables API");
       } else {
         assertThat(client.viewExists(CAT, NS, name)).isFalse();
         assertIcebergApiException(() -> client.loadView(CAT, NS, name), 404);
+        assertIcebergApiException(() -> client.dropView(CAT, NS, name), 404);
       }
-      assertIcebergApiException(() -> client.dropView(CAT, NS, name), 404);
       assertThat(nativeApi.getTable(CAT + "." + NS + "." + name, true, false, false))
           .isEqualTo(before);
     }

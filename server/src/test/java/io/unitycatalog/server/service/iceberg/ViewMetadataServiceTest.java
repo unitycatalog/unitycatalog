@@ -2,10 +2,12 @@ package io.unitycatalog.server.service.iceberg;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.utils.IcebergViewTestUtils;
 import java.net.URI;
 import java.nio.file.FileAlreadyExistsException;
@@ -31,6 +33,7 @@ import org.mockito.MockedStatic;
 
 class ViewMetadataServiceTest {
   @TempDir Path root;
+  private final FileOperationsImpl files = new FileOperationsImpl(mock(), mock());
 
   private TableInfo nativeView() {
     var request = IcebergViewTestUtils.request("v", "spark", "select 1 as id");
@@ -45,26 +48,27 @@ class ViewMetadataServiceTest {
   }
 
   @Test
-  void nativeSnapshotsAreStableRebuildableAndRejectCorruption() throws Exception {
-    var store = new ViewMetadataService(root.toString());
+  void nativeSnapshotsAreReusedAndRepairedFromTheUcDefinition() throws Exception {
+    var store = new ViewMetadataService(root.toString(), files);
     var info = nativeView();
     var first = store.readNative(info);
     Path file = Path.of(URI.create(first.metadataFileLocation()));
     String bytes = Files.readString(file);
+    Files.setLastModifiedTime(file, java.nio.file.attribute.FileTime.fromMillis(123_000L));
+    var modified = Files.getLastModifiedTime(file);
     assertThat(store.readNative(info).metadataFileLocation())
         .isEqualTo(first.metadataFileLocation());
+    assertThat(Files.getLastModifiedTime(file)).isEqualTo(modified);
     Files.delete(file);
     assertThat(store.readNative(info).metadataFileLocation())
         .isEqualTo(first.metadataFileLocation());
     assertThat(Files.readString(file)).isEqualTo(bytes);
-    Files.writeString(file, bytes.replace("select 1 as id", "select 2 as id"));
-    assertThatThrownBy(() -> store.readNative(info))
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining("inconsistent");
-    Files.writeString(file, "{");
-    assertThatThrownBy(() -> store.readNative(info))
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining("materialize");
+    for (String damaged : List.of(bytes.replace("select 1 as id", "select 2 as id"), "{")) {
+      Files.writeString(file, damaged);
+      assertThat(store.readNative(info).metadataFileLocation())
+          .isEqualTo(first.metadataFileLocation());
+      assertThat(Files.readString(file)).isEqualTo(bytes);
+    }
     info.setViewDefinition("select 3 as id");
     assertThat(store.readNative(info).metadataFileLocation())
         .isNotEqualTo(first.metadataFileLocation());
@@ -72,7 +76,7 @@ class ViewMetadataServiceTest {
 
   @Test
   void concurrentNativeReadersPublishOneCompleteSnapshot() throws Exception {
-    var store = new ViewMetadataService(root.toString());
+    var store = new ViewMetadataService(root.toString(), files);
     var info = nativeView();
     info.setViewDefinition(info.getViewDefinition() + " /*" + "x".repeat(64_000) + "*/");
     var pool = Executors.newFixedThreadPool(6);
@@ -108,7 +112,7 @@ class ViewMetadataServiceTest {
 
   @Test
   void nativeReadAcceptsASnapshotPublishedByAnotherReaderBeforeAtomicRename() throws Exception {
-    var store = new ViewMetadataService(root.toString());
+    var store = new ViewMetadataService(root.toString(), files);
     var info = nativeView();
     try (MockedStatic<Files> ignored =
         mockStatic(
@@ -134,7 +138,7 @@ class ViewMetadataServiceTest {
   @Test
   void nativeReadsRejectUnsafeFilesAndReportStorageFailures() throws Exception {
     var info = nativeView();
-    var store = new ViewMetadataService(root.toString());
+    var store = new ViewMetadataService(root.toString(), files);
     Path directory = root.resolve(info.getTableId());
     Path elsewhere = Files.createTempDirectory(root, "elsewhere");
     Files.createSymbolicLink(directory, elsewhere);
@@ -149,7 +153,7 @@ class ViewMetadataServiceTest {
     Files.createSymbolicLink(file, linked);
     assertThatThrownBy(() -> store.readNative(info))
         .isInstanceOf(BaseException.class)
-        .hasMessageContaining("location");
+        .hasMessageContaining("materialize");
     Files.delete(file);
     Files.delete(directory);
     Files.writeString(directory, "not a directory");
@@ -161,7 +165,7 @@ class ViewMetadataServiceTest {
   @Test
   void rejectsUnsupportedCreateStateBeforeWritingMetadata() throws Exception {
     var request = IcebergViewTestUtils.request("v", "spark", "select 1 as id");
-    var store = new ViewMetadataService(root.toString());
+    var store = new ViewMetadataService(root.toString(), files);
     UUID id = UUID.randomUUID();
     var spark = request.viewVersion().representations().get(0);
     var trino = ImmutableSQLViewRepresentation.builder().dialect("trino").sql("select 1").build();
@@ -205,7 +209,57 @@ class ViewMetadataServiceTest {
     try (var entries = Files.list(root)) {
       assertThat(entries).isEmpty();
     }
-    assertThatThrownBy(() -> new ViewMetadataService(null)).isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> new ViewMetadataService(null, files))
+        .isInstanceOf(BaseException.class);
+  }
+
+  @Test
+  void reloadPreservesTheSparkVersionAndSchemaFromTheCreateRequest() {
+    Path directory = root.resolve("views with spaces");
+    var store = new ViewMetadataService(directory.toString(), files);
+    UUID id = UUID.randomUUID();
+    String sql = "SELECT 1 AS id /* keep the engine SQL */";
+    var original = IcebergViewTestUtils.request("v", "spark", sql);
+    var version =
+        ImmutableViewVersion.builder()
+            .from(original.viewVersion())
+            .putSummary("engine-version", "4.1")
+            .build();
+    var request =
+        ImmutableCreateViewRequest.builder()
+            .from(original)
+            .viewVersion(version)
+            .properties(Map.of("owner-tag", "science"))
+            .build();
+    var created = store.create(id, request);
+    String file = created.metadataFileLocation();
+    assertThat(Path.of(URI.create(file)).getParent()).isEqualTo(directory.resolve(id.toString()));
+    var reopened =
+        new ViewMetadataService(
+            directory.toUri().toString().replace("views%20with", "%76iews%20with"), files);
+    for (String pointer : List.of(file, file.replace("file:///", "file:/"))) {
+      var loaded = reopened.read(id.toString(), pointer);
+      assertThat(loaded.metadataFileLocation()).isEqualTo(pointer);
+      assertThat(loaded.uuid()).isEqualTo(id.toString());
+      assertThat(loaded.schema().sameSchema(request.schema())).isTrue();
+      assertThat(loaded.currentVersion().summary()).isEqualTo(version.summary());
+      assertThat(loaded.currentVersion().timestampMillis()).isEqualTo(version.timestampMillis());
+      assertThat(loaded.currentVersion().defaultCatalog()).isEqualTo(version.defaultCatalog());
+      assertThat(loaded.currentVersion().defaultNamespace()).isEqualTo(version.defaultNamespace());
+      assertThat(ViewMetadataService.sparkSql(loaded.currentVersion())).isEqualTo(sql);
+      assertThat(loaded.properties()).isEqualTo(request.properties());
+      assertThat(loaded.history()).isEqualTo(created.history());
+    }
+    for (String pointer :
+        List.of(
+            file + "?ignored",
+            file.replace(id + "/", id + "/../" + id + "/"),
+            file.replace(".metadata.json", "%2f.metadata.json"),
+            "s3://bucket/wrong.metadata.json")) {
+      assertThatThrownBy(() -> reopened.read(id.toString(), pointer))
+          .isInstanceOf(BaseException.class)
+          .hasMessage("Invalid persisted view metadata location");
+    }
   }
 
   @Test
@@ -227,7 +281,7 @@ class ViewMetadataServiceTest {
 
   @Test
   void rejectsLinkedViewDirectoryForCreateReadAndDiscard() throws Exception {
-    var store = new ViewMetadataService(root.toString());
+    var store = new ViewMetadataService(root.toString(), files);
     UUID id = UUID.randomUUID();
     var request = IcebergViewTestUtils.request("v", "spark", "select 1 as id");
     var metadata = store.create(id, request);
@@ -237,7 +291,7 @@ class ViewMetadataServiceTest {
 
     assertThatThrownBy(() -> store.create(id, request))
         .isInstanceOf(BaseException.class)
-        .hasRootCauseMessage("View metadata directory is a symbolic link");
+        .hasMessage("Could not persist view metadata");
     assertThatThrownBy(() -> store.read(id.toString(), metadata.metadataFileLocation()))
         .isInstanceOf(BaseException.class)
         .hasMessage("Invalid persisted view metadata location");
@@ -250,12 +304,13 @@ class ViewMetadataServiceTest {
 
   @Test
   void readsRequireARegularMetadataFile() throws Exception {
-    var store = new ViewMetadataService(root.toString());
+    var store = new ViewMetadataService(root.toString(), files);
     UUID id = UUID.randomUUID();
     Path directory = Files.createDirectory(root.resolve(id.toString()));
     Path target = Files.createTempFile(directory, "regular", ".json");
-    Path link = Files.createSymbolicLink(directory.resolve("link.metadata.json"), target);
-    Path folder = Files.createDirectory(directory.resolve("directory.metadata.json"));
+    Path link =
+        Files.createSymbolicLink(directory.resolve(UUID.randomUUID() + ".metadata.json"), target);
+    Path folder = Files.createDirectory(directory.resolve(UUID.randomUUID() + ".metadata.json"));
     for (Path path : List.of(link, folder)) {
       assertThatThrownBy(() -> store.read(id.toString(), path.toUri().toString()))
           .isInstanceOf(BaseException.class)
@@ -265,7 +320,7 @@ class ViewMetadataServiceTest {
 
   @Test
   void loadRejectsMetadataOutsideTheViewOrWithADifferentIdentity() throws Exception {
-    var store = new ViewMetadataService(root.toString());
+    var store = new ViewMetadataService(root.toString(), files);
     UUID id = UUID.randomUUID();
     String uuid = id.toString();
     var metadata = store.create(id, IcebergViewTestUtils.request("v", "spark", "select 1 as id"));
@@ -275,7 +330,14 @@ class ViewMetadataServiceTest {
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("location");
     Path file = Path.of(URI.create(metadata.metadataFileLocation()));
-    Files.writeString(file, Files.readString(file).replace(uuid, UUID.randomUUID().toString()));
+    String json = Files.readString(file);
+    Files.writeString(file, json.replace(metadata.location(), metadata.location() + "/"));
+    assertThat(store.read(uuid, metadata.metadataFileLocation()).uuid()).isEqualTo(uuid);
+    Files.writeString(file, json.replace(metadata.location(), root.toUri().toString()));
+    assertThatThrownBy(() -> store.read(uuid, metadata.metadataFileLocation()))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Persisted view metadata location mismatch");
+    Files.writeString(file, json.replace(uuid, UUID.randomUUID().toString()));
     assertThatThrownBy(() -> store.read(uuid, metadata.metadataFileLocation()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("identity mismatch");

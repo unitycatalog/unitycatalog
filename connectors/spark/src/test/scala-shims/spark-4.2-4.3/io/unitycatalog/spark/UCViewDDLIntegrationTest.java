@@ -2,9 +2,12 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.List;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
@@ -17,6 +20,42 @@ import org.junit.jupiter.api.Test;
  * read-only path creates views via the SDK and never derives dependencies).
  */
 public class UCViewDDLIntegrationTest extends AbstractViewReadIntegrationTest {
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(Property.ICEBERG_VIEW_ENABLED.getKey(), "true");
+    serverProperties.setProperty(
+        Property.ICEBERG_VIEW_METADATA_ROOT.getKey(),
+        testDirectoryRoot.resolve("view_metadata").toString());
+  }
+
+  @Test
+  public void icebergLoadRejectsSessionSettingsSavedBySparkCreateView() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    String name = "captured_settings";
+    String view = CATALOG_NAME + "." + SCHEMA_NAME + "." + name;
+    session.conf().set("spark.sql.ansi.enabled", "true");
+    session.conf().set("spark.sql.session.timeZone", "America/Los_Angeles");
+    sql("CREATE VIEW %s AS SELECT unix_seconds(TIMESTAMP '2021-01-01 00:00:00') AS epoch", view);
+    try {
+      assertThat(getServerTable(view).getProperties())
+          .containsEntry("view.schemaMode", "COMPENSATION")
+          .containsEntry("view.sqlConfig.spark.sql.ansi.enabled", "true")
+          .containsEntry("view.sqlConfig.spark.sql.session.timeZone", "America/Los_Angeles");
+      session.conf().set("spark.sql.session.timeZone", "UTC");
+      // Midnight on January 1 in Los Angeles is 08:00 UTC.
+      assertThat(sql("SELECT epoch FROM %s", view))
+          .extracting(r -> r.getLong(0))
+          .containsExactly(1609488000L);
+      assertIcebergApiException(
+          () -> new IcebergRestClient(serverConfig).loadView(CATALOG_NAME, SCHEMA_NAME, name),
+          400,
+          "saved Spark SQL setting");
+    } finally {
+      sql("DROP VIEW IF EXISTS %s", view);
+    }
+  }
 
   @Override
   protected void createView() {

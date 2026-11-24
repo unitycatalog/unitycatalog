@@ -59,7 +59,21 @@ public class UnityCatalogServerTest extends BaseServerTest {
 
   @ParameterizedTest
   @NullSource
-  @ValueSource(strings = {"", " "})
+  @ValueSource(
+      strings = {
+        "",
+        " ",
+        "relative/views",
+        "file:relative/views",
+        "file://host/views",
+        "file:/views/%2e%2e/other",
+        "s3:///",
+        "s3://bucket/path?x",
+        "s3://bucket/path/%2f",
+        "s3://user@bucket/views",
+        "s3://bucket/../views",
+        "https://bucket/views"
+      })
   void enablingIcebergViewsRequiresAMetadataRoot(String root) {
     ServerProperties properties = new ServerProperties(serverProperties);
     properties.set(Property.AUTHORIZATION_ENABLED, "disable");
@@ -75,7 +89,11 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .hibernateConfigurator(hibernateConfigurator)
                     .build())
         .isInstanceOf(BaseException.class)
-        .hasMessage("server.iceberg-view.metadata-root is required when Iceberg views are enabled")
+        .hasMessage(
+            root == null || root.isBlank()
+                ? "server.iceberg-view.metadata-root is required when Iceberg views are enabled"
+                : "server.iceberg-view.metadata-root must be an absolute local path, file URI, or"
+                    + " s3:// location")
         .extracting(error -> ((BaseException) error).getErrorCode())
         .isEqualTo(ErrorCode.FAILED_PRECONDITION);
   }

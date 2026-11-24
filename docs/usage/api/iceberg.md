@@ -18,8 +18,10 @@ and the requests would fail.
 
 ## Read and write access
 
-The read endpoints are always available. You can use them to read native Iceberg tables and
-[UniForm](../tables/uniform.md) tables.
+Table reads are always available for native Iceberg and [UniForm](../tables/uniform.md) tables.
+View reads depend on `server.iceberg-view.enabled`. With views disabled, an authorized
+view lookup (`GET`) returns HTTP 404 so clients can fall back from a table lookup.
+Authorized requests to check existence (`HEAD`), create, or drop a view return HTTP 501.
 
 The write endpoints (creating, updating, renaming and dropping namespaces and tables) are on by default. To turn them
 off, set this in `etc/conf/server.properties` and restart the server:

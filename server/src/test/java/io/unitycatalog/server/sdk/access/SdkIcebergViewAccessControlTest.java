@@ -109,7 +109,10 @@ public class SdkIcebergViewAccessControlTest extends SdkAccessControlBaseCRUDTes
     grantPermissions(REGULAR_1, SecurableType.TABLE, fullName, Privileges.SELECT);
     assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, "v"), 404);
     assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, "base_table"), 403);
+    String viewId = created.metadata().uuid();
+    assertThat(countCasbinRulesReferencing(viewId)).isPositive();
     owner.dropView(catalog, namespace, "v");
+    assertThat(countCasbinRulesReferencing(viewId)).isZero();
     assertThat(owner.viewExists(catalog, namespace, "v")).isFalse();
     assertIcebergApiException(
         () -> owner.loadView(catalog, namespace, "v"), 404, NoSuchViewException.class, "v");
@@ -132,7 +135,8 @@ public class SdkIcebergViewAccessControlTest extends SdkAccessControlBaseCRUDTes
     assertThat(response.config()).isEmpty();
     assertThat(reader.viewExists(catalog, namespace, nativeName)).isTrue();
     assertIcebergApiException(() -> reader.dropView(catalog, namespace, nativeName), 403);
-    assertIcebergApiException(() -> owner.dropView(catalog, namespace, nativeName), 404);
+    assertIcebergApiException(
+        () -> owner.dropView(catalog, namespace, nativeName), 400, nativeName);
     assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, nativeName), 403);
     grantPermissions(REGULAR_1, SecurableType.TABLE, nativeFullName, Privileges.SELECT);
     assertIcebergApiException(() -> reader.loadCredentials(catalog, namespace, nativeName), 404);

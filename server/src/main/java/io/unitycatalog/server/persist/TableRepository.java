@@ -774,10 +774,11 @@ public class TableRepository {
         (session, dao, tableInfo) -> tableInfo);
   }
 
-  private record NewIcebergView(UUID viewId, String metadataLocation) {}
+  private record NewIcebergView(UUID schemaId, UUID viewId, String metadataLocation) {}
 
   /** Register the view and its previously written metadata pointer in the same transaction. */
-  public TableInfo createViewForIceberg(CreateTable request, UUID viewId, String metadataLocation) {
+  public TableInfo createViewForIceberg(
+      CreateTable request, UUID expectedSchemaId, UUID viewId, String metadataLocation) {
     if (request.getTableType() != TableType.VIEW) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Expected an ordinary view");
     }
@@ -785,7 +786,7 @@ public class TableRepository {
         request,
         Optional.empty(),
         Optional.empty(),
-        Optional.of(new NewIcebergView(viewId, metadataLocation)),
+        Optional.of(new NewIcebergView(expectedSchemaId, viewId, metadataLocation)),
         (session, dao, tableInfo) -> tableInfo);
   }
 
@@ -814,9 +815,13 @@ public class TableRepository {
   }
 
   private static void requireIcebergView(TableInfoDAO dao, String name) {
-    if (!TableType.VIEW.getValue().equals(dao.getType())
-        || dao.getIcebergViewMetadataLocation() == null) {
+    if (!TableType.VIEW.getValue().equals(dao.getType())) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "View does not exist: " + name);
+    }
+    if (dao.getIcebergViewMetadataLocation() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Drop the UC-created view " + name + " through the UC Tables API");
     }
   }
 
@@ -921,6 +926,10 @@ public class TableRepository {
         schemaName,
         "Error creating table: " + fullName,
         (session, schemaId) -> {
+          if (icebergView.isPresent() && !schemaId.equals(icebergView.get().schemaId())) {
+            throw new BaseException(
+                ErrorCode.SCHEMA_NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
+          }
           // Check if table already exists
           TableInfoDAO existingTable =
               findBySchemaIdAndName(session, schemaId, createTable.getName());

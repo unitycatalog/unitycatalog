@@ -18,11 +18,13 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.exceptions.BadRequestException;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 
@@ -38,6 +40,12 @@ public final class IcebergSchemaConverter {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final Pattern UNQUOTED_IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
+  // UC's Spark connector can preserve a collation only in type_text. Skip quoted field names.
+  private static final Pattern STRING_COLLATION =
+      Pattern.compile(
+          "`(?:``|[^`])*`|\\bstring\\s+collate\\s+([\\w.]+)(?=\\s*[,>]|\\s*$)",
+          Pattern.CASE_INSENSITIVE);
 
   private IcebergSchemaConverter() {}
 
@@ -78,6 +86,15 @@ public final class IcebergSchemaConverter {
       }
       try {
         DeltaStructField field = ColumnUtils.toStructField(column);
+        validateNativeField(field);
+        if (column.getTypeText() != null
+            && STRING_COLLATION
+                .matcher(column.getTypeText())
+                .results()
+                .anyMatch(m -> m.group(1) != null && !"UTF8_BINARY".equalsIgnoreCase(m.group(1)))) {
+          throw new BadRequestException(
+              "Unsupported native view string collation in column: %s", column.getName());
+        }
         int id = ids.incrementAndGet();
         fields.add(
             Types.NestedField.of(
@@ -86,21 +103,55 @@ public final class IcebergSchemaConverter {
                 field.getName(),
                 toIcebergType(field.getType(), ids),
                 column.getComment()));
-      } catch (IllegalStateException | IllegalArgumentException e) {
+      } catch (IllegalStateException | IllegalArgumentException | ValidationException e) {
         throw new BadRequestException(
             e, "Native view column cannot be represented in Iceberg: %s", column.getName());
       }
     }
-    return new Schema(fields);
+    try {
+      return new Schema(fields);
+    } catch (ValidationException | IllegalArgumentException e) {
+      throw new BadRequestException(
+          e, "Native view schema cannot be represented in Iceberg: %s", e.getMessage());
+    }
+  }
+
+  private static void validateNativeField(DeltaStructField field) {
+    if (field == null || field.getName() == null || field.getName().isBlank()) {
+      throw new BadRequestException("Native view fields require a name");
+    }
+    if (field.getMetadata() != null && field.getMetadata().containsKey("__COLLATIONS")) {
+      Object collations = field.getMetadata().get("__COLLATIONS");
+      if (!(collations instanceof Map<?, ?> paths)
+          || !paths.values().stream().allMatch("spark.UTF8_BINARY"::equals)) {
+        throw new BadRequestException(
+            "Unsupported native view string collation in field: %s", field.getName());
+      }
+    }
   }
 
   private static Type toIcebergType(DeltaDataType type, AtomicInteger ids) {
     if (type instanceof DeltaDecimalType decimal) {
-      return Types.DecimalType.of(decimal.getPrecision(), decimal.getScale());
+      Integer precision = decimal.getPrecision();
+      Integer scale = decimal.getScale();
+      if (precision == null
+          || scale == null
+          || precision < 1
+          || precision > 38
+          || scale < 0
+          || scale > precision) {
+        throw new BadRequestException(
+            "Native view decimal has invalid precision or scale: %s, %s", precision, scale);
+      }
+      return Types.DecimalType.of(precision, scale);
     }
     if (type instanceof DeltaStructType struct) {
+      if (struct.getFields() == null) {
+        throw new BadRequestException("Native view structs require a list of fields");
+      }
       List<Types.NestedField> fields = new ArrayList<>();
       for (DeltaStructField field : struct.getFields()) {
+        validateNativeField(field);
         int id = ids.incrementAndGet();
         Object comment = field.getMetadata() == null ? null : field.getMetadata().get("comment");
         fields.add(

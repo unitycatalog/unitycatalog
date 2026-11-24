@@ -18,6 +18,8 @@ import org.apache.iceberg.view.ViewMetadata;
 final class NativeViewMetadata {
   private static final String CONTEXT_COUNT = "view.catalogAndNamespace.numParts";
   private static final String CONTEXT_PART = "view.catalogAndNamespace.part.";
+  private static final String SCHEMA_MODE = "view.schemaMode";
+  private static final String SQL_CONFIG = "view.sqlConfig.";
   private static final String OUTPUT_COUNT = "view.query.out.numCols";
   private static final String OUTPUT_COLUMN = "view.query.out.col.";
 
@@ -46,9 +48,18 @@ final class NativeViewMetadata {
               ? Namespace.of(required(properties, CONTEXT_PART + "1", supported))
               : Namespace.empty();
     }
+    if ("COMPENSATION".equals(properties.get(SCHEMA_MODE))) {
+      supported.add(SCHEMA_MODE);
+    }
     Schema schema = IcebergSchemaConverter.toIcebergSchema(info.getColumns());
     String query = bindOutputs(info.getViewDefinition(), schema, properties, supported);
     for (String key : properties.keySet()) {
+      if (key.startsWith(SQL_CONFIG)) {
+        throw new BadRequestException(
+            "Iceberg readers cannot apply the saved Spark SQL setting %s. Read this view through"
+                + " Unity Catalog.",
+            key.substring(SQL_CONFIG.length()));
+      }
       if (key.startsWith("view.") && !supported.contains(key)) {
         throw new BadRequestException("Unsupported native view resolution property: %s", key);
       }
@@ -103,7 +114,24 @@ final class NativeViewMetadata {
             "Native view query output names must contain only letters, digits, or underscores: %s",
             name);
       }
-      projection.add("view_source.`" + name + "`");
+      String column = "`" + name + "`";
+      // A missing top-level field must fail even if Spark could resolve the name in the session.
+      String field = "struct(*)." + column;
+      String type =
+          switch (schema.columns().get(i).type().typeId()) {
+            case INTEGER -> "INT";
+            case LONG -> "BIGINT";
+            default -> null;
+          };
+      // Spark's native view raises on overflow even when the reader disables ANSI mode.
+      if (type != null) {
+        projection.add(
+            ("COALESCE(TRY_CAST(%1$s AS %2$s), IF(%1$s IS NULL, NULL, "
+                    + "RAISE_ERROR('Cannot cast native view output to %2$s'))) AS %3$s")
+                .formatted(field, type, column));
+      } else {
+        projection.add(field + " AS " + column);
+      }
     }
     String query = sql.stripTrailing();
     if (query.endsWith(";")) {
@@ -116,7 +144,8 @@ final class NativeViewMetadata {
           "Native view SQL must be one query without Spark variable substitutions; only a final"
               + " semicolon is supported");
     }
-    return "SELECT " + projection + " FROM (\n" + query + "\n) AS view_source";
+    // End a trailing line comment even when its final backslash escapes the first newline.
+    return "SELECT " + projection + " FROM (\n" + query + "\n\n) AS view_source";
   }
 
   private static String required(

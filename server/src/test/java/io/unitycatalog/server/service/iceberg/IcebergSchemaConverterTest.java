@@ -91,7 +91,8 @@ public class IcebergSchemaConverterTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"byte", "short", "void", "char(8)", "unknown"})
+  @ValueSource(
+      strings = {"byte", "short", "void", "char(8)", "unknown", "string collate UTF8_LCASE"})
   void rejectsUnsupportedNativeTypes(String type) {
     var column =
         nativeColumn(
@@ -108,6 +109,92 @@ public class IcebergSchemaConverterTest {
     assertThatThrownBy(
             () -> IcebergSchemaConverter.toIcebergSchema(List.of(nativeColumn(typeJson))))
         .isInstanceOf(BadRequestException.class);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        """
+        {"type":"struct","fields":[{"name":"x","type":"string"},{"name":"x","type":"long"}]}
+        """,
+        """
+        {"type":"struct","fields":[{"name":"a.b","type":"string"},
+          {"name":"a","type":{"type":"struct","fields":[{"name":"b","type":"long"}]}}]}
+        """,
+        "{\"type\":\"struct\",\"fields\":[{\"type\":\"long\"}]}",
+        "{\"type\":\"struct\",\"fields\":null}",
+        "{\"type\":\"struct\",\"fields\":[null]}",
+        "{\"type\":\"decimal\"}",
+        "{\"type\":\"decimal\",\"precision\":8}",
+        "{\"type\":\"decimal\",\"precision\":0,\"scale\":0}",
+        "{\"type\":\"decimal\",\"precision\":8,\"scale\":9}"
+      })
+  void rejectsMalformedOrAmbiguousNativeTypes(String type) {
+    var column =
+        nativeColumn(
+            """
+            {"name":"v","type":%s,"nullable":false,"metadata":{}}
+            """
+                .formatted(type));
+    assertThatThrownBy(() -> IcebergSchemaConverter.toIcebergSchema(List.of(column)))
+        .isInstanceOf(BadRequestException.class)
+        .hasMessageContaining("Native view");
+  }
+
+  @Test
+  void rejectsCollationsInSparkFieldMetadataAtEveryDepth() {
+    String field =
+        """
+        {"name":"v","type":"string","nullable":false,
+         "metadata":{"__COLLATIONS":{"v":"spark.UTF8_LCASE"}}}
+        """;
+    var nested =
+        """
+        {"name":"v","type":{"type":"array","elementType":{"type":"map","keyType":"string",
+         "valueType":{"type":"struct","fields":[%s]}}},"nullable":false,"metadata":{}}
+        """
+            .formatted(field);
+    for (var fieldJson : List.of(field, nested)) {
+      assertThatThrownBy(
+              () -> IcebergSchemaConverter.toIcebergSchema(List.of(nativeColumn(fieldJson))))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("string collation");
+      assertThat(
+              IcebergSchemaConverter.toIcebergSchema(
+                      List.of(
+                          nativeColumn(fieldJson.replace("spark.UTF8_LCASE", "spark.UTF8_BINARY"))))
+                  .columns())
+          .hasSize(1);
+    }
+  }
+
+  @Test
+  void checksCollationWhenTheConnectorStoresItOnlyInTypeText() {
+    String type =
+        """
+        {"type":"array","elementType":"string","containsNull":true}
+        """;
+    var column =
+        nativeColumn(
+            """
+            {"name":"v","type":%s,"nullable":false,"metadata":{}}
+            """
+                .formatted(type));
+    column.setTypeText("array<string collate UTF8_LCASE>");
+    assertThatThrownBy(() -> IcebergSchemaConverter.toIcebergSchema(List.of(column)))
+        .isInstanceOf(BadRequestException.class)
+        .hasMessageContaining("string collation");
+    column.setTypeText("array<string collate UTF8_BINARY>");
+    assertThat(IcebergSchemaConverter.toIcebergSchema(List.of(column)).columns()).hasSize(1);
+
+    var struct =
+        nativeColumn(
+            """
+            {"name":"v","type":{"type":"struct","fields":[{"name":"x:string collate UTF8_LCASE>",
+            "type":"string","nullable":true,"metadata":{}}]},"nullable":false,"metadata":{}}
+            """);
+    struct.setTypeText("struct<`x:string collate UTF8_LCASE>`:string>");
+    assertThat(IcebergSchemaConverter.toIcebergSchema(List.of(struct)).columns()).hasSize(1);
   }
 
   @Test
