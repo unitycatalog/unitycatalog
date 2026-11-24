@@ -146,7 +146,8 @@ public class UnityCatalogCli {
           VolumeCli.handle(cmd, apiClient);
           break;
         case CliUtils.TABLE:
-          TableCli.handle(cmd, apiClient, loadProperty(CliUtils.AUTH_TOKEN, cmd));
+          TableCli.handle(
+              cmd, apiClient, getBaseUri(cmd, ""), loadProperty(CliUtils.AUTH_TOKEN, cmd));
           break;
         case CliUtils.FUNCTION:
           FunctionCli.handle(cmd, apiClient);
@@ -282,7 +283,8 @@ public class UnityCatalogCli {
    * Without a port, it uses 443 for https and 8080 for http.
    *
    * @param cmd the parsed command line
-   * @param basePath the base path of the API, such as {@code /api/2.1/unity-catalog}
+   * @param basePath the base path of the API, such as {@code /api/2.1/unity-catalog}, or empty for
+   *     the server URI itself
    * @return the server URL with its port and the base path appended to its path
    */
   private static String getBaseUri(CommandLine cmd, String basePath) {
