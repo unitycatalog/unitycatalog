@@ -12,6 +12,8 @@ import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 
 /**
@@ -195,5 +197,31 @@ public class ApiClientBuilderTest {
         ApiClientBuilder.create().uri(uriWithSuffix).tokenProvider(tokenProvider).build();
     assertThat(clientWithSuffix.getBaseUri())
         .isEqualTo("https://localhost:8080/path/to/uc/api/2.1/unity-catalog");
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "http://localhost:8080, http://localhost:8080/api/2.1/unity-catalog",
+    "http://localhost:8080/, http://localhost:8080/api/2.1/unity-catalog",
+    "http://localhost:8080/uc, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/uc/, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/uc//, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/gateway/uc/, http://localhost:8080/gateway/uc/api/2.1/unity-catalog",
+    "http://example.com/, http://example.com/api/2.1/unity-catalog",
+    "http://example.com/uc/, http://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com, https://example.com/api/2.1/unity-catalog",
+    "https://example.com/, https://example.com/api/2.1/unity-catalog",
+    "https://example.com/uc, https://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com/uc/, https://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com:8443/, https://example.com:8443/api/2.1/unity-catalog",
+    "https://example.com:8443/uc//, https://example.com:8443/uc/api/2.1/unity-catalog"
+  })
+  public void testBaseUriIgnoresTrailingSlashes(String uri, String expectedBaseUri) {
+    ApiClient client =
+        ApiClientBuilder.create()
+            .uri(uri)
+            .tokenProvider(TokenProviderUtils.create(TEST_TOKEN))
+            .build();
+    assertThat(client.getBaseUri()).isEqualTo(expectedBaseUri);
   }
 }
