@@ -15,6 +15,7 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.RequestHeaders;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.SchemasApi;
+import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.PermissionsChange;
 import io.unitycatalog.client.model.Privilege;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
 import org.apache.iceberg.MetadataUpdate;
@@ -56,6 +58,7 @@ import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.types.Types;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
@@ -77,9 +80,12 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
   private static final Map<String, String> READ_WRITE_CREDENTIAL_CONFIG =
       Map.of(S3FileIOProperties.ACCESS_KEY_ID, "test-write-key");
 
+  private FileOperations registrationFileOperations;
+
   @Override
   protected FileOperations decorateFileOperations(FileOperations fileOperations) {
     FileOperations operations = spy(fileOperations);
+    registrationFileOperations = operations;
     // Keep metadata files local and make successful credential responses visible.
     doAnswer(
             invocation ->
@@ -198,6 +204,87 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
                 NormalizedURL.from(directory.toUri()).toString(),
                 Map.of())));
     return file;
+  }
+
+  @Test
+  public void registrationRejectsReplacedStorageBoundaryWithoutSideEffects() throws Exception {
+    createCommonTestUsers();
+    String importerId = createTestUser(CREATOR_ONLY).getId();
+    setupCommonCatalogAndSchema(CAT, SCHEMA);
+    Path root = testDirectoryRoot.resolve("registration");
+    createExternalLocationWithCredential(
+        "registration_credential", "registration_storage", root.toUri().toString());
+    grantPermissions(CREATOR_ONLY, SecurableType.CATALOG, CAT, Privileges.USE_CATALOG);
+    grantPermissions(
+        CREATOR_ONLY,
+        SecurableType.SCHEMA,
+        CAT + "." + SCHEMA,
+        Privileges.USE_SCHEMA,
+        Privileges.CREATE_TABLE);
+    grantPermissions(
+        CREATOR_ONLY,
+        SecurableType.EXTERNAL_LOCATION,
+        "registration_storage",
+        Privileges.CREATE_MANAGED_STORAGE,
+        Privileges.READ_FILES,
+        Privileges.WRITE_FILES);
+    Path file = registrationMetadata(root.resolve("orders"));
+    byte[] original = Files.readAllBytes(file);
+    ExternalLocationsApi locations = new ExternalLocationsApi(adminApiClient);
+    String originalId = locations.getExternalLocation("registration_storage", null).getId();
+    AtomicBoolean replaced = new AtomicBoolean();
+    doAnswer(
+            invocation -> {
+              // Discovery and authorization have finished; persistence has not started.
+              if (replaced.compareAndSet(false, true)) {
+                locations.deleteExternalLocation("registration_storage", false);
+                assertThat(
+                        locations
+                            .createExternalLocation(
+                                new CreateExternalLocation()
+                                    .name("registration_storage")
+                                    .credentialName("registration_credential")
+                                    .url(root.toUri().toString()))
+                            .getId())
+                    .isNotEqualTo(originalId);
+              }
+              return invocation.callRealMethod();
+            })
+        .when(registrationFileOperations)
+        .getFileIO(any(), any());
+
+    assertIcebergApiException(
+        () ->
+            icebergClientFor(CREATOR_ONLY)
+                .registerTable(
+                    CAT,
+                    SCHEMA,
+                    ImmutableRegisterTableRequest.builder()
+                        .name("orders")
+                        .metadataLocation(file.toString())
+                        .build()),
+        400,
+        "The registration storage boundary changed; retry the request.");
+    assertThat(replaced).isTrue();
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(
+              session
+                  .createSelectionQuery(
+                      "SELECT count(*) FROM TableInfoDAO WHERE name = 'orders'", Long.class)
+                  .getSingleResult())
+          .isZero();
+      assertThat(
+              session
+                  .createNativeQuery(
+                      "SELECT count(*) FROM casbin_rule WHERE ptype = 'p' AND v0 = :principal AND"
+                          + " v2 = :owner",
+                      Long.class)
+                  .setParameter("principal", importerId)
+                  .setParameter("owner", Privileges.OWNER.getValue())
+                  .getSingleResult())
+          .isZero();
+    }
+    assertThat(Files.readAllBytes(file)).isEqualTo(original);
   }
 
   @Test

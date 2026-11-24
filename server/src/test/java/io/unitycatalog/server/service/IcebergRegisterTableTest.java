@@ -3,6 +3,7 @@ package io.unitycatalog.server.service;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -647,6 +648,30 @@ public class IcebergRegisterTableTest extends BaseServerTest {
                     .volumeType(VolumeType.EXTERNAL)
                     .storageLocation(location))
             .getVolumeId());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"table", "volume"})
+  public void registrationRejectsCaseAliasesOfOccupiedLocalStorage(String kind) throws Exception {
+    Path directory = externalRoot.resolve("CaseTable");
+    Path file = writeMetadata(directory);
+    Path alias = externalRoot.resolve("casetable");
+    assumeTrue(
+        Files.exists(alias) && Files.isSameFile(directory, alias),
+        "Requires a case-insensitive filesystem");
+    createNativeExternal(kind, directory.toUri().toString());
+    byte[] original = Files.readAllBytes(file);
+    assertIcebergApiException(
+        () ->
+            client.registerTable(
+                CATALOG,
+                NAMESPACE,
+                request("imported", alias.resolve("metadata/v1.metadata.json").toString())),
+        400,
+        "stored local URL");
+    assertThat(Files.readAllBytes(file)).isEqualTo(original);
+    assertThat(client.listTables(CATALOG, NAMESPACE).identifiers())
+        .doesNotContain(TableIdentifier.of(NAMESPACE, "imported"));
   }
 
   @ParameterizedTest

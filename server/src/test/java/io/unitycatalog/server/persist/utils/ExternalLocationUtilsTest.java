@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -20,6 +21,8 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.NormalizedURL;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
@@ -172,6 +175,85 @@ public class ExternalLocationUtilsTest {
             failure -> {
               assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
               assertThat(failure).hasMessageContaining("overlaps a registered managed table");
+            });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"case", "symlink"})
+  public void localAliasesReserveRegisteredStorageAndCleanup(String kind) throws Exception {
+    Path parent = Files.createDirectory(tempDir.resolve("CaseStorage"));
+    Path directory = Files.createDirectory(parent.resolve("Orders"));
+    Path aliasParent = tempDir.resolve(kind.equals("case") ? "casestorage" : "alias");
+    if (kind.equals("case")) {
+      assumeTrue(
+          Files.exists(aliasParent) && Files.isSameFile(parent, aliasParent),
+          "Requires a case-insensitive filesystem");
+    } else {
+      Files.createSymbolicLink(aliasParent, parent);
+    }
+    session.beginTransaction();
+    TableInfoDAO table =
+        TableInfoDAO.builder()
+            .id(UUID.randomUUID())
+            .name("orders")
+            .type("MANAGED")
+            .dataSourceFormat("ICEBERG")
+            .url(NormalizedURL.from(directory.toUri()).toString())
+            .build();
+    session.persist(table);
+    String aliasName = kind.equals("case") ? "orders" : "Orders";
+    List<NormalizedURL> aliases =
+        List.of(
+            NormalizedURL.from(aliasParent.resolve(aliasName).toUri()),
+            NormalizedURL.from(aliasParent.resolve(aliasName + "/not-created/data").toUri()),
+            NormalizedURL.from(aliasParent.toUri()));
+    aliases.forEach(this::assertInvalidRegistrationOverlap);
+    ExternalLocationUtils.validateNotOverlapWithRegisteredTables(
+        session, NormalizedURL.from(aliasParent.resolve("orders-sibling").toUri()));
+    session.remove(table);
+    StorageCleanupTaskDAO task =
+        new StorageCleanupTaskRepository(sessionFactory)
+            .create(
+                session,
+                ManagedResourceType.REGISTERED_TABLE,
+                table.getId(),
+                "orders",
+                table.getUrl());
+    aliases.forEach(this::assertInvalidRegistrationOverlap);
+    task.setCompletedAt(new Date());
+    aliases.forEach(this::assertInvalidRegistrationOverlap);
+    Files.delete(directory);
+    aliases.forEach(this::assertInvalidRegistrationOverlap);
+  }
+
+  @Test
+  public void localStorageOverlapPreservesDistinctExistingDirectories() throws Exception {
+    Path first = Files.createDirectory(tempDir.resolve("CasePath"));
+    Path second = Files.createDirectories(tempDir.resolve("casepath"));
+    assertThat(LocalStorageLocationValidator.storagePathsOverlap(first, second))
+        .isEqualTo(Files.isSameFile(first, second));
+    assertThat(
+            LocalStorageLocationValidator.storagePathsOverlap(
+                first, tempDir.resolve("unrelated/not-created")))
+        .isFalse();
+    assertThat(
+            LocalStorageLocationValidator.storagePathsOverlap(
+                tempDir.resolve("Missing/child"), tempDir.resolve("missing")))
+        .isTrue();
+  }
+
+  @Test
+  public void localStorageOverlapFailsClosedWhenIdentityCannotBeRead() throws Exception {
+    Path unreadable = mock(Path.class);
+    when(unreadable.toRealPath()).thenThrow(new IOException("Read failed"));
+    assertThatThrownBy(() -> LocalStorageLocationValidator.storagePathsOverlap(unreadable, tempDir))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(failure)
+                  .hasMessageContaining("Cannot resolve local storage path")
+                  .hasCauseInstanceOf(IOException.class);
             });
   }
 

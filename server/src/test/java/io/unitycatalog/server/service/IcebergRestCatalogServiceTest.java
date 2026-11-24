@@ -58,7 +58,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 public class IcebergRestCatalogServiceTest {
@@ -135,6 +137,38 @@ public class IcebergRestCatalogServiceTest {
     verifyNoInteractions(metadataService, tableRepository, tableConfigService);
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "metadata/./v1.metadata.json",
+        "metadata/old/../v1.metadata.json",
+        "metadata//v1.metadata.json",
+        "metadata/v1.metadata.json?version=1",
+        "metadata/v1.metadata.json#fragment"
+      })
+  public void registrationRejectsNoncanonicalMetadataPointersBeforeReading(String suffix) {
+    when(tableRepository.getTable("cat.ns.t"))
+        .thenThrow(new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found"));
+    assertThatThrownBy(
+            () ->
+                service.registerTable(
+                    "cat",
+                    "ns",
+                    ImmutableRegisterTableRequest.builder()
+                        .name("t")
+                        .metadataLocation(TABLE_LOCATION + "/" + suffix)
+                        .build()))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(failure).hasMessageContaining("canonical cloud object path");
+            });
+    verifyNoInteractions(metadataService, tableConfigService);
+    verify(tableRepository, never()).getIcebergRegistrationStorage(any(), any(), any());
+    verify(tableRepository, never()).registerTableForIceberg(any(), any(), any());
+  }
+
   @Test
   public void nativeIcebergLoadFallsBackToReadOnlyWithoutWriteAccess() {
     UUID principalId = UUID.randomUUID();
@@ -196,6 +230,17 @@ public class IcebergRestCatalogServiceTest {
     when(serverProperties.isIcebergTableEnabled()).thenReturn(true);
     ConfigResponse writable = service.config(java.util.Optional.of("catalog"));
     assertThat(writable.endpoints()).contains(Endpoint.V1_CREATE_TABLE, Endpoint.V1_UPDATE_TABLE);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false,false", "false,true", "true,false", "true,true"})
+  public void configAdvertisesRegistrationOnlyWhenBothFlagsAreEnabled(
+      boolean icebergEnabled, boolean managedEnabled) {
+    when(serverProperties.isIcebergTableEnabled()).thenReturn(icebergEnabled);
+    when(serverProperties.isManagedTableEnabled()).thenReturn(managedEnabled);
+    assertThat(
+            service.config(Optional.of("catalog")).endpoints().contains(Endpoint.V1_REGISTER_TABLE))
+        .isEqualTo(icebergEnabled && managedEnabled);
   }
 
   @Test

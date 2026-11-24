@@ -113,8 +113,9 @@ the retained snapshots' manifests to check these paths and rejects layouts that 
 the table directory.
 Bucket-root and container-root external locations are supported; the metadata read uses a child
 directory within that boundary.
-Cloud locations must preserve their object-key spelling: dot segments, repeated path separators,
-queries, and fragments are rejected. Directory properties may have a trailing slash.
+Cloud locations, including the request's `metadata-location`, must preserve their object-key spelling:
+dot segments, repeated path separators, queries, and fragments are rejected. Directory properties may
+have a trailing slash.
 
 The caller needs `USE_CATALOG` on the destination catalog and `USE_SCHEMA` plus `CREATE_TABLE` on the
 destination schema. Ownership satisfies the corresponding catalog or schema tier. For an external
@@ -127,9 +128,12 @@ Table, volume, model, catalog, and schema storage allocation checks registered d
 pending cleanup under a shared database lock, including when authorization is disabled.
 Overlap checks treat `abfs` and `abfss` URLs for the same account, container, and path as one location,
 including URLs stored before registration was supported.
-Local allocation URLs must use their canonical spelling. Registration also rejects an overlap with
-a legacy local URL whose spelling differs from the filesystem path. Recreate affected storage entries
-with canonical URLs where needed; occupied directories still cannot be adopted.
+Local allocation URLs must use their canonical spelling. Registration and later allocation also
+check filesystem aliases, including case aliases on case-insensitive filesystems and existing
+ancestors of new directories. Registration rejects an overlap with a legacy local URL whose spelling
+differs from the filesystem path. Recreate affected storage entries with canonical URLs where needed;
+occupied directories still cannot be adopted. Missing paths below the same resolved ancestor are
+reserved without distinguishing case, including after cleanup removes a registered directory.
 
 Registration keeps the metadata file, table UUID, snapshots, schema, and properties. UC assigns a
 separate catalog table ID. The table becomes `MANAGED`: dropping it schedules deletion of its original
@@ -142,6 +146,7 @@ may still be in flight. Completed reservations are not retried by the cleanup wo
 A taken table name returns HTTP 409. `overwrite=true` returns HTTP 400; use normal Iceberg commits to
 update a registered table. Both `server.iceberg-table.enabled` and `server.managed-table.enabled` must
 be enabled.
+The config response advertises registration only when both flags are enabled.
 
 ## Limitations
 

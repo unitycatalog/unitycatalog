@@ -178,6 +178,11 @@ public class MetadataService {
         tableLocation);
   }
 
+  /** Validates the raw registration pointer before normalization can change its object key. */
+  public static NormalizedURL registrationMetadataLocation(String path) {
+    return registrationLocation(path, /* isDirectory= */ false);
+  }
+
   /** Cloud object keys must retain the spelling that FileIO reads and cleanup deletes. */
   private static NormalizedURL registrationLocation(String path, boolean isDirectory) {
     NormalizedURL location = NormalizedURL.from(path);

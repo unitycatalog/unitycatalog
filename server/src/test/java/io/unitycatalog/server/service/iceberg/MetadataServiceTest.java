@@ -150,7 +150,8 @@ public class MetadataServiceTest {
 
     TableMetadata registered =
         metadataService.readRegistrationMetadata(
-            NormalizedURL.from(original.metadataFileLocation()), storageRoot);
+            MetadataService.registrationMetadataLocation(original.metadataFileLocation()),
+            storageRoot);
     assertThat(registered.uuid()).isEqualTo(original.uuid());
     assertThat(registered.snapshots()).hasSize(1);
     verify(mockFileOperations).getFileIO(NormalizedURL.from(tableLocation + "/metadata"));

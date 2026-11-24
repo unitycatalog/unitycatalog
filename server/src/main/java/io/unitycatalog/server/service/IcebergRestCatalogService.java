@@ -205,7 +205,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         .withOverride("prefix", PREFIX_BASE + catalog)
         .withEndpoints(
             serverProperties.isIcebergTableEnabled()
-                ? Stream.concat(READ_ENDPOINTS.stream(), WRITE_ENDPOINTS.stream()).toList()
+                ? Stream.concat(READ_ENDPOINTS.stream(), WRITE_ENDPOINTS.stream())
+                    .filter(
+                        endpoint ->
+                            endpoint != Endpoint.V1_REGISTER_TABLE
+                                || serverProperties.isManagedTableEnabled())
+                    .toList()
                 : READ_ENDPOINTS)
         .build();
   }
@@ -611,7 +616,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     if (ucTableExists(catalog, namespace, request.name())) {
       throw new AlreadyExistsException("Table already exists: %s.%s", namespace, request.name());
     }
-    NormalizedURL metadataLocation = NormalizedURL.from(request.metadataLocation());
+    NormalizedURL metadataLocation =
+        MetadataService.registrationMetadataLocation(request.metadataLocation());
     RegistrationStorage storage =
         tableRepository.getIcebergRegistrationStorage(catalog, namespace, metadataLocation);
     // The file determines the table directory, so authorize its configured boundary before I/O.

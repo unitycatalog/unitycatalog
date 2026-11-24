@@ -877,17 +877,26 @@ public class ExternalLocationUtils {
         NormalizedURL.from(location.getUrl()), Optional.of(location.getId()));
   }
 
-  /** Legacy local URLs can name the same directory with a spelling the SQL checks cannot match. */
+  /** Local filesystem aliases can overlap even when both URLs have canonical spelling. */
   private static void validateNoLocalRegistrationAliases(Session session, NormalizedURL path) {
-    if (UriScheme.fromURI(path.toUri()) != UriScheme.FILE) {
-      return;
-    }
-    var localPath = Paths.get(path.toUri());
     List<DaoClassInfo> types =
         Stream.concat(
                 SECURABLE_TYPE_TO_DAO_MAP.values().stream(),
                 Stream.of(UNCOMMITTED_STAGING_TABLE_DAO_INFO, STORAGE_CLEANUP_TASK_DAO_INFO))
             .toList();
+    if (hasLocalStorageAlias(session, path, types)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Registration path overlaps a stored local URL through a filesystem alias."
+              + " Resolve the existing storage entry before registration.");
+    }
+  }
+
+  private static boolean hasLocalStorageAlias(
+      Session session, NormalizedURL path, List<DaoClassInfo> types) {
+    if (UriScheme.fromURI(path.toUri()) != UriScheme.FILE) {
+      return false;
+    }
     for (DaoClassInfo type : types) {
       String filter = type.filterCondition.isEmpty() ? "" : type.filterCondition + " AND ";
       try (Stream<String> locations =
@@ -903,22 +912,22 @@ public class ExternalLocationUtils {
                       + " LIKE 'file:%'",
                   String.class)
               .getResultStream()) {
-        boolean overlapsAlias =
-            locations.anyMatch(
-                stored -> {
-                  var uri = NormalizedURL.from(stored).toUri();
-                  var storedPath = Paths.get(uri);
-                  return !LocalStorageLocationValidator.isCanonical(uri)
-                      && (localPath.startsWith(storedPath) || storedPath.startsWith(localPath));
-                });
-        if (overlapsAlias) {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT,
-              "Registration path overlaps a stored local URL with unneeded escapes."
-                  + " Resolve the existing storage entry before registration.");
+        if (locations.anyMatch(stored -> hasLocalStorageAlias(path, stored))) {
+          return true;
         }
       }
     }
+    return false;
+  }
+
+  private static boolean hasLocalStorageAlias(NormalizedURL path, String stored) {
+    NormalizedURL storedUrl = NormalizedURL.from(stored);
+    // The SQL overlap checks already handle these spellings, including authorized containers.
+    if (stillCovers(path, storedUrl) || stillCovers(storedUrl, path)) {
+      return false;
+    }
+    return LocalStorageLocationValidator.storagePathsOverlap(
+        Paths.get(path.toUri()), Paths.get(storedUrl.toUri()));
   }
 
   /** Rejects adoption of occupied, shared, or cleanup-reserved storage. */
@@ -988,21 +997,39 @@ public class ExternalLocationUtils {
                 /* includeSelf= */ true,
                 /* includeSubdir= */ true)
             .getResultList();
+    boolean hasLocalAlias = false;
+    if (UriScheme.fromURI(path.toUri()) == UriScheme.FILE) {
+      try (Stream<TableInfoDAO> localTables =
+          session
+              .createSelectionQuery(
+                  "FROM TableInfoDAO WHERE type='MANAGED' AND dataSourceFormat='ICEBERG'"
+                      + " AND url LIKE 'file:%'",
+                  TableInfoDAO.class)
+              .getResultStream()) {
+        hasLocalAlias =
+            localTables.anyMatch(
+                table ->
+                    ManagedResourceType.forTable(table) == ManagedResourceType.REGISTERED_TABLE
+                        && hasLocalStorageAlias(path, table.getUrl()));
+      }
+    }
+    DaoClassInfo registeredCleanup =
+        new DaoClassInfo(
+            StorageCleanupTaskDAO.class, "storageLocation", "resourceType='REGISTERED_TABLE'");
     boolean pending =
         !generateEntitiesDAOsWithURLOverlapQuery(
-                session,
-                path,
-                new DaoClassInfo(
-                    StorageCleanupTaskDAO.class,
-                    "storageLocation",
-                    "resourceType='REGISTERED_TABLE'"),
-                1,
-                /* includeParent= */ true,
-                /* includeSelf= */ true,
-                /* includeSubdir= */ true)
-            .getResultList()
-            .isEmpty();
+                    session,
+                    path,
+                    registeredCleanup,
+                    1,
+                    /* includeParent= */ true,
+                    /* includeSelf= */ true,
+                    /* includeSubdir= */ true)
+                .getResultList()
+                .isEmpty()
+            || hasLocalStorageAlias(session, path, List.of(registeredCleanup));
     if (pending
+        || hasLocalAlias
         || overlaps.stream()
             .anyMatch(
                 table ->
