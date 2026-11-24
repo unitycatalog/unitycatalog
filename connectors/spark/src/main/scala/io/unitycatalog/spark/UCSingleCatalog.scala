@@ -894,6 +894,10 @@ object UCSingleCatalog extends Logging {
    * Whether a UC REST call failed because its catalog or schema does not exist. Other 404s, such
    * as `TABLE_NOT_FOUND` for a missing staging table, are not.
    *
+   * A missing UC catalog is reported as a missing schema too, naming both the catalog and the
+   * schema. Spark's `CatalogNotFoundException` means no catalog is configured under that name,
+   * which is not the case here.
+   *
    * @param e the error from a UC REST call
    * @return true when the error code is `SCHEMA_NOT_FOUND` or `CATALOG_NOT_FOUND`
    */

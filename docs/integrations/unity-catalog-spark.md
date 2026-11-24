@@ -257,11 +257,10 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
     convention of [`catalog`].[`schema`].[`asset`]. In the following examples, you can use the three-part notation such
     as `SELECT * FROM <catalog_name>.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the
     `defaultCatalog` is already configured. A name without a schema, such as `SELECT * FROM marksheet;`, resolves to
-    the default schema of the current catalog when no schema has been selected with `USE`, `<catalog_name>.default`. That schema must exist. If it does not,
-    create it with `CREATE SCHEMA <catalog_name>.default`, or qualify the name. `USE <schema_name>` selects another
-    schema for unqualified names. Be careful with unqualified writes: when the current schema is `default`,
-    `DROP TABLE t` and `INSERT INTO t` act on `<catalog_name>.default.t`. `SELECT current_schema()` shows the current
-    schema.
+    `<catalog_name>.default` unless a different schema was selected with `USE <schema_name>`. The default schema must
+    exist. If it does not, create it with `CREATE SCHEMA <catalog_name>.default` or qualify the name. Be careful with
+    unqualified writes: when the current schema is `default`, `DROP TABLE t` and `INSERT INTO t` act on
+    `<catalog_name>.default.t`. `SELECT current_schema()` shows the current schema.
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
