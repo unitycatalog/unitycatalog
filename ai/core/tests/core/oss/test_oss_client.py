@@ -2658,6 +2658,136 @@ async def test_whitespace_only_line_inside_string_survives_create_and_execute(
     assert (result.error, result.value, fetched(name="Bo")) == (None, expected, expected)
 
 
+def weekday_of(day: datetime.date) -> str:
+    """
+    Names the weekday of a date.
+
+    Args:
+        day: the date
+    """
+    return day.strftime("%A")
+
+
+def time_of(at: datetime.datetime) -> str:
+    """
+    Formats a timestamp.
+
+    Args:
+        at: the timestamp
+    """
+    return at.isoformat()
+
+
+def doubled(amount: decimal.Decimal) -> str:
+    """
+    Doubles an amount.
+
+    Args:
+        amount: the amount
+    """
+    return str(amount * 2)
+
+
+def seconds_of(span: datetime.timedelta) -> str:
+    """
+    Counts the seconds of a span.
+
+    Args:
+        span: the span
+    """
+    return str(span.total_seconds())
+
+
+def total_of(amounts: list[decimal.Decimal]) -> str:
+    """
+    Adds amounts.
+
+    Args:
+        amounts: the amounts
+    """
+    return str(sum(amounts))
+
+
+def latest_of(days: dict[str, datetime.date]) -> str:
+    """
+    Finds the latest date.
+
+    Args:
+        days: the dates by name
+    """
+    return max(days.values()).isoformat()
+
+
+TYPED_PARAMETER_CASES = [
+    (
+        weekday_of,
+        {"day": "2024-01-15"},
+        {"day": datetime.date(2024, 1, 15)},
+        {"day": datetime.date},
+        "Monday",
+    ),
+    (
+        time_of,
+        {"at": "2024-01-15T10:30:00"},
+        {"at": datetime.datetime(2024, 1, 15, 10, 30)},
+        {"at": datetime.datetime},
+        "2024-01-15T10:30:00",
+    ),
+    (
+        doubled,
+        {"amount": "1.25"},
+        {"amount": decimal.Decimal("1.25")},
+        {"amount": decimal.Decimal},
+        "2.50",
+    ),
+    (
+        seconds_of,
+        {"span": datetime.timedelta(minutes=2)},
+        {"span": datetime.timedelta(minutes=2)},
+        {"span": datetime.timedelta},
+        "120.0",
+    ),
+    (
+        total_of,
+        {"amounts": [decimal.Decimal("1.10"), decimal.Decimal("2.25")]},
+        {"amounts": [decimal.Decimal("1.10"), decimal.Decimal("2.25")]},
+        {"amounts": list[decimal.Decimal]},
+        "3.35",
+    ),
+    (
+        latest_of,
+        {"days": {"a": datetime.date(2024, 1, 15), "b": datetime.date(2023, 5, 1)}},
+        {"days": {"a": datetime.date(2024, 1, 15), "b": datetime.date(2023, 5, 1)}},
+        {"days": dict[str, datetime.date]},
+        "2024-01-15",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("func", "json_args", "native_args", "annotations", "expected"), TYPED_PARAMETER_CASES
+)
+async def test_get_function_as_callable_matches_execution_for_typed_parameters(
+    offline_uc_client, func, json_args, native_args, annotations, expected
+):
+    store_created_functions(offline_uc_client)
+    offline_uc_client.create_python_function(func=func, catalog=CATALOG, schema=SCHEMA)
+    function_name = f"{CATALOG}.{SCHEMA}.{func.__name__}"
+
+    result = offline_uc_client.execute_function(function_name, json_args)
+    fetched = offline_uc_client.get_function_as_callable(function_name, register_function=False)
+    standalone = {}
+    exec(
+        compile(offline_uc_client.get_function_source(function_name), "<source>", "exec"),
+        standalone,
+    )
+
+    assert (result.error, result.value) == (None, expected)
+    assert fetched(**native_args) == standalone[func.__name__](**native_args) == expected
+    assert fetched.__annotations__ == {**annotations, "return": str}
+
+
 FALSY_RESULT_CASES = [
     ("False", "BOOLEAN", False),
     ("0", "INT", 0),
