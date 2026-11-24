@@ -19,7 +19,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableGenerator
 from langgraph.prebuilt import create_react_agent
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from tests.helper_functions import wrap_output
 from unitycatalog.ai.core.base import (
@@ -28,7 +28,7 @@ from unitycatalog.ai.core.base import (
 )
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
-from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
+from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit, UnityCatalogTool
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     client,  # noqa: F401
@@ -498,3 +498,46 @@ async def test_tool_arun_runs_function_off_the_event_loop_in_caller_context():
 
     assert json.loads(output)["value"] == "request-1"
     assert seen["thread"] != threading.get_ident()
+
+
+class _ToolArgs(BaseModel):
+    x: str
+
+
+def _unity_catalog_tool(func=None, coroutine=None):
+    return UnityCatalogTool(
+        name="tool",
+        description="",
+        func=func,
+        coroutine=coroutine,
+        args_schema=_ToolArgs,
+        uc_function_name="catalog.schema.tool",
+        client_config={},
+    )
+
+
+@pytest.mark.parametrize("with_func", [False, True], ids=["coroutine_only", "func_and_coroutine"])
+@pytest.mark.parametrize("method", ["ainvoke", "arun"])
+@pytest.mark.asyncio
+async def test_unity_catalog_tool_awaits_its_coroutine(method, with_func):
+    def func(x):
+        return f"sync {x}"
+
+    async def coroutine(x):
+        return f"async {x}"
+
+    tool = _unity_catalog_tool(func=func if with_func else None, coroutine=coroutine)
+
+    output = await getattr(tool, method)({"x": "value"})
+
+    assert output == "async value"
+
+
+def test_unity_catalog_tool_without_func_does_not_support_sync_invocation():
+    async def coroutine(x):
+        return x
+
+    tool = _unity_catalog_tool(coroutine=coroutine)
+
+    with pytest.raises(NotImplementedError, match="does not support sync invocation"):
+        tool.invoke({"x": "value"})

@@ -30,9 +30,15 @@ class UnityCatalogTool(StructuredTool):
     # StructuredTool) into `_run` and `_arun` when their signatures declare them, which would
     # overwrite UC function parameters with those names.
     def _run(self, *args: Any, **kwargs: Any) -> Any:
+        if self.func is None:
+            raise NotImplementedError("StructuredTool does not support sync invocation.")
         return self.func(*args, **kwargs)
 
     async def _arun(self, *args: Any, **kwargs: Any) -> Any:
+        if self.coroutine is not None:
+            return await self.coroutine(*args, **kwargs)
+        # run_in_executor keeps the blocking call off the event loop and passes the caller's
+        # context to the worker thread.
         return await run_in_executor(None, self._run, *args, **kwargs)
 
 
