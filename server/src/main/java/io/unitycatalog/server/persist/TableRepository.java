@@ -256,7 +256,11 @@ public class TableRepository {
           TableInfoDAO tableInfoDAO = findTableOrThrow(session, catalogName, schemaName, tableName);
           TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
-              tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+              tableInfo,
+              TableInfo::setProperties,
+              tableInfo.getTableId(),
+              Constants.TABLE,
+              session);
           RepositoryUtils.attachDependencies(
               tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
           return tableInfo;
@@ -799,7 +803,8 @@ public class TableRepository {
           String pointer = dao.getIcebergViewMetadataLocation();
           TableInfo info = dao.toTableInfo(pointer == null, catalog, schema);
           if (pointer == null) {
-            RepositoryUtils.attachProperties(info, info.getTableId(), Constants.TABLE, session);
+            RepositoryUtils.attachProperties(
+                info, TableInfo::setProperties, info.getTableId(), Constants.TABLE, session);
           }
           return new IcebergViewState(info, pointer);
         },
@@ -1348,7 +1353,7 @@ public class TableRepository {
           RepositoryUtils.attachDependencies(
               result, dao, session, repositories.getDependencyRepository());
           return RepositoryUtils.attachProperties(
-              result, result.getTableId(), Constants.TABLE, session);
+              result, TableInfo::setProperties, result.getTableId(), Constants.TABLE, session);
         },
         "Failed to update table owner",
         /* readOnly= */ false);
