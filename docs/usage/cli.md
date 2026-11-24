@@ -462,7 +462,7 @@ bin/uc table create \
 1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
    schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 2. `columns`: The columns of the table in SQL-like format `"column_name column_data_type"`.
-   Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL(p,s)`. A bare `DECIMAL` means `DECIMAL(10,0)`. Separate multiple columns with a comma
+   Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL(p,s)`, `GEOMETRY`, `GEOGRAPHY`. A bare `DECIMAL` means `DECIMAL(10,0)`. See [Geospatial types](#geospatial-types) for `GEOMETRY` and `GEOGRAPHY`. Separate multiple columns with a comma
    (e.g., `"id INT, price DECIMAL(10,2)"`).
 3. `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
 4. `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
@@ -488,6 +488,26 @@ bin/uc table create \
 
 When running against UC server, the storage location can be a local path(absolute path) or an S3 path.
 When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
+
+### Geospatial types
+
+`GEOMETRY` and `GEOGRAPHY` columns hold spatial values. Both take an optional coordinate reference system (CRS) of the form `<authority>:<code>`, and `GEOGRAPHY` also takes an optional edge interpolation algorithm
+(`spherical`, `vincenty`, `thomas`, `andoyer` or `karney`). The defaults are `OGC:CRS84` and `spherical`.
+
+```sh
+bin/uc table create \
+  --full_name my_catalog.my_schema.places \
+  --columns "id INT, location GEOMETRY(OGC:CRS84), area GEOGRAPHY(OGC:CRS84, spherical)" \
+  --storage_location "/path/to/storage"
+```
+
+The CRS and algorithm are kept in the column's `type_text` and `type_json`. Using these columns from Spark and Delta has these requirements:
+
+- Spark 4.1 or later. Spark 4.0 has no geometry or geography type.
+- Delta Lake support for geospatial types is a preview feature that is off by default. Enable it in the Spark session with `spark.databricks.delta.geo.preview.enabled=true`.
+- Writing geo values to Parquet files needs Spark 4.2 or later. On Spark 4.1 a geo table can be created and read as a schema, but inserting rows fails.
+- `bin/uc table read` shows a geo value as its well-known binary (WKB) in hex.
+- The server accepts Delta's `geometry(<crs>)` and `geography(<crs>, <algorithm>)` type strings, and stores them as given.
 
 ### Read a Delta Table
 
