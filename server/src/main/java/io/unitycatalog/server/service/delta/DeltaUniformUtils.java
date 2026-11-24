@@ -40,6 +40,10 @@ import java.util.Optional;
  * </ul>
  */
 public final class DeltaUniformUtils {
+  private static final Instant MIN_CONVERTED_DELTA_TIMESTAMP =
+      Instant.parse("1000-01-01T00:00:00Z");
+  private static final Instant END_CONVERTED_DELTA_TIMESTAMP =
+      Instant.parse("+10000-01-01T00:00:00Z");
 
   private DeltaUniformUtils() {}
 
@@ -182,7 +186,8 @@ public final class DeltaUniformUtils {
    *
    * <ul>
    *   <li>{@code uniform.iceberg} is not null;
-   *   <li>{@code converted-delta-timestamp} parses as an instant that fits in epoch milliseconds;
+   *   <li>a non-null {@code converted-delta-timestamp} parses as an ISO 8601 instant from year 1000
+   *       to 9999;
    *   <li>basic shape (presence + size) via {@link #requireBasicShape};
    *   <li>commit-version atomicity: {@code converted-delta-version} must equal {@code
    *       commit.commitInfo.version} when commit-info is present.
@@ -217,26 +222,39 @@ public final class DeltaUniformUtils {
   }
 
   /**
-   * Parse the commit-time {@code converted-delta-timestamp} into epoch milliseconds.
+   * Parse the commit-time {@code converted_delta_timestamp} into epoch milliseconds.
+   *
+   * <p>The range is the one every supported database can store: MySQL {@code DATETIME} holds years
+   * 1000 to 9999.
    *
    * @param timestamp the wire value, an ISO 8601 UTC instant such as {@code
    *     2025-01-04T03:13:11.423Z}
    * @return the instant as epoch milliseconds
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} when the value does not parse as
-   *     an instant or does not fit in epoch milliseconds
+   *     an instant or is outside years 1000 to 9999
    */
   private static long parseConvertedDeltaTimestampMs(String timestamp) {
+    Instant instant;
     try {
-      return Instant.parse(timestamp).toEpochMilli();
-    } catch (DateTimeParseException | ArithmeticException e) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "uniform.iceberg.converted-delta-timestamp must be an ISO 8601 UTC instant within the"
-              + " epoch-millisecond range, such as 2025-01-04T03:13:11.423Z, but was '"
-              + timestamp
-              + "'.",
-          e);
+      instant = Instant.parse(timestamp);
+    } catch (DateTimeParseException e) {
+      throw invalidConvertedDeltaTimestamp(timestamp, e);
     }
+    if (instant.isBefore(MIN_CONVERTED_DELTA_TIMESTAMP)
+        || !instant.isBefore(END_CONVERTED_DELTA_TIMESTAMP)) {
+      throw invalidConvertedDeltaTimestamp(timestamp, null);
+    }
+    return instant.toEpochMilli();
+  }
+
+  private static BaseException invalidConvertedDeltaTimestamp(String timestamp, Throwable cause) {
+    return new BaseException(
+        ErrorCode.INVALID_ARGUMENT,
+        "uniform.iceberg.converted_delta_timestamp must be an ISO 8601 UTC instant from year 1000"
+            + " to 9999, such as 2025-01-04T03:13:11.423Z, but was '"
+            + timestamp
+            + "'.",
+        cause);
   }
 
   /**

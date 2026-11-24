@@ -1580,9 +1580,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(commit7),
         ErrorCode.INVALID_ARGUMENT,
-        "uniform.iceberg.converted-delta-timestamp must be an ISO 8601 UTC instant within the"
-            + " epoch-millisecond range, such as 2025-01-04T03:13:11.423Z, but was"
-            + " '2025-01-04T03:13:11.423'.");
+        "uniform.iceberg.converted_delta_timestamp must be an ISO 8601 UTC instant from year 1000"
+            + " to 9999, such as 2025-01-04T03:13:11.423Z, but was '2025-01-04T03:13:11.423'.");
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 0);
     verifyIcebergMetadata(Optional.empty());
   }
