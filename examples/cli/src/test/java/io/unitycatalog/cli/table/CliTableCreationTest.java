@@ -148,9 +148,26 @@ public class CliTableCreationTest extends BaseServerTest {
       throws IOException, ApiException {
     Path tableDir = testDirectoryRoot.resolve("table");
 
-    createTableWithFormatArg(tableDir, "CSV");
+    TableInfo tableInfo = createTableWithFormatArg(tableDir, "CSV");
 
     assertThat(tableDir).doesNotExist();
+    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.CSV);
+  }
+
+  @Test
+  public void testCreateExternalNonDeltaTableLeavesExistingDeltaLogUnchanged()
+      throws IOException, ApiException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+    Path commit = tableDir.resolve("_delta_log").resolve("00000000000000000000.json");
+    Files.createDirectories(commit.getParent());
+    Files.writeString(commit, "existing");
+
+    TableInfo tableInfo = createTableWithFormatArg(tableDir, "PARQUET");
+
+    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.PARQUET);
+    assertThat(listFileNames(tableDir)).containsExactly("_delta_log");
+    assertThat(listFileNames(commit.getParent())).containsExactly("00000000000000000000.json");
+    assertThat(commit).hasContent("existing");
   }
 
   @Test
@@ -160,6 +177,7 @@ public class CliTableCreationTest extends BaseServerTest {
 
     assertThatThrownBy(() -> createTableWithFormatArg(tableDir, "ICEBERG"))
         .isInstanceOf(ApiException.class)
+        .hasMessageContaining("UNSUPPORTED_TABLE_FORMAT")
         .hasMessageContaining("cannot create native ICEBERG tables");
 
     assertThat(listFileNames(tableDir)).isEmpty();
