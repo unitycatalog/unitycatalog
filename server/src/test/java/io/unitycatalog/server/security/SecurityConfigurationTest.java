@@ -75,7 +75,8 @@ class SecurityConfigurationTest {
     "encrypted PKCS #8, is encrypted",
     "encrypted PKCS #1, is encrypted",
     "certificate only, No PRIVATE KEY PEM block",
-    "garbage bytes, Cannot read the RSA private key"
+    "garbage bytes, Cannot read the RSA private key",
+    "EC key, expected an unencrypted RSA private key"
   })
   void rejectsAnUnusablePrivateKey(String problem, String message) throws Exception {
     byte[] der = newKeyPair().getPrivate().getEncoded();
@@ -89,6 +90,12 @@ class SecurityConfigurationTest {
               pem("RSA PRIVATE" + " KEY", der)
                   .replace("\n", "\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,00\n\n"));
       case "certificate only" -> Files.writeString(privateKey, pem("CERTIFICATE", der));
+      case "EC key" -> {
+        KeyPairGenerator ec = KeyPairGenerator.getInstance("EC");
+        ec.initialize(256);
+        Files.writeString(
+            privateKey, pem("PRIVATE" + " KEY", ec.generateKeyPair().getPrivate().getEncoded()));
+      }
       default -> Files.write(privateKey, new byte[] {1, 2, 3});
     }
 

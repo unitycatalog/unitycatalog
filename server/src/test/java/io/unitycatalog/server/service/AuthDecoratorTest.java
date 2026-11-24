@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.AlgorithmMismatchException;
 import com.auth0.jwt.exceptions.SignatureVerificationException;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
@@ -45,6 +46,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * How {@link AuthDecorator} answers a valid internal token whose user lookup fails or finds no
@@ -146,6 +148,32 @@ class AuthDecoratorTest {
                     (RSAPublicKey) otherKey.getPublic(), (RSAPrivateKey) otherKey.getPrivate()));
 
     assertThatThrownBy(this::serve).isInstanceOf(SignatureVerificationException.class);
+    verifyNotDelegated();
+  }
+
+  // The server's own key, but another algorithm: only RS512 is accepted.
+  @ParameterizedTest
+  @ValueSource(strings = {"RS256", "RS384", "HS512", "none"})
+  void tokenSignedWithAnotherAlgorithmIsRejected(String algorithm) throws Exception {
+    when(userRepository.getUserByEmail(EMAIL))
+        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED));
+    SecurityConfiguration keys = new SecurityConfiguration(configurationFolder);
+    Algorithm signer =
+        switch (algorithm) {
+          case "RS256" -> Algorithm.RSA256(keys.rsaPublicKey(), keys.rsaPrivateKey());
+          case "RS384" -> Algorithm.RSA384(keys.rsaPublicKey(), keys.rsaPrivateKey());
+          case "HS512" -> Algorithm.HMAC512(keys.rsaPublicKey().getEncoded());
+          default -> Algorithm.none();
+        };
+    token =
+        JWT.create()
+            .withSubject("server")
+            .withIssuer(INTERNAL)
+            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
+            .withClaim(JwtClaim.SUBJECT.key(), EMAIL)
+            .sign(signer);
+
+    assertThatThrownBy(this::serve).isInstanceOf(AlgorithmMismatchException.class);
     verifyNotDelegated();
   }
 

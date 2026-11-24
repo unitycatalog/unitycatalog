@@ -207,7 +207,7 @@ public class SecurityConfiguration {
       throw new IllegalStateException(
           "Cannot read the RSA private key in "
               + file.toAbsolutePath()
-              + "; expected a PEM key, or a PKCS #8 DER one",
+              + "; expected an unencrypted RSA private key in PKCS #8 PEM or DER, or PKCS #1 PEM",
           e);
     }
   }
