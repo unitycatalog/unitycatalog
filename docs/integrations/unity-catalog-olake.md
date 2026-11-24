@@ -9,7 +9,7 @@ OLake Go supports PostgreSQL, MySQL, MongoDB, MSSQL, and other sources. See the 
 ## Prerequisites
 
 - A running Unity Catalog server with Iceberg REST API write access enabled (on by default; see [Iceberg REST API](../usage/api/iceberg.md)).
-- A **storage root** configured on the target catalog or schema (or the deprecated `storage-root.tables` server property). OLake does not send a table `location` on create, so Unity Catalog creates managed tables and needs a storage root to assign their location. See [Deploy for AWS](../server/aws.md) for configuring S3-backed storage.
+- A **storage root** configured on the target catalog or schema (or the deprecated `storage-root.tables` server property), under an [external location](../server/aws.md) that has already been created. OLake does not send a table `location` on create, so Unity Catalog creates managed tables and needs a storage root to assign their location. See [Deploy for AWS](../server/aws.md) for creating the external location and configuring S3-backed storage.
 - OLake Go installed via [Docker Compose](https://olake.io/docs/getting-started/quickstart/) (recommended) or [standalone Docker](https://olake.io/docs/install/docker-cli/).
 
 ## Destination configuration
@@ -44,7 +44,7 @@ Example `destination.json`:
 | `rest_catalog_url` | Yes | Unity Catalog Iceberg REST endpoint. |
 | `iceberg_s3_path` | Yes | The name of the catalog in Unity Catalog (e.g. `unity`). Despite the parameter name, this is used as the Iceberg warehouse identifier. |
 | `aws_region` | Yes | AWS region of the S3 bucket backing the Unity Catalog tables. |
-| `aws_access_key` | No | AWS access key for direct S3 access. OLake uses these static credentials to write data files to S3; it does not use the temporary credentials that Unity Catalog vends from the `loadCredentials` endpoint. Optional when using IAM roles or instance profiles. |
+| `aws_access_key` | No | AWS access key for direct S3 access. OLake uses these static credentials to write data files to S3; it does not use the temporary credentials that Unity Catalog vends from `loadTable` or `loadCredentials`. Optional when using IAM roles or instance profiles. |
 | `aws_secret_key` | No | AWS secret key (paired with `aws_access_key`). |
 | `arrow_writes` | No | Enable the Arrow-based writer. Defaults to `false`. |
 
@@ -52,7 +52,7 @@ Example `destination.json`:
 
 By default, Unity Catalog runs with authorization disabled and no token is needed.
 
-When Unity Catalog has [authorization enabled](../server/auth.md), add a Unity Catalog access token to the configuration. Obtain a token from the `POST /auth/tokens` endpoint (see [Auth](../server/auth.md)):
+When Unity Catalog has [authorization enabled](../server/auth.md), exchange an identity-provider access token at `POST /api/1.0/unity-control/auth/tokens` (see [Auth](../server/auth.md)) and put the Unity Catalog token it returns in `token`:
 
 ```json
 {
