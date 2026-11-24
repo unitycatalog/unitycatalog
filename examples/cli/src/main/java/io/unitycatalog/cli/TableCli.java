@@ -38,7 +38,8 @@ public class TableCli {
   private static final ObjectMapper objectMapper = CliUtils.getObjectMapper();
   private static ObjectWriter objectWriter;
 
-  public static void handle(CommandLine cmd, ApiClient apiClient, String authToken)
+  public static void handle(
+      CommandLine cmd, ApiClient apiClient, String serverUrl, String authToken)
       throws JsonProcessingException, ApiException {
     TablesApi tablesApi = new TablesApi(apiClient);
     TemporaryCredentialsApi temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient);
@@ -47,7 +48,6 @@ public class TableCli {
     objectWriter = CliUtils.getObjectWriter(cmd);
     JSONObject json = CliUtils.createJsonFromOptions(cmd);
     String output = EMPTY;
-    String serverUrl = apiClient.getBaseUri();
     switch (subCommand) {
       case CliUtils.CREATE:
         output = createTable(tablesApi, temporaryCredentialsApi, json, serverUrl, authToken);
