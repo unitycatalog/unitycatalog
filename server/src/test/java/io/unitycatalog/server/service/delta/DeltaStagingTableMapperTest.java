@@ -45,7 +45,7 @@ public class DeltaStagingTableMapperTest {
   }
 
   @Test
-  public void testLocalStorageCredentialOmitsExpiration() throws Exception {
+  public void testLocalStorageCredentialSendsNullExpiration() throws Exception {
     String json =
         DeltaApiMappers.MAPPER.writeValueAsString(
             DeltaStagingTableMapper.toStagingTableResponse(
@@ -53,7 +53,7 @@ public class DeltaStagingTableMapperTest {
 
     assertThat(json)
         .contains("\"storage-credentials\":[{\"prefix\":\"file:///tmp/uc/staging\"")
-        .doesNotContain("expiration");
+        .contains("\"expiration-time-ms\":null");
   }
 
   /**

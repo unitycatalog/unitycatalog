@@ -24,10 +24,13 @@ async def test_delta_load_table(delta_tables_api):
 
 
 @pytest.mark.parametrize("expiration", [None, 1700000000000])
-def test_delta_credential_expiration_is_optional(expiration):
-    credential = {"prefix": "s3://bucket/path", "operation": "READ", "config": {}}
-    if expiration is not None:
-        credential["expiration-time-ms"] = expiration
+def test_delta_credential_expiration_accepts_null(expiration):
+    credential = {
+        "prefix": "file:///tmp/uc/tbl",
+        "operation": "READ",
+        "config": {},
+        "expiration-time-ms": expiration,
+    }
 
     response = DeltaCredentialsResponse.from_dict({"storage-credentials": [credential]})
 
@@ -35,7 +38,7 @@ def test_delta_credential_expiration_is_optional(expiration):
 
 
 @pytest.mark.asyncio
-async def test_delta_credentials_on_local_storage(
+async def test_delta_staging_credentials_on_local_storage(
     catalogs_api, schemas_api, delta_tables_api, delta_temporary_credentials_api, tmp_path
 ):
     catalog = f"delta_credentials_{uuid.uuid4().hex}"
@@ -48,19 +51,22 @@ async def test_delta_credentials_on_local_storage(
         staging_credentials = await delta_temporary_credentials_api.get_staging_table_credentials(
             str(staging.table_id)
         )
-        table_credentials = await delta_temporary_credentials_api.get_table_credentials(
-            operation=DeltaCredentialOperation.READ,
-            catalog="unity",
-            var_schema="default",
-            table="numbers",
-        )
 
-        for credentials in (
-            staging.storage_credentials,
-            staging_credentials.storage_credentials,
-            table_credentials.storage_credentials,
-        ):
+        for credentials in (staging.storage_credentials, staging_credentials.storage_credentials):
             assert credentials[0].prefix.startswith("file:")
             assert credentials[0].expiration_time_ms is None
     finally:
         await catalogs_api.delete_catalog(catalog, force=True)
+
+
+@pytest.mark.asyncio
+async def test_delta_table_credentials_on_local_storage(delta_temporary_credentials_api):
+    credentials = await delta_temporary_credentials_api.get_table_credentials(
+        operation=DeltaCredentialOperation.READ,
+        catalog="unity",
+        var_schema="default",
+        table="numbers",
+    )
+
+    assert credentials.storage_credentials[0].prefix.startswith("file:")
+    assert credentials.storage_credentials[0].expiration_time_ms is None

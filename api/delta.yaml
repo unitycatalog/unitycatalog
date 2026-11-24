@@ -588,6 +588,7 @@ components:
       required:
         - prefix
         - operation
+        - expiration-time-ms
         - config
       properties:
         prefix:
@@ -633,11 +634,12 @@ components:
               type: string
               description: GCP OAuth token
         expiration-time-ms:
-          type: integer
+          type: [integer, "null"]
           format: int64
           description: |
-            Credential expiration time in epoch milliseconds. Absent when the credential has no
-            expiration time, for example for a local file system path.
+            Credential expiration time in epoch milliseconds, or null when the credential has no
+            expiration time, for example for a local file system path or static credentials
+            configured on the server.
             This standardized field avoids the need for provider-specific expiration keys
             (e.g., s3.session-token-expires-at-ms, adls.sas-token-expires-at-ms, etc.)
             EXPERIMENTAL: when the config has `s3.endpoint` but no `s3.session-token`, it is a
