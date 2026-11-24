@@ -498,6 +498,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-protocol requires a protocol");
 
+      DeltaProtocol noWriterVersion = new DeltaProtocol().minReaderVersion(3);
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new DeltaSetProtocolUpdate().protocol(noWriterVersion)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "protocol.min-writer-version is required.");
+
       // set-domain-metadata with null updates block -- rejected in applyUpdates.
       TestUtils.assertDeltaApiException(
           () -> updateTable(h, new DeltaSetDomainMetadataUpdate().updates(null)),
@@ -558,11 +564,17 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           "rowTracking");
     }
 
-    // -------- set-protocol on EXTERNAL with a non-contract protocol is allowed --------
+    // -------- set-protocol on EXTERNAL: missing version rejected, non-contract allowed --------
     // EXTERNAL tables are not subject to the catalog-managed contract; pins that the MANAGED
     // re-validation guard doesn't over-block.
     {
       Handle external = createDeltaExternal("tbl_setproto_external");
+      DeltaProtocol noReaderVersion = new DeltaProtocol().minWriterVersion(7);
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(external, new DeltaSetProtocolUpdate().protocol(noReaderVersion)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "protocol.min-reader-version is required.");
+
       DeltaLoadTableResponse r =
           updateTable(
               external,

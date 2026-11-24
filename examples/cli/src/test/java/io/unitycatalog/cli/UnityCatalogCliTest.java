@@ -1,14 +1,19 @@
 package io.unitycatalog.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
+import io.delta.storage.commit.uccommitcoordinator.UCTokenBasedRestClient;
+import io.unitycatalog.cli.delta.DeltaKernelUtils;
+import io.unitycatalog.client.auth.TokenProvider;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -16,6 +21,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 /** Checks which URL each CLI client sends its requests to for a given {@code --server}. */
 public class UnityCatalogCliTest {
@@ -92,6 +99,57 @@ public class UnityCatalogCliTest {
     JsonNode output = runCli(serverPath, "auth", "login", "--identity_token", "identity-token");
     assertThat(requestPaths).containsExactly(expectedPrefix + "/api/1.0/unity-control/auth/tokens");
     assertThat(output.get("access_token").asText()).isEqualTo("exchanged-token");
+  }
+
+  static Stream<Arguments> deltaServerPaths() {
+    // Delta's client builds its base path from the decoded URI path, so an encoded path such as
+    // /my%20gateway fails there whatever URI the CLI passes.
+    return serverPaths().filter(arguments -> !((String) arguments.get()[0]).contains("%"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("deltaServerPaths")
+  public void testManagedTableCreateHandsServerUriToDeltaCommitClient(
+      String serverPath, String expectedPrefix) throws Exception {
+    responseBody =
+        "{\"id\":\"staging-id\",\"staging_location\":\"file:///tmp/staging\","
+            + "\"metastore_id\":\"metastore-id\"}";
+    List<String> commitClientUris = new CopyOnWriteArrayList<>();
+    try (MockedStatic<DeltaKernelUtils> deltaKernelUtils =
+        Mockito.mockStatic(DeltaKernelUtils.class)) {
+      deltaKernelUtils
+          .when(
+              () ->
+                  DeltaKernelUtils.createDeltaTable(
+                      any(), any(), any(), any(), any(), any(), any()))
+          .thenAnswer(
+              invocation -> {
+                commitClientUris.add(invocation.getArgument(4));
+                return Map.of();
+              });
+      runCli(
+          serverPath,
+          "table",
+          "create",
+          "--full_name",
+          "c.s.t",
+          "--columns",
+          "id INT",
+          "--table_type",
+          "MANAGED");
+    }
+    assertThat(commitClientUris).hasSize(1);
+
+    requestPaths.clear();
+    try (UCTokenBasedRestClient commitClient =
+        new UCTokenBasedRestClient(
+            commitClientUris.get(0),
+            TokenProvider.create(Map.of("type", "static", "token", "test-token")),
+            Map.of())) {
+      assertThat(commitClient.getMetastoreId()).isEqualTo("metastore-id");
+    }
+    assertThat(requestPaths)
+        .containsExactly(expectedPrefix + "/api/2.1/unity-catalog/metastore_summary");
   }
 
   private JsonNode runCli(String serverPath, String... args) {

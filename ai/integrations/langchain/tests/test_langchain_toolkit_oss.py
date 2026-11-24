@@ -8,7 +8,8 @@ import pytest_asyncio
 from databricks.sdk.service.catalog import ColumnTypeName
 from databricks_langchain.chat_models import ChatDatabricks
 from databricks_langchain.chat_models import ChatGeneration as LangChainChatGeneration
-from langchain_core.messages import BaseMessage
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatResult
 from langchain_core.runnables import RunnableGenerator
 from langgraph.prebuilt import create_react_agent
@@ -346,3 +347,35 @@ async def test_tool_passes_reserved_parameter_names_to_local_function(method):
         await client.close_async()
 
     assert json.loads(result)["value"] == "config value|run_manager value"
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.asyncio
+async def test_langgraph_agent_executes_uc_tool_call(uc_client, use_async):
+    class ToolCallingFakeChatModel(GenericFakeChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    uc_client.execution_mode = ExecutionMode("local")
+    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
+        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
+        tool_call = {"name": func_obj.tool_name, "args": {"a": 2, "b": 3}, "id": "call-1"}
+        llm = ToolCallingFakeChatModel(
+            messages=iter([AIMessage(content="", tool_calls=[tool_call]), AIMessage(content="5")])
+        )
+        agent = create_react_agent(llm, toolkit.tools)
+        request = {"messages": [{"role": "user", "content": "What is 2 + 3?"}]}
+        result = await agent.ainvoke(request) if use_async else agent.invoke(request)
+
+    tool_message = result["messages"][2]
+    assert tool_message.type == "tool"
+    assert json.loads(tool_message.content)["value"] == "5"
+
+
+@pytest.mark.asyncio
+async def test_toolkit_tool_ainvoke_executes_uc_function(uc_client):
+    uc_client.execution_mode = ExecutionMode("local")
+    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
+        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
+        result = await toolkit.tools[0].ainvoke({"a": 2, "b": 3})
+    assert json.loads(result)["value"] == "5"
