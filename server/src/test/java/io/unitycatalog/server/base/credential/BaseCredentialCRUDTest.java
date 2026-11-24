@@ -325,6 +325,20 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testCreateCredentialWithoutPurposeIsRejected() throws ApiException {
+    assertApiException(
+        () ->
+            credentialOperations.createCredential(
+                new CreateCredentialRequest()
+                    .name(CREDENTIAL_NAME)
+                    .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN))),
+        ErrorCode.INVALID_ARGUMENT,
+        "purpose is required.");
+    assertThat(credentialOperations.listCredentials(Optional.empty(), CredentialPurpose.STORAGE))
+        .isEmpty();
+  }
+
+  @Test
   public void testCredentialDeletion() throws ApiException {
     // Test 1: Credential with external location - delete without force should fail
     String credentialWithExternalLocationName = CREDENTIAL_NAME + "_with_el";

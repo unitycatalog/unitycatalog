@@ -64,6 +64,8 @@ public class CredentialRepository {
 
   public CredentialInfo addCredential(CreateCredentialRequest createCredentialRequest) {
     ValidationUtils.validateSqlObjectName(createCredentialRequest.getName());
+    ValidationUtils.checkArgument(
+        createCredentialRequest.getPurpose() != null, "purpose is required.");
     if (createCredentialRequest.getS3Compatible() != null) {
       serverProperties.checkS3CompatibleStorageEnabled();
     }

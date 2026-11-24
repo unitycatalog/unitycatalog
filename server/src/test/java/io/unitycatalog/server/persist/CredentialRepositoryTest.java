@@ -2,7 +2,6 @@ package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
@@ -183,33 +182,24 @@ class CredentialRepositoryTest {
   }
 
   @Test
-  void testCreateWithoutPurposeDefaultsToStorage() {
+  void testCreateWithoutPurposeIsRejected() {
     AwsIamRoleRequest role = new AwsIamRoleRequest().roleArn("arn:aws:iam::123456789012:role/r");
     List<CreateCredentialRequest> requests =
         List.of(
             new CreateCredentialRequest().name("role_unset").awsIamRole(role),
-            new CreateCredentialRequest().name("compat_unset").s3Compatible(s3Compatible("value")),
-            new CreateCredentialRequest()
-                .name("role_storage")
-                .purpose(CredentialPurpose.STORAGE)
-                .awsIamRole(role));
+            new CreateCredentialRequest().name("compat_unset").s3Compatible(s3Compatible("value")));
     for (CreateCredentialRequest request : requests) {
-      assertThat(credentialRepository.addCredential(request).getPurpose())
-          .as(request.getName())
-          .isEqualTo(CredentialPurpose.STORAGE);
-      assertThat(credentialRepository.getCredential(request.getName()).getPurpose())
-          .as(request.getName())
-          .isEqualTo(CredentialPurpose.STORAGE);
+      assertThatThrownBy(() -> credentialRepository.addCredential(request), request.getName())
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+          .hasMessage("purpose is required.");
     }
     assertThat(
             credentialRepository
                 .listCredentials(Optional.empty(), Optional.empty())
                 .getCredentials())
-        .extracting(CredentialInfo::getName, CredentialInfo::getPurpose)
-        .containsExactlyInAnyOrder(
-            tuple("role_unset", CredentialPurpose.STORAGE),
-            tuple("compat_unset", CredentialPurpose.STORAGE),
-            tuple("role_storage", CredentialPurpose.STORAGE));
+        .isEmpty();
   }
 
   private static S3CompatibleRequest s3Compatible(String secret) {
