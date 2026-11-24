@@ -164,11 +164,25 @@ jobs:
             --set-string 'server.db.postgresqlConfig.extraParams.currentSchema=uc')"
           url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
           [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?ApplicationName=uc+ci%2Btest&currentSchema=uc&sslmode=verify-full&sslrootcert=%2Fhome%2Funitycatalog%2Fetc%2Fconf%2Fdbrootca.crt' ]
-          # An extra parameter that ssl also sets fails the render. Without ssl, it is passed on.
-          if err="$(helm template uc helm "${pg[@]}" --set-string server.db.postgresqlConfig.extraParams.sslmode=disable 2>&1)"; then
-            exit 1
-          fi
-          grep -qF 'server.db.postgresqlConfig.extraParams.sslmode is set by server.db.postgresqlConfig.ssl' <<<"$err"
+          # An extra parameter that ssl also sets fails the render, with the root certificate given inline or from a
+          # config map. Without ssl, it is passed on.
+          pg_cm=(-f helm/ci/postgresql-values.yaml --set server.db.postgresqlConfig.ssl.enabled=true
+            --set-string server.db.postgresqlConfig.ssl.rootCertConfigMapName=db-root-cert
+            --set-string server.db.postgresqlConfig.ssl.rootCertConfigMapKey=ca.crt)
+          out="$(helm template uc helm "${pg_cm[@]}")"
+          url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
+          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?sslmode=verify-full&sslrootcert=%2Fhome%2Funitycatalog%2Fetc%2Fconf%2Fdbrootca.crt' ]
+          check_ssl_params_clash() {
+            for key in sslmode sslrootcert; do
+              if err="$(helm template uc helm "$@" --set-string "server.db.postgresqlConfig.extraParams.${key}=/x" 2>&1)"; then
+                echo "expected the render to fail for extraParams.${key}"
+                exit 1
+              fi
+              grep -qF "server.db.postgresqlConfig.extraParams.${key} is set by server.db.postgresqlConfig.ssl" <<<"$err"
+            done
+          }
+          check_ssl_params_clash "${pg[@]}"
+          check_ssl_params_clash "${pg_cm[@]}"
           out="$(helm template uc helm -f helm/ci/postgresql-values.yaml \
             --set-string server.db.postgresqlConfig.extraParams.sslmode=require)"
           url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"

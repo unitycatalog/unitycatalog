@@ -706,8 +706,8 @@ not set
 </td>
 			<td>PostgreSQL JDBC URL params
 
-With `ssl.enabled`, the chart sets `sslmode` and `sslrootcert` from `ssl` and fails to render when they are
-also set here.
+With `ssl.enabled`, the chart sets `sslmode`, and also `sslrootcert` when `ssl.rootCert` or
+`ssl.rootCertConfigMapName` is set. The render fails when a parameter here repeats one the chart set.
 
 Example:
 ```yaml
