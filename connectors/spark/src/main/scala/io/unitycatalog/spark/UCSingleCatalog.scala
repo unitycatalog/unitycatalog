@@ -1267,7 +1267,10 @@ private[spark] class UCProxy(
   private[spark] def toStructField(col: ColumnInfo): StructField =
     StructField(
       col.getName,
-      DataType.fromDDL(col.getTypeText),
+      // Delta writes geo types as e.g. geometry(OGC:CRS84), which Spark's DDL parser rejects but
+      // its JSON parser reads.
+      GeoTypes.fromTypeJson(col.getTypeText, col.getTypeJson)
+        .getOrElse(DataType.fromDDL(col.getTypeText)),
       col.getNullable,
       UCColumnConversions.metadataOf(col.getName, col.getTypeJson))
       .withComment(col.getComment)
@@ -1388,7 +1391,7 @@ private[spark] class UCProxy(
       case _: NullType => ColumnTypeName.NULL
       case _: UserDefinedType[_] => ColumnTypeName.USER_DEFINED_TYPE
       case _: VariantType => ColumnTypeName.VARIANT
-      case _ => ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API
+      case _ => GeoTypes.typeName(dataType).getOrElse(ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API)
     }
   }
 

@@ -105,7 +105,9 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return SparkSession.builder()
         .appName("test")
         .master("local[*]")
-        .config("spark.sql.shuffle.partitions", "4");
+        .config("spark.sql.shuffle.partitions", "4")
+        // Delta gates geo columns behind this preview flag; its default stays off.
+        .config("spark.databricks.delta.geo.preview.enabled", "true");
   }
 
   protected SparkSession createSparkSessionWithCatalogs(

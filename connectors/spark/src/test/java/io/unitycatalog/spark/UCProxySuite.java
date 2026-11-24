@@ -58,6 +58,7 @@ import org.apache.spark.sql.types.MetadataBuilder;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -462,6 +463,82 @@ public class UCProxySuite {
     StructField field = ((UCProxy) proxy).toStructField(columnWithStoredComment(null));
     assertThat(field.getComment().isEmpty()).isTrue();
     assertThat(field.metadata().getString("k")).isEqualTo("v");
+  }
+
+  private static boolean isSparkAtLeast(int major, int minor) {
+    String[] parts = org.apache.spark.package$.MODULE$.SPARK_VERSION().split("\\.");
+    int runMajor = Integer.parseInt(parts[0]);
+    int runMinor = Integer.parseInt(parts[1]);
+    return runMajor > major || (runMajor == major && runMinor >= minor);
+  }
+
+  /**
+   * Delta's UC Delta API stores geo columns as geometry(OGC:CRS84), which Spark's DDL parser
+   * rejects, so the column must be read from its type_json. Spark 4.0 has no geo types.
+   */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "geometry(OGC:CRS84)|geometry(OGC:CRS84)|geometry(4326)",
+        "geometry|geometry|geometry(4326)",
+        "geometry(SRID:ANY)|geometry(SRID:ANY)|geometry(any)",
+        "geography(OGC:CRS84, spherical)|geography(OGC:CRS84, spherical)|geography(4326)",
+        "geography|geography|geography(4326)",
+        "geometry(4326)|geometry(OGC:CRS84)|geometry(4326)",
+        "geography(any)|geography(SRID:ANY, SPHERICAL)|geography(any)"
+      })
+  public void testToStructFieldReadsGeoTypeFromTypeJson(
+      String typeText, String jsonType, String expectedCatalogString) {
+    Assumptions.assumeTrue(isSparkAtLeast(4, 1), "Spark 4.0 has no geo types");
+    ColumnInfo column =
+        new ColumnInfo()
+            .name("g")
+            .typeText(typeText)
+            .nullable(true)
+            .typeJson(
+                "{\"name\":\"g\",\"type\":\"" + jsonType + "\",\"nullable\":true,\"metadata\":{}}");
+
+    StructField field = ((UCProxy) proxy).toStructField(column);
+
+    assertThat(field.dataType().catalogString()).isEqualTo(expectedCatalogString);
+  }
+
+  @Test
+  public void testToStructFieldReadsNestedGeoTypeFromTypeJson() {
+    Assumptions.assumeTrue(isSparkAtLeast(4, 1), "Spark 4.0 has no geo types");
+    ColumnInfo column =
+        new ColumnInfo()
+            .name("s")
+            .typeText("struct<g:geometry(OGC:CRS84),a:array<geography(OGC:CRS84, spherical)>>")
+            .nullable(true)
+            .typeJson(
+                "{\"name\":\"s\",\"type\":{\"type\":\"struct\",\"fields\":["
+                    + "{\"name\":\"g\",\"type\":\"geometry(OGC:CRS84)\",\"nullable\":true,"
+                    + "\"metadata\":{}},{\"name\":\"a\",\"type\":{\"type\":\"array\","
+                    + "\"elementType\":\"geography(OGC:CRS84, spherical)\",\"containsNull\":true},"
+                    + "\"nullable\":true,\"metadata\":{}}]},\"nullable\":true,\"metadata\":{}}");
+
+    StructField field = ((UCProxy) proxy).toStructField(column);
+
+    assertThat(field.dataType().catalogString())
+        .isEqualTo("struct<g:geometry(4326),a:array<geography(4326)>>");
+  }
+
+  /** The type name sent to UC for a Spark geo type, and that other types are unaffected. */
+  @ParameterizedTest
+  @CsvSource({
+    "geometry(4326),GEOMETRY",
+    "geometry(any),GEOMETRY",
+    "geography(4326),GEOGRAPHY",
+    "geography(any),GEOGRAPHY"
+  })
+  public void testConvertGeoDataTypeToTypeName(String ddl, ColumnTypeName expected) {
+    Assumptions.assumeTrue(isSparkAtLeast(4, 1), "Spark 4.0 has no geo types");
+    assertThat(
+            ((UCProxy) proxy)
+                .convertDataTypeToTypeName(org.apache.spark.sql.types.DataType.fromDDL(ddl)))
+        .isEqualTo(expected);
   }
 
   private static ColumnInfo intColumn(String name, int position, String typeJson) {

@@ -5,12 +5,14 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
@@ -23,6 +25,7 @@ import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -359,6 +362,48 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
         .isEqualTo("note");
     assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 'abcd')", fullTableName))
         .hasStackTraceContaining("char/varchar type length limitation");
+  }
+
+  /**
+   * Geo columns of a managed Delta table are stored by the UC Delta API as {@code
+   * geometry(OGC:CRS84)} and {@code geography(OGC:CRS84, SPHERICAL)}, which Spark's DDL parser
+   * rejects, so loading must read them from type_json. Creating the table writes no rows, which
+   * Spark 4.1's Parquet writer could not do for geo values.
+   */
+  @Test
+  @EnabledIf("canUpdateColumnsToUC")
+  public void testGeoColumnsAreStoredAndLoaded() throws Exception {
+    Assumptions.assumeTrue(isSparkAtLeast(4, 1), "Spark 4.0 has no geo types");
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setTableName(TEST_TABLE)
+                .setColumns(
+                    List.of(
+                        Pair.of("i", "INT"),
+                        Pair.of("g", "GEOMETRY(4326)"),
+                        Pair.of("h", "GEOGRAPHY(4326)"))));
+
+    List<ColumnInfo> stored = loadTableInfo(fullTableName).getColumns();
+    assertThat(stored)
+        .extracting(ColumnInfo::getTypeName, ColumnInfo::getTypeText)
+        .containsExactly(
+            tuple(ColumnTypeName.INT, "int"),
+            tuple(ColumnTypeName.GEOMETRY, "geometry(OGC:CRS84)"),
+            tuple(ColumnTypeName.GEOGRAPHY, "geography(OGC:CRS84, SPHERICAL)"));
+    assertThat(stored.get(1).getTypeJson()).contains("\"type\":\"geometry(OGC:CRS84)\"");
+
+    UCProxy proxy =
+        ((UCSingleCatalog) session.sessionState().catalogManager().catalog(CATALOG_NAME)).ucProxy();
+    assertThat(proxy.toStructField(stored.get(1)).dataType().catalogString())
+        .isEqualTo("geometry(4326)");
+    assertThat(proxy.toStructField(stored.get(2)).dataType().catalogString())
+        .isEqualTo("geography(4326)");
+    assertThat(session.table(fullTableName).schema().catalogString())
+        .isEqualTo("struct<i:int,g:geometry(4326),h:geography(4326)>");
   }
 
   @Test
