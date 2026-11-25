@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils;
 
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
+import com.unboundid.scim2.common.types.Name;
 import com.unboundid.scim2.common.types.Photo;
 import com.unboundid.scim2.common.types.UserResource;
 import io.unitycatalog.control.model.User;
@@ -33,6 +34,7 @@ public class Scim2Utils {
     userResource
         .setUserName(user.getEmail())
         .setDisplayName(user.getName())
+        .setName(new Name().setFormatted(user.getName()))
         .setEmails(List.of(new Email().setValue(user.getEmail()).setPrimary(true)))
         .setPhotos(List.of(new Photo().setValue(URI.create(pictureUrl))));
     userResource.setId(user.getId());
