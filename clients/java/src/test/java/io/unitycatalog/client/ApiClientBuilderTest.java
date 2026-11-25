@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 
 /**
@@ -201,6 +203,32 @@ public class ApiClientBuilderTest {
         .isEqualTo("https://localhost:8080/path/to/uc/api/2.1/unity-catalog");
   }
 
+  @ParameterizedTest
+  @CsvSource({
+    "http://localhost:8080, http://localhost:8080/api/2.1/unity-catalog",
+    "http://localhost:8080/, http://localhost:8080/api/2.1/unity-catalog",
+    "http://localhost:8080/uc, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/uc/, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/uc//, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/gateway/uc/, http://localhost:8080/gateway/uc/api/2.1/unity-catalog",
+    "http://example.com/, http://example.com/api/2.1/unity-catalog",
+    "http://example.com/uc/, http://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com, https://example.com/api/2.1/unity-catalog",
+    "https://example.com/, https://example.com/api/2.1/unity-catalog",
+    "https://example.com/uc, https://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com/uc/, https://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com:8443/, https://example.com:8443/api/2.1/unity-catalog",
+    "https://example.com:8443/uc//, https://example.com:8443/uc/api/2.1/unity-catalog"
+  })
+  public void testBaseUriIgnoresTrailingSlashes(String uri, String expectedBaseUri) {
+    ApiClient client =
+        ApiClientBuilder.create()
+            .uri(uri)
+            .tokenProvider(TokenProviderUtils.create(TEST_TOKEN))
+            .build();
+    assertThat(client.getBaseUri()).isEqualTo(expectedBaseUri);
+  }
+
   @Test
   public void testReusedBuilderKeepsEachClientsTokenProvider() {
     ApiClientBuilder builder = ApiClientBuilder.create().uri(TEST_URI);
@@ -245,7 +273,10 @@ public class ApiClientBuilderTest {
 
     HttpHeaders firstHeaders = sentHeaders(first);
     assertThat(firstHeaders.allValues("X-A")).isEmpty();
-    assertThat(firstHeaders.firstValue("User-Agent")).get().asString().doesNotContain("LaterApp");
+    assertThat(firstHeaders.allValues("User-Agent"))
+        .singleElement()
+        .asString()
+        .doesNotContain("LaterApp");
 
     HttpHeaders secondHeaders = sentHeaders(second);
     assertThat(secondHeaders.allValues("X-A")).containsExactly("1");

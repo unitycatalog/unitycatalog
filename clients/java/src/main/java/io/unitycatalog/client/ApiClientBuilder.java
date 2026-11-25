@@ -60,7 +60,8 @@ public class ApiClientBuilder {
   /**
    * Sets the Unity Catalog server URI.
    *
-   * <p>The base path {@code /api/2.1/unity-catalog} will be automatically appended.
+   * <p>The base path {@code /api/2.1/unity-catalog} will be automatically appended, after any
+   * trailing slashes of the URI path are removed.
    *
    * @param uri the Unity Catalog server URI, must not be null
    * @return this builder instance for method chaining
@@ -186,7 +187,7 @@ public class ApiClientBuilder {
     apiClient.setScheme(uri.getScheme());
     apiClient.setHost(uri.getHost());
     apiClient.setPort(uri.getPort());
-    apiClient.setBasePath(uri.getPath() + BASE_PATH);
+    apiClient.setBasePath(uri.getPath().replaceAll("/+$", "") + BASE_PATH);
 
     Preconditions.checkNotNull(tokenProvider, "The unitycatalog token provider cannot be null");
     TokenProvider clientTokenProvider = tokenProvider;
