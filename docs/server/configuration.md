@@ -74,6 +74,21 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.token-signing-private-key-file`: The RSA private key the server signs and checks its own tokens with: an
+    unencrypted PKCS #8 key in PEM or DER, or a PKCS #1 one in PEM. The server derives the public key from it once,
+    at startup. A file that is set must exist. Use the same key on every server instance. The server only reads the
+    file, so it can be a read-only mount of a Kubernetes Secret. Create a key with:
+
+    ```sh
+    openssl genrsa -out private_key.pem 2048
+    ```
+
+    !!! warning "Deprecated: the generated signing key"
+        When the key file is not set, the server signs with a key it keeps in `etc/conf`
+        (`private_key.der`, `public_key.der`), generating it on first start; with authorization enabled it logs a
+        warning at each start. This still works, but is deprecated; set the key file setting instead. A newly
+        generated private key is readable by its owner only. Before rolling back to an earlier version, see
+        [Upgrading](auth.md#upgrading) in the authentication docs.
 - `server.iceberg-table.enabled`: Turns on the write endpoints of the [Iceberg REST catalog](../usage/api/iceberg.md),
     such as creating, committing to, renaming and dropping tables. Defaults to `true`. Set it to `false` to reject
     namespace and table changes through the Iceberg REST catalog. Tables that were already created stay readable.

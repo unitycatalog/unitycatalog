@@ -38,7 +38,8 @@ public class TableCli {
   private static final ObjectMapper objectMapper = CliUtils.getObjectMapper();
   private static ObjectWriter objectWriter;
 
-  public static void handle(CommandLine cmd, ApiClient apiClient, String authToken)
+  public static void handle(
+      CommandLine cmd, ApiClient apiClient, String serverUrl, String authToken)
       throws JsonProcessingException, ApiException {
     TablesApi tablesApi = new TablesApi(apiClient);
     TemporaryCredentialsApi temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient);
@@ -47,7 +48,6 @@ public class TableCli {
     objectWriter = CliUtils.getObjectWriter(cmd);
     JSONObject json = CliUtils.createJsonFromOptions(cmd);
     String output = EMPTY;
-    String serverUrl = apiClient.getBaseUri();
     switch (subCommand) {
       case CliUtils.CREATE:
         output = createTable(tablesApi, temporaryCredentialsApi, json, serverUrl, authToken);
@@ -95,6 +95,7 @@ public class TableCli {
     // Set fields in json object for seamless deserialization
     List<ColumnInfo> columnInfoList =
         CliUtils.parseColumns(json.getString(CliParams.COLUMNS.getServerParam()));
+    DataSourceFormat dataSourceFormat = DataSourceFormat.valueOf(format.toUpperCase());
     CreateTable createTable =
         new CreateTable()
             .name(json.getString(CliParams.NAME.getServerParam()))
@@ -105,7 +106,7 @@ public class TableCli {
             .tableType(
                 TableType.valueOf(
                     json.getString(CliParams.TABLE_TYPE.getServerParam()).toUpperCase()))
-            .dataSourceFormat(DataSourceFormat.valueOf(format.toUpperCase()));
+            .dataSourceFormat(dataSourceFormat);
     TemporaryCredentials temporaryCredentials;
     String stagingTableId = null;
     if (createTable.getTableType() == TableType.EXTERNAL) {
@@ -131,7 +132,7 @@ public class TableCli {
         throw new CliException("Storage location is not allowed for managed tables");
       }
       // Create staging table if format is Delta
-      if (!DataSourceFormat.DELTA.name().equals(format.toUpperCase())) {
+      if (dataSourceFormat != DataSourceFormat.DELTA) {
         throw new CliException("Only Delta tables are supported for managed tables: " + format);
       }
       CreateStagingTable createStagingTable =
@@ -155,35 +156,37 @@ public class TableCli {
       throw new CliException("Unknown table type: " + createTable.getTableType());
     }
 
-    // try and initialize the directory and initiate Delta log at the location
-    try {
-      Map<String, String> deltaTableProperties =
-          DeltaKernelUtils.createDeltaTable(
-              createTable.getStorageLocation(),
-              columnInfoList,
-              temporaryCredentials,
-              stagingTableId,
-              serverUrl,
-              authToken,
-              createTable.getProperties());
-      if (createTable.getTableType() == TableType.MANAGED) {
-        // Use properties read back from the post-commit snapshot as the source of truth.
-        // They reflect what the kernel actually wrote (including user-specified properties).
-        createTable.setProperties(deltaTableProperties);
-      }
-    } catch (Exception e) {
-      if ((e instanceof TableAlreadyExistsException
-              || e.getCause() instanceof TableAlreadyExistsException)
-          && createTable.getTableType() == TableType.EXTERNAL) {
-        // A common pattern is that many tests would test the failure cases of table creation. But
-        // they often leave the Delta table on disk after failing to register a table in UC. Then
-        // they retry the table creation on the same location. This would allow those tests to
-        // continue. This will only happen to external tables as managed tables would have a unique
-        // new location allocated by UC.
-        // TODO confirm the schema of the existing table matches the schema of the new table
-      } else {
-        throw new CliException(
-            "Failed to create Delta table at " + createTable.getStorageLocation(), e);
+    // Other formats register files already at the location, so only Delta gets a transaction log.
+    if (dataSourceFormat == DataSourceFormat.DELTA) {
+      try {
+        Map<String, String> deltaTableProperties =
+            DeltaKernelUtils.createDeltaTable(
+                createTable.getStorageLocation(),
+                columnInfoList,
+                temporaryCredentials,
+                stagingTableId,
+                serverUrl,
+                authToken,
+                createTable.getProperties());
+        if (createTable.getTableType() == TableType.MANAGED) {
+          // Use properties read back from the post-commit snapshot as the source of truth.
+          // They reflect what the kernel actually wrote (including user-specified properties).
+          createTable.setProperties(deltaTableProperties);
+        }
+      } catch (Exception e) {
+        if ((e instanceof TableAlreadyExistsException
+                || e.getCause() instanceof TableAlreadyExistsException)
+            && createTable.getTableType() == TableType.EXTERNAL) {
+          // A common pattern is that many tests would test the failure cases of table creation.
+          // But they often leave the Delta table on disk after failing to register a table in UC.
+          // Then they retry the table creation on the same location. This would allow those tests
+          // to continue. This will only happen to external tables as managed tables would have a
+          // unique new location allocated by UC.
+          // TODO confirm the schema of the existing table matches the schema of the new table
+        } else {
+          throw new CliException(
+              "Failed to create Delta table at " + createTable.getStorageLocation(), e);
+        }
       }
     }
 

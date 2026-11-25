@@ -127,7 +127,8 @@ Load the sample table:
 curl -s "$UC_ICEBERG/v1/catalogs/unity/namespaces/default/tables/marksheet_uniform" | jq .
 ```
 
-## Engine integrations
+## Engine and tool integrations
 
 - [Spark](../tables/uniform.md#setting-up-rest-catalog-with-apache-spark)
 - [Trino](../../integrations/unity-catalog-trino.md)
+- [OLake Go](../../integrations/unity-catalog-olake.md) - replicate databases into Iceberg tables via this API
