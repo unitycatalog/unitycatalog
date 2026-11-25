@@ -61,16 +61,26 @@ public final class StorageLimits {
      * Objects are stored under the location. The shortest name of such an object is the location's
      * name, a slash and one character, one path segment more.
      */
-    PREFIX(2, 1),
+    PREFIX("/x"),
+    /**
+     * A Delta table. Its longest file name of a fixed length is a staged commit, {@code
+     * _delta_log/_staged_commits/<version>.<uuid>.json} with the version padded to 20 digits, three
+     * path segments more.
+     *
+     * @see <a href="https://github.com/delta-io/delta/blob/master/PROTOCOL.md">Delta protocol</a>
+     */
+    DELTA_TABLE(
+        "/_delta_log/_staged_commits/"
+            + "00000000000000000000.00000000-0000-0000-0000-000000000000.json"),
     /** The location may itself name an object, such as a CSV table that is a single file. */
-    OBJECT_OR_PREFIX(0, 0);
+    OBJECT_OR_PREFIX("");
 
     private final int extraNameLength;
     private final int extraSegments;
 
-    Extent(int extraNameLength, int extraSegments) {
-      this.extraNameLength = extraNameLength;
-      this.extraSegments = extraSegments;
+    Extent(String longestSuffix) {
+      this.extraNameLength = longestSuffix.length();
+      this.extraSegments = CharMatcher.is('/').countIn(longestSuffix);
     }
 
     /**
@@ -80,15 +90,19 @@ public final class StorageLimits {
      * @param format the table's format, or null if it has none
      */
     public static Extent ofTable(DataSourceFormat format) {
-      return format == DataSourceFormat.DELTA || format == DataSourceFormat.ICEBERG
-          ? PREFIX
-          : OBJECT_OR_PREFIX;
+      if (format == DataSourceFormat.DELTA) {
+        return DELTA_TABLE;
+      }
+      return format == DataSourceFormat.ICEBERG ? PREFIX : OBJECT_OR_PREFIX;
     }
 
     private String describe(String kind, String measure) {
-      return this == PREFIX
-          ? String.format("%s names under it have at least %s", kind, measure)
-          : String.format("its %s name has %s", kind, measure);
+      return switch (this) {
+        case PREFIX -> String.format("%s names under it have at least %s", kind, measure);
+        case DELTA_TABLE ->
+            String.format("the %s names of its Delta staged commit files have %s", kind, measure);
+        case OBJECT_OR_PREFIX -> String.format("its %s name has %s", kind, measure);
+      };
     }
   }
 

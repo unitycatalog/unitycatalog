@@ -172,12 +172,17 @@ The server rejects a location with `INVALID_ARGUMENT` when its database column o
   UTF-8 bytes. Managed table and volume locations are built under a catalog or schema storage root, so a catalog storage
   root can be at most 1,942 bytes in UTF-8 and a schema storage root at most 1,943.
 - Object names: a location that holds files has to leave room for one under it: a storage root, an external location, a
-  volume, and a Delta or Iceberg table. A table in another format, such as CSV, may be a single file. On Azure an object
+  volume, and a Delta or Iceberg table. A Delta table has to leave room for its longest log file name, a staged commit
+  (`_delta_log/_staged_commits/<version>.<uuid>.json`, 90 characters and 3 path segments more). A table in another
+  format, such as CSV, may be a single file. On Azure an object
   name is at most 1,024 characters and 254 path segments, and on GCS at most 1,024 bytes, whatever the server is
   configured with. On S3 it is at most 1,024 bytes for a location whose storage credential is an `aws_iam_role`, or on a
   bucket the server is configured for without a custom credential generator. S3-compatible storage is not checked.
 - Vended credentials: for those same S3 locations, the AWS STS session policy the server sends has to fit 2,048
-  characters when it assumes a role. On a GCS bucket the server is configured for without a custom credential generator,
+  characters when it assumes a role. The server writes under the locations it builds, so they are checked with the
+  read and write policy. An external location, an external table and an external volume are checked with the read
+  policy, which is shorter. A long S3 location can be accepted and read but not written, and a write vend for it fails
+  with `INVALID_ARGUMENT`. On a GCS bucket the server is configured for without a custom credential generator,
   the access boundary it builds has to fit its limit.
 - When the storage credential of an S3 or GCS location can't be found, such as after it was force-deleted, only the
   column width is checked, because a vend then fails on the missing credential.

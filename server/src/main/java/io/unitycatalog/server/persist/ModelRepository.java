@@ -19,6 +19,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -623,7 +624,11 @@ public class ModelRepository {
                 NormalizedURL.from(existingRegisteredModel.getUrl()), modelVersionId);
         repositories
             .getStorageLocationValidator()
-            .validateManagedLocation(session, storageLocation, Constants.MAX_MODEL_LOCATION_LENGTH);
+            .validateManagedLocation(
+                session,
+                storageLocation,
+                Constants.MAX_MODEL_LOCATION_LENGTH,
+                StorageLimits.Extent.PREFIX);
         modelVersionInfo.setVersion(version);
         modelVersionInfo.setStorageLocation(storageLocation.toString());
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);

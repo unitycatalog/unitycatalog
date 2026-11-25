@@ -74,7 +74,10 @@ public class VolumeRepository {
             repositories
                 .getStorageLocationValidator()
                 .validateManagedLocation(
-                    session, storageLocation, Constants.MAX_STORAGE_LOCATION_LENGTH);
+                    session,
+                    storageLocation,
+                    Constants.MAX_STORAGE_LOCATION_LENGTH,
+                    StorageLimits.Extent.PREFIX);
           } else {
             // EXTERNAL volume.
             if (createVolumeRequest.getStorageLocation() == null) {

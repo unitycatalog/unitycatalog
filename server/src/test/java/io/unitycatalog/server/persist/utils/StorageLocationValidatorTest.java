@@ -120,7 +120,12 @@ public class StorageLocationValidatorTest {
 
   private StorageLocationValidator validatorFor(Optional<CredentialDAO> credential) {
     return new StorageLocationValidator(
-        cloudCredentialVendor, (session, location) -> credential, () -> Unit.UTF16_CODE_UNITS);
+        cloudCredentialVendor,
+        (session, location) ->
+            credential
+                .<CoveringCredential>map(CoveringCredential.Covered::new)
+                .orElseGet(CoveringCredential.NotCovered::new),
+        () -> Unit.UTF16_CODE_UNITS);
   }
 
   private static Optional<BaseException> rootRejection(
@@ -151,6 +156,23 @@ public class StorageLocationValidatorTest {
         ExternalLocationUtils.getManagedLocationForVolume(container, id),
         model,
         ExternalLocationUtils.getManagedLocationForModelVersion(model, id));
+  }
+
+  private static final String STAGED_COMMIT =
+      "/_delta_log/_staged_commits/00000000000000000001.3a0d65cd-4056-49b8-937b-95f9e3ee90e5.json";
+
+  /**
+   * The longest object name under the managed locations of a root: a Delta staged commit of a
+   * managed table, or a file directly under each other managed location.
+   */
+  private static int longestObjectNameUnder(NormalizedURL root, String prefix) {
+    List<NormalizedURL> locations = managedLocationsUnder(root, prefix).toList();
+    return Stream.concat(
+            Stream.of(locations.get(0) + STAGED_COMMIT),
+            locations.stream().skip(1).map(location -> location + "/x"))
+        .mapToInt(name -> StorageLimits.objectName(NormalizedURL.from(name)).length())
+        .max()
+        .getAsInt();
   }
 
   private boolean canVend(NormalizedURL location, Optional<CredentialDAO> credential) {
@@ -237,7 +259,10 @@ public class StorageLocationValidatorTest {
                               validator.validateLocation(
                                   null, location, 2048, Extent.OBJECT_OR_PREFIX));
                   boolean acceptedAsManaged =
-                      accepts(() -> validator.validateManagedLocation(null, location, 2048));
+                      accepts(
+                          () ->
+                              validator.validateManagedLocation(
+                                  null, location, 2048, Extent.PREFIX));
                   assertThat(accepted)
                       .as("location path of %d characters", length)
                       .isEqualTo(canVend(location, READ, Optional.empty()));
@@ -330,13 +355,8 @@ public class StorageLocationValidatorTest {
         NormalizedURL.from(STATIC_BUCKET + "/" + "r".repeat(longestAccepted));
 
     // S3: object keys are "a maximum length of 1,024 bytes" (Amazon S3 object keys, checked
-    // 2026-11-21). An object directly under the deepest managed location fits exactly.
-    int deepestKeyBytes =
-        managedLocationsUnder(longestRoot, MANAGED_STORAGE_CATALOG_PREFIX)
-            .mapToInt(l -> StorageLimits.objectName(l).length())
-            .max()
-            .getAsInt();
-    assertThat(deepestKeyBytes + "/x".length()).isEqualTo(1024);
+    // 2026-11-21). The longest object under the managed locations fits exactly.
+    assertThat(longestObjectNameUnder(longestRoot, MANAGED_STORAGE_CATALOG_PREFIX)).isEqualTo(1024);
     assertThat(
             rootRejection(
                 validator,
@@ -345,8 +365,9 @@ public class StorageLocationValidatorTest {
         .get()
         .extracting(Throwable::getMessage)
         .isEqualTo(
-            "Storage root is too long. For the location of a managed model version under it, S3"
-                + " object key names under it have at least 1025 bytes, and the limit is 1024.");
+            "Storage root is too long. For the location of a managed table under it, the S3"
+                + " object key names of its Delta staged commit files have 1025 bytes, and the"
+                + " limit is 1024.");
   }
 
   @Test
@@ -368,12 +389,7 @@ public class StorageLocationValidatorTest {
 
     // Azure: "A blob name ... cannot be more than 1,024 characters long" (Naming and Referencing
     // Containers, Blobs, and Metadata, checked 2026-11-21).
-    int deepestNameCharacters =
-        managedLocationsUnder(longestRoot, MANAGED_STORAGE_SCHEMA_PREFIX)
-            .mapToInt(l -> StorageLimits.objectName(l).length())
-            .max()
-            .getAsInt();
-    assertThat(deepestNameCharacters + "/x".length()).isEqualTo(1024);
+    assertThat(longestObjectNameUnder(longestRoot, MANAGED_STORAGE_SCHEMA_PREFIX)).isEqualTo(1024);
   }
 
   @Test
@@ -470,7 +486,9 @@ public class StorageLocationValidatorTest {
     NormalizedURL url = NormalizedURL.from("s3://bucket/" + emoji.repeat(122));
     StorageLocationValidator codePoints =
         new StorageLocationValidator(
-            cloudCredentialVendor, (session, location) -> Optional.empty(), () -> Unit.CODE_POINTS);
+            cloudCredentialVendor,
+            (session, location) -> new CoveringCredential.NotCovered(),
+            () -> Unit.CODE_POINTS);
 
     assertThatCode(() -> codePoints.validateExternalLocationUrl(url, 255, Optional.empty()))
         .doesNotThrowAnyException();
@@ -494,10 +512,12 @@ public class StorageLocationValidatorTest {
     String bucket = "file:///tmp/";
     NormalizedURL longest = NormalizedURL.from(bucket + "é".repeat((2048 - bucket.length()) / 2));
 
-    assertThatCode(() -> validator.validateManagedLocation(null, longest, 2048))
+    assertThatCode(() -> validator.validateManagedLocation(null, longest, 2048, Extent.PREFIX))
         .doesNotThrowAnyException();
     assertThatThrownBy(
-            () -> validator.validateManagedLocation(null, NormalizedURL.from(longest + "é"), 2048))
+            () ->
+                validator.validateManagedLocation(
+                    null, NormalizedURL.from(longest + "é"), 2048, Extent.PREFIX))
         .isInstanceOf(BaseException.class)
         .hasMessage(
             "Storage location is too long: it is 2050 bytes in UTF-8, and the limit is 2048.");
@@ -563,7 +583,7 @@ public class StorageLocationValidatorTest {
     String noRoomForAFile =
         "Storage location is too long: S3 object key names under it have at least 1026"
             + " bytes, and the limit is 1024.";
-    assertThatThrownBy(() -> validator.validateManagedLocation(null, file, 2048))
+    assertThatThrownBy(() -> validator.validateManagedLocation(null, file, 2048, Extent.PREFIX))
         .isInstanceOf(BaseException.class)
         .hasMessage(noRoomForAFile);
     assertThatThrownBy(() -> validator.validateLocation(null, file, 2048, Extent.PREFIX))
@@ -649,12 +669,57 @@ public class StorageLocationValidatorTest {
                 + " characters, and the limit is 1024.");
   }
 
+  @Test
+  public void testDeltaTablesLeaveRoomForAStagedCommit() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    // The longest table location under which the staged commit's object key is 1,024 bytes.
+    NormalizedURL longest =
+        NormalizedURL.from(STATIC_BUCKET + "/" + "t".repeat(1024 - STAGED_COMMIT.length()));
+    assertThat(StorageLimits.objectName(NormalizedURL.from(longest + STAGED_COMMIT))).hasSize(1024);
+
+    assertThatCode(() -> validator.validateLocation(null, longest, 2048, Extent.DELTA_TABLE))
+        .doesNotThrowAnyException();
+    assertThatCode(() -> validator.validateManagedLocation(null, longest, 2048, Extent.DELTA_TABLE))
+        .doesNotThrowAnyException();
+    NormalizedURL tooLong = NormalizedURL.from(longest + "t");
+    String noRoomForACommit =
+        "Storage location is too long: the S3 object key names of its Delta staged commit files"
+            + " have 1025 bytes, and the limit is 1024.";
+    assertThatThrownBy(() -> validator.validateLocation(null, tooLong, 2048, Extent.DELTA_TABLE))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(noRoomForACommit);
+    assertThatThrownBy(
+            () -> validator.validateManagedLocation(null, tooLong, 2048, Extent.DELTA_TABLE))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(noRoomForACommit);
+    assertThatCode(() -> validator.validateLocation(null, tooLong, 2048, Extent.PREFIX))
+        .doesNotThrowAnyException();
+
+    // A staged commit adds three path segments.
+    String container = "abfss://container@account.dfs.core.windows.net/";
+    NormalizedURL deepest = NormalizedURL.from(container + "s/".repeat(250) + "s");
+    assertThatCode(() -> validator.validateLocation(null, deepest, 2048, Extent.DELTA_TABLE))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () ->
+                validator.validateLocation(
+                    null, NormalizedURL.from(deepest + "/s"), 2048, Extent.DELTA_TABLE))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "Storage location is too long: the Azure blob names of its Delta staged commit files"
+                + " have 255 path segments, and the limit is 254.");
+  }
+
   @ParameterizedTest
   @EnumSource(DataSourceFormat.class)
   public void testOnlyDeltaAndIcebergTablesAreAlwaysDirectories(DataSourceFormat format) {
-    boolean directory = format == DataSourceFormat.DELTA || format == DataSourceFormat.ICEBERG;
-    assertThat(Extent.ofTable(format))
-        .isEqualTo(directory ? Extent.PREFIX : Extent.OBJECT_OR_PREFIX);
+    Extent expected =
+        switch (format) {
+          case DELTA -> Extent.DELTA_TABLE;
+          case ICEBERG -> Extent.PREFIX;
+          default -> Extent.OBJECT_OR_PREFIX;
+        };
+    assertThat(Extent.ofTable(format)).isEqualTo(expected);
     assertThat(Extent.ofTable(null)).isEqualTo(Extent.OBJECT_OR_PREFIX);
   }
 
@@ -702,14 +767,31 @@ public class StorageLocationValidatorTest {
   }
 
   @Test
-  public void testUnresolvableCredentialLeavesCloudLimitsToTheVend() {
+  public void testFailingCredentialLookupIsReported() {
     StorageLocationValidator validator =
         new StorageLocationValidator(
             cloudCredentialVendor,
             (session, location) -> {
               throw new BaseException(
-                  ErrorCode.INTERNAL, "The storage credential no longer exists");
+                  ErrorCode.INTERNAL, "More than one external location with URL exist.");
             },
+            () -> Unit.UTF16_CODE_UNITS);
+    NormalizedURL location = NormalizedURL.from(STS_BUCKET + "/data");
+
+    assertThatThrownBy(() -> validator.validateLocation(null, location, 2048, Extent.PREFIX))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("More than one external location with URL exist.");
+    assertThatThrownBy(() -> validator.validateCatalogStorageRoot(null, location))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("More than one external location with URL exist.");
+  }
+
+  @Test
+  public void testDeletedCredentialLeavesCloudLimitsToTheVend() {
+    StorageLocationValidator validator =
+        new StorageLocationValidator(
+            cloudCredentialVendor,
+            (session, location) -> new CoveringCredential.Deleted(),
             () -> Unit.UTF16_CODE_UNITS);
     NormalizedURL root = NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(600));
 

@@ -34,10 +34,13 @@ public class StorageLocationValidator {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StorageLocationValidator.class);
 
-  /** Finds the storage credential of the external location that covers a location. */
+  /**
+   * Finds the storage credential of the external location that covers a location. Errors other than
+   * a deleted credential, such as overlapping external locations, propagate.
+   */
   @FunctionalInterface
   public interface CredentialLookup {
-    Optional<CredentialDAO> find(Session session, NormalizedURL location);
+    CoveringCredential find(Session session, NormalizedURL location);
   }
 
   /** How the server uses a location, which decides the credentials vended for it. */
@@ -66,7 +69,8 @@ public class StorageLocationValidator {
   // Managed locations are laid out the same for every id.
   private static final UUID ANY_ID = new UUID(0, 0);
 
-  private record ManagedLocation(String kind, NormalizedURL location, int maxBytes) {}
+  private record ManagedLocation(
+      String kind, NormalizedURL location, int maxBytes, Extent extent) {}
 
   /** The storage credential a vend for a location would use. */
   private sealed interface VendCredential {}
@@ -109,7 +113,7 @@ public class StorageLocationValidator {
         columnUnit.get(),
         Use.REQUESTED,
         extent,
-        credentialFor(session, location));
+        vendCredential(location, () -> credentialLookup.find(session, location)));
   }
 
   /**
@@ -125,9 +129,12 @@ public class StorageLocationValidator {
   public void validateExternalLocationUrl(
       NormalizedURL url, int maxLength, Optional<CredentialDAO> credential) {
     VendCredential vendCredential =
-        credential.isPresent() || !limitsDependOnCredential(url)
-            ? new Resolved(credential)
-            : new Unresolvable();
+        vendCredential(
+            url,
+            () ->
+                credential
+                    .<CoveringCredential>map(CoveringCredential.Covered::new)
+                    .orElseGet(CoveringCredential.Deleted::new));
     validateLocation(
         url, maxLength, columnUnit.get(), Use.REQUESTED, Extent.PREFIX, vendCredential);
   }
@@ -136,16 +143,13 @@ public class StorageLocationValidator {
    * Validates a location the server derived for a new managed entity.
    *
    * @param maxBytes the width of the column the location is stored in, counted in UTF-8 bytes
+   * @param extent {@link Extent#DELTA_TABLE} for a table, otherwise {@link Extent#PREFIX}
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the location is too long
    */
-  public void validateManagedLocation(Session session, NormalizedURL location, int maxBytes) {
+  public void validateManagedLocation(
+      Session session, NormalizedURL location, int maxBytes, Extent extent) {
     validateLocation(
-        location,
-        maxBytes,
-        Unit.UTF8_BYTES,
-        Use.MANAGED,
-        Extent.PREFIX,
-        credentialFor(session, location));
+        location, maxBytes, Unit.UTF8_BYTES, Use.MANAGED, extent, credentialFor(session, location));
   }
 
   /**
@@ -247,7 +251,7 @@ public class StorageLocationValidator {
     VendCredential credential = credentialFor(session, storageRoot);
     managedLocations.forEach(
         managed ->
-            cloudLimitViolation(managed.location(), Use.MANAGED, Extent.PREFIX, credential)
+            cloudLimitViolation(managed.location(), Use.MANAGED, managed.extent(), credential)
                 .ifPresent(
                     violation -> {
                       throw new BaseException(
@@ -265,32 +269,46 @@ public class StorageLocationValidator {
         new ManagedLocation(
             "table",
             ExternalLocationUtils.getManagedLocationForTable(container, ANY_ID),
-            Constants.MAX_STORAGE_LOCATION_LENGTH),
+            Constants.MAX_STORAGE_LOCATION_LENGTH,
+            Extent.DELTA_TABLE),
         new ManagedLocation(
             "volume",
             ExternalLocationUtils.getManagedLocationForVolume(container, ANY_ID),
-            Constants.MAX_STORAGE_LOCATION_LENGTH),
-        new ManagedLocation("registered model", model, Constants.MAX_MODEL_LOCATION_LENGTH),
+            Constants.MAX_STORAGE_LOCATION_LENGTH,
+            Extent.PREFIX),
+        new ManagedLocation(
+            "registered model", model, Constants.MAX_MODEL_LOCATION_LENGTH, Extent.PREFIX),
         new ManagedLocation(
             "model version",
             ExternalLocationUtils.getManagedLocationForModelVersion(model, ANY_ID),
-            Constants.MAX_MODEL_LOCATION_LENGTH));
+            Constants.MAX_MODEL_LOCATION_LENGTH,
+            Extent.PREFIX));
+  }
+
+  private VendCredential credentialFor(Session session, NormalizedURL location) {
+    return vendCredential(location, () -> credentialLookup.find(session, location));
   }
 
   /**
-   * The storage credential a vend for the location would use. It is unresolvable when the lookup
-   * fails, such as when the covering external location's credential was force-deleted.
+   * The storage credential a vend for the location would use. The covering credential is only
+   * looked up for the schemes whose limits depend on it. It is unresolvable when the covering
+   * external location's credential was force-deleted.
    */
-  private VendCredential credentialFor(Session session, NormalizedURL location) {
+  private static VendCredential vendCredential(
+      NormalizedURL location, Supplier<CoveringCredential> coveringCredential) {
     if (!limitsDependOnCredential(location)) {
       return new Resolved(Optional.empty());
     }
-    try {
-      return new Resolved(credentialLookup.find(session, location));
-    } catch (BaseException e) {
-      LOGGER.warn("Skipping cloud limit checks for {}: credential lookup failed", location, e);
+    CoveringCredential covering = coveringCredential.get();
+    if (covering instanceof CoveringCredential.Covered covered) {
+      return new Resolved(Optional.of(covered.credential()));
+    }
+    if (covering instanceof CoveringCredential.Deleted) {
+      LOGGER.warn(
+          "Skipping cloud limit checks for {}: its storage credential was deleted", location);
       return new Unresolvable();
     }
+    return new Resolved(Optional.empty());
   }
 
   /**

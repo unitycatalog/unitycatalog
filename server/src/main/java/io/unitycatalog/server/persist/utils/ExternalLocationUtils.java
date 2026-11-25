@@ -313,6 +313,28 @@ public class ExternalLocationUtils {
 
   public Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(
       Session session, NormalizedURL url) {
+    CoveringCredential covering = findCoveringCredential(session, url);
+    if (covering instanceof CoveringCredential.Covered covered) {
+      return Optional.of(covered.credential());
+    }
+    if (covering instanceof CoveringCredential.Deleted) {
+      throw new BaseException(
+          ErrorCode.INTERNAL,
+          String.format(
+              "The storage credential for '%s' no longer exists. Update the external location "
+                  + "that covers this path with a new credential.",
+              url));
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Finds the storage credential of the external location that covers the URL.
+   *
+   * @throws BaseException with INTERNAL if multiple external locations cover the path (invalid
+   *     state)
+   */
+  public CoveringCredential findCoveringCredential(Session session, NormalizedURL url) {
     // Get the external location
     // Find out the external location that covers the input URL. Either the external location is
     // a parent path of input URL, or is the same URL.
@@ -331,7 +353,7 @@ public class ExternalLocationUtils {
             .toList();
     if (externalLocationDAOs.isEmpty()) {
       // Not found
-      return Optional.empty();
+      return new CoveringCredential.NotCovered();
     } else if (externalLocationDAOs.size() > 1) {
       // This is an invalid internal state. We never allow external locations with
       // overlapping URLs.
@@ -342,15 +364,9 @@ public class ExternalLocationUtils {
     // Get the credential that is assigned to the external location
     UUID credentialId = externalLocationDAOs.get(0).getCredentialId();
     CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
-    if (credentialDAO == null) {
-      throw new BaseException(
-          ErrorCode.INTERNAL,
-          String.format(
-              "The storage credential for '%s' no longer exists. Update the external location "
-                  + "that covers this path with a new credential.",
-              url));
-    }
-    return Optional.of(credentialDAO);
+    return credentialDAO == null
+        ? new CoveringCredential.Deleted()
+        : new CoveringCredential.Covered(credentialDAO);
   }
 
   /**

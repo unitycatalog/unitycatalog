@@ -16,6 +16,7 @@ import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.utils.CoveringCredential;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.StorageLocationValidator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
@@ -185,7 +186,7 @@ public class GcpCredentialVendorTest {
     StorageLocationValidator validator =
         new StorageLocationValidator(
             new CloudCredentialVendor(null, null, credentialVendor),
-            (session, location) -> Optional.empty(),
+            (session, location) -> new CoveringCredential.NotCovered(),
             () -> StorageLimits.Unit.UTF16_CODE_UNITS);
     try {
       if (prefix.equals(MANAGED_STORAGE_CATALOG_PREFIX)) {

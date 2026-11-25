@@ -131,7 +131,7 @@ public class Repositories {
     this.storageLocationValidator =
         new StorageLocationValidator(
             resolvedCloudCredentialVendor,
-            externalLocationUtils::getExternalLocationCredentialDaoForPath,
+            externalLocationUtils::findCoveringCredential,
             Suppliers.memoize(() -> columnLengthUnit(sessionFactory)));
     this.fileOperations =
         fileOperationsDecorator.apply(

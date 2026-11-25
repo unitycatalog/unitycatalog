@@ -284,10 +284,21 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
     TestUtils.assertApiException(
         () ->
             createExternalTable(
-                EXTERNAL_TABLE_NAME, DataSourceFormat.DELTA, container + "t".repeat(1023)),
+                EXTERNAL_TABLE_NAME, DataSourceFormat.ICEBERG, container + "t".repeat(1023)),
         ErrorCode.INVALID_ARGUMENT,
         noRoomForAFile);
-    createExternalTable(EXTERNAL_TABLE_NAME, DataSourceFormat.DELTA, container + "t".repeat(1022));
+    createExternalTable(
+        EXTERNAL_TABLE_NAME, DataSourceFormat.ICEBERG, container + "t".repeat(1022));
+
+    // A Delta table has to hold _delta_log/_staged_commits/<20 digit version>.<uuid>.json.
+    String delta = container + "l".repeat(1024 - 90);
+    TestUtils.assertApiException(
+        () ->
+            createExternalTable(
+                EXTERNAL_TABLE_NAME + "_delta", DataSourceFormat.DELTA, delta + "l"),
+        ErrorCode.INVALID_ARGUMENT,
+        "the Azure blob names of its Delta staged commit files have 1025 characters");
+    createExternalTable(EXTERNAL_TABLE_NAME + "_delta", DataSourceFormat.DELTA, delta);
 
     // A CSV table may be a single file, so only its own name has to fit.
     String file = container + "f".repeat(1024);
