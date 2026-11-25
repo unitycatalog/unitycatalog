@@ -10,12 +10,13 @@ import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
+import static io.unitycatalog.server.utils.ValidationUtils.checkArgument;
+import static io.unitycatalog.server.utils.ValidationUtils.checkNotNull;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
-import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -341,14 +342,24 @@ public class PermissionService implements UnityCatalogRestService {
   private HttpResponse updateAuthorization(
       SecurableType securableType, String name, UpdatePermissions request) {
     UUID resourceId = getResourceId(securableType, name);
-    List<PermissionsChange> changes = request.getChanges();
+    List<PermissionsChange> changes = validateChanges(request);
     validateAddedPrivileges(securableType, changes, strictPrivilegeChecks);
+    // Every principal is resolved before the first grant is written, so a rejected request changes
+    // nothing.
+    Map<String, UUID> principalIdsByEmail =
+        changes.stream()
+            .map(PermissionsChange::getPrincipal)
+            .distinct()
+            .collect(
+                Collectors.toMap(
+                    email -> email,
+                    email ->
+                        UUID.fromString(
+                            Objects.requireNonNull(userRepository.getUserByEmail(email).getId()))));
     Set<UUID> principalIds = new HashSet<>();
     changes.forEach(
         change -> {
-          String principal = change.getPrincipal();
-          User user = userRepository.getUserByEmail(principal);
-          UUID principalId = UUID.fromString(Objects.requireNonNull(user.getId()));
+          UUID principalId = principalIdsByEmail.get(change.getPrincipal());
           principalIds.add(principalId);
           change
               .getAdd()
@@ -389,6 +400,30 @@ public class PermissionService implements UnityCatalogRestService {
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));
+  }
+
+  /**
+   * Rejects a null in a required field of the request, which a JSON null or, for a principal, a
+   * missing field leaves there.
+   *
+   * @param request the request body
+   * @return the request's changes
+   * @throws BaseException with INVALID_ARGUMENT if the changes, a change, a principal, an add or
+   *     remove list, or a privilege in one is null
+   */
+  private static List<PermissionsChange> validateChanges(UpdatePermissions request) {
+    List<PermissionsChange> changes = checkNotNull(request.getChanges(), "changes is required.");
+    for (PermissionsChange change : changes) {
+      checkArgument(change != null, "changes must not contain null.");
+      checkArgument(change.getPrincipal() != null, "principal is required in each change.");
+      checkArgument(
+          change.getAdd() != null && change.getAdd().stream().noneMatch(Objects::isNull),
+          "add must be a list of privileges, without null.");
+      checkArgument(
+          change.getRemove() != null && change.getRemove().stream().noneMatch(Objects::isNull),
+          "remove must be a list of privileges, without null.");
+    }
+    return changes;
   }
 
   /** Validates additions only, so grants saved on invalid object types can still be removed. */
