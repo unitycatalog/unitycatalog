@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -11,6 +12,10 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.common.util.SafeCloseable;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
@@ -444,27 +449,38 @@ class ManagedTableCleanupTaskTest {
   void commitReadBeforeUnregisterCannotCommitAfterIt() {
     TableInfoDAO table = createTableWithColumn("unregistered");
     setIcebergState(table, TableType.MANAGED, DataSourceFormat.ICEBERG, "metadata.json");
-    try (Session commit = sessionFactory.openSession()) {
-      Transaction tx = commit.beginTransaction();
-      TableInfoDAO read = commit.get(TableInfoDAO.class, table.getId());
-      repositories
-          .getTableRepository()
-          .unregisterManagedIcebergTable(
-              CATALOG, SCHEMA, table.getName(), table.getId(), "metadata.json");
+    TableRepository tables = spy(repositories.getTableRepository());
+    doAnswer(
+            invocation -> {
+              TableInfoDAO read = (TableInfoDAO) invocation.callRealMethod();
+              assertThat(read.getId()).isEqualTo(table.getId());
+              repositories
+                  .getTableRepository()
+                  .unregisterManagedIcebergTable(
+                      CATALOG, SCHEMA, table.getName(), table.getId(), "metadata.json");
+              return read;
+            })
+        .when(tables)
+        .findBySchemaIdAndName(any(), eq(schemaId), eq(table.getName()));
 
+    try (SafeCloseable ignored =
+        ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/")).push()) {
       assertThatThrownBy(
               () ->
-                  RepositoryUtils.lockTableForCommit(
-                      commit,
-                      read,
-                      read.getId(),
-                      Optional.of("catalog.schema.unregistered"),
-                      ErrorCode.UPDATE_REQUIREMENT_CONFLICT))
+                  tables.commitIcebergTable(
+                      CATALOG,
+                      SCHEMA,
+                      table.getName(),
+                      "metadata.json",
+                      NormalizedURL.from(table.getUrl() + "/metadata-final.json"),
+                      List.of(),
+                      Map.of()))
           .isInstanceOfSatisfying(
               BaseException.class,
-              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND));
-      tx.rollback();
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))
+          .hasMessage("Table not found: catalog.schema.unregistered");
     }
+    assertThat(findTable(table.getId())).isNull();
     assertThat(allTasks()).isEmpty();
   }
 

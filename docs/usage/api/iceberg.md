@@ -86,7 +86,7 @@ Commits after unregister fail because the table no longer exists in this catalog
 This operation requires the same privileges as dropping a table and is disabled when
 `server.iceberg-table.enabled=false`. It applies only to native Iceberg tables with table type `MANAGED`;
 external tables and Delta tables, including UniForm tables, return HTTP 400. A missing table returns HTTP 404.
-If the server cannot read the final metadata, it leaves the table registered.
+If the server cannot read the final metadata, it leaves the table registered and returns HTTP 500.
 The server reads metadata before the delete transaction, then checks the table UUID and metadata pointer
 under the commit lock. If either changed during the read, or the lock cannot be acquired, it leaves the table
 registered and returns HTTP 503. Retry the unregister request to read the current metadata.
@@ -98,8 +98,9 @@ is still needed.
 
 After the table registration is removed, temporary path access can use an external location that covers the
 folder. Reads require `READ_FILES`; read/write access requires both `READ_FILES` and `WRITE_FILES`. The external
-location's `OWNER` can perform either operation. While the table is registered, path access is authorized
-against the table and its parent catalog and schema. The unregister response does not contain storage credentials.
+location's `OWNER` can perform either operation. While the table is registered, access to its folder and files
+is authorized against the table and its parent catalog and schema. Access to a path above the table's folder,
+such as the external location root, is refused. The unregister response does not contain storage credentials.
 
 A retry after a successful unregister returns HTTP 404 and does not recover the metadata from the first response.
 This also applies if the successful response was lost. The `dropTable` operation and its storage cleanup behavior
