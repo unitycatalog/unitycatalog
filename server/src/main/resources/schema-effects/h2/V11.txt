@@ -1,0 +1,2 @@
+- column uc_storage_cleanup_tasks.resource_type type=enum('MODEL_VERSION', 'REGISTERED_MODEL', 'STAGING_TABLE', 'TABLE', 'VOLUME') size=16 nullable=NO default=null
++ column uc_storage_cleanup_tasks.resource_type type=enum('MODEL_VERSION', 'REGISTERED_MODEL', 'REGISTERED_TABLE', 'STAGING_TABLE', 'TABLE', 'VOLUME') size=16 nullable=NO default=null

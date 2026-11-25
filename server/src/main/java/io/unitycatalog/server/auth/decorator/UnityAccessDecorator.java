@@ -418,7 +418,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // Drop conditionally-skipped resource keys first, so a key that does not apply to this request
     // shape is never resolved (and cannot fail resolving).
     applyConditionalSkips(conditionalLocators, resourceKeys, nonResourceValues);
-    Map<SecurableType, UUID> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
+    Map<SecurableType, UUID> resourceIds =
+        nonResourceValues.containsKey("storage_root")
+            ? keyMapper.mapResourceKeys(resourceKeys, /* isStorageRoot= */ true)
+            : keyMapper.mapResourceKeys(resourceKeys);
 
     if (resourceKeys.containsKey(SecurableType.EXTERNAL_LOCATION)) {
       // KeyMapper will try to map a path of EXTERNAL_LOCATION to any data securable if the path

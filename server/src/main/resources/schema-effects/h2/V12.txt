@@ -1,0 +1,1 @@
++ column uc_storage_cleanup_tasks.completed_at type=timestamp size=26 nullable=YES default=null

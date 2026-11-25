@@ -105,7 +105,13 @@ class StorageCleanupWorkerTest {
         .hasSize(2 * ManagedResourceType.values().length)
         .allSatisfy(counter -> assertThat(counter.count()).isZero())
         .extracting(counter -> counter.getId().getTag(UcMetricConstants.RESOURCE_TYPE))
-        .containsOnly("table", "volume", "registered_model", "model_version", "staging_table");
+        .containsOnly(
+            "table",
+            "registered_table",
+            "volume",
+            "registered_model",
+            "model_version",
+            "staging_table");
   }
 
   @Test
@@ -120,6 +126,32 @@ class StorageCleanupWorkerTest {
 
     assertThat(attempts(UcMetricConstants.SUCCESS, "volume")).isEqualTo(1.0);
     assertThat(attempts(UcMetricConstants.SUCCESS, "table")).isZero();
+  }
+
+  @Test
+  void deletesRegisteredTableAtItsOriginalLocation() {
+    NormalizedURL location = NormalizedURL.from("s3://bucket/warehouse/orders");
+    setClaim(ManagedResourceType.REGISTERED_TABLE, location.toString());
+    when(fileOperations.getCleanupFileIO(eq(location), eq(RESOURCE_ID), any())).thenReturn(fileIO);
+    when(fileIO.listPrefix(location + "/")).thenReturn(List.of());
+    assertThat(worker.runOnce()).isTrue();
+    verify(fileIO).deletePrefix(location + "/");
+    verify(taskRepository).finish(RESOURCE_ID, LEASE_TOKEN);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "s3://bucket",
+        "file:///",
+        "s3://bucket/table?query=1",
+        "s3://bucket/table#fragment"
+      })
+  void rejectsRegisteredTableCleanupAtInvalidRoots(String location) {
+    setClaim(ManagedResourceType.REGISTERED_TABLE, location);
+    assertThat(worker.runOnce()).isTrue();
+    verifyNoInteractions(fileOperations);
+    verify(taskRepository).reportFailure(eq(RESOURCE_ID), eq(LEASE_TOKEN), any());
   }
 
   @Test

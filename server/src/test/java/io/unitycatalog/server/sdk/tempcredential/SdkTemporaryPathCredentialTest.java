@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredentials {
   private TemporaryCredentialsApi temporaryCredentialsApi;
@@ -60,6 +61,28 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
                   temporaryCredentialsApi.generateTemporaryPathCredentials(
                       generateTemporaryPathCredential))
           .isInstanceOf(ApiException.class);
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"s3", "gs", "abfs"})
+  public void testPathCredentialsRejectAmbiguousCloudRoots(String scheme) {
+    for (String suffix : List.of("/a%20b", "/x%2Fy", "/t%61bles", "?query=1", "#fragment")) {
+      String url = getTestCloudPath(scheme, true) + suffix;
+      for (PathOperation operation :
+          List.of(
+              PathOperation.PATH_READ,
+              PathOperation.PATH_READ_WRITE,
+              PathOperation.PATH_CREATE_TABLE)) {
+        TestUtils.assertApiException(
+            () ->
+                temporaryCredentialsApi.generateTemporaryPathCredentials(
+                    new GenerateTemporaryPathCredential().url(url).operation(operation)),
+            ErrorCode.INVALID_ARGUMENT,
+            "Cloud storage path ('"
+                + url
+                + "') must not contain percent escapes, a query, or a fragment.");
+      }
     }
   }
 

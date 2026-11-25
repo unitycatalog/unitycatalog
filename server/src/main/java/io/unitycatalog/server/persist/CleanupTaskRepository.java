@@ -46,8 +46,9 @@ public interface CleanupTaskRepository {
   boolean reportFailure(UUID resourceId, UUID leaseToken, CleanupFailureReport report);
 
   /**
-   * Deletes a task only while the matching lease is live. Returns false when ownership expired or
-   * changed.
+   * Completes a task only while the matching lease is live. Registered-table tasks retain a
+   * permanent directory reservation; other tasks are deleted. Returns false when ownership expired
+   * or changed.
    */
   boolean finish(UUID resourceId, UUID leaseToken);
 }

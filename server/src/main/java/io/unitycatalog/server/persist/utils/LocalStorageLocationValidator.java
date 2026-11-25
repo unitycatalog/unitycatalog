@@ -5,9 +5,12 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.UriScheme;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Locale;
 
 /**
  * Decides whether the server may create files at a caller-chosen local location for an external
@@ -43,11 +46,7 @@ public final class LocalStorageLocationValidator {
     if (UriScheme.fromURI(uri) != UriScheme.FILE) {
       return;
     }
-    if (!isCanonical(uri)) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "Local location must not contain unneeded escapes: " + location);
-    }
+    validateCanonicalLocalLocation(location);
     // Path comparison is per segment, so /data/root-sibling is not under /data/root.
     Path path = localPath(uri);
     if (isUnderExternalLocation(location, path, externalLocationUtils)
@@ -63,18 +62,70 @@ public final class LocalStorageLocationValidator {
   }
 
   /**
-   * Whether the URI has the one spelling {@link Path#toUri()} gives its path, such as {@code
-   * tableA} and not {@code table%41}. The overlap, managed-storage, and external-location checks
-   * compare locations as strings, while the server opens the decoded path, so each local directory
-   * must have one accepted spelling.
+   * Rejects local URL aliases before path ownership or overlap checks; cloud URLs are unchanged.
    */
-  private static boolean isCanonical(URI uri) {
+  public static void validateCanonicalLocalLocation(NormalizedURL location) {
+    URI uri = location.toUri();
+    if (UriScheme.fromURI(uri) == UriScheme.FILE && !isCanonical(uri)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Local location must not contain unneeded escapes: " + location);
+    }
+  }
+
+  /**
+   * Whether the URI has the one spelling {@link Path#toUri()} gives its path, such as {@code
+   * tableA} and not {@code table%41}. This checks URL escaping only; filesystem aliases also need
+   * an identity check before registration or allocation.
+   */
+  static boolean isCanonical(URI uri) {
     // Locations and stored URLs are already normalized, so compare the strings.
     return NormalizedURL.from(localPath(uri).toUri()).toString().equals(uri.toString());
   }
 
   private static Path localPath(URI uri) {
     return Paths.get(uri.getPath()).normalize();
+  }
+
+  private record StoragePath(Path existing, Path suffix) {}
+
+  /** Compares filesystem identities, retaining reservations for directories removed by cleanup. */
+  static boolean storagePathsOverlap(Path first, Path second) {
+    StoragePath left = storagePathIdentity(first);
+    StoragePath right = storagePathIdentity(second);
+    if (left.existing().equals(right.existing())) {
+      if (left.suffix().toString().isEmpty() || right.suffix().toString().isEmpty()) {
+        return true;
+      }
+      // Missing names have no filesystem identity. Reserve case variants conservatively until
+      // distinct existing directories establish that the filesystem distinguishes them.
+      Path leftSuffix = Paths.get(left.suffix().toString().toLowerCase(Locale.ROOT));
+      Path rightSuffix = Paths.get(right.suffix().toString().toLowerCase(Locale.ROOT));
+      return leftSuffix.startsWith(rightSuffix) || rightSuffix.startsWith(leftSuffix);
+    }
+    Path leftPath = left.existing().resolve(left.suffix());
+    Path rightPath = right.existing().resolve(right.suffix());
+    return leftPath.startsWith(rightPath) || rightPath.startsWith(leftPath);
+  }
+
+  /** Resolves aliases in existing ancestors without requiring a new allocation to exist yet. */
+  private static StoragePath storagePathIdentity(Path path) {
+    Path existing = path;
+    while (existing != null) {
+      try {
+        return new StoragePath(existing.toRealPath(), existing.relativize(path));
+      } catch (NoSuchFileException e) {
+        existing = existing.getParent();
+      } catch (IOException e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Cannot resolve local storage paths; verify the server's filesystem access.",
+            e);
+      }
+    }
+    throw new BaseException(
+        ErrorCode.INVALID_ARGUMENT,
+        "Cannot resolve local storage paths; verify the server's filesystem access.");
   }
 
   /**

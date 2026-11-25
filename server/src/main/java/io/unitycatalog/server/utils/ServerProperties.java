@@ -876,7 +876,7 @@ public class ServerProperties {
    * ErrorCode.INVALID_ARGUMENT if it's disabled.
    */
   public void checkManagedTableEnabled() {
-    if (!isTrueOrEnable(get(Property.MANAGED_TABLE_ENABLED))) {
+    if (!isManagedTableEnabled()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "MANAGED table is an is currently disabled. To enable it, set "
@@ -918,6 +918,11 @@ public class ServerProperties {
 
   public boolean isIcebergTableEnabled() {
     return isTrueOrEnable(get(Property.ICEBERG_TABLE_ENABLED));
+  }
+
+  /** Whether managed table operations are enabled. */
+  public boolean isManagedTableEnabled() {
+    return isTrueOrEnable(get(Property.MANAGED_TABLE_ENABLED));
   }
 
   /**

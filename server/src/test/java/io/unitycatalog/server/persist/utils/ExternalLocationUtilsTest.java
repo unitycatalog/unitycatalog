@@ -2,28 +2,45 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.mockito.Mockito.RETURNS_SELF;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.dao.MetastoreDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.NormalizedURL;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
+import org.hibernate.query.SelectionQuery;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Tests for ExternalLocationUtils including both unit tests for static helper methods and
@@ -92,6 +109,314 @@ public class ExternalLocationUtilsTest {
         .isFalse();
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"abfs", "abfss"})
+  public void azureSchemesShareOverlapAndCleanupReservations(String storedScheme) {
+    session.beginTransaction();
+    String stored = storedScheme + "://container@account.dfs.core.windows.net/warehouse/orders";
+    String alias =
+        (storedScheme.equals("abfs") ? "abfss" : "abfs")
+            + "://container@account.dfs.core.windows.net/warehouse/orders";
+    TableInfoDAO table =
+        TableInfoDAO.builder()
+            .id(UUID.randomUUID())
+            .name("orders")
+            .type("MANAGED")
+            .dataSourceFormat("ICEBERG")
+            .url(stored)
+            .build();
+    session.persist(table);
+    for (String path :
+        List.of(alias, alias + "/data", alias.substring(0, alias.lastIndexOf('/')))) {
+      NormalizedURL location = NormalizedURL.from(path);
+      assertThat(
+              ExternalLocationUtils.<TableInfoDAO>getEntityDAOsWithURLOverlap(
+                  session, location, SecurableType.TABLE, 1, true, true, true))
+          .extracting(TableInfoDAO::getId)
+          .containsExactly(table.getId());
+      assertInvalidRegistrationOverlap(location);
+    }
+    assertThat(
+            ExternalLocationUtils.stillCovers(
+                NormalizedURL.from(stored), NormalizedURL.from(alias)))
+        .isTrue();
+    assertThat(
+            ExternalLocationUtils.stillCovers(
+                NormalizedURL.from(stored), NormalizedURL.from(alias + "/data")))
+        .isTrue();
+    assertThat(
+            ExternalLocationUtils.stillCovers(
+                NormalizedURL.from(stored), NormalizedURL.from(alias + "-sibling")))
+        .isFalse();
+
+    session.remove(table);
+    StorageCleanupTaskDAO task =
+        new StorageCleanupTaskRepository(sessionFactory)
+            .create(session, ManagedResourceType.REGISTERED_TABLE, table.getId(), "orders", stored);
+    for (boolean completed : List.of(false, true)) {
+      if (completed) {
+        task.setCompletedAt(new Date());
+      }
+      NormalizedURL location = NormalizedURL.from(alias);
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, location))
+          .isEqualTo(!completed);
+      assertInvalidRegistrationOverlap(location);
+    }
+    for (String path : List.of(alias + "-sibling", alias.replace("container@", "other@"))) {
+      NormalizedURL location = NormalizedURL.from(path);
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, location)).isFalse();
+      ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, location);
+    }
+  }
+
+  private void assertInvalidRegistrationOverlap(NormalizedURL location) {
+    assertThatThrownBy(
+            () -> ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, location))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(failure).hasMessageContaining("overlaps a registered managed table");
+            });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"case", "symlink"})
+  public void localAliasesReserveRegisteredStorageAndCleanup(String kind) throws Exception {
+    Path parent = Files.createDirectory(tempDir.resolve("CaseStorage"));
+    Path directory = Files.createDirectory(parent.resolve("Orders"));
+    Path aliasParent = tempDir.resolve(kind.equals("case") ? "casestorage" : "alias");
+    if (kind.equals("case")) {
+      assumeTrue(
+          Files.exists(aliasParent) && Files.isSameFile(parent, aliasParent),
+          "Requires a case-insensitive filesystem");
+    } else {
+      Files.createSymbolicLink(aliasParent, parent);
+    }
+    session.beginTransaction();
+    TableInfoDAO table =
+        TableInfoDAO.builder()
+            .id(UUID.randomUUID())
+            .name("orders")
+            .type("MANAGED")
+            .dataSourceFormat("ICEBERG")
+            .url(NormalizedURL.from(directory.toUri()).toString())
+            .build();
+    session.persist(table);
+    String aliasName = kind.equals("case") ? "orders" : "Orders";
+    List<NormalizedURL> aliases =
+        List.of(
+            NormalizedURL.from(aliasParent.resolve(aliasName).toUri()),
+            NormalizedURL.from(aliasParent.resolve(aliasName + "/not-created/data").toUri()),
+            NormalizedURL.from(aliasParent.toUri()));
+    aliases.forEach(this::assertInvalidRegistrationOverlap);
+    ExternalLocationUtils.validateNotOverlapWithRegisteredTables(
+        session, NormalizedURL.from(aliasParent.resolve("orders-sibling").toUri()));
+    session.remove(table);
+    StorageCleanupTaskDAO task =
+        new StorageCleanupTaskRepository(sessionFactory)
+            .create(
+                session,
+                ManagedResourceType.REGISTERED_TABLE,
+                table.getId(),
+                "orders",
+                table.getUrl());
+    aliases.forEach(this::assertInvalidRegistrationOverlap);
+    task.setCompletedAt(new Date());
+    aliases.forEach(this::assertInvalidRegistrationOverlap);
+    Files.delete(directory);
+    aliases.forEach(this::assertInvalidRegistrationOverlap);
+  }
+
+  @Test
+  public void localStorageOverlapPreservesDistinctExistingDirectories() throws Exception {
+    Path first = Files.createDirectory(tempDir.resolve("CasePath"));
+    Path second = Files.createDirectories(tempDir.resolve("casepath"));
+    assertThat(LocalStorageLocationValidator.storagePathsOverlap(first, second))
+        .isEqualTo(Files.isSameFile(first, second));
+    assertThat(
+            LocalStorageLocationValidator.storagePathsOverlap(
+                first, tempDir.resolve("unrelated/not-created")))
+        .isFalse();
+    assertThat(
+            LocalStorageLocationValidator.storagePathsOverlap(
+                tempDir.resolve("Missing/child"), tempDir.resolve("missing")))
+        .isTrue();
+  }
+
+  @Test
+  public void localStorageOverlapFailsClosedWhenIdentityCannotBeRead() throws Exception {
+    Path unreadable = mock(Path.class);
+    when(unreadable.toRealPath()).thenThrow(new IOException("Read failed"));
+    assertThatThrownBy(() -> LocalStorageLocationValidator.storagePathsOverlap(unreadable, tempDir))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(failure)
+                  .hasMessageContaining("Cannot resolve local storage path")
+                  .hasCauseInstanceOf(IOException.class);
+            });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"table", "model"})
+  public void registrationCannotContainDefaultAllocationStorage(String kind) {
+    session.beginTransaction();
+    session.persist(
+        ExternalLocationDAO.builder()
+            .id(UUID.randomUUID())
+            .name("warehouse")
+            .url("s3://bucket")
+            .credentialId(UUID.randomUUID())
+            .build());
+    var parents =
+        new RepositoryUtils.CatalogAndSchemaDao(
+            CatalogInfoDAO.builder().id(UUID.randomUUID()).build(),
+            SchemaInfoDAO.builder().id(UUID.randomUUID()).build());
+    NormalizedURL root = NormalizedURL.from("s3://bucket/warehouse");
+    Optional<NormalizedURL> tableRoot = kind.equals("table") ? Optional.of(root) : Optional.empty();
+    Optional<NormalizedURL> modelRoot = kind.equals("model") ? Optional.of(root) : Optional.empty();
+    for (String path : List.of("s3://bucket", root.toString(), root + "/__unitystorage")) {
+      assertThatThrownBy(
+              () ->
+                  ExternalLocationUtils.resolveRegistrationStorage(
+                      session, parents, NormalizedURL.from(path), tableRoot, modelRoot))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              failure -> {
+                assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+                assertThat(failure)
+                    .hasMessageContaining(
+                        "must not contain or equal a shared managed storage directory");
+              });
+    }
+    assertThat(
+            ExternalLocationUtils.resolveRegistrationStorage(
+                    session, parents, NormalizedURL.from(root + "/imported"), tableRoot, modelRoot)
+                .location())
+        .isEqualTo(NormalizedURL.from("s3://bucket"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"default", "catalog", "schema"})
+  public void registrationReservesLocalSharedDirectoriesWithoutAllocationRows(String owner)
+      throws Exception {
+    session.beginTransaction();
+    Path managedDirectory = Files.createDirectory(tempDir.resolve("__unitystorage"));
+    NormalizedURL managedRoot = NormalizedURL.from(managedDirectory.toUri());
+    CatalogInfoDAO catalog = CatalogInfoDAO.builder().id(UUID.randomUUID()).build();
+    SchemaInfoDAO schema = SchemaInfoDAO.builder().id(UUID.randomUUID()).build();
+    if (owner.equals("catalog")) {
+      catalog.setStorageLocation(managedRoot.toString());
+    } else if (owner.equals("schema")) {
+      schema.setStorageLocation(managedRoot.toString());
+    }
+    var parents = new RepositoryUtils.CatalogAndSchemaDao(catalog, schema);
+    Optional<NormalizedURL> defaultRoot =
+        owner.equals("default")
+            ? Optional.of(NormalizedURL.from(tempDir.toUri()))
+            : Optional.empty();
+    for (String segment : List.of("tables", "volumes", "models", "catalogs", "schemas")) {
+      Path reserved = Files.createDirectory(managedDirectory.resolve(segment));
+      Path alias =
+          Files.createDirectories(managedDirectory.resolve(segment.toUpperCase(Locale.ROOT)));
+      for (Path spelling : List.of(reserved, alias)) {
+        boolean isReserved = Files.isSameFile(reserved, spelling);
+        for (Path path : List.of(spelling, spelling.resolve("child"))) {
+          if (isReserved) {
+            assertThatThrownBy(
+                    () ->
+                        ExternalLocationUtils.resolveRegistrationStorage(
+                            session,
+                            parents,
+                            NormalizedURL.from(path.toUri()),
+                            defaultRoot,
+                            Optional.empty()))
+                .isInstanceOfSatisfying(
+                    BaseException.class,
+                    failure -> {
+                      assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+                      assertThat(failure).hasMessageContaining("shared managed storage directory");
+                    });
+          } else {
+            assertThat(
+                    ExternalLocationUtils.resolveRegistrationStorage(
+                            session,
+                            parents,
+                            NormalizedURL.from(path.toUri()),
+                            defaultRoot,
+                            Optional.empty())
+                        .location())
+                .isEqualTo(managedRoot);
+          }
+        }
+      }
+    }
+    assertThat(
+            ExternalLocationUtils.resolveRegistrationStorage(
+                    session,
+                    parents,
+                    NormalizedURL.from(managedDirectory.resolve("tables-sibling").toUri()),
+                    defaultRoot,
+                    Optional.empty())
+                .location())
+        .isEqualTo(managedRoot);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"table", "model"})
+  public void registrationRejectsCaseAliasesOfDefaultAllocationStorage(String kind)
+      throws Exception {
+    Path managedDirectory = Files.createDirectory(tempDir.resolve("__unitystorage"));
+    Path alias = tempDir.resolve("__UNITYSTORAGE");
+    assumeTrue(
+        Files.exists(alias) && Files.isSameFile(managedDirectory, alias),
+        "Requires a case-insensitive filesystem");
+    session.beginTransaction();
+    var parents =
+        new RepositoryUtils.CatalogAndSchemaDao(
+            CatalogInfoDAO.builder().id(UUID.randomUUID()).build(),
+            SchemaInfoDAO.builder().id(UUID.randomUUID()).build());
+    NormalizedURL root = NormalizedURL.from(tempDir.toUri());
+    Optional<NormalizedURL> tableRoot = kind.equals("table") ? Optional.of(root) : Optional.empty();
+    Optional<NormalizedURL> modelRoot = kind.equals("model") ? Optional.of(root) : Optional.empty();
+    for (Path path : List.of(alias, alias.resolve("child"))) {
+      assertThatThrownBy(
+              () ->
+                  ExternalLocationUtils.resolveRegistrationStorage(
+                      session, parents, NormalizedURL.from(path.toUri()), tableRoot, modelRoot))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              failure -> {
+                assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+                assertThat(failure).hasMessageContaining("shared managed storage directory");
+              });
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("io.unitycatalog.server.persist.utils.RepositoryUtilsTest#lockAcquisitionFailures")
+  @SuppressWarnings("unchecked")
+  public void storageLockFailureIsRetryable(RuntimeException lockFailure) {
+    Session lockedSession = mock();
+    SelectionQuery<MetastoreDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
+    when(lockedSession.createSelectionQuery("FROM MetastoreDAO", MetastoreDAO.class))
+        .thenReturn(query);
+    when(query.getSingleResult()).thenThrow(lockFailure);
+    assertThatThrownBy(() -> ExternalLocationUtils.lockStorageAllocation(lockedSession))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            failure -> {
+              assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+              assertThat(failure.getErrorCode().getHttpStatus().code()).isEqualTo(503);
+              assertThat(failure)
+                  .hasCause(lockFailure)
+                  .hasMessage(
+                      "Concurrent modification in progress on managed storage; retry the request.");
+            });
+  }
+
   @Test
   public void testPendingCleanupIsRejectedBeforePathFallback() {
     session.beginTransaction();
@@ -127,6 +452,74 @@ public class ExternalLocationUtilsTest {
     assertThat(externalLocationUtils.getMapResourceIdsForPath(releasedPath))
         .containsOnlyKeys(SecurableType.EXTERNAL_LOCATION)
         .containsEntry(SecurableType.EXTERNAL_LOCATION, externalLocation.getId());
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "s3://bucket",
+        "gs://bucket",
+        "abfs://c@a.dfs.core.windows.net",
+        "abfss://c@a.dfs.core.windows.net"
+      })
+  public void cloudAllocationAndPathCredentialsRejectAmbiguousUris(String storage) {
+    for (String suffix :
+        List.of("/%6frders", "/orders%2fchild", "/orders?query=1", "/orders#fragment")) {
+      NormalizedURL path = NormalizedURL.from(storage + "/root" + suffix);
+      for (Runnable operation :
+          List.<Runnable>of(
+              () -> externalLocationUtils.getMapResourceIdsForPath(path),
+              () -> ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, path))) {
+        assertThatThrownBy(operation::run)
+            .isInstanceOfSatisfying(
+                BaseException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+            .hasMessageContaining("must not contain percent escapes, a query, or a fragment");
+      }
+    }
+  }
+
+  @Test
+  public void completedReservationAllowsLifecycleAndDisjointNamespaceAllocation() {
+    session.beginTransaction();
+    ExternalLocationDAO external =
+        ExternalLocationDAO.builder()
+            .id(UUID.randomUUID())
+            .name("warehouse")
+            .url("s3://bucket/warehouse")
+            .credentialId(UUID.randomUUID())
+            .build();
+    session.persist(external);
+    StorageCleanupTaskDAO task =
+        new StorageCleanupTaskRepository(sessionFactory)
+            .create(
+                session,
+                ManagedResourceType.REGISTERED_TABLE,
+                UUID.randomUUID(),
+                "orders",
+                external.getUrl() + "/orders");
+    task.setCompletedAt(new Date());
+    session.getTransaction().commit();
+    NormalizedURL root = NormalizedURL.from(external.getUrl());
+    NormalizedURL retired = NormalizedURL.from(task.getStorageLocation());
+    assertThat(externalLocationUtils.getMapResourceIdsForPath(root, true))
+        .containsEntry(SecurableType.EXTERNAL_LOCATION, external.getId());
+    for (String path : List.of(retired.toString(), retired + "/child")) {
+      assertPendingCleanupDenied(
+          () -> externalLocationUtils.getMapResourceIdsForPath(NormalizedURL.from(path), true));
+    }
+    // The same parent must still refuse broad read/write path credentials.
+    assertPendingCleanupDenied(() -> externalLocationUtils.getMapResourceIdsForPath(root));
+    session.beginTransaction();
+    assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, root)).isFalse();
+    assertThat(ExternalLocationUtils.findLocationUse(session, root).inUse()).isFalse();
+    ExternalLocationUtils.validateExternalLocationNotInUse(session, root);
+    ExternalLocationUtils.validateNotOverlapWithRegisteredTables(
+        session, NormalizedURL.from(root + "/__unitystorage/catalogs/" + UUID.randomUUID()));
+    assertThatThrownBy(
+            () -> ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, retired))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("retired");
   }
 
   @Test
@@ -245,11 +638,11 @@ public class ExternalLocationUtilsTest {
     createCleanupTask("s3://bucket/literalX/child");
     createCleanupTask("s3://bucket/percentXYZ25/child");
     for (String path : List.of("s3://bucket/literal_", "s3://bucket/percent%25")) {
-      assertThat(externalLocationUtils.getMapResourceIdsForPath(session, NormalizedURL.from(path)))
-          .isEmpty();
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, NormalizedURL.from(path)))
+          .isFalse();
       createCleanupTask(path + "/child");
-      assertPendingCleanupDenied(
-          () -> externalLocationUtils.getMapResourceIdsForPath(session, NormalizedURL.from(path)));
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, NormalizedURL.from(path)))
+          .isTrue();
     }
   }
 
@@ -264,7 +657,10 @@ public class ExternalLocationUtilsTest {
             BaseException.class,
             exception -> {
               assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED);
-              assertThat(exception).hasMessage("Input path overlaps pending storage cleanup.");
+              assertThat(exception)
+                  .hasMessage(
+                      "Input path overlaps pending storage cleanup or a retired registered"
+                          + " directory.");
             });
   }
 

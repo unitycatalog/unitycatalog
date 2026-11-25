@@ -28,6 +28,7 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -54,10 +55,14 @@ public class SchemaRepository {
   public SchemaInfo createSchema(CreateSchema createSchema) {
     ValidationUtils.validateSqlObjectName(createSchema.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    NormalizedURL storageRoot = NormalizedURL.from(createSchema.getStorageRoot());
 
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
+          if (storageRoot != null) {
+            ExternalLocationUtils.lockStorageAllocation(session);
+          }
           CatalogInfoDAO catalogDAO =
               repositories
                   .getCatalogRepository()
@@ -77,13 +82,13 @@ public class SchemaRepository {
                   .updatedAt(createTime)
                   .updatedBy(callerId)
                   .properties(createSchema.getProperties());
-          NormalizedURL storageRoot = NormalizedURL.from(createSchema.getStorageRoot());
           if (storageRoot != null) {
             // storageRoot, if set, is already authorized as a valid external location by
             // SchemaService.
             ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
             NormalizedURL storageLocation =
                 ExternalLocationUtils.getManagedLocationForSchema(storageRoot, schemaId);
+            ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, storageLocation);
             schemaInfo.setStorageRoot(storageRoot.toString());
             schemaInfo.setStorageLocation(storageLocation.toString());
           }
@@ -99,7 +104,8 @@ public class SchemaRepository {
           return schemaInfo;
         },
         "Failed to create schema",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }
 
   private void addNamespaceData(SchemaInfo schemaInfo, String catalogName) {

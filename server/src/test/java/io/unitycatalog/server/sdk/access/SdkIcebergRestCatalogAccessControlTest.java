@@ -13,22 +13,47 @@ import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.RequestHeaders;
+import io.unitycatalog.client.api.CatalogsApi;
+import io.unitycatalog.client.api.ExternalLocationsApi;
+import io.unitycatalog.client.api.SchemasApi;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.api.VolumesApi;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateVolumeRequestContent;
+import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
+import io.unitycatalog.client.model.PathOperation;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.UpdateExternalLocation;
+import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.client.model.VolumeType;
+import io.unitycatalog.server.persist.ManagedResourceType;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.IcebergTestUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
+import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.MetadataUpdate;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -38,6 +63,7 @@ import org.apache.iceberg.metrics.ImmutableScanReport;
 import org.apache.iceberg.metrics.ScanMetrics;
 import org.apache.iceberg.metrics.ScanMetricsResult;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.ImmutableRegisterTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
@@ -45,8 +71,11 @@ import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.types.Types;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Exhaustive access-control tests for the Iceberg REST catalog endpoints, driving each through
@@ -66,9 +95,12 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
   private static final Map<String, String> READ_WRITE_CREDENTIAL_CONFIG =
       Map.of(S3FileIOProperties.ACCESS_KEY_ID, "test-write-key");
 
+  private FileOperations registrationFileOperations;
+
   @Override
   protected FileOperations decorateFileOperations(FileOperations fileOperations) {
     FileOperations operations = spy(fileOperations);
+    registrationFileOperations = operations;
     // Keep metadata files local and make successful credential responses visible.
     doAnswer(
             invocation ->
@@ -78,6 +110,311 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
         .when(operations)
         .getFileIOConfig(any(), any(), any());
     return operations;
+  }
+
+  @Test
+  @SneakyThrows
+  public void testRegisterTableAccessControl() {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema(CAT, SCHEMA);
+    IcebergRestClient reader = icebergClientFor(REGULAR_1);
+    Path root = testDirectoryRoot.resolve("registration");
+    createExternalLocationWithCredential(
+        "registration_credential", "registration_storage", root.toUri().toString());
+    Path file = registrationMetadata(root.resolve("orders"));
+    var request =
+        ImmutableRegisterTableRequest.builder()
+            .name("orders")
+            .metadataLocation(file.toString())
+            .build();
+    assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, CAT, Privileges.USE_CATALOG);
+    assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, CAT + "." + SCHEMA, Privileges.CREATE_TABLE);
+    assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, CAT + "." + SCHEMA, Privileges.USE_SCHEMA);
+    assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+    // A configured raw storage root does not grant access to files outside its assigned location.
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, CAT, Privileges.CREATE_SCHEMA);
+    grantPermissions(
+        REGULAR_1,
+        SecurableType.EXTERNAL_LOCATION,
+        "registration_storage",
+        Privileges.CREATE_MANAGED_STORAGE);
+    new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)))
+        .createSchema(
+            new CreateSchema()
+                .catalogName(CAT)
+                .name("raw_storage")
+                .storageRoot(root.toUri().toString()));
+    assertDenied(() -> reader.registerTable(CAT, "raw_storage", request));
+    grantPermissions(
+        REGULAR_1,
+        SecurableType.EXTERNAL_LOCATION,
+        "registration_storage",
+        Privileges.CREATE_MANAGED_STORAGE,
+        Privileges.READ_FILES,
+        Privileges.WRITE_FILES);
+    for (Privilege missing :
+        List.of(Privilege.CREATE_MANAGED_STORAGE, Privilege.READ_FILES, Privilege.WRITE_FILES)) {
+      grantsApi.update(
+          SecurableType.EXTERNAL_LOCATION,
+          "registration_storage",
+          new UpdatePermissions()
+              .changes(
+                  List.of(
+                      new PermissionsChange()
+                          .principal(REGULAR_1)
+                          .add(List.of())
+                          .remove(List.of(missing)))));
+      assertDenied(() -> reader.registerTable(CAT, SCHEMA, request));
+      grantPermissions(
+          REGULAR_1,
+          SecurableType.EXTERNAL_LOCATION,
+          "registration_storage",
+          Privileges.fromPrivilege(
+              io.unitycatalog.server.model.Privilege.fromValue(missing.getValue())));
+    }
+    assertThat(reader.registerTable(CAT, SCHEMA, request).config())
+        .containsAllEntriesOf(READ_WRITE_CREDENTIAL_CONFIG);
+    assertThat(reader.loadTable(CAT, SCHEMA, "orders").config())
+        .containsAllEntriesOf(READ_WRITE_CREDENTIAL_CONFIG);
+    reader.dropTable(CAT, SCHEMA, "orders");
+
+    // Schema and location ownership satisfy both tiers without individual grants.
+    new ExternalLocationsApi(TestUtils.createApiClient(adminConfig))
+        .updateExternalLocation(
+            "registration_storage", new UpdateExternalLocation().owner(PRINCIPAL_1));
+    Path ownerFile = registrationMetadata(root.resolve("owner_table"));
+    icebergClientFor(PRINCIPAL_1)
+        .registerTable(
+            CAT,
+            SCHEMA,
+            ImmutableRegisterTableRequest.builder()
+                .name("owner_table")
+                .metadataLocation(ownerFile.toString())
+                .build());
+
+    // CREATE_TABLE grants access to the destination's managed root without external-file grants.
+    Path managedFile =
+        registrationMetadata(testDirectoryRoot.resolve("__unitystorage/managed_registration"));
+    reader.registerTable(
+        CAT,
+        SCHEMA,
+        ImmutableRegisterTableRequest.builder()
+            .name("managed_registration")
+            .metadataLocation(managedFile.toString())
+            .build());
+  }
+
+  @Test
+  public void retiredDirectoriesAllowDisjointNamespacesAndLocationLifecycle() throws Exception {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema(CAT, SCHEMA);
+    Path root = testDirectoryRoot.resolve("retired_storage");
+    createExternalLocationWithCredential(
+        "retired_credential", "retired_storage", root.toUri().toString());
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      var task =
+          new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory())
+              .create(
+                  session,
+                  ManagedResourceType.REGISTERED_TABLE,
+                  UUID.randomUUID(),
+                  "retired",
+                  root.resolve("orders").toUri().toString());
+      task.setCompletedAt(new Date());
+      session.getTransaction().commit();
+    }
+    var api = TestUtils.createApiClient(adminConfig);
+    grantPermissions(
+        PRINCIPAL_1,
+        SecurableType.EXTERNAL_LOCATION,
+        "retired_storage",
+        Privileges.CREATE_MANAGED_STORAGE);
+    var schemas =
+        new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));
+    var catalogs = new CatalogsApi(api);
+    assertThat(
+            schemas
+                .createSchema(
+                    new CreateSchema()
+                        .catalogName(CAT)
+                        .name("disjoint")
+                        .storageRoot(root.toString()))
+                .getStorageLocation())
+        .startsWith(NormalizedURL.from(root.toUri()) + "/__unitystorage/schemas/");
+    assertThat(
+            catalogs
+                .createCatalog(new CreateCatalog().name("disjoint").storageRoot(root.toString()))
+                .getStorageLocation())
+        .startsWith(NormalizedURL.from(root.toUri()) + "/__unitystorage/catalogs/");
+    TestUtils.assertPermissionDenied(
+        () ->
+            schemas.createSchema(
+                new CreateSchema()
+                    .catalogName(CAT)
+                    .name("overlap")
+                    .storageRoot(root.resolve("orders").toString())),
+        "retired registered directory");
+    var credentials = new TemporaryCredentialsApi(api);
+    for (PathOperation operation :
+        List.of(
+            PathOperation.PATH_READ,
+            PathOperation.PATH_READ_WRITE,
+            PathOperation.PATH_CREATE_TABLE)) {
+      TestUtils.assertPermissionDenied(
+          () ->
+              credentials.generateTemporaryPathCredentials(
+                  new GenerateTemporaryPathCredential().url(root.toString()).operation(operation)),
+          "retired registered directory");
+    }
+    schemas.deleteSchema(CAT + ".disjoint", true);
+    catalogs.deleteCatalog("disjoint", true);
+    var locations = new ExternalLocationsApi(api);
+    assertThat(
+            locations
+                .updateExternalLocation(
+                    "retired_storage",
+                    new UpdateExternalLocation().url(root.resolve("sibling").toUri().toString()))
+                .getUrl())
+        .isEqualTo(NormalizedURL.from(root.resolve("sibling").toUri()).toString());
+    locations.deleteExternalLocation("retired_storage", false);
+  }
+
+  private static Path registrationMetadata(Path directory) throws Exception {
+    Path file = directory.resolve("metadata/v1.metadata.json");
+    Files.createDirectories(file.getParent());
+    Files.writeString(
+        file,
+        TableMetadataParser.toJson(
+            TableMetadata.newTableMetadata(
+                new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+                PartitionSpec.unpartitioned(),
+                NormalizedURL.from(directory.toUri()).toString(),
+                Map.of())));
+    return file;
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"metadata", "manifests", "overlap"})
+  public void registrationRechecksStorageWithoutSideEffects(String change) throws Exception {
+    createCommonTestUsers();
+    String importerId = createTestUser(CREATOR_ONLY).getId();
+    setupCommonCatalogAndSchema(CAT, SCHEMA);
+    Path root = testDirectoryRoot.resolve("registration");
+    createExternalLocationWithCredential(
+        "registration_credential", "registration_storage", root.toUri().toString());
+    grantPermissions(CREATOR_ONLY, SecurableType.CATALOG, CAT, Privileges.USE_CATALOG);
+    grantPermissions(
+        CREATOR_ONLY,
+        SecurableType.SCHEMA,
+        CAT + "." + SCHEMA,
+        Privileges.USE_SCHEMA,
+        Privileges.CREATE_TABLE);
+    grantPermissions(
+        CREATOR_ONLY,
+        SecurableType.EXTERNAL_LOCATION,
+        "registration_storage",
+        Privileges.CREATE_MANAGED_STORAGE,
+        Privileges.READ_FILES,
+        Privileges.WRITE_FILES);
+    Path file;
+    var source =
+        IcebergTestUtils.createTable(
+            root.resolve("orders"),
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())));
+    try (var ignored = source.io()) {
+      source
+          .newFastAppend()
+          .appendFile(
+              DataFiles.builder(source.spec())
+                  .withPath(source.location() + "/data/record.avro")
+                  .withFormat("avro")
+                  .withFileSizeInBytes(1)
+                  .withRecordCount(1)
+                  .build())
+          .commit();
+      file =
+          Path.of(NormalizedURL.from(source.operations().current().metadataFileLocation()).toUri());
+    }
+    byte[] original = Files.readAllBytes(file);
+    ExternalLocationsApi locations = new ExternalLocationsApi(adminApiClient);
+    String originalId = locations.getExternalLocation("registration_storage", null).getId();
+    grantPermissions(
+        PRINCIPAL_1,
+        SecurableType.EXTERNAL_LOCATION,
+        "registration_storage",
+        Privileges.CREATE_EXTERNAL_VOLUME);
+    var volumes =
+        new VolumesApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));
+    AtomicInteger reads = new AtomicInteger();
+    int changeAtRead = change.equals("metadata") ? 1 : 2;
+    doAnswer(
+            invocation -> {
+              if (reads.incrementAndGet() == changeAtRead) {
+                // The later cases mutate after the service's discovered-root check.
+                if (change.equals("overlap")) {
+                  volumes.createVolume(
+                      new CreateVolumeRequestContent()
+                          .catalogName(CAT)
+                          .schemaName(SCHEMA)
+                          .name("conflicting_volume")
+                          .volumeType(VolumeType.EXTERNAL)
+                          .storageLocation(root.resolve("orders").toString()));
+                } else {
+                  locations.deleteExternalLocation("registration_storage", false);
+                  assertThat(
+                          locations
+                              .createExternalLocation(
+                                  new CreateExternalLocation()
+                                      .name("registration_storage")
+                                      .credentialName("registration_credential")
+                                      .url(root.toUri().toString()))
+                              .getId())
+                      .isNotEqualTo(originalId);
+                }
+              }
+              return invocation.callRealMethod();
+            })
+        .when(registrationFileOperations)
+        .getFileIO(any(), any());
+
+    assertIcebergApiException(
+        () ->
+            icebergClientFor(CREATOR_ONLY)
+                .registerTable(
+                    CAT,
+                    SCHEMA,
+                    ImmutableRegisterTableRequest.builder()
+                        .name("orders")
+                        .metadataLocation(file.toString())
+                        .build()),
+        400,
+        change.equals("overlap")
+            ? "The path overlaps an existing table, volume"
+            : "The registration storage boundary changed; retry the request.");
+    assertThat(reads.get()).isGreaterThanOrEqualTo(changeAtRead);
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(
+              session
+                  .createSelectionQuery(
+                      "SELECT count(*) FROM TableInfoDAO WHERE name = 'orders'", Long.class)
+                  .getSingleResult())
+          .isZero();
+      assertThat(
+              session
+                  .createNativeQuery(
+                      "SELECT count(*) FROM casbin_rule WHERE ptype = 'p' AND v0 = :principal AND"
+                          + " v2 = :owner",
+                      Long.class)
+                  .setParameter("principal", importerId)
+                  .setParameter("owner", Privileges.OWNER.getValue())
+                  .getSingleResult())
+          .isZero();
+    }
+    assertThat(Files.readAllBytes(file)).isEqualTo(original);
   }
 
   @Test

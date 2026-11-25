@@ -59,9 +59,9 @@ public class StorageCleanupTaskRepository implements CleanupTaskRepository {
           Optional<StorageCleanupTaskDAO> readyTask =
               session
                   .createQuery(
-                      "FROM StorageCleanupTaskDAO WHERE deletedAt <= :cutoff "
-                          + "AND (leaseExpiresAt IS NULL OR leaseExpiresAt <= :now) "
-                          + "ORDER BY COALESCE(leaseExpiresAt, deletedAt)",
+                      "FROM StorageCleanupTaskDAO WHERE completedAt IS NULL AND deletedAt <="
+                          + " :cutoff AND (leaseExpiresAt IS NULL OR leaseExpiresAt <= :now) ORDER"
+                          + " BY COALESCE(leaseExpiresAt, deletedAt)",
                       StorageCleanupTaskDAO.class)
                   .setParameter("cutoff", cutoff)
                   .setParameter("now", now)
@@ -78,6 +78,7 @@ public class StorageCleanupTaskRepository implements CleanupTaskRepository {
                       "UPDATE StorageCleanupTaskDAO SET leaseToken = :token, "
                           + "leaseExpiresAt = :expires WHERE id = :id "
                           + "AND storageLocation = :location "
+                          + "AND completedAt IS NULL "
                           + "AND deletedAt <= :cutoff "
                           + "AND (leaseExpiresAt IS NULL OR leaseExpiresAt <= :now)")
                   .setParameter("token", leaseToken)
@@ -131,13 +132,30 @@ public class StorageCleanupTaskRepository implements CleanupTaskRepository {
         sessionFactory,
         session -> {
           Timestamp now = currentDatabaseTime(session);
-          return session
+          // An expired worker can still have a cloud delete in flight. Never reuse its directory.
+          int retained =
+              session
                   .createMutationQuery(
-                      "DELETE FROM StorageCleanupTaskDAO WHERE id = :id "
-                          + "AND leaseToken = :token AND leaseExpiresAt > :now")
+                      "UPDATE StorageCleanupTaskDAO SET completedAt = :now, leaseToken = NULL, "
+                          + "leaseExpiresAt = NULL WHERE id = :id AND leaseToken = :token "
+                          + "AND leaseExpiresAt > :now AND resourceType = :registered")
                   .setParameter("id", resourceId)
                   .setParameter("token", leaseToken)
                   .setParameter("now", now)
+                  .setParameter("registered", ManagedResourceType.REGISTERED_TABLE)
+                  .executeUpdate();
+          if (retained == 1) {
+            return true;
+          }
+          return session
+                  .createMutationQuery(
+                      "DELETE FROM StorageCleanupTaskDAO WHERE id = :id "
+                          + "AND leaseToken = :token AND leaseExpiresAt > :now "
+                          + "AND resourceType <> :registered")
+                  .setParameter("id", resourceId)
+                  .setParameter("token", leaseToken)
+                  .setParameter("now", now)
+                  .setParameter("registered", ManagedResourceType.REGISTERED_TABLE)
                   .executeUpdate()
               == 1;
         },

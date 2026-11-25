@@ -140,6 +140,12 @@ public class KeyMapper {
   }
 
   public Map<SecurableType, UUID> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {
+    return mapResourceKeys(resourceKeys, /* isStorageRoot= */ false);
+  }
+
+  /** Resolves namespace storage roots without granting access to their reserved descendants. */
+  public Map<SecurableType, UUID> mapResourceKeys(
+      Map<SecurableType, Object> resourceKeys, boolean isStorageRoot) {
     Map<SecurableType, UUID> resourceIds = new HashMap<>();
 
     if (resourceKeys.containsKey(CATALOG)
@@ -323,7 +329,7 @@ public class KeyMapper {
           // create policies also reject a mismatched location via #no_overlap (external) and the
           // staging-ownership check (managed).
           externalLocationUtils
-              .getMapResourceIdsForPath(NormalizedURL.from(nameOrPath))
+              .getMapResourceIdsForPath(NormalizedURL.from(nameOrPath), isStorageRoot)
               .forEach(resourceIds::putIfAbsent);
         } else {
           // Otherwise it's the name

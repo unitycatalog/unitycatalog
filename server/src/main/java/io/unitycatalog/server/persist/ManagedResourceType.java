@@ -1,8 +1,12 @@
 package io.unitycatalog.server.persist;
 
-/** Managed entity type and the storage path segment before its id: {@code .../<segment>/<id>}. */
+import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+
+/** Managed entity types. Registered tables retain an existing directory instead of an ID path. */
 public enum ManagedResourceType {
   TABLE("tables"),
+  REGISTERED_TABLE("tables"),
   VOLUME("volumes"),
   REGISTERED_MODEL("models"),
   MODEL_VERSION("versions"),
@@ -14,8 +18,16 @@ public enum ManagedResourceType {
     this.pathSegment = pathSegment;
   }
 
-  /** Returns the path segment immediately before the resource id. */
+  /** Returns the allocation segment; adopted directories need not contain it or the resource id. */
   public String pathSegment() {
     return pathSegment;
+  }
+
+  /** Cleanup kind for a managed table, whose in-place Iceberg directory may not carry its UC id. */
+  public static ManagedResourceType forTable(TableInfoDAO table) {
+    return DataSourceFormat.ICEBERG.getValue().equals(table.getDataSourceFormat())
+            && !table.getUrl().endsWith("/" + TABLE.pathSegment() + "/" + table.getId())
+        ? REGISTERED_TABLE
+        : TABLE;
   }
 }

@@ -1,0 +1,1 @@
+ALTER TABLE uc_storage_cleanup_tasks ALTER COLUMN resource_type enum ('MODEL_VERSION', 'REGISTERED_MODEL', 'REGISTERED_TABLE', 'STAGING_TABLE', 'TABLE', 'VOLUME');

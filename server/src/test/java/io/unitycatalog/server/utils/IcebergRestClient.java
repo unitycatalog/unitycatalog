@@ -11,6 +11,7 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequestParser;
@@ -157,6 +158,13 @@ public class IcebergRestClient {
       throws ApiException {
     return parse(
         post(tablePath(catalog, namespace, table), toJson(request)), LoadTableResponse.class);
+  }
+
+  public LoadTableResponse registerTable(
+      String catalog, String namespace, RegisterTableRequest request) throws ApiException {
+    return parse(
+        post(namespacePath(catalog, namespace) + "/register", toJson(request)),
+        LoadTableResponse.class);
   }
 
   public void dropTable(String catalog, String namespace, String table) throws ApiException {

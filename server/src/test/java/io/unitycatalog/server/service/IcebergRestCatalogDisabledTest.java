@@ -17,6 +17,7 @@ import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.ImmutableRegisterTableRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
@@ -111,6 +112,19 @@ public class IcebergRestCatalogDisabledTest extends BaseCRUDTestWithMockCredenti
                 CreateTableRequest.builder()
                     .withName(TestUtils.TABLE_NAME)
                     .withSchema(schema)
+                    .build()),
+        400,
+        "currently disabled");
+
+    // registerTable
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.registerTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                ImmutableRegisterTableRequest.builder()
+                    .name(TestUtils.TABLE_NAME)
+                    .metadataLocation("s3://bucket/table/metadata/v1.metadata.json")
                     .build()),
         400,
         "currently disabled");

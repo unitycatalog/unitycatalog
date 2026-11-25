@@ -210,7 +210,10 @@ public final class StorageCleanupWorker implements AutoCloseable {
         || uri.getRawQuery() != null
         || uri.getRawFragment() != null
         || uri.getRawPath() == null
-        || !uri.getRawPath().endsWith("/" + segment + "/" + claim.resourceId())) {
+        || uri.getRawPath().isEmpty()
+        || uri.getRawPath().equals("/")
+        || (resourceType != ManagedResourceType.REGISTERED_TABLE
+            && !uri.getRawPath().endsWith("/" + segment + "/" + claim.resourceId()))) {
       throw new IllegalArgumentException(
           "Cleanup task location does not match its " + resourceType + " resource id");
     }
