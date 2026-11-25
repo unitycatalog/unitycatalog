@@ -1,5 +1,9 @@
 import inspect
+import json
+import logging
 import sys
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -51,6 +55,321 @@ def none_returning_function():
 
 def no_op():
     pass
+
+
+def printing_function(x: int, y: int) -> int:
+    print("debug")  # noqa: T201
+    return x + y
+
+
+def coroutine_printing_function(x: int, y: int):
+    async def add():
+        print("debug")  # noqa: T201
+        return x + y
+
+    return add()
+
+
+def shell_echo_function(x: int, y: int) -> int:
+    import os
+
+    os.system("echo hi")
+    return x + y
+
+
+def undecodable_stdout_function(x: int, y: int) -> int:
+    import os
+
+    os.write(1, b"\x81\xff\n")
+    return x + y
+
+
+def print_then_raise_function():
+    print("debug")  # noqa: T201
+    raise ValueError("bad input")
+
+
+def exiting_function():
+    import sys
+
+    sys.exit(3)
+
+
+def exiting_with_message_function():
+    import sys
+
+    sys.exit("bad config")
+
+
+def exiting_with_long_stderr_function():
+    import sys
+
+    sys.stderr.write("x" * 5000 + "END")
+    sys.exit(1)
+
+
+def corrupt_result_function():
+    import os
+    import sys
+
+    with open(sys.argv[2], "w") as f:
+        f.write("{")
+    sys.stderr.write("writer stopped")
+    sys.stderr.flush()
+    os._exit(0)
+
+
+def deeply_nested_result_function():
+    import os
+    import sys
+
+    with open(sys.argv[2], "w") as f:
+        f.write('{"success": true, "result": ' + "[" * 100000 + "]" * 100000 + "}")
+    os._exit(0)
+
+
+def non_ascii_function(x: int, y: int) -> str:
+    return "caf\u00e9 \u2713 \u65e5\u672c"
+
+
+def non_object_result_function():
+    import os
+    import sys
+
+    with open(sys.argv[2], "w") as f:
+        f.write("3")
+    os._exit(0)
+
+
+def deleted_result_function():
+    import os
+    import sys
+
+    os.remove(sys.argv[2])
+    os._exit(0)
+
+
+def temporary_files_location_function(report_path: str, seconds: int) -> int:
+    import json
+    import os
+    import sys
+    import time
+
+    with open(report_path, "w") as f:
+        json.dump([os.path.dirname(sys.argv[0]), os.path.dirname(sys.argv[2])], f)
+    time.sleep(seconds)
+    return 3
+
+
+def self_killing_function():
+    import os
+    import signal
+
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+def set_returning_function():
+    return {1}
+
+
+@pytest.mark.parametrize(
+    "function",
+    [
+        simple_function,
+        printing_function,
+        coroutine_printing_function,
+        shell_echo_function,
+        undecodable_stdout_function,
+    ],
+)
+def test_function_writing_to_stdout_returns_its_result(function):
+    src = inspect.getsource(function)
+    assert run_in_sandbox_subprocess(src, {"x": 1, "y": 2}) == (True, 3)
+
+
+def _stdout_debug_messages(caplog, function):
+    src = inspect.getsource(function)
+    with caplog.at_level(logging.DEBUG, logger="unitycatalog.ai.core.executor.local_subprocess"):
+        run_in_sandbox_subprocess(src, {"x": 1, "y": 2})
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.DEBUG and record.getMessage().startswith("Subprocess stdout: ")
+    ]
+
+
+def test_function_stdout_is_logged_at_debug_level(caplog):
+    assert _stdout_debug_messages(caplog, printing_function) == ["Subprocess stdout: debug\n"]
+
+
+def test_undecodable_function_stdout_is_logged_at_debug_level(caplog):
+    assert len(_stdout_debug_messages(caplog, undecodable_stdout_function)) == 1
+
+
+def test_non_ascii_result_round_trips():
+    src = inspect.getsource(non_ascii_function)
+    assert run_in_sandbox_subprocess(src, {"x": 1, "y": 2}) == (
+        True,
+        "caf\u00e9 \u2713 \u65e5\u672c",
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "f",
+        "output",
+        "result_path",
+        "b64_params",
+        "params",
+        "result",
+        "tb",
+        "main",
+        "open",
+        "builtins",
+        "sys",
+        "base64",
+        "cloudpickle",
+        "json",
+        "traceback",
+        "asyncio",
+        "resource",
+        "os",
+        "linecache",
+        "limit_resources",
+        "function_namespace",
+        "FUNCTION_SOURCE",
+        "FUNCTION_FILE",
+        "_uc_result",
+        "_uc_params",
+        "_uc_main",
+        "_uc_output",
+    ],
+)
+def test_function_named_like_a_name_of_the_runner_returns_its_result(name):
+    src = f"def {name}(x: int, y: int) -> int:\n    return x + y\n"
+    assert run_in_sandbox_subprocess(src, {"x": 1, "y": 2}) == (True, 3)
+
+
+def test_function_that_prints_then_raises_reports_the_traceback():
+    src = inspect.getsource(print_then_raise_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert "ValueError: bad input" in result
+    assert 'raise ValueError("bad input")' in result
+
+
+@pytest.mark.parametrize(
+    ("function", "exit_code", "expected_text"),
+    [
+        (exiting_function, 3, "could not send its result."),
+        (
+            exiting_with_message_function,
+            1,
+            "bad config",
+        ),
+        (
+            exiting_with_long_stderr_function,
+            1,
+            "(at most the last 4096 characters):\n" + "x" * 4093 + "END",
+        ),
+    ],
+)
+def test_function_that_exits_reports_its_exit_code(function, exit_code, expected_text):
+    src = inspect.getsource(function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert result.startswith(
+        f"The function execution process exited with code {exit_code} before it could report"
+    )
+    assert expected_text in result
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL is not available on Windows")
+def test_function_killed_by_a_signal_reports_the_signal():
+    src = inspect.getsource(self_killing_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert result.startswith("The function execution has been terminated with a signal 9. ")
+    assert "EXECUTOR_MAX_CPU_TIME_LIMIT" in result
+    assert "EXECUTOR_MAX_MEMORY_LIMIT" in result
+    assert "of the whole function execution process, the Python interpreter" in result
+
+
+@pytest.mark.parametrize(
+    ("function", "error"),
+    [
+        (corrupt_result_function, "JSONDecodeError: "),
+        (non_object_result_function, "expected a JSON object, got int"),
+        (deleted_result_function, "FileNotFoundError: "),
+    ],
+)
+def test_unreadable_result_is_reported_as_an_error(function, error):
+    src = inspect.getsource(function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert result.startswith(
+        "The function execution process exited with code 0, but its result could not be read: "
+        + error
+    )
+
+
+def test_unreadable_result_includes_the_standard_error_output():
+    src = inspect.getsource(corrupt_result_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert "Standard error output of the process (at most the last 4096 characters):\n" in result
+    assert result.endswith("writer stopped")
+
+
+def test_deeply_nested_result_is_reported_as_an_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    src = inspect.getsource(deeply_nested_result_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert result.startswith(
+        "The function execution process exited with code 0, but its result could not be read: "
+        "RecursionError: "
+    )
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_unserializable_result_is_reported_as_an_error():
+    src = inspect.getsource(set_returning_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert not succeeded
+    assert "TypeError: Object of type set is not JSON serializable" in result
+
+
+def _run_and_report_temporary_files(monkeypatch, tmp_path_factory, seconds, timeout):
+    temp_dir = tmp_path_factory.mktemp("executor_temp")
+    report_path = tmp_path_factory.mktemp("report") / "dirs.json"
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_dir))
+    monkeypatch.setenv("EXECUTOR_TIMEOUT", timeout)
+    src = inspect.getsource(temporary_files_location_function)
+    succeeded, result = run_in_sandbox_subprocess(
+        src, {"report_path": str(report_path), "seconds": seconds}
+    )
+    reported_dirs = [Path(d).resolve() for d in json.loads(report_path.read_text())]
+    assert reported_dirs == [temp_dir.resolve()] * 2
+    assert list(temp_dir.iterdir()) == []
+    return succeeded, result
+
+
+def test_temporary_files_are_removed_after_a_run(monkeypatch, tmp_path_factory):
+    succeeded, result = _run_and_report_temporary_files(
+        monkeypatch, tmp_path_factory, seconds=0, timeout="20"
+    )
+    assert succeeded
+    assert result == 3
+
+
+def test_temporary_files_are_removed_after_a_timeout(monkeypatch, tmp_path_factory):
+    succeeded, result = _run_and_report_temporary_files(
+        monkeypatch, tmp_path_factory, seconds=30, timeout="5"
+    )
+    assert not succeeded
+    assert result.startswith("The function execution has timed out and has been canceled")
 
 
 def test_computational_complex_function():
@@ -132,7 +451,15 @@ def test_runner_script_skips_limits_without_resource_module(monkeypatch, capsys)
     namespace = {"__name__": "runner"}
 
     exec(script, namespace)
-    namespace["_limit_resources"]()
+    namespace["limit_resources"]()
 
     assert capsys.readouterr().err == ""
-    assert namespace["simple_function"](x=1, y=2) == 3
+    assert namespace["function_namespace"]["simple_function"](x=1, y=2) == 3
+
+
+def test_function_can_use_the_modules_the_runner_imported_without_importing_them():
+    src = (
+        "def f(x: int) -> str:\n"
+        "    return json.dumps({'x': x, 'sep': os.sep == sys.modules['os'].sep})\n"
+    )
+    assert run_in_sandbox_subprocess(src, {"x": 1}) == (True, '{"x": 1, "sep": true}')

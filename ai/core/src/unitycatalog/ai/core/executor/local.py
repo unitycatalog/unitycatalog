@@ -25,6 +25,7 @@ from unitycatalog.ai.core.executor.common import (
     MB_CONVERSION,
     NO_OUTPUT_MESSAGE,
     OPEN_DISALLOWED_MESSAGE,
+    SANDBOX_MEMORY_LIMIT_SCOPE,
     SANDBOX_UNSUPPORTED_MESSAGE,
     TERMINATED_MESSAGE_TEMPLATE,
     TIMEOUT_ERROR_MESSAGE,
@@ -186,7 +187,9 @@ def _receive_result(
     if result is not None:
         return result
     if exit_code is not None and exit_code < 0:
-        return False, TERMINATED_MESSAGE_TEMPLATE.format(signal_num=-exit_code)
+        return False, TERMINATED_MESSAGE_TEMPLATE.format(
+            signal_num=-exit_code, memory_limit_scope=SANDBOX_MEMORY_LIMIT_SCOPE
+        )
     if read_error is not None:
         return False, UNREADABLE_RESULT_MESSAGE_TEMPLATE.format(
             exit_code=exit_code, error=read_error

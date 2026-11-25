@@ -47,10 +47,17 @@ TERMINATED_MESSAGE_TEMPLATE = (
     "you are certain that your function is behaving as expected:\n"
     "\t1. EXECUTOR_MAX_CPU_TIME_LIMIT: Maximum CPU execution time limit for the executor "
     "measured in CPU seconds (total CPU execution time, not wall-clock time).\n"
-    "\t2. EXECUTOR_MAX_MEMORY_LIMIT: Maximum virtual memory, measured in MB, that the function "
-    "can allocate on top of the address space the sandbox process inherits. "
+    "\t2. EXECUTOR_MAX_MEMORY_LIMIT: Maximum virtual memory, measured in MB, "
+    "{memory_limit_scope}. "
     "The default value is 100 MB. Note that this restriction is only applicable to Linux environments "
     "and has no functional use in Mac OSX or Windows.\n"
+)
+
+SANDBOX_MEMORY_LIMIT_SCOPE = (
+    "that the function can allocate on top of the address space the sandbox process inherits"
+)
+LOCAL_MEMORY_LIMIT_SCOPE = (
+    "of the whole function execution process, the Python interpreter and its imports included"
 )
 
 EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE = (

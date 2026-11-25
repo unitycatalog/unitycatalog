@@ -103,6 +103,7 @@ def test_guard_against_high_cpu_usage(monkeypatch):
     succeeded, result = run_in_sandbox(computational_complex_function, {"x": 2, "y": 100})
     assert not succeeded
     assert "The function execution has been terminated with a signal" in result
+    assert "on top of the address space the sandbox process inherits" in result
 
 
 @pytest.mark.asyncio
