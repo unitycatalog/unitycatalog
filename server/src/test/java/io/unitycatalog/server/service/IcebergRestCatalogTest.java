@@ -1624,7 +1624,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // parser can read.
     AggregatedHttpResponse resp =
         client
-            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/views")
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/unimplemented")
             .aggregate()
             .join();
     assertIcebergStatusDocument(resp, 404, NotFoundException.class, "Not Found");

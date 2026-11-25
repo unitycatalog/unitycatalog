@@ -11,6 +11,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -116,6 +117,37 @@ public class SchemaMigratorTest {
 
     try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(byClass)) {
       assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+    }
+  }
+
+  @Test
+  void upgradeKeepsDuplicateTableNamesAndAllowsStartup(@TempDir Path storageRoot) {
+    UpgradeTestUtils.createBaselineSchema(db);
+    UUID schema = UUID.randomUUID();
+    List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID());
+    db.sessionFactory()
+        .inTransaction(
+            session -> {
+              for (UUID id : ids) {
+                session
+                    .createNativeMutationQuery(
+                        "INSERT INTO uc_tables (id, schema_id, name) VALUES (:id, :schema,"
+                            + " 'existing')")
+                    .setParameter("id", id)
+                    .setParameter("schema", schema)
+                    .executeUpdate();
+              }
+            });
+
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    try (TestServer ignored = TestServer.start(db, storageRoot);
+        Session session = db.sessionFactory().openSession()) {
+      for (UUID id : ids) {
+        var table = session.get(TableInfoDAO.class, id);
+        assertThat(table.getSchemaId()).isEqualTo(schema);
+        assertThat(table.getName()).isEqualTo("existing");
+        assertThat(table.getIcebergViewMetadataLocation()).isNull();
+      }
     }
   }
 

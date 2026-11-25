@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_READ_COMMITTED;
 import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
@@ -52,6 +53,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
@@ -753,7 +755,11 @@ public class TableRepository {
   public TableInfo createTable(CreateTable createTable) {
     requireNonIcebergFormat(createTable, "createTable");
     return createTableImpl(
-        createTable, Optional.empty(), Optional.empty(), (session, dao, tableInfo) -> tableInfo);
+        createTable,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        (session, dao, tableInfo) -> tableInfo);
   }
 
   public TableInfo createTableForIceberg(CreateTable createTable, NormalizedURL metadataLocation) {
@@ -764,7 +770,74 @@ public class TableRepository {
         createTable,
         Optional.empty(),
         Optional.of(metadataLocation),
+        Optional.empty(),
         (session, dao, tableInfo) -> tableInfo);
+  }
+
+  private record NewIcebergView(UUID schemaId, UUID viewId, String metadataLocation) {}
+
+  /** Register the view and its previously written metadata pointer in the same transaction. */
+  public TableInfo createViewForIceberg(
+      CreateTable request, UUID expectedSchemaId, UUID viewId, String metadataLocation) {
+    if (request.getTableType() != TableType.VIEW) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Expected an ordinary view");
+    }
+    return createTableImpl(
+        request,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(new NewIcebergView(expectedSchemaId, viewId, metadataLocation)),
+        (session, dao, tableInfo) -> tableInfo);
+  }
+
+  public record IcebergViewState(TableInfo view, String metadataLocation) {}
+
+  /** Read a consistent native view definition or an immutable IRC metadata pointer. */
+  public IcebergViewState getIcebergViewState(String catalog, String schema, String name) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTableOrThrow(session, catalog, schema, name);
+          if (!TableType.VIEW.getValue().equals(dao.getType())) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "View does not exist: " + name);
+          }
+          String pointer = dao.getIcebergViewMetadataLocation();
+          TableInfo info = dao.toTableInfo(pointer == null, catalog, schema);
+          if (pointer == null) {
+            RepositoryUtils.attachProperties(
+                info, TableInfo::setProperties, info.getTableId(), Constants.TABLE, session);
+          }
+          return new IcebergViewState(info, pointer);
+        },
+        "Failed to load view " + name,
+        /* readOnly= */ true,
+        Optional.of(TRANSACTION_REPEATABLE_READ));
+  }
+
+  private static void requireIcebergView(TableInfoDAO dao, String name) {
+    if (!TableType.VIEW.getValue().equals(dao.getType())) {
+      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "View does not exist: " + name);
+    }
+    if (dao.getIcebergViewMetadataLocation() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Drop the UC-created view " + name + " through the UC Tables API");
+    }
+  }
+
+  /** Checks the authorized view ID on the locked row before deleting it or its children. */
+  public TableInfoDAO deleteViewForIceberg(
+      String catalog, String schema, String name, UUID expectedViewId) {
+    return deleteTable(
+        catalog,
+        schema,
+        name,
+        dao -> {
+          if (!dao.getId().equals(expectedViewId)) {
+            throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+          }
+          requireIcebergView(dao, name);
+        });
   }
 
   /**
@@ -784,6 +857,7 @@ public class TableRepository {
     return createTableImpl(
         createTable,
         uniformFields,
+        Optional.empty(),
         Optional.empty(),
         (session, dao, tableInfo) ->
             buildLoadTableResponse(
@@ -817,8 +891,11 @@ public class TableRepository {
       CreateTable createTable,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
+      Optional<NewIcebergView> icebergView,
       CreateResultMapper<T> mapper) {
-    T result = persistTable(createTable, uniformFields, nativeIcebergMetadataLocation, mapper);
+    T result =
+        persistTable(
+            createTable, uniformFields, nativeIcebergMetadataLocation, icebergView, mapper);
     tableMetrics.recordTableCreated();
     return result;
   }
@@ -827,6 +904,7 @@ public class TableRepository {
       CreateTable createTable,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
+      Optional<NewIcebergView> icebergView,
       CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -841,16 +919,17 @@ public class TableRepository {
     String fullName = getTableFullName(createTable);
     LOGGER.debug("Creating table: {}", fullName);
 
-    return TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          String catalogName = createTable.getCatalogName();
-          String schemaName = createTable.getSchemaName();
-          UUID schemaId =
-              repositories
-                  .getSchemaRepository()
-                  .getSchemaIdOrThrow(session, catalogName, schemaName);
-
+    String catalogName = createTable.getCatalogName();
+    String schemaName = createTable.getSchemaName();
+    return writeTableName(
+        catalogName,
+        schemaName,
+        "Error creating table: " + fullName,
+        (session, schemaId) -> {
+          if (icebergView.isPresent() && !schemaId.equals(icebergView.get().schemaId())) {
+            throw new BaseException(
+                ErrorCode.SCHEMA_NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
+          }
           // Check if table already exists
           TableInfoDAO existingTable =
               findBySchemaIdAndName(session, schemaId, createTable.getName());
@@ -859,10 +938,7 @@ public class TableRepository {
                 ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
-          // `tableUUID` is the table's primary key. The shape is uniform across the three
-          // creatable branches (external, managed, metric view); the only divergence is the
-          // source of the UUID (random for external/metric-view, staging-table id for managed).
-          // The string form is generated exactly once below at `tableInfo.tableId(...)`.
+          // A managed table keeps its staging ID. An IRC view keeps the ID in its metadata file.
           UUID tableUUID;
           NormalizedURL storageLocation;
           if (tableType == TableType.EXTERNAL) {
@@ -905,7 +981,7 @@ public class TableRepository {
           } else if (tableType == TableType.VIEW) {
             storageLocation = null;
             validateView(session, createTable);
-            tableUUID = UUID.randomUUID();
+            tableUUID = icebergView.map(NewIcebergView::viewId).orElseGet(UUID::randomUUID);
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
@@ -953,6 +1029,8 @@ public class TableRepository {
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           nativeIcebergMetadataLocation.ifPresent(
               location -> tableInfoDAO.setIcebergMetadataLocation(location.toString()));
+          icebergView.ifPresent(
+              view -> tableInfoDAO.setIcebergViewMetadataLocation(view.metadataLocation()));
           session.persist(tableInfoDAO);
           if (tableType != TableType.MANAGED) {
             // Managed tables retain the owner grant saved when their staging table was created.
@@ -977,9 +1055,36 @@ public class TableRepository {
                 new DependencyList().dependencies(DependencyDAO.toDependencyList(depDAOs)));
           }
           return mapper.apply(session, tableInfoDAO, tableInfo);
+        });
+  }
+
+  /** Coordinate name claims through every catalog API when Iceberg view creation is enabled. */
+  private <T> T writeTableName(
+      String catalog, String schema, String errorMessage, BiFunction<Session, UUID, T> operation) {
+    boolean lockSchema = serverProperties.isIcebergViewEnabled();
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
+          if (lockSchema) {
+            // A name that doesn't exist has no row to lock. Lock its parent before the lookup;
+            // READ COMMITTED lets a waiting writer see names committed by the preceding writer.
+            RepositoryUtils.lockByKey(
+                session,
+                SchemaInfoDAO.class,
+                schemaId,
+                Map.of("name", schema),
+                "schema " + schema,
+                () ->
+                    new BaseException(
+                        ErrorCode.SCHEMA_NOT_FOUND, "Schema not found: " + catalog + "." + schema));
+          }
+          return operation.apply(session, schemaId);
         },
-        "Error creating table: " + fullName,
-        /* readOnly= */ false);
+        errorMessage,
+        /* readOnly= */ false,
+        lockSchema ? Optional.of(TRANSACTION_READ_COMMITTED) : Optional.empty());
   }
 
   @FunctionalInterface
@@ -1384,11 +1489,11 @@ public class TableRepository {
       String catalog, String schema, String table, String newName, Consumer<TableInfoDAO> check) {
     ValidationUtils.validateSqlObjectName(newName);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          UUID schemaId =
-              repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
+    writeTableName(
+        catalog,
+        schema,
+        "Failed to rename table " + catalog + "." + schema + "." + table,
+        (session, schemaId) -> {
           TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
@@ -1408,8 +1513,6 @@ public class TableRepository {
           tableInfoDAO.setUpdatedBy(callerId);
           session.merge(tableInfoDAO);
           return null;
-        },
-        "Failed to rename table " + catalog + "." + schema + "." + table,
-        /* readOnly= */ false);
+        });
   }
 }

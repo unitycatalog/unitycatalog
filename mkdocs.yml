@@ -28,6 +28,7 @@ nav:
           - Delta Lake: usage/tables/deltalake.md
           - Formats: usage/tables/formats.md
           - UniForm: usage/tables/uniform.md
+          - Spark SQL views: usage/tables/iceberg-views.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Models: usage/models.md

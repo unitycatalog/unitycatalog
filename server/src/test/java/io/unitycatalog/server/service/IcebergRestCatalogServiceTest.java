@@ -2,8 +2,10 @@ package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_ONLY;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
+import static io.unitycatalog.server.utils.IcebergViewTestUtils.request;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -14,12 +16,20 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
+import io.unitycatalog.server.auth.decorator.ResultFilter;
+import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
+import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
@@ -27,10 +37,13 @@ import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.service.iceberg.ViewMetadataService;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,9 +66,12 @@ import org.apache.iceberg.types.Types;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 public class IcebergRestCatalogServiceTest {
@@ -77,6 +93,8 @@ public class IcebergRestCatalogServiceTest {
 
   @BeforeEach
   public void setUp() {
+    var fileOperations = new FileOperationsImpl(mock(), serverProperties);
+    when(repositories.getFileOperations()).thenReturn(fileOperations);
     when(repositories.getUserRepository()).thenReturn(userRepository);
     when(repositories.getKeyMapper()).thenReturn(keyMapper);
     when(repositories.getCatalogRepository()).thenReturn(mock(CatalogRepository.class));
@@ -84,9 +102,143 @@ public class IcebergRestCatalogServiceTest {
     when(repositories.getStagingTableRepository()).thenReturn(mock(StagingTableRepository.class));
     when(repositories.getTableRepository()).thenReturn(tableRepository);
     when(repositories.getSessionFactory()).thenReturn(mock(SessionFactory.class));
-    service =
-        new IcebergRestCatalogService(
-            authorizer, tableConfigService, metadataService, repositories, serverProperties);
+    service = newService();
+  }
+
+  private IcebergRestCatalogService newService() {
+    return new IcebergRestCatalogService(
+        authorizer, tableConfigService, metadataService, repositories, serverProperties);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void viewReadsRejectASnapshotWithADifferentId(boolean ucCreated, @TempDir Path root) {
+    var views = authorizedViewService(root);
+    UUID authorizedId = UUID.randomUUID();
+    UUID snapshotId = UUID.randomUUID();
+    String pointer = ucCreated ? null : root.resolve("view.json").toUri().toString();
+    when(tableRepository.getIcebergViewState("cat", "ns", "v"))
+        .thenReturn(
+            new TableRepository.IcebergViewState(
+                new TableInfo().tableId(snapshotId.toString()), pointer));
+    var context = ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
+    context.setAttr(
+        UnityAccessDecorator.RESULT_FILTER_ATTR,
+        new ResultFilter(
+            mock(UnityAccessEvaluator.class),
+            UUID.randomUUID(),
+            AuthorizeExpressions.GET_TABLE,
+            "",
+            Map.of(SecurableType.TABLE, authorizedId),
+            Map.of(),
+            keyMapper));
+    try (var ignored = context.push()) {
+      assertThat(
+              assertThrows(BaseException.class, () -> views.loadView("cat", "ns", "v"))
+                  .getErrorCode())
+          .isEqualTo(ErrorCode.PERMISSION_DENIED);
+      assertThat(
+              assertThrows(BaseException.class, () -> views.viewExists("cat", "ns", "v"))
+                  .getErrorCode())
+          .isEqualTo(ErrorCode.PERMISSION_DENIED);
+    }
+  }
+
+  private IcebergRestCatalogService authorizedViewService(Path root) {
+    when(serverProperties.isIcebergViewEnabled()).thenReturn(true);
+    when(serverProperties.isAuthorizationEnabled()).thenReturn(true);
+    when(serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT))
+        .thenReturn(root.toString());
+    return newService();
+  }
+
+  @Test
+  public void createRequiresTheAuthorizedSchemaBeforeWritingMetadata(@TempDir Path root) {
+    var views = authorizedViewService(root);
+    UUID authorizedId = UUID.randomUUID();
+    when(repositories.getSchemaRepository().getSchemaIdOrThrow("cat", "ns"))
+        .thenReturn(UUID.randomUUID());
+    var context = ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/"));
+    context.setAttr(
+        UnityAccessDecorator.RESULT_FILTER_ATTR,
+        new ResultFilter(
+            mock(UnityAccessEvaluator.class),
+            UUID.randomUUID(),
+            AuthorizeExpressions.CREATE_TABLE,
+            "",
+            Map.of(SecurableType.SCHEMA, authorizedId),
+            Map.of(),
+            keyMapper));
+    try (var ignored = context.push()) {
+      var error =
+          assertThrows(
+              BaseException.class,
+              () -> views.createView("cat", "ns", request("v", "spark", "select 1 as id")));
+      assertThat(error.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED);
+    }
+    verifyNoInteractions(tableRepository);
+    assertThat(root).isEmptyDirectory();
+  }
+
+  @Test
+  public void rejectedDropPassesTheAuthorizedIdAndKeepsGrants(@TempDir Path root) {
+    var views = authorizedViewService(root);
+    UUID viewId = UUID.randomUUID();
+    TableInfo view = new TableInfo().tableId(viewId.toString());
+    String pointer = root.resolve("view.json").toUri().toString();
+    when(tableRepository.getIcebergViewState("cat", "ns", "v"))
+        .thenReturn(new TableRepository.IcebergViewState(view, pointer));
+    var filter = mock(ResultFilter.class);
+    when(filter.filterResult(SecurableType.TABLE, view, null)).thenReturn(view);
+    var context = ServiceRequestContext.of(HttpRequest.of(HttpMethod.DELETE, "/"));
+    context.setAttr(UnityAccessDecorator.RESULT_FILTER_ATTR, filter);
+    var denied = new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    when(tableRepository.deleteViewForIceberg("cat", "ns", "v", viewId)).thenThrow(denied);
+    try (var ignored = context.push()) {
+      assertThatThrownBy(() -> views.dropView("cat", "ns", "v")).isSameAs(denied);
+    }
+    verify(filter).filterResult(SecurableType.TABLE, view, null);
+    verifyNoInteractions(authorizer);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = ErrorCode.class,
+      names = {
+        "TABLE_ALREADY_EXISTS",
+        "CATALOG_NOT_FOUND",
+        "SCHEMA_NOT_FOUND",
+        "INVALID_ARGUMENT",
+        "COMMIT_STATE_UNKNOWN"
+      })
+  public void viewMetadataCleanupDependsOnTheRegistrationOutcome(
+      ErrorCode code, @TempDir Path root) {
+    when(serverProperties.isIcebergViewEnabled()).thenReturn(true);
+    when(serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT))
+        .thenReturn(root.toString());
+    var views = newService();
+    UUID schemaId = UUID.randomUUID();
+    when(repositories.getSchemaRepository().getSchemaIdOrThrow("cat", "ns")).thenReturn(schemaId);
+    var failure = new BaseException(code, "Registration failed");
+    when(tableRepository.createViewForIceberg(any(), eq(schemaId), any(), any()))
+        .thenThrow(failure);
+
+    assertThatThrownBy(() -> views.createView("cat", "ns", request("v", "spark", "select 1 as id")))
+        .isSameAs(failure);
+
+    var viewId = ArgumentCaptor.forClass(UUID.class);
+    var pointer = ArgumentCaptor.forClass(String.class);
+    verify(tableRepository)
+        .createViewForIceberg(any(), eq(schemaId), viewId.capture(), pointer.capture());
+    if (code == ErrorCode.COMMIT_STATE_UNKNOWN) {
+      String expectedId = viewId.getValue().toString();
+      var metadata =
+          new ViewMetadataService(root.toString(), repositories.getFileOperations())
+              .read(expectedId, pointer.getValue());
+      assertThat(metadata.uuid()).isEqualTo(expectedId);
+    } else {
+      assertThat(root).isEmptyDirectory();
+    }
   }
 
   @Test
