@@ -281,6 +281,108 @@ jobs:
             [ "$mount_path" = "$key_file" ]
           done
 
+      - name: Run the create-users job script against a stub server
+        if: matrix.db == 'file'
+        run: |
+          set -euo pipefail
+          dir="$(mktemp -d)"
+          mkdir "$dir/bin" "$dir/key"
+          touch "$dir/key/private_key.pem"
+          printf '#!/bin/sh\n' > "$dir/bin/apk"
+          printf '#!/bin/sh\necho token\n' > "$dir/bin/jwt"
+          cp "$dir/bin/jwt" "$dir/bin/uuidgen"
+          chmod +x "$dir/bin/"*
+          # Like the server, an unfiltered list returns the first 50 users, and the filter ignores case. raced@ exists
+          # but the lookup misses it, as when another client creates it after the lookup.
+          python3 - "$dir" <<'EOF' &
+          import json, os, re, sys
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          from urllib.parse import parse_qs, urlsplit
+          users = [f"user{i}@example.com" for i in range(58)]
+          users += ["CaseUser@example.com", 'late+"quoted"@example.com', "raced@example.com"]
+          log = open(f"{sys.argv[1]}/requests.jsonl", "a")
+          class Stub(BaseHTTPRequestHandler):
+              def log_message(self, *args):
+                  pass
+              def reply(self, status, body):
+                  self.send_response(status)
+                  self.end_headers()
+                  self.wfile.write(json.dumps(body).encode())
+              def handle_one(self):
+                  url = urlsplit(self.path)
+                  length = int(self.headers.get("Content-Length", 0))
+                  body = json.loads(self.rfile.read(length)) if length else None
+                  query = parse_qs(url.query)
+                  log.write(json.dumps({"method": self.command, "path": url.path, "query": query, "body": body}) + "\n")
+                  log.flush()
+                  if url.path.endswith("/metastore_summary"):
+                      return self.reply(200, {"metastore_id": "m"})
+                  if "/permissions/metastore/" in url.path:
+                      return self.reply(200, {})
+                  if self.command == "POST":
+                      email = body["emails"][0]["value"]
+                      if email.startswith("fail"):
+                          return self.reply(500, {"detail": "failed"})
+                      if email in users:
+                          return self.reply(409, {"detail": "exists"})
+                      users.append(email)
+                      return self.reply(201, {"id": email})
+                  if "filter" not in query:
+                      found = users[:50]
+                  elif m := re.fullmatch(r'emails\.value eq (".*")', query["filter"][0]):
+                      email = json.loads(m[1])
+                      if email.startswith("lookupfail"):
+                          return self.reply(500, {"detail": "failed"})
+                      found = [u for u in users if u.lower() == email.lower() and u != "raced@example.com"]
+                  else:
+                      return self.reply(400, {"detail": "bad filter"})
+                  self.reply(200, {"totalResults": len(found), "Resources": [{"emails": [{"value": u}]} for u in found]})
+              do_GET = do_POST = do_PATCH = handle_one
+          server = HTTPServer(("127.0.0.1", 0), Stub)
+          open(f"{sys.argv[1]}/port.tmp", "w").write(str(server.server_port))
+          os.rename(f"{sys.argv[1]}/port.tmp", f"{sys.argv[1]}/port")
+          server.serve_forever()
+          EOF
+          stub=$!
+          trap 'kill "$stub"' EXIT
+          for _ in $(seq 50); do [ -f "$dir/port" ] && break; sleep 0.1; done
+          port="$(cat "$dir/port")"
+          # Renders the job for the users in $1 and runs its script against the stub.
+          run_job() {
+            helm template uc helm --set auth.enabled=true --set server.service.port="$port" -f "$1" \
+              --show-only templates/server/create-users-job.yaml \
+              | sed -n '/^            - |-$/,/^          volumeMounts:$/{//!p}' | sed 's/^              //' \
+              | sed "s#/key/#$dir/key/#g; s#http://uc-unitycatalog-server:#http://127.0.0.1:#g" > "$dir/job.sh"
+            : > "$dir/requests.jsonl"
+            PATH="$dir/bin:$PATH" bash "$dir/job.sh"
+          }
+          cat > "$dir/users.yaml" <<'EOF'
+          auth:
+            users:
+              - {name: late, email: 'late+"quoted"@example.com', canCreateCatalogs: true}
+              - {name: raced, email: raced@example.com, canCreateCatalogs: true}
+              - {name: "O'Neil \"New\"", email: "o'neil+new@example.com", canCreateCatalogs: true}
+              - {email: caseuser@example.com}
+          EOF
+          run_job "$dir/users.yaml"
+          # A user past the first page is found, and the raced one is created once and still granted.
+          jq -r 'select(.method == "GET" and .query.filter) | .query.filter[0]' "$dir/requests.jsonl" > "$dir/filters"
+          printf '%s\n' 'emails.value eq "late+\"quoted\"@example.com"' 'emails.value eq "raced@example.com"' \
+            "emails.value eq \"o'neil+new@example.com\"" 'emails.value eq "caseuser@example.com"' | diff - "$dir/filters"
+          jq -c 'select(.method == "POST") | .body' "$dir/requests.jsonl" > "$dir/posts"
+          printf '%s\n' '{"displayName":"raced","emails":[{"primary":true,"value":"raced@example.com"}]}' \
+            "{\"displayName\":\"O'Neil \\\"New\\\"\",\"emails\":[{\"primary\":true,\"value\":\"o'neil+new@example.com\"}]}" \
+            '{"displayName":"","emails":[{"primary":true,"value":"caseuser@example.com"}]}' | diff - "$dir/posts"
+          jq -r 'select(.method == "PATCH") | .body.changes[] | "\(.principal) \(.add)"' "$dir/requests.jsonl" > "$dir/grants"
+          printf '%s\n' 'late+"quoted"@example.com ["CREATE CATALOG"]' 'raced@example.com ["CREATE CATALOG"]' \
+            "o'neil+new@example.com [\"CREATE CATALOG\"]" | diff - "$dir/grants"
+          # A failed lookup or create fails the job before the grant.
+          for email in lookupfail@example.com fail@example.com; do
+            printf 'auth:\n  users:\n    - {name: f, email: %s, canCreateCatalogs: true}\n' "$email" > "$dir/users.yaml"
+            if run_job "$dir/users.yaml"; then exit 1; fi
+            ! jq -e 'select(.method == "PATCH")' "$dir/requests.jsonl" > /dev/null || exit 1
+          done
+
       - name: Build the server and UI images
         run: |
           docker build -t unitycatalog:ci .
