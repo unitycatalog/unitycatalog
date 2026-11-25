@@ -146,3 +146,8 @@ URL = f"{BASE_URL}{ENDPOINT}"
 
 response = requests.delete(URL)
 ```
+
+## Iceberg REST views
+
+For experimental Spark SQL view creation, loading, and deletion through the Iceberg REST catalog, see
+[Spark SQL views](../tables/iceberg-views.md).

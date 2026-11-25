@@ -56,9 +56,51 @@ import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class UnityCatalogServerTest extends BaseServerTest {
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(
+      strings = {
+        "",
+        " ",
+        "relative/views",
+        "file:relative/views",
+        "file://host/views",
+        "file:/views/%2e%2e/other",
+        "s3:///",
+        "s3://bucket/path?x",
+        "s3://bucket/path/%2f",
+        "s3://user@bucket/views",
+        "s3://bucket/../views",
+        "https://bucket/views"
+      })
+  void enablingIcebergViewsRequiresAMetadataRoot(String root) {
+    ServerProperties properties = new ServerProperties(serverProperties);
+    properties.set(Property.AUTHORIZATION_ENABLED, "disable");
+    properties.set(Property.ICEBERG_VIEW_ENABLED, "true");
+    if (root != null) {
+      properties.set(Property.ICEBERG_VIEW_METADATA_ROOT, root);
+    }
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .serverProperties(properties)
+                    .configurationFolder(configurationFolder)
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .build())
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            root == null || root.isBlank()
+                ? "server.iceberg-view.metadata-root is required when Iceberg views are enabled"
+                : "server.iceberg-view.metadata-root must be an absolute local path, file URI, or"
+                      + " s3:// location")
+        .extracting(error -> ((BaseException) error).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+  }
 
   @Test
   public void opaCannotRunWithAuthorizationDisabled() {

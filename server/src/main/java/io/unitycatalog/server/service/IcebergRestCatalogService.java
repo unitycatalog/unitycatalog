@@ -65,6 +65,7 @@ import io.unitycatalog.server.service.iceberg.IcebergSchemaConverter;
 import io.unitycatalog.server.service.iceberg.IcebergStagedCreateExtractor;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.service.iceberg.ViewMetadataService;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -78,7 +79,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.SortOrder;
@@ -99,6 +99,7 @@ import org.apache.iceberg.rest.RESTUtil;
 import org.apache.iceberg.rest.credentials.ImmutableCredential;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.CreateViewRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
@@ -107,12 +108,14 @@ import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.CreateNamespaceResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ImmutableLoadCredentialsResponse;
+import org.apache.iceberg.rest.responses.ImmutableLoadViewResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
 import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
+import org.apache.iceberg.view.ViewMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -149,6 +152,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
+  private final Optional<ViewMetadataService> viewStore;
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
   private final StagingTableRepository stagingTableRepository;
@@ -169,6 +173,13 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     super(authorizer, repositories, serverProperties);
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
+    this.viewStore =
+        serverProperties.isIcebergViewEnabled()
+            ? Optional.of(
+                new ViewMetadataService(
+                    serverProperties.get(ServerProperties.Property.ICEBERG_VIEW_METADATA_ROOT),
+                    repositories.getFileOperations()))
+            : Optional.empty();
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.stagingTableRepository = repositories.getStagingTableRepository();
@@ -192,13 +203,18 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     // that does not is a 404 here, rather than a config whose every later request fails.
     catalogRepository.getCatalog(catalog);
 
+    List<Endpoint> endpoints = new ArrayList<>(READ_ENDPOINTS);
+    if (serverProperties.isIcebergTableEnabled()) {
+      endpoints.addAll(WRITE_ENDPOINTS);
+    }
+    if (viewStore.isPresent()) {
+      endpoints.addAll(
+          List.of(Endpoint.V1_VIEW_EXISTS, Endpoint.V1_CREATE_VIEW, Endpoint.V1_DELETE_VIEW));
+    }
     // set catalog prefix
     return ConfigResponse.builder()
         .withOverride("prefix", PREFIX_BASE + catalog)
-        .withEndpoints(
-            serverProperties.isIcebergTableEnabled()
-                ? Stream.concat(READ_ENDPOINTS.stream(), WRITE_ENDPOINTS.stream()).toList()
-                : READ_ENDPOINTS)
+        .withEndpoints(endpoints)
         .build();
   }
 
@@ -918,16 +934,111 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @ResponseAuthorizeFilter(isList = false)
   @AuthorizeResourceKey(METASTORE)
   public LoadViewResponse loadView(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
       @Param("view") @AuthorizeResourceKey(TABLE) String view) {
-    // this is not supported yet, but Iceberg REST client tries to load
-    // a table with given path name and then tries to load a view with that
-    // name if it didn't find a table, so for now, let's just return a 404
-    // as that should be expected since it didn't find a table with the name
-    throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
+    // Clients that fall back from a table lookup to a view lookup expect a 404 here.
+    ViewMetadataService store =
+        viewStore.orElseThrow(
+            () -> new NoSuchViewException("View does not exist: %s", namespace + "." + view));
+    TableRepository.IcebergViewState state = authorizedViewState(catalog, namespace, view);
+    return viewResponse(store.read(state.viewId().toString(), state.metadataLocation()));
+  }
+
+  private TableRepository.IcebergViewState authorizedViewState(
+      String catalog, String namespace, String view) {
+    TableRepository.IcebergViewState state =
+        tableRepository.getIcebergViewState(catalog, namespace, view);
+    applyGetResponseFilter(TABLE, new TableInfo().tableId(state.viewId().toString()), null);
+    return state;
+  }
+
+  private ViewMetadataService viewMetadataService() {
+    return viewStore.orElseThrow(
+        () -> new BaseException(ErrorCode.UNIMPLEMENTED, "Iceberg views are disabled"));
+  }
+
+  private static LoadViewResponse viewResponse(ViewMetadata metadata) {
+    return ImmutableLoadViewResponse.builder()
+        .metadata(metadata)
+        .metadataLocation(metadata.metadataFileLocation())
+        .build();
+  }
+
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/views")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
+  @ResponseAuthorizeFilter(isList = false)
+  @AuthorizeResourceKey(METASTORE)
+  public LoadViewResponse createView(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      CreateViewRequest request) {
+    ViewMetadataService store = viewMetadataService();
+    request.validate();
+    String sql = ViewMetadataService.sparkSql(request.viewVersion());
+    // Reject before the transaction, including schemas that the native API cannot represent.
+    CreateTable create =
+        new CreateTable()
+            .catalogName(catalog)
+            .schemaName(namespace)
+            .name(request.name())
+            .tableType(TableType.VIEW)
+            .viewDefinition(sql)
+            .columns(IcebergSchemaConverter.toColumnInfos(request.schema()))
+            .comment(request.properties().get("comment"))
+            .properties(ViewMetadataService.nativeProperties(request, catalog));
+    UUID schemaId = schemaRepository.getSchemaIdOrThrow(catalog, namespace);
+    applyGetResponseFilter(SCHEMA, new SchemaInfo().schemaId(schemaId.toString()), null);
+    UUID viewId = UUID.randomUUID();
+    ViewMetadata metadata = store.create(viewId, request);
+    TableInfo view;
+    try {
+      view =
+          tableRepository.createViewForIceberg(
+              create, schemaId, viewId, metadata.metadataFileLocation());
+    } catch (BaseException e) {
+      // If the commit outcome is unknown, the database may already reference this file.
+      switch (e.getErrorCode()) {
+        case TABLE_ALREADY_EXISTS, CATALOG_NOT_FOUND, SCHEMA_NOT_FOUND, INVALID_ARGUMENT ->
+            store.discardUnpublished(metadata);
+        default -> {}
+      }
+      throw e;
+    }
+    initializeHierarchicalAuthorization(view.getTableId(), schemaId.toString());
+    return viewResponse(metadata);
+  }
+
+  @Head("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @ResponseAuthorizeFilter(isList = false)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse viewExists(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("view") @AuthorizeResourceKey(TABLE) String view) {
+    viewMetadataService();
+    authorizedViewState(catalog, namespace, view);
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @ResponseAuthorizeFilter(isList = false)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse dropView(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("view") @AuthorizeResourceKey(TABLE) String view) {
+    viewMetadataService();
+    UUID viewId = authorizedViewState(catalog, namespace, view).viewId();
+    TableInfoDAO deleted = tableRepository.deleteViewForIceberg(catalog, namespace, view, viewId);
+    removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   /**

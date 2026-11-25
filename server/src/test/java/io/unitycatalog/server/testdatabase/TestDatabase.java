@@ -140,6 +140,13 @@ public final class TestDatabase implements AutoCloseable {
    */
   public <T> T runBlockedByHeldWrite(Consumer<Session> heldWrite, Callable<T> operation)
       throws Exception {
+    return runBlockedByHeldWrite(heldWrite, operation, () -> null);
+  }
+
+  /** Also inspects state after the operation is waiting, before releasing the row lock. */
+  public <T> T runBlockedByHeldWrite(
+      Consumer<Session> heldWrite, Callable<T> operation, Callable<?> whileBlocked)
+      throws Exception {
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try (Session held = sessionFactory().openSession()) {
       Transaction transaction = held.beginTransaction();
@@ -164,7 +171,11 @@ public final class TestDatabase implements AutoCloseable {
         // statement being waited for.
         Thread.sleep(100);
       }
-      transaction.commit();
+      try {
+        whileBlocked.call();
+      } finally {
+        transaction.commit();
+      }
       try {
         return result.get(30, TimeUnit.SECONDS);
       } catch (ExecutionException e) {

@@ -18,8 +18,10 @@ and the requests would fail.
 
 ## Read and write access
 
-The read endpoints are always available. You can use them to read native Iceberg tables and
-[UniForm](../tables/uniform.md) tables.
+Table reads are always available for native Iceberg and [UniForm](../tables/uniform.md) tables.
+View reads depend on `server.iceberg-view.enabled`. With views disabled, an authorized
+view lookup (`GET`) returns HTTP 404 so clients can fall back from a table lookup.
+Authorized requests to check existence (`HEAD`), create, or drop a view return HTTP 501.
 
 The write endpoints (creating, updating, renaming and dropping namespaces and tables) are on by default. To turn them
 off, set this in `etc/conf/server.properties` and restart the server:
@@ -73,12 +75,15 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 
 | Method | Path                                                         | Operation  | Description                    |
 |--------|--------------------------------------------------------------|------------|--------------------------------|
-| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `loadView` | Always returns 404 (see below) |
+| GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `loadView` | Load an IRC-created view |
+| HEAD   | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `viewExists` | Check an IRC-created view's existence |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/views` | `createView` | Create a Spark SQL view |
+| DELETE | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `dropView` | Drop an IRC-created view |
 
 ## Limitations
 
-- **Views are not supported.** The load view endpoint exists only because Iceberg clients look for a view when a
-  table is not found. It always returns 404.
+- **Views are experimental and disabled by default.** Enable and configure them as described in
+  [Spark SQL views](../tables/iceberg-views.md). Listing, replacement, and secure execution are not supported.
 - **Nested namespaces are not supported.** A namespace maps to one Unity Catalog schema, so it can only have one level.
 - **Renaming a table into another namespace is not supported.** The source and destination namespace must be the same.
 - **UniForm tables are read-only here.** Commits, drops and renames work only on native Iceberg tables. Change UniForm
