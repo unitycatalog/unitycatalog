@@ -110,6 +110,29 @@ def check_cgroup_memory(run_tests) -> None:
     assert left == 6 * gib, f"expected 6 GiB left under the parent's limit, got {left}"
 
 
+def check_conf_stamps(run_tests) -> None:
+    # etc/conf at the root and in modules one and two levels deep, with a hidden file and a file
+    # in a subdirectory.
+    files = ["etc/conf/a.properties", "etc/conf/keys/private_key.der", "server/etc/conf/.hidden",
+             "connectors/spark/etc/conf/b.json"]
+    saved = run_tests.ROOT
+    with tempfile.TemporaryDirectory() as root:
+        # Three levels deep is past the limit, so this one must not be watched.
+        for name in files + ["a/b/c/etc/conf/deep.json"]:
+            (Path(root) / name).parent.mkdir(parents=True, exist_ok=True)
+            (Path(root) / name).write_text("x")
+        run_tests.ROOT = root
+        try:
+            before = run_tests.conf_stamps()
+            # An edited file must change its stamp, or the warning would never fire for it.
+            os.utime(Path(root) / files[2], (1, 1))
+            after = run_tests.conf_stamps()
+        finally:
+            run_tests.ROOT = saved
+    assert sorted(before) == sorted(files), f"conf_stamps() watched {sorted(before)}"
+    assert before[files[2]] != after[files[2]], f"editing {files[2]} did not change its stamp"
+
+
 def check_concurrency_limit() -> None:
     command = [str(UC_ROOT / "build" / "sbt"), "-no-colors", "-batch",
                "show Global / concurrentRestrictions"]
@@ -163,6 +186,7 @@ def main() -> None:
     check_sbt_errors_shown(run_tests)
     check_durations_file(run_tests)
     check_cgroup_memory(run_tests)
+    check_conf_stamps(run_tests)
     check_concurrency_limit()
     check_parallel_run()
     print("PASS: dev/run-tests.py validates its arguments and runs client/test in 2 test JVMs")

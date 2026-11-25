@@ -104,6 +104,10 @@ runs:
           exit 1
         fi
 
+    - name: Check that tests left etc/conf alone
+      shell: bash
+      run: bash project/scripts/check_etc_conf.sh
+
     - name: Run license check
       if: inputs.validation-mode == 'all-tests' && inputs.test-database == 'H2'
       shell: bash
