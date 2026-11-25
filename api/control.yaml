@@ -224,9 +224,11 @@ paths:
             type: string
             example: XMLHttpRequest
       operationId: logout
-      summary: Revoke access token cookie
+      summary: Log out and revoke the access token
       description: |
-        Revokes the access token cookie.
+        Revokes the presented access token and clears the UC_TOKEN cookie if present.
+        Revoked access tokens are rejected by authentication and token exchange.
+        The server's SERVICE token is not revoked.
       # NOTE:
       # OAS 3.0 allows empty request bodies. In other words:
       #```
