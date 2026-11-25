@@ -57,9 +57,9 @@ hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CL
 {{- end }}
 
 {{- range $key, $value := .Values.server.db.postgresqlConfig.extraParams }}
-{{- /* hibernate.properties is read with Properties.load, which decodes backslash escapes and ends an entry at a line break. */}}
-{{- if regexMatch "[&=\\\\[:cntrl:]]" $key }}
-{{- fail (printf "server.db.postgresqlConfig.extraParams.%q: a parameter name cannot contain &, =, a backslash or a control character" $key) }}
+{{- /* The init container runs envsubst on hibernate.properties, and the server reads it with Properties.load, which decodes backslash escapes and ends an entry at a line break. */}}
+{{- if regexMatch "[&=$\\\\[:cntrl:]]" $key }}
+{{- fail (printf "server.db.postgresqlConfig.extraParams.%q: a parameter name cannot contain &, =, $, a backslash or a control character" $key) }}
 {{- end }}
 {{- if hasKey $params $key }}
 {{- fail (printf "server.db.postgresqlConfig.extraParams.%s is set by server.db.postgresqlConfig.ssl: remove it from extraParams" $key) }}
