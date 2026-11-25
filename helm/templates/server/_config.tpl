@@ -57,6 +57,9 @@ hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CL
 {{- end }}
 
 {{- range $key, $value := .Values.server.db.postgresqlConfig.extraParams }}
+{{- if or (contains "&" $key) (contains "=" $key) }}
+{{- fail (printf "server.db.postgresqlConfig.extraParams.%s: a parameter name cannot contain & or =" $key) }}
+{{- end }}
 {{- if hasKey $params $key }}
 {{- fail (printf "server.db.postgresqlConfig.extraParams.%s is set by server.db.postgresqlConfig.ssl: remove it from extraParams" $key) }}
 {{- end }}

@@ -150,9 +150,9 @@ jobs:
           # The driver jar goes on the module path, and the database name and URL parameters are encoded: + would
           # read as a space.
           out="$(helm template uc helm -f helm/ci/mysql-values.yaml --set-string 'server.db.mysqlConfig.dbName=uc+db' \
-            --set-string 'server.db.mysqlConfig.extraParams.connectionTimeZone=+05:30' \
+            --set-string 'server.db.mysqlConfig.extraParams.connectionTimeZone=+05:30&x=1' \
             --set-string 'server.db.mysqlConfig.extraParams.sslMode=REQUIRED')"
-          grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30&sslMode=REQUIRED' <<<"$out"
+          grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30%26x%3D1&sslMode=REQUIRED' <<<"$out"
           grep -qF -- '--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           grep -qF 'mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           # Each PostgreSQL extra parameter is a URL parameter of its own, next to the ones ssl sets, with its value
@@ -184,6 +184,17 @@ jobs:
           }
           check_ssl_params_clash "${pg[@]}"
           check_ssl_params_clash "${pg_cm[@]}"
+          # A name with & or = would add a URL parameter of its own, such as a second sslmode, so it fails the
+          # render.
+          names_file="$(mktemp)"
+          printf 'server:\n  db:\n    postgresqlConfig:\n      extraParams:\n        "a=sslmode": disable\n' >"$names_file"
+          for name_args in "--set-string server.db.postgresqlConfig.extraParams.z&sslmode=disable" "-f $names_file"; do
+            if err="$(helm template uc helm "${pg[@]}" $name_args 2>&1)"; then
+              echo "expected the render to fail for $name_args"
+              exit 1
+            fi
+            grep -qF 'a parameter name cannot contain & or =' <<<"$err"
+          done
           out="$(helm template uc helm -f helm/ci/postgresql-values.yaml \
             --set-string server.db.postgresqlConfig.extraParams.sslmode=require)"
           url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
