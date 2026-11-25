@@ -164,14 +164,23 @@ complete example.
 
 The server rejects a location with `INVALID_ARGUMENT` when its database column or its cloud storage can't hold it:
 
-- Catalog and schema storage roots, table and volume locations, and model version sources can be up to 2,048
-  characters, registered model and model version locations up to 4,096, and external location URLs up to 255. A
-  location the server builds, such as a managed table location, has to fit its column in UTF-8 bytes.
-- For storage the server vends credentials for, an object name is at most 1,024 bytes on S3 and GCS, and at most 1,024
-  characters and 254 path segments on Azure. A location that holds files has to leave room for one under it: a storage
-  root, an external location, a volume, and a Delta or Iceberg table. A table in another format, such as CSV, may be a
-  single file.
-- The AWS STS session policy and the GCS credential access boundary vended for a location have to fit their limits.
+- Column widths: catalog and schema storage roots, table and volume locations, and model version sources are stored in
+  columns of 2,048 characters, registered model and model version locations in 4,096, and external location URLs in
+  255. A location given in a request is checked against its column in characters, counted the way the database counts
+  them.
+- Storage roots: a location the server builds, such as a managed table location, is checked against its column in
+  UTF-8 bytes. Managed table and volume locations are built under a catalog or schema storage root, so a catalog storage
+  root can be at most 1,942 bytes in UTF-8 and a schema storage root at most 1,943.
+- Object names: a location that holds files has to leave room for one under it: a storage root, an external location, a
+  volume, and a Delta or Iceberg table. A table in another format, such as CSV, may be a single file. On Azure an object
+  name is at most 1,024 characters and 254 path segments, and on GCS at most 1,024 bytes, whatever the server is
+  configured with. On S3 it is at most 1,024 bytes for a location whose storage credential is an `aws_iam_role`, or on a
+  bucket the server is configured for without a custom credential generator. S3-compatible storage is not checked.
+- Vended credentials: for those same S3 locations, the AWS STS session policy the server sends has to fit 2,048
+  characters when it assumes a role. On a GCS bucket the server is configured for without a custom credential generator,
+  the access boundary it builds has to fit its limit.
+- When the storage credential of an S3 or GCS location can't be found, such as after it was force-deleted, only the
+  column width is checked, because a vend then fails on the missing credential.
 
 On an Azure storage account with a hierarchical namespace, a path has at most 63 segments, counting the account and
 container. Nothing the server is given says whether an account has one, so it doesn't check that limit. Under a

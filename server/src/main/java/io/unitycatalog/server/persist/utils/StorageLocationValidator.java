@@ -57,7 +57,9 @@ public class StorageLocationValidator {
     }
   }
 
-  // Only the S3 and GCS vendors build credentials from a location's storage credential.
+  // The S3 and GCS limit checks depend on the location's storage credential. S3 builds its policy
+  // from it. GCS builds an access boundary only for a location without one, since it can't vend
+  // with a storage credential yet.
   private static final Set<String> CREDENTIAL_SCHEMES =
       Set.of(UriScheme.S3.toString(), UriScheme.GS.toString());
 
@@ -115,13 +117,19 @@ public class StorageLocationValidator {
    * are stored under an external location, so one has to fit under it.
    *
    * @param maxLength the width of the column the URL is stored in, in characters
-   * @param credential the location's storage credential, or empty if it has none
+   * @param credential the location's storage credential, or empty if it was force-deleted. A vend
+   *     for an S3 or GCS URL then fails on the missing credential, so only the column width is
+   *     checked for it.
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the URL is too long
    */
   public void validateExternalLocationUrl(
       NormalizedURL url, int maxLength, Optional<CredentialDAO> credential) {
+    VendCredential vendCredential =
+        credential.isPresent() || !CREDENTIAL_SCHEMES.contains(url.toUri().getScheme())
+            ? new Resolved(credential)
+            : new Unresolvable();
     validateLocation(
-        url, maxLength, columnUnit.get(), Use.REQUESTED, Extent.PREFIX, new Resolved(credential));
+        url, maxLength, columnUnit.get(), Use.REQUESTED, Extent.PREFIX, vendCredential);
   }
 
   /**

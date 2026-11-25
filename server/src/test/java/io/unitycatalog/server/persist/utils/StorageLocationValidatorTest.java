@@ -728,6 +728,36 @@ public class StorageLocationValidatorTest {
   }
 
   @Test
+  public void testExternalLocationWithForceDeletedCredentialIsLimitedOnlyByTheColumn() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    // The server assumes its own role for this bucket, and the read policy of this URL is too long.
+    NormalizedURL url = NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(600));
+    CredentialDAO awsIamRole =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("role-credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(new AwsIamRoleRequest().roleArn(ROLE_ARN)),
+            "test-user",
+            SECRET_STORE);
+
+    assertThatCode(() -> validator.validateExternalLocationUrl(url, 2048, Optional.empty()))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () -> validator.validateExternalLocationUrl(url, 2048, Optional.of(awsIamRole)))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("its AWS STS session policy is");
+    assertThatThrownBy(
+            () ->
+                validator.validateExternalLocationUrl(
+                    NormalizedURL.from(STS_BUCKET + "/" + "r".repeat(2048)),
+                    2048,
+                    Optional.empty()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageStartingWith("Storage location is too long: it is ");
+  }
+
+  @Test
   public void testGcsObjectNamesAreCountedInBytes() {
     StorageLocationValidator validator = validatorFor(Optional.empty());
     // An unconfigured bucket builds no access boundary, so only the object name limit applies.

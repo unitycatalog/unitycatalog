@@ -39,6 +39,7 @@ import io.unitycatalog.server.sdk.volume.SdkVolumeOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.SneakyThrows;
@@ -319,6 +320,30 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
             .tableType(TableType.EXTERNAL)
             .dataSourceFormat(format)
             .storageLocation(location));
+  }
+
+  @SneakyThrows
+  @Test
+  public void testMalformedCloudStorageRootsAreRejected() {
+    List<String> malformedRoots = List.of("s3:///", "gs:///", "s3://", "gs://");
+    for (String root : malformedRoots) {
+      TestUtils.assertApiException(
+          () ->
+              catalogOperations.createCatalog(
+                  new CreateCatalog().name(CATALOG_NAME).storageRoot(root)),
+          ErrorCode.INVALID_ARGUMENT,
+          "");
+    }
+    createCatalog(Optional.of("s3://bucket-root"));
+    for (String root : malformedRoots) {
+      TestUtils.assertApiException(
+          () ->
+              schemaOperations.createSchema(
+                  new CreateSchema().catalogName(CATALOG_NAME).name(SCHEMA_NAME).storageRoot(root)),
+          ErrorCode.INVALID_ARGUMENT,
+          "");
+    }
+    createSchema(Optional.of("gs://bucket-root"));
   }
 
   @SneakyThrows

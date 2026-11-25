@@ -65,6 +65,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   protected static final String COMPAT_CREDENTIAL_NAME = "uc_testcredential_compat";
   protected static final String ANOTHER_COMPAT_CREDENTIAL_NAME = "uc_testcredential_compat_another";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
+  // A bucket the server assumes its own role for, so its STS session policy is checked.
+  private static final String ROLE_BUCKET = "s3://uc-role-bucket";
   private static final String ROOTED_CATALOG_NAME = "uc_testrootedcatalog";
   private static final String ROOTED_SCHEMA_NAME = "uc_testrootedschema";
   protected ExternalLocationOperations externalLocationOperations;
@@ -91,6 +93,9 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     enableS3CompatibleStorage();
+    serverProperties.setProperty("s3.bucketPath.0", ROLE_BUCKET);
+    serverProperties.setProperty("s3.region.0", "us-west-2");
+    serverProperties.setProperty("s3.awsRoleArn.0", DUMMY_ROLE_ARN);
   }
 
   protected CredentialInfo credentialInfo = null;
@@ -828,6 +833,61 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     schemaOperations.deleteSchema(CATALOG_NAME + "." + ROOTED_SCHEMA_NAME, Optional.of(true));
 
     delete(locationName, Optional.of(false));
+  }
+
+  /**
+   * A location under an external location is checked with that location's storage credential. Once
+   * the credential is force-deleted, a vend fails on it, so a URL change is checked only against
+   * the column, even on a bucket the server has its own role for.
+   */
+  @Test
+  public void testLocationsAreCheckedWithTheCredentialOfTheirExternalLocation()
+      throws ApiException {
+    String doomedCredentialName = CREDENTIAL_NAME + "_doomed";
+    credentialOperations.createCredential(
+        new CreateCredentialRequest()
+            .name(doomedCredentialName)
+            .purpose(CredentialPurpose.STORAGE)
+            .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)));
+    // The server has no configuration for this bucket, so only the credential limits its paths.
+    String url = "s3://uc-unconfigured-bucket/external";
+    createLocation(EXTERNAL_LOCATION_NAME, url, doomedCredentialName);
+    // The AWS STS session policy repeats the path five times and escapes each * to ${*}, so a path
+    // with 100 of them has a policy over 2,048 characters.
+    String policyExpanding = "/" + "*".repeat(100);
+
+    volumeOperations.createVolume(externalVolume(VOLUME_NAME, url + "/short"));
+    assertApiException(
+        () ->
+            volumeOperations.createVolume(externalVolume(VOLUME_NAME + "2", url + policyExpanding)),
+        ErrorCode.INVALID_ARGUMENT,
+        "its AWS STS session policy is");
+
+    credentialOperations.deleteCredential(doomedCredentialName, Optional.of(true));
+    String roleBucketUrl = ROLE_BUCKET + "/external" + policyExpanding;
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME,
+                    new UpdateExternalLocation().url(roleBucketUrl).force(true))
+                .getUrl())
+        .isEqualTo(roleBucketUrl);
+    String tooLong = ROLE_BUCKET + "/" + "u".repeat(256 - ROLE_BUCKET.length() - 1);
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(tooLong).force(true)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage location is too long: it is 256 characters, and the limit is 255.");
+  }
+
+  private static CreateVolumeRequestContent externalVolume(String name, String location) {
+    return new CreateVolumeRequestContent()
+        .name(name)
+        .catalogName(CATALOG_NAME)
+        .schemaName(SCHEMA_NAME)
+        .volumeType(VolumeType.EXTERNAL)
+        .storageLocation(location);
   }
 
   @Test
