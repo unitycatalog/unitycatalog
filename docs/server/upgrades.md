@@ -27,8 +27,8 @@ PostgreSQL, on the schema) while authorization is enabled.
 
 Startup also tries to create the [permission lookup index](auth.md#native-policy-storage) if it is
 missing. This requires `INDEX` on MySQL and ownership of `casbin_rule` on PostgreSQL. If setup fails,
-the server logs a warning and continues. Ownership transfers can still block unrelated grants and
-revokes until a database administrator creates the index using the SQL in the auth guide.
+the server logs a warning and continues. On MySQL, ownership transfers can still block unrelated
+grants and revokes until a database administrator creates the index using the SQL in the auth guide.
 
 On PostgreSQL, index creation blocks writes to `casbin_rule` while it runs. This can pause grants
 and revokes on running instances during a rolling upgrade. A database administrator can create
