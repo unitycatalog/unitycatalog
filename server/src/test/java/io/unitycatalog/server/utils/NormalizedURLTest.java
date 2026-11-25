@@ -176,6 +176,22 @@ public class NormalizedURLTest {
   }
 
   @Test
+  public void testCloudPathRejectsControlCharacters() {
+    for (String scheme :
+        List.of("s3://bucket/", "gs://bucket/", "abfss://c@a.dfs.core.windows.net/")) {
+      for (String c : List.of("\u0000", "\n", "\r", "\t")) {
+        assertThatThrownBy(() -> NormalizedURL.from(scheme + "a" + c + "b"))
+            .isInstanceOf(BaseException.class)
+            .hasMessageContaining("control characters");
+      }
+      // An escaped control character in a URI is decoded into a raw one.
+      assertThatThrownBy(() -> NormalizedURL.from(URI.create(scheme + "a%00b")))
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("control characters");
+    }
+  }
+
+  @Test
   public void testGetStorageBase() {
     assertThat(NormalizedURL.from("s3://bucket/path").getStorageBase())
         .isEqualTo(NormalizedURL.from("s3://bucket"));

@@ -84,6 +84,7 @@ public final class NormalizedURL {
               ErrorCode.INVALID_ARGUMENT,
               "Cloud storage location must start with scheme://: " + uri);
         }
+        rejectControlCharacters(uri.getPath());
         rejectQueryOrFragment(uri.toString());
         yield new NormalizedURL(
             uri.getScheme() + "://" + Objects.toString(uri.getRawAuthority(), "") + uri.getPath());
@@ -223,6 +224,7 @@ public final class NormalizedURL {
     }
     URI cloudUri = cloudUri(inputPath);
     if (cloudUri != null) {
+      rejectControlCharacters(inputPath);
       rejectQueryOrFragment(inputPath);
       String root = cloudUri.getScheme() + "://" + Objects.toString(cloudUri.getAuthority(), "");
       if (cloudUri.getAuthority() != null) {
@@ -265,6 +267,14 @@ public final class NormalizedURL {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "Cloud storage location cannot contain '?' or '#': " + location);
+    }
+  }
+
+  /** A control character (NUL, newline, tab, ...) is never part of a cloud object path. */
+  private static void rejectControlCharacters(String location) {
+    if (location.chars().anyMatch(Character::isISOControl)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Cloud storage location cannot contain control characters");
     }
   }
 
