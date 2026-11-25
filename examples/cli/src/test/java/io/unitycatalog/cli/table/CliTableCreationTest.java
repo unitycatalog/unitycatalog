@@ -320,6 +320,44 @@ public class CliTableCreationTest extends BaseServerTest {
   }
 
   @Test
+  public void testWriteManagedTableAndReadBack() throws ApiException {
+    tableOperations.createTable(
+        new CreateTable()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name(TABLE_NAME)
+            .tableType(TableType.MANAGED)
+            .columns(COLUMNS));
+
+    // Each write appends 15 rows, committed through Unity Catalog; the second write builds on the
+    // first, and the read sees both before Unity Catalog copies them into the table's _delta_log.
+    tableOperations.writeTable(TABLE_FULL_NAME);
+    tableOperations.writeTable(TABLE_FULL_NAME);
+
+    assertThat(readTableRowCount(TABLE_FULL_NAME)).isEqualTo(30);
+  }
+
+  @Test
+  public void testCreateExternalTableOnS3RequestsPathCredentials() {
+    // No external location covers the path, so the path credentials the CLI now requests are
+    // refused, before it writes anything.
+    assertThatThrownBy(
+            () ->
+                tableOperations.createTable(
+                    new CreateTable()
+                        .catalogName(CATALOG_NAME)
+                        .schemaName(SCHEMA_NAME)
+                        .name(TABLE_NAME)
+                        .tableType(TableType.EXTERNAL)
+                        .storageLocation("s3://not-registered-bucket/table")
+                        .columns(COLUMNS)))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("generateTemporaryPathCredentials");
+    assertThatThrownBy(() -> tableOperations.getTable(TABLE_FULL_NAME))
+        .isInstanceOf(ApiException.class);
+  }
+
+  @Test
   public void testCreateManagedTableAndFail() {
     // This fails due to setting a storage location for managed table.
     CliException ex1 =
@@ -367,6 +405,15 @@ public class CliTableCreationTest extends BaseServerTest {
             formatArg));
   }
 
+  /** The number of data rows that {@code uc table read} prints for the table. */
+  private long readTableRowCount(String tableFullName) {
+    String output =
+        io.unitycatalog.cli.TestUtils.executeCliCommandForOutput(
+            serverConfig, List.of("table", "read", "--full_name", tableFullName));
+    // A row line starts with the table's left border; the first one is the column header.
+    return output.lines().filter(line -> line.startsWith("│")).count() - 1;
+  }
+
   private static List<String> listFileNames(Path dir) throws IOException {
     try (Stream<Path> entries = Files.list(dir)) {
       return entries.map(entry -> entry.getFileName().toString()).toList();
@@ -401,7 +448,11 @@ public class CliTableCreationTest extends BaseServerTest {
     assertThatCode(
             () ->
                 DeltaKernelUtils.readDeltaTable(
-                    tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100))
+                    tableOperations.getTable(TABLE_FULL_NAME),
+                    null,
+                    100,
+                    serverConfig.getServerUrl(),
+                    serverConfig.getAuthToken()))
         .doesNotThrowAnyException();
     // Table and directory cleanup is handled by @AfterEach via cascade-deleting the catalog.
     // For managed tables, the temp directory is also cleaned up by JUnit @TempDir.

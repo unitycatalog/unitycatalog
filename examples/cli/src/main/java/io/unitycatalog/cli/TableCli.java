@@ -11,6 +11,7 @@ import io.unitycatalog.cli.delta.DeltaKernelWriteUtils;
 import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.cli.utils.Constants;
 import io.unitycatalog.cli.utils.FileOperations;
 import io.unitycatalog.cli.utils.Pagination;
 import io.unitycatalog.client.ApiClient;
@@ -21,13 +22,16 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.ListTablesResponse;
+import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.cli.CommandLine;
@@ -59,10 +63,10 @@ public class TableCli {
         output = getTable(tablesApi, json);
         break;
       case CliUtils.READ:
-        output = readTable(temporaryCredentialsApi, tablesApi, json);
+        output = readTable(temporaryCredentialsApi, tablesApi, json, serverUrl, authToken);
         break;
       case CliUtils.WRITE:
-        output = writeTable(temporaryCredentialsApi, tablesApi, json);
+        output = writeTable(temporaryCredentialsApi, tablesApi, json, serverUrl, authToken);
         break;
       case CliUtils.DELETE:
         output = deleteTable(tablesApi, json);
@@ -117,15 +121,14 @@ public class TableCli {
           FileOperations.toStandardizedURIString(
               json.getString(CliParams.STORAGE_LOCATION.getServerParam()));
       createTable.setStorageLocation(storageLocation);
-      // Currently generateTemporaryPathCredentials doesn't quite work yet due to lack of proper
-      // authorization in its implementation. So this step has to be skipped and only local dir can
-      // work. For details please check https://github.com/unitycatalog/unitycatalog/issues/1160
-      temporaryCredentials = null;
-      // temporaryCredentials =
-      //     temporaryCredentialsApi.generateTemporaryPathCredentials(
-      //         new GenerateTemporaryPathCredential()
-      //             .url(storageLocation)
-      //             .operation(PathOperation.PATH_CREATE_TABLE));
+      // A local path needs no credentials, and usually no external location covers it.
+      temporaryCredentials =
+          Constants.SUPPORTED_CLOUD_SCHEMES.contains(URI.create(storageLocation).getScheme())
+              ? temporaryCredentialsApi.generateTemporaryPathCredentials(
+                  new GenerateTemporaryPathCredential()
+                      .url(storageLocation)
+                      .operation(PathOperation.PATH_CREATE_TABLE))
+              : null;
     } else if (createTable.getTableType() == TableType.MANAGED) {
       // handle Delta managed tables
       if (json.has(CliParams.STORAGE_LOCATION.getServerParam())) {
@@ -220,7 +223,11 @@ public class TableCli {
   }
 
   private static String readTable(
-      TemporaryCredentialsApi temporaryCredentialsApi, TablesApi tablesApi, JSONObject json)
+      TemporaryCredentialsApi temporaryCredentialsApi,
+      TablesApi tablesApi,
+      JSONObject json,
+      String serverUrl,
+      String authToken)
       throws ApiException {
     String fullTableName = json.getString(CliParams.FULL_NAME.getServerParam());
     TableInfo info =
@@ -244,14 +251,18 @@ public class TableCli {
                   .tableId(tableId)
                   .operation(TableOperation.READ));
       return DeltaKernelUtils.readDeltaTable(
-          info.getStorageLocation(), temporaryCredentials, maxResults);
+          info, temporaryCredentials, maxResults, serverUrl, authToken);
     } catch (Exception e) {
       throw new CliException("Failed to read Delta table " + info.getStorageLocation(), e);
     }
   }
 
   private static String writeTable(
-      TemporaryCredentialsApi temporaryCredentialsApi, TablesApi tablesApi, JSONObject json)
+      TemporaryCredentialsApi temporaryCredentialsApi,
+      TablesApi tablesApi,
+      JSONObject json,
+      String serverUrl,
+      String authToken)
       throws ApiException {
     String fullTableName = json.getString(CliParams.FULL_NAME.getServerParam());
     TableInfo info =
@@ -271,7 +282,7 @@ public class TableCli {
                   .tableId(tableId)
                   .operation(TableOperation.READ_WRITE));
       DeltaKernelWriteUtils.writeSampleDataToDeltaTable(
-          info.getStorageLocation(), info.getColumns(), temporaryCredentials);
+          info, temporaryCredentials, serverUrl, authToken);
     } catch (Exception e) {
       throw new CliException(
           "Failed to write sample data to Delta table " + info.getStorageLocation(), e);

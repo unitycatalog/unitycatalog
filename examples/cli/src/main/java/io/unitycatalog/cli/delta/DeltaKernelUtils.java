@@ -17,6 +17,7 @@ import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.types.VariantType;
 import io.delta.kernel.unitycatalog.UCCatalogManagedClient;
+import io.delta.kernel.unitycatalog.UCTableIdentifier;
 import io.delta.kernel.unitycatalog.UnityCatalogUtils;
 import io.delta.kernel.utils.CloseableIterable;
 import io.delta.storage.commit.uccommitcoordinator.UCTokenBasedRestClient;
@@ -25,12 +26,15 @@ import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.IntStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -66,15 +70,8 @@ public class DeltaKernelUtils {
       TransactionCommitResult commitResult;
       if (tableId != null) {
         // Catalog-managed table: use UCCatalogManagedClient for coordinated commits.
-        // "type"="static" means a pre-configured bearer token; see TokenProvider.create() javadoc.
-        TokenProvider tokenProvider =
-            TokenProvider.create(
-                Map.of("type", "static", "token", authToken != null ? authToken : ""));
-        UCTokenBasedRestClient ucClient =
-            new UCTokenBasedRestClient(serverUrl, tokenProvider, Map.of());
-        UCCatalogManagedClient ucCatalogManagedClient = new UCCatalogManagedClient(ucClient);
         commitResult =
-            ucCatalogManagedClient
+            catalogManagedClient(serverUrl, authToken)
                 .buildCreateTableTransaction(
                     tableId, substituteSchemeForS3(tablePath), tableSchema, ENGINE_INFO)
                 // TODO: temporary workaround — Delta Kernel should auto-enable all features
@@ -122,6 +119,21 @@ public class DeltaKernelUtils {
       String errorMsg = String.format("Failed to create Delta table at '%s'", tablePath);
       throw new IllegalArgumentException(errorMsg, e);
     }
+  }
+
+  /**
+   * A client that commits to and loads catalog-managed tables through the Unity Catalog server.
+   *
+   * @param serverUrl the Unity Catalog server URL
+   * @param authToken the bearer token for the server, or null for none
+   * @return the client
+   */
+  public static UCCatalogManagedClient catalogManagedClient(String serverUrl, String authToken) {
+    // "type"="static" means a pre-configured bearer token; see TokenProvider.create() javadoc.
+    TokenProvider tokenProvider =
+        TokenProvider.create(Map.of("type", "static", "token", authToken != null ? authToken : ""));
+    return new UCCatalogManagedClient(
+        new UCTokenBasedRestClient(serverUrl, tokenProvider, Map.of()));
   }
 
   /** Merges two property maps, with the second map taking precedence on key conflicts. */
@@ -233,12 +245,52 @@ public class DeltaKernelUtils {
     }
   }
 
+  /**
+   * The latest snapshot of a Delta table. A managed table is catalog-managed, so its snapshot comes
+   * through Unity Catalog, which knows the commits not yet copied into the table's {@code
+   * _delta_log}; an external table's snapshot is read from its storage path.
+   *
+   * @param engine the engine for the table's storage
+   * @param table the table, as Unity Catalog returns it
+   * @param serverUrl the Unity Catalog server URL, used for a managed table
+   * @param authToken the bearer token for the server, or null for none
+   * @return the latest snapshot
+   */
+  public static Snapshot loadLatestSnapshot(
+      Engine engine, TableInfo table, String serverUrl, String authToken) {
+    String tablePath = substituteSchemeForS3(table.getStorageLocation());
+    if (table.getTableType() != TableType.MANAGED) {
+      return Table.forPath(engine, tablePath).getLatestSnapshot(engine);
+    }
+    return catalogManagedClient(serverUrl, authToken)
+        .loadSnapshot(
+            engine,
+            table.getTableId(),
+            tablePath,
+            new UCTableIdentifier(table.getCatalogName(), table.getSchemaName(), table.getName()),
+            Optional.empty() /* versionOpt */,
+            Optional.empty() /* timestampOpt */);
+  }
+
+  /**
+   * Reads up to {@code maxResults} rows of a Delta table, rendered as a text table.
+   *
+   * @param table the table, as Unity Catalog returns it
+   * @param temporaryCredentials the credentials for the table's storage, or null for local paths
+   * @param maxResults the most rows to read
+   * @param serverUrl the Unity Catalog server URL, used for a managed table
+   * @param authToken the bearer token for the server, or null for none
+   * @return the rows, with a header of column names and types
+   */
   public static String readDeltaTable(
-      String tablePath, TemporaryCredentials temporaryCredentials, int maxResults) {
-    Engine engine = getEngine(URI.create(tablePath), temporaryCredentials);
+      TableInfo table,
+      TemporaryCredentials temporaryCredentials,
+      int maxResults,
+      String serverUrl,
+      String authToken) {
+    Engine engine = getEngine(URI.create(table.getStorageLocation()), temporaryCredentials);
     try {
-      Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
-      Snapshot snapshot = table.getLatestSnapshot(engine);
+      Snapshot snapshot = loadLatestSnapshot(engine, table, serverUrl, authToken);
       StructType readSchema = snapshot.getSchema();
       Object[] schema =
           readSchema.fields().stream()

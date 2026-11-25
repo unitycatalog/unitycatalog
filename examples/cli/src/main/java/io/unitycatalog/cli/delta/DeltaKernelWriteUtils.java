@@ -29,7 +29,8 @@ import io.delta.kernel.utils.CloseableIterable;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.DataFileStatus;
 import io.unitycatalog.cli.UnityCatalogCli;
-import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.io.IOException;
 import java.net.URI;
@@ -54,17 +55,38 @@ public class DeltaKernelWriteUtils {
   static String sessionToken = "";
   private static final Random random = new Random();
 
+  /**
+   * Appends sample data to a Delta table. A managed table is catalog-managed, so its commit goes
+   * through Unity Catalog; an external table's commit goes to its storage path.
+   *
+   * @param table the table, as Unity Catalog returns it
+   * @param temporaryCredentials the credentials for the table's storage, or null for local paths
+   * @param serverUrl the Unity Catalog server URL, used for a managed table
+   * @param authToken the bearer token for the server, or null for none
+   * @return a message naming the table written to
+   */
   public static String writeSampleDataToDeltaTable(
-      String tablePath, List<ColumnInfo> columns, TemporaryCredentials temporaryCredentials) {
+      TableInfo table,
+      TemporaryCredentials temporaryCredentials,
+      String serverUrl,
+      String authToken) {
+    String tablePath = table.getStorageLocation();
     try {
-      StructType schema = DeltaKernelUtils.getSchema(columns);
-      URI tablePathUri = URI.create(tablePath);
-      Engine engine = DeltaKernelUtils.getEngine(tablePathUri, temporaryCredentials);
-      writeSampleDataToExistingDeltaTable(
-          engine, DeltaKernelUtils.substituteSchemeForS3(tablePath), schema);
+      StructType schema = DeltaKernelUtils.getSchema(table.getColumns());
+      Engine engine = DeltaKernelUtils.getEngine(URI.create(tablePath), temporaryCredentials);
+      String kernelPath = DeltaKernelUtils.substituteSchemeForS3(tablePath);
+      if (table.getTableType() == TableType.MANAGED) {
+        Transaction txn =
+            DeltaKernelUtils.loadLatestSnapshot(engine, table, serverUrl, authToken)
+                .buildUpdateTableTransaction(UnityCatalogCli.class.toString(), Operation.WRITE)
+                .build(engine);
+        appendSampleData(engine, txn, schema, kernelPath);
+      } else {
+        writeSampleDataToExistingDeltaTable(engine, kernelPath, schema);
+      }
       return "Table written to successfully at: " + tablePath;
     } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to create delta table", e);
+      throw new IllegalArgumentException("Failed to write to delta table", e);
     }
   }
 
@@ -84,14 +106,15 @@ public class DeltaKernelWriteUtils {
             UnityCatalogCli.class.toString(), /* engineInfo */
             isNewTable ? Operation.CREATE_TABLE : Operation.WRITE);
     // Set the schema of the new table on the transaction builder
-    // txnBuilder = txnBuilder.withSchema(engine, tableSchema);
-
-    // Set the schema of the new table on the transaction builder
     if (isNewTable) {
       txnBuilder = txnBuilder.withSchema(engine, tableSchema);
     }
-    // Build the transaction
-    Transaction txn = txnBuilder.build(engine);
+    appendSampleData(engine, txnBuilder.build(engine), tableSchema, tablePath);
+  }
+
+  /** Writes 15 rows of sample data with {@code txn} and commits it. */
+  private static void appendSampleData(
+      Engine engine, Transaction txn, StructType tableSchema, String tablePath) throws IOException {
     // Get the transaction state
     Row txnState = txn.getTransactionState(engine);
     // Generate the sample data for the table that confirms to the table schema
