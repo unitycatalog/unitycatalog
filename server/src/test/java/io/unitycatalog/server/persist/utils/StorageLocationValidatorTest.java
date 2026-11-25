@@ -727,6 +727,19 @@ public class StorageLocationValidatorTest {
         .isPresent();
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"s3:///", "gs:///"})
+  public void testRootWithoutABucketIsRejected(String root) {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    for (String prefix : List.of(MANAGED_STORAGE_CATALOG_PREFIX, MANAGED_STORAGE_SCHEMA_PREFIX)) {
+      assertThat(rootRejection(validator, NormalizedURL.from(root), prefix))
+          .get()
+          .extracting(Throwable::getMessage)
+          .asString()
+          .startsWith("Invalid storage location: ");
+    }
+  }
+
   @Test
   public void testExternalLocationWithForceDeletedCredentialIsLimitedOnlyByTheColumn() {
     StorageLocationValidator validator = validatorFor(Optional.empty());

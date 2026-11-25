@@ -125,7 +125,7 @@ public class StorageLocationValidator {
   public void validateExternalLocationUrl(
       NormalizedURL url, int maxLength, Optional<CredentialDAO> credential) {
     VendCredential vendCredential =
-        credential.isPresent() || !CREDENTIAL_SCHEMES.contains(url.toUri().getScheme())
+        credential.isPresent() || !limitsDependOnCredential(url)
             ? new Resolved(credential)
             : new Unresolvable();
     validateLocation(
@@ -282,7 +282,7 @@ public class StorageLocationValidator {
    * fails, such as when the covering external location's credential was force-deleted.
    */
   private VendCredential credentialFor(Session session, NormalizedURL location) {
-    if (!CREDENTIAL_SCHEMES.contains(location.toUri().getScheme())) {
+    if (!limitsDependOnCredential(location)) {
       return new Resolved(Optional.empty());
     }
     try {
@@ -291,6 +291,21 @@ public class StorageLocationValidator {
       LOGGER.warn("Skipping cloud limit checks for {}: credential lookup failed", location, e);
       return new Unresolvable();
     }
+  }
+
+  /**
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for a location without a bucket
+   *     or container, such as {@code s3:///}, which normalizes to a URL that does not parse
+   */
+  private static boolean limitsDependOnCredential(NormalizedURL location) {
+    String scheme;
+    try {
+      scheme = location.toUri().getScheme();
+    } catch (IllegalArgumentException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Invalid storage location: " + location, e);
+    }
+    return CREDENTIAL_SCHEMES.contains(scheme);
   }
 
   private void validateLocation(
