@@ -169,10 +169,18 @@ public class SecurityConfiguration {
     }
   }
 
-  private static void writePublicKeyIfNeeded(Path file, RSAPublicKey publicKey) throws IOException {
+  private static void writePublicKeyIfNeeded(Path file, RSAPublicKey publicKey) {
     byte[] encoded = publicKey.getEncoded();
-    if (Files.notExists(file) || !Arrays.equals(Files.readAllBytes(file), encoded)) {
-      Files.write(file, encoded);
+    try {
+      if (Files.notExists(file) || !Arrays.equals(Files.readAllBytes(file), encoded)) {
+        Files.write(file, encoded);
+      }
+    } catch (IOException e) {
+      log.warn(
+          "Could not write compatibility public key file {}. The server will continue using the"
+              + " public key derived from the private key.",
+          file,
+          e);
     }
   }
 
