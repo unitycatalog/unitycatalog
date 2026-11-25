@@ -35,11 +35,12 @@ setting.
 
 ## Old metadata files
 
-Each commit writes a new metadata file and keeps the last `write.metadata.previous-versions-max` (default 100) earlier
-ones in the table's metadata log. When the table property `write.metadata.delete-after-commit.enabled` is `true`, the
-server deletes the metadata files that a commit drops from the log, since an Iceberg client leaves this to a REST
-catalog. The deletion is best effort and never fails the commit, and a log entry outside the table location is not
-deleted.
+Each commit writes a new metadata file and keeps the last `write.metadata.previous-versions-max` earlier ones in the
+table's metadata log. When the table property `write.metadata.delete-after-commit.enabled` is `true`, the server
+deletes the metadata files that a commit drops from the log, since an Iceberg client leaves this to a REST catalog.
+The deletion is best effort and never fails the commit. Only Iceberg metadata files under the table location are
+deleted. A commit whose outcome is unknown, such as one that fails with a server error, deletes nothing. If such a
+commit did succeed, the files it dropped from the log stay in storage.
 
 ## Endpoints
 

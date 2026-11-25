@@ -35,8 +35,11 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
@@ -49,6 +52,9 @@ import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.inmemory.InMemoryFileIO;
+import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.OutputFile;
+import org.apache.iceberg.io.SupportsBulkOperations;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
@@ -56,6 +62,7 @@ import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.types.Types;
 import org.hibernate.SessionFactory;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -88,6 +95,8 @@ public class IcebergRestCatalogServiceTest {
   private final MetadataService metadataService = mock();
   private final FileOperations fileOperations = mock();
   private final AtomicReference<String> metadataPointer = new AtomicReference<>();
+  private final Set<String> inMemoryFiles = ConcurrentHashMap.newKeySet();
+  private final Set<String> undeletableFiles = ConcurrentHashMap.newKeySet();
   private IcebergRestCatalogService service;
 
   @BeforeEach
@@ -102,6 +111,11 @@ public class IcebergRestCatalogServiceTest {
     service =
         new IcebergRestCatalogService(
             authorizer, tableConfigService, metadataService, repositories, serverProperties);
+  }
+
+  @AfterEach
+  public void removeInMemoryFiles() {
+    inMemoryFiles.stream().filter(IN_MEMORY::fileExists).forEach(IN_MEMORY::deleteFile);
   }
 
   @Test
@@ -460,7 +474,8 @@ public class IcebergRestCatalogServiceTest {
   public void updateTableDeletesMetadataFilesDroppedFromTheLogOnlyWhenEnabled(
       Map<String, String> properties, List<Boolean> expectedExists) {
     String first = metadataFile(0);
-    IcebergRestCatalogService inMemory = inMemoryMetadataService(newTable(properties), first);
+    IcebergRestCatalogService inMemory =
+        inMemoryMetadataService(newTable(properties), first, TrackingFileIO::new);
 
     String second = commitProperty(inMemory, "1");
     String third = commitProperty(inMemory, "2");
@@ -471,10 +486,26 @@ public class IcebergRestCatalogServiceTest {
   }
 
   @Test
+  public void updateTableDeletesDroppedMetadataFilesInBulkWhenTheFileIOSupportsIt() {
+    String first = metadataFile(0);
+    IcebergRestCatalogService inMemory =
+        inMemoryMetadataService(
+            newTable(DELETE_AFTER_COMMIT_KEEPING_ONE), first, BulkOnlyFileIO::new);
+
+    String second = commitProperty(inMemory, "1");
+    String third = commitProperty(inMemory, "2");
+    String current = commitProperty(inMemory, "3");
+
+    assertThat(Stream.of(first, second, third, current).map(IN_MEMORY::fileExists).toList())
+        .containsExactly(false, false, true, true);
+  }
+
+  @Test
   public void updateTableKeepsTheMetadataLogWhenTheCommitIsRejected() {
     String first = metadataFile(0);
     IcebergRestCatalogService inMemory =
-        inMemoryMetadataService(newTable(DELETE_AFTER_COMMIT_KEEPING_ONE), first);
+        inMemoryMetadataService(
+            newTable(DELETE_AFTER_COMMIT_KEEPING_ONE), first, TrackingFileIO::new);
     String second = commitProperty(inMemory, "1");
     String current = commitProperty(inMemory, "2");
     BaseException conflict = new BaseException(ErrorCode.UPDATE_REQUIREMENT_CONFLICT, "conflict");
@@ -487,37 +518,50 @@ public class IcebergRestCatalogServiceTest {
         .containsExactly(false, true, true);
   }
 
-  @Test
-  public void updateTableDeletesOnlyDroppedMetadataFilesInsideTheTableLocation() {
-    String outside = "s3://bucket/other-table/metadata/" + UUID.randomUUID() + ".metadata.json";
+  /**
+   * Metadata log entries that are not Iceberg metadata files under {@link #TABLE_LOCATION}, and the
+   * location each one names once normalized.
+   */
+  static Stream<Arguments> logEntriesToKeep() {
+    return Stream.of(
+        Arguments.of(
+            "s3://bucket/table2/metadata/00000-a.metadata.json",
+            "s3://bucket/table2/metadata/00000-a.metadata.json"),
+        Arguments.of(
+            "s3://bucket/table/../x/metadata/00000-a.metadata.json",
+            "s3://bucket/x/metadata/00000-a.metadata.json"),
+        Arguments.of(
+            "s3a://bucket/table/metadata/00000-a.metadata.json",
+            "s3a://bucket/table/metadata/00000-a.metadata.json"),
+        Arguments.of("s3://bucket/table/data/x.parquet", "s3://bucket/table/data/x.parquet"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("logEntriesToKeep")
+  public void updateTableDeletesOnlyDroppedMetadataFilesInsideTheTableLocation(
+      String logEntry, String namedLocation) {
     String inside = metadataFile(0);
-    IN_MEMORY.addFile(outside, new byte[] {1});
-    IN_MEMORY.addFile(inside, new byte[] {1});
-    TableMetadata withOutsideEntry =
+    addInMemoryFile(namedLocation);
+    addInMemoryFile(inside);
+    TableMetadata withLogEntry =
         TableMetadata.buildFrom(
                 newTable(Map.of(TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED, "true")))
-            .setPreviousFileLocation(outside)
+            .setPreviousFileLocation(logEntry)
             .setProperties(Map.of("k", "0"))
             .build();
     TableMetadata withBothEntries =
-        TableMetadata.buildFrom(withOutsideEntry)
-            .setPreviousFileLocation(inside)
+        TableMetadata.buildFrom(withLogEntry)
+            // A dot segment: the file deleted must be the normalized location that was checked.
+            .setPreviousFileLocation(inside.replace("/metadata/", "/metadata/./"))
             .setProperties(Map.of("k", "1"))
             .build();
     String base = metadataFile(1);
-    IcebergRestCatalogService inMemory = inMemoryMetadataService(withBothEntries, base);
+    IcebergRestCatalogService inMemory =
+        inMemoryMetadataService(withBothEntries, base, TrackingFileIO::new);
 
-    inMemory.updateTable(
-        "cat",
-        "ns",
-        "tbl",
-        new UpdateTableRequest(
-            List.of(),
-            List.of(
-                new MetadataUpdate.SetProperties(
-                    Map.of(TableProperties.METADATA_PREVIOUS_VERSIONS_MAX, "1")))));
+    commitKeepingOneVersion(inMemory);
 
-    assertThat(Stream.of(outside, inside, base).map(IN_MEMORY::fileExists).toList())
+    assertThat(Stream.of(namedLocation, inside, base).map(IN_MEMORY::fileExists).toList())
         .containsExactly(true, false, true);
   }
 
@@ -525,26 +569,20 @@ public class IcebergRestCatalogServiceTest {
   public void updateTableSucceedsWhenDeletingADroppedMetadataFileFails() {
     String first = metadataFile(0);
     IcebergRestCatalogService inMemory =
-        inMemoryMetadataService(newTable(DELETE_AFTER_COMMIT_KEEPING_ONE), first);
+        inMemoryMetadataService(
+            newTable(Map.of(TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED, "true")),
+            first,
+            TrackingFileIO::new);
     String second = commitProperty(inMemory, "1");
-    when(fileOperations.getFileIO(any(), any()))
-        .thenAnswer(
-            invocation ->
-                new InMemoryFileIO() {
-                  @Override
-                  public void deleteFile(String path) {
-                    throw new IllegalStateException("storage unavailable");
-                  }
-                });
     String third = commitProperty(inMemory, "2");
-    // Each commit asks for a writable FileIO twice: to write the new file, then to delete.
-    when(fileOperations.getFileIO(any(), any()))
-        .thenAnswer(invocation -> new InMemoryFileIO())
-        .thenThrow(new BaseException(ErrorCode.INTERNAL, "credentials unavailable"));
-    String current = commitProperty(inMemory, "3");
+    undeletableFiles.add(first);
 
+    commitKeepingOneVersion(inMemory);
+
+    String current = metadataPointer.get();
+    assertThat(current).isNotEqualTo(third);
     assertThat(Stream.of(first, second, third, current).map(IN_MEMORY::fileExists).toList())
-        .containsExactly(true, true, true, true);
+        .containsExactly(true, false, true, true);
   }
 
   private static TableMetadata newTable(Map<String, String> properties) {
@@ -557,15 +595,21 @@ public class IcebergRestCatalogServiceTest {
         "%s/metadata/%05d-%s.metadata.json", TABLE_LOCATION, version, UUID.randomUUID());
   }
 
+  private void addInMemoryFile(String path) {
+    inMemoryFiles.add(path);
+    IN_MEMORY.addFile(path, new byte[] {1});
+  }
+
   /**
-   * Returns a service that keeps metadata files in {@link #IN_MEMORY}, for a table whose current
-   * metadata {@code metadata} is written at {@code metadataLocation}. The table's metadata pointer
-   * is {@link #metadataPointer}, which a successful commit moves.
+   * Returns a service that keeps metadata files in {@link #IN_MEMORY} through the FileIOs that
+   * {@code fileIOs} makes, for a table whose current metadata {@code metadata} is written at {@code
+   * metadataLocation}. The table's metadata pointer is {@link #metadataPointer}, which a successful
+   * commit moves.
    */
   private IcebergRestCatalogService inMemoryMetadataService(
-      TableMetadata metadata, String metadataLocation) {
-    when(fileOperations.getFileIO(any())).thenAnswer(invocation -> new InMemoryFileIO());
-    when(fileOperations.getFileIO(any(), any())).thenAnswer(invocation -> new InMemoryFileIO());
+      TableMetadata metadata, String metadataLocation, Supplier<FileIO> fileIOs) {
+    when(fileOperations.getFileIO(any())).thenAnswer(invocation -> fileIOs.get());
+    when(fileOperations.getFileIO(any(), any())).thenAnswer(invocation -> fileIOs.get());
     MetadataService inMemoryMetadata = new MetadataService(fileOperations);
     inMemoryMetadata.writeTableMetadata(
         metadata, NormalizedURL.from(metadataLocation), NormalizedURL.from(TABLE_LOCATION));
@@ -594,6 +638,52 @@ public class IcebergRestCatalogServiceTest {
         new UpdateTableRequest(
             List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("k", value)))));
     return metadataPointer.get();
+  }
+
+  /** Commits a cut of the metadata log to one entry, which drops every older entry at once. */
+  private void commitKeepingOneVersion(IcebergRestCatalogService icebergService) {
+    icebergService.updateTable(
+        "cat",
+        "ns",
+        "tbl",
+        new UpdateTableRequest(
+            List.of(),
+            List.of(
+                new MetadataUpdate.SetProperties(
+                    Map.of(TableProperties.METADATA_PREVIOUS_VERSIONS_MAX, "1")))));
+  }
+
+  /**
+   * An {@link InMemoryFileIO} that records the files it writes, so they can be removed from the
+   * shared store, and fails to delete {@link #undeletableFiles}.
+   */
+  private class TrackingFileIO extends InMemoryFileIO {
+    @Override
+    public OutputFile newOutputFile(String path) {
+      inMemoryFiles.add(path);
+      return super.newOutputFile(path);
+    }
+
+    @Override
+    public void deleteFile(String path) {
+      if (undeletableFiles.contains(path)) {
+        throw new IllegalStateException("storage unavailable");
+      }
+      super.deleteFile(path);
+    }
+  }
+
+  /** A {@link TrackingFileIO} that deletes only in bulk, as an object store batch delete does. */
+  private class BulkOnlyFileIO extends TrackingFileIO implements SupportsBulkOperations {
+    @Override
+    public void deleteFile(String path) {
+      throw new UnsupportedOperationException("bulk deletes only");
+    }
+
+    @Override
+    public void deleteFiles(Iterable<String> paths) {
+      paths.forEach(super::deleteFile);
+    }
   }
 
   /** The commit an Iceberg client sends to finish a staged create of an external table. */

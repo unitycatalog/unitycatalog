@@ -65,6 +65,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
@@ -74,6 +75,7 @@ import org.apache.iceberg.SnapshotsTable;
 import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -1360,6 +1362,47 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
     assertThat(loaded.tableMetadata().metadataFileLocation()).contains("/metadata/00001-");
     assertThat(loaded.tableMetadata().schema().columns()).hasSize(2);
+  }
+
+  @Test
+  public void testCommitsDeleteMetadataFilesDroppedFromTheMetadataLog()
+      throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    Path tableDirectory =
+        Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-metadata-cleanup");
+    CreateTableRequest createRequest =
+        CreateTableRequest.builder()
+            .withName(TestUtils.TABLE_NAME)
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .withLocation(tableDirectory.toUri().toString())
+            .setProperties(
+                Map.of(
+                    TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED, "true",
+                    TableProperties.METADATA_PREVIOUS_VERSIONS_MAX, "1"))
+            .build();
+    icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, createRequest);
+
+    for (String value : List.of("1", "2", "3")) {
+      icebergClient.updateTable(
+          TestUtils.CATALOG_NAME,
+          TestUtils.SCHEMA_NAME,
+          TestUtils.TABLE_NAME,
+          new UpdateTableRequest(
+              List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("k", value)))));
+    }
+
+    // The current metadata file and the one the log keeps remain; versions 0 and 1 are deleted.
+    try (Stream<Path> metadataFiles = Files.list(tableDirectory.resolve("metadata"))) {
+      assertThat(
+              metadataFiles
+                  .map(file -> file.getFileName().toString().substring(0, 6))
+                  .sorted()
+                  .toList())
+          .containsExactly("00002-", "00003-");
+    }
   }
 
   @Test
