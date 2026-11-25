@@ -11,6 +11,7 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
+import java.security.SignatureException;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.spec.RSAPrivateKeySpec;
 import java.util.Arrays;
@@ -158,6 +159,32 @@ class SecurityConfigurationTest {
   }
 
   @Test
+  void recreatesStalePublicKeyWhenPrivateKeyIsMissing() throws Exception {
+    KeyPair staleKeyPair = newKeyPair();
+    Path publicKeyFile = configurationFolder.resolve("public_key.der");
+    Files.write(publicKeyFile, staleKeyPair.getPublic().getEncoded());
+
+    SecurityConfiguration configuration = new SecurityConfiguration(configurationFolder);
+
+    assertThat(configuration.rsaPublicKey()).isNotEqualTo(staleKeyPair.getPublic());
+    assertThat(Files.readAllBytes(publicKeyFile))
+        .isEqualTo(configuration.rsaPublicKey().getEncoded());
+  }
+
+  @Test
+  void startsWhenCompatibilityPublicKeyCannotBeUpdated() throws Exception {
+    KeyPair keyPair = newKeyPair();
+    Files.write(configurationFolder.resolve("private_key.der"), keyPair.getPrivate().getEncoded());
+    Path publicKeyFile = configurationFolder.resolve("public_key.der");
+    Files.createDirectory(publicKeyFile);
+
+    SecurityConfiguration configuration = new SecurityConfiguration(configurationFolder);
+
+    assertThat(configuration.rsaPublicKey()).isEqualTo(keyPair.getPublic());
+    assertThat(publicKeyFile).isDirectory();
+  }
+
+  @Test
   void loadsExistingNonCrtKeyPairFromConfigurationFolder() throws Exception {
     KeyPair keyPair = newKeyPair();
     RSAPrivateCrtKey crtKey = (RSAPrivateCrtKey) keyPair.getPrivate();
@@ -192,6 +219,24 @@ class SecurityConfigurationTest {
         .hasMessageContaining("do not match");
   }
 
+  @Test
+  void rejectsNonCrtKeysWithDifferentModulusSizes() throws Exception {
+    KeyPair signingKeyPair = newKeyPair();
+    KeyPair mismatchedKeyPair = newKeyPair(4096);
+    RSAPrivateCrtKey crtKey = (RSAPrivateCrtKey) signingKeyPair.getPrivate();
+    PrivateKey nonCrtKey =
+        KeyFactory.getInstance("RSA")
+            .generatePrivate(
+                new RSAPrivateKeySpec(crtKey.getModulus(), crtKey.getPrivateExponent()));
+    Files.write(configurationFolder.resolve("private_key.der"), nonCrtKey.getEncoded());
+    Files.write(
+        configurationFolder.resolve("public_key.der"), mismatchedKeyPair.getPublic().getEncoded());
+
+    assertThatThrownBy(() -> new SecurityConfiguration(configurationFolder))
+        .hasMessageContaining("do not match")
+        .hasCauseInstanceOf(SignatureException.class);
+  }
+
   private static ServerProperties settings(Path privateKey) {
     Properties properties = new Properties();
     properties.setProperty("server.token-signing-private-key-file", privateKey.toString());
@@ -210,8 +255,12 @@ class SecurityConfigurationTest {
   }
 
   private static KeyPair newKeyPair() throws Exception {
+    return newKeyPair(2048);
+  }
+
+  private static KeyPair newKeyPair(int keySize) throws Exception {
     KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-    generator.initialize(2048);
+    generator.initialize(keySize);
     return generator.generateKeyPair();
   }
 }

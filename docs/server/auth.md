@@ -286,6 +286,12 @@ working, point it at the key the server already has, `etc/conf/private_key.der`,
 those tokens fail with 401. A server without the setting keeps signing with the key it generated in `etc/conf`, which
 is deprecated (see [Configuration](configuration.md#configuration)).
 
+When the server uses the deprecated `etc/conf` key folder, it derives the public key from
+`private_key.der` when that key contains the required RSA CRT fields. It updates
+`public_key.der` on a best-effort basis for compatibility with earlier versions. Older RSA private
+keys without CRT fields still require a matching `public_key.der`; the server verifies the pair
+when it starts.
+
 Other changes to the server's own tokens:
 
 - A token signed with a different key always gets 401. Before, one with a key ID the server did not know got 500,
