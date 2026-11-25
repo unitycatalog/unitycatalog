@@ -256,7 +256,7 @@ def test_convert_to_gemini_schema_with_valid_function_info():
 
     # Expected output
     expected_schema = {
-        "name": "test",
+        "name": "catalog__schema__test",
         "description": "Executes Python code and returns its stdout.",
         "parameters": {
             "properties": {
