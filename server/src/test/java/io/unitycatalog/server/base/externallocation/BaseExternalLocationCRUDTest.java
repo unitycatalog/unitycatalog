@@ -863,6 +863,25 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         ErrorCode.INVALID_ARGUMENT,
         "its AWS STS session policy is");
 
+    // With the credential in place, a URL update is checked against its session policy, and a
+    // rejected update leaves the stored URL as it was.
+    String movedUrl = url + "/moved";
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(movedUrl).force(true))
+                .getUrl())
+        .isEqualTo(movedUrl);
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().url(url + policyExpanding).force(true)),
+        ErrorCode.INVALID_ARGUMENT,
+        "its AWS STS session policy is");
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(movedUrl);
+
     credentialOperations.deleteCredential(doomedCredentialName, Optional.of(true));
     String roleBucketUrl = ROLE_BUCKET + "/external" + policyExpanding;
     assertThat(

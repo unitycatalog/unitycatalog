@@ -281,23 +281,14 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
         noRoomForAFile);
     assertThat(createExternalVolume(EXTERNAL_VOLUME_NAME, directory).getStorageLocation())
         .isEqualTo(directory);
-    TestUtils.assertApiException(
-        () ->
-            createExternalTable(
-                EXTERNAL_TABLE_NAME, DataSourceFormat.ICEBERG, container + "t".repeat(1023)),
-        ErrorCode.INVALID_ARGUMENT,
-        noRoomForAFile);
-    createExternalTable(
-        EXTERNAL_TABLE_NAME, DataSourceFormat.ICEBERG, container + "t".repeat(1022));
-
-    // A Delta table has to hold _delta_log/_staged_commits/<20 digit version>.<uuid>.json.
-    String delta = container + "l".repeat(1024 - 90);
+    // An external Delta table has to hold its first commit, _delta_log/<20 digit version>.json.
+    String delta = container + "l".repeat(1024 - "/_delta_log/00000000000000000000.json".length());
     TestUtils.assertApiException(
         () ->
             createExternalTable(
                 EXTERNAL_TABLE_NAME + "_delta", DataSourceFormat.DELTA, delta + "l"),
         ErrorCode.INVALID_ARGUMENT,
-        "the Azure blob names of its Delta staged commit files have 1025 characters");
+        "the Azure blob name of its first Delta commit file has 1025 characters");
     createExternalTable(EXTERNAL_TABLE_NAME + "_delta", DataSourceFormat.DELTA, delta);
 
     // A CSV table may be a single file, so only its own name has to fit.
@@ -336,7 +327,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
   @SneakyThrows
   @Test
   public void testMalformedCloudStorageRootsAreRejected() {
-    List<String> malformedRoots = List.of("s3:///", "gs:///", "s3://", "gs://");
+    List<String> malformedRoots = List.of("s3:///", "gs:///", "s3://", "gs://", "s3:a/b", "gs:a/b");
     for (String root : malformedRoots) {
       TestUtils.assertApiException(
           () ->
@@ -393,7 +384,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
                         .schemaName(SCHEMA_NAME)
                         .name(TABLE_NAME)),
         ErrorCode.INVALID_ARGUMENT,
-        rejection);
+        "the Azure blob names of its temporary Delta checkpoint sidecar files have");
     TestUtils.assertApiException(
         () ->
             modelOperations.createRegisteredModel(

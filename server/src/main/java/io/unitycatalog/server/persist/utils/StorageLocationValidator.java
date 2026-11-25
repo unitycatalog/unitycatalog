@@ -61,6 +61,10 @@ public class StorageLocationValidator {
     }
   }
 
+  // A location in cloud storage names its bucket or container.
+  private static final Set<UriScheme> CLOUD_SCHEMES =
+      Set.of(UriScheme.S3, UriScheme.GS, UriScheme.ABFS, UriScheme.ABFSS);
+
   // Managed locations are laid out the same for every id.
   private static final UUID ANY_ID = new UUID(0, 0);
 
@@ -138,7 +142,7 @@ public class StorageLocationValidator {
    * Validates a location the server derived for a new managed entity.
    *
    * @param maxBytes the width of the column the location is stored in, counted in UTF-8 bytes
-   * @param extent {@link Extent#DELTA_TABLE} for a table, otherwise {@link Extent#PREFIX}
+   * @param extent {@link Extent#MANAGED_DELTA_TABLE} for a table, otherwise {@link Extent#PREFIX}
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if the location is too long
    */
   public void validateManagedLocation(
@@ -265,7 +269,7 @@ public class StorageLocationValidator {
             "table",
             ExternalLocationUtils.getManagedLocationForTable(container, ANY_ID),
             Constants.MAX_STORAGE_LOCATION_LENGTH,
-            Extent.DELTA_TABLE),
+            Extent.MANAGED_DELTA_TABLE),
         new ManagedLocation(
             "volume",
             ExternalLocationUtils.getManagedLocationForVolume(container, ANY_ID),
@@ -318,7 +322,11 @@ public class StorageLocationValidator {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "Invalid storage location: " + location, e);
     }
-    return cloudCredentialVendor.limitsDependOnCredential(UriScheme.fromURI(uri));
+    UriScheme scheme = UriScheme.fromURI(uri);
+    if (CLOUD_SCHEMES.contains(scheme) && (uri.isOpaque() || uri.getAuthority() == null)) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid storage location: " + location);
+    }
+    return cloudCredentialVendor.limitsDependOnCredential(scheme);
   }
 
   private void validateLocation(

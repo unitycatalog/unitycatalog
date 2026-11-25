@@ -172,9 +172,11 @@ The server rejects a location with `INVALID_ARGUMENT` when its database column o
   UTF-8 bytes. Managed table and volume locations are built under a catalog or schema storage root, so a catalog storage
   root can be at most 1,942 bytes in UTF-8 and a schema storage root at most 1,943.
 - Object names: a location that holds files has to leave room for one under it: a storage root, an external location, a
-  volume, and a Delta or Iceberg table. A Delta table has to leave room for its longest log file name, a staged commit
-  (`_delta_log/_staged_commits/<version>.<uuid>.json`, 90 characters and 3 path segments more). A table in another
-  format, such as CSV, may be a single file. On Azure an object
+  volume, and a Delta or Iceberg table. An external Delta table has to leave room for its first commit
+  (`_delta_log/00000000000000000000.json`, 37 characters and 2 path segments more), which every Delta table has. A
+  managed Delta table uses V2 checkpoints, so it has to leave room for the temporary file of a checkpoint sidecar
+  (`_delta_log/_sidecars/.<version>.checkpoint.<part>.<parts>.<uuid>.parquet.<uuid>.tmp`, 162 characters and 3 path
+  segments more). A table in another format, such as CSV, may be a single file. On Azure an object
   name is at most 1,024 characters and 254 path segments, and on GCS at most 1,024 bytes, whatever the server is
   configured with. On S3 it is at most 1,024 bytes for a location whose storage credential is an `aws_iam_role`, or on a
   bucket the server is configured for without a custom credential generator. S3-compatible storage is not checked.

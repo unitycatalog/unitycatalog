@@ -63,15 +63,23 @@ public final class StorageLimits {
      */
     PREFIX("/x"),
     /**
-     * A Delta table. Its longest file name of a fixed length is a staged commit, {@code
-     * _delta_log/_staged_commits/<version>.<uuid>.json} with the version padded to 20 digits, three
-     * path segments more.
+     * An external Delta table. Every Delta table has its first commit, {@code
+     * _delta_log/00000000000000000000.json}, so a location of an existing table always fits it.
      *
      * @see <a href="https://github.com/delta-io/delta/blob/master/PROTOCOL.md">Delta protocol</a>
      */
-    DELTA_TABLE(
-        "/_delta_log/_staged_commits/"
-            + "00000000000000000000.00000000-0000-0000-0000-000000000000.json"),
+    DELTA_TABLE("/_delta_log/00000000000000000000.json"),
+    /**
+     * A managed Delta table, which uses V2 checkpoints. Its longest file name of a fixed length is
+     * the temporary file a V2 checkpoint sidecar is written to before it is renamed on Azure,
+     * {@code _delta_log/_sidecars/.<version>.checkpoint.<part>.<parts>.<uuid>.parquet.<uuid>.tmp},
+     * as delta-spark's {@code FileNames.newV2CheckpointSidecarFile} and {@code Checkpoints} name
+     * them.
+     */
+    MANAGED_DELTA_TABLE(
+        "/_delta_log/_sidecars/.00000000000000000000.checkpoint.0000000000.0000000000."
+            + "00000000-0000-0000-0000-000000000000.parquet."
+            + "00000000-0000-0000-0000-000000000000.tmp"),
     /** The location may itself name an object, such as a CSV table that is a single file. */
     OBJECT_OR_PREFIX("");
 
@@ -100,7 +108,11 @@ public final class StorageLimits {
       return switch (this) {
         case PREFIX -> String.format("%s names under it have at least %s", kind, measure);
         case DELTA_TABLE ->
-            String.format("the %s names of its Delta staged commit files have %s", kind, measure);
+            String.format("the %s name of its first Delta commit file has %s", kind, measure);
+        case MANAGED_DELTA_TABLE ->
+            String.format(
+                "the %s names of its temporary Delta checkpoint sidecar files have %s",
+                kind, measure);
         case OBJECT_OR_PREFIX -> String.format("its %s name has %s", kind, measure);
       };
     }

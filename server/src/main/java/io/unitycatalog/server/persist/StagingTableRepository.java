@@ -108,7 +108,7 @@ public class StagingTableRepository {
                   session,
                   stagingLocation,
                   Constants.MAX_STORAGE_LOCATION_LENGTH,
-                  StorageLimits.Extent.DELTA_TABLE);
+                  StorageLimits.Extent.MANAGED_DELTA_TABLE);
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 

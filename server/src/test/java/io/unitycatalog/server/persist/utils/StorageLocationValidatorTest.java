@@ -42,7 +42,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
@@ -158,17 +160,20 @@ public class StorageLocationValidatorTest {
         ExternalLocationUtils.getManagedLocationForModelVersion(model, id));
   }
 
-  private static final String STAGED_COMMIT =
-      "/_delta_log/_staged_commits/00000000000000000001.3a0d65cd-4056-49b8-937b-95f9e3ee90e5.json";
+  private static final String FIRST_COMMIT = "/_delta_log/00000000000000000000.json";
+
+  private static final String TEMPORARY_SIDECAR =
+      "/_delta_log/_sidecars/.00000000000000000010.checkpoint.0000000001.0000000002."
+          + "3a0d65cd-4056-49b8-937b-95f9e3ee90e5.parquet.8f14e45f-ceea-467a-9575-6a3cbe1a4e5c.tmp";
 
   /**
-   * The longest object name under the managed locations of a root: a Delta staged commit of a
-   * managed table, or a file directly under each other managed location.
+   * The longest object name under the managed locations of a root: a temporary checkpoint sidecar
+   * of a managed table, or a file directly under each other managed location.
    */
   private static int longestObjectNameUnder(NormalizedURL root, String prefix) {
     List<NormalizedURL> locations = managedLocationsUnder(root, prefix).toList();
     return Stream.concat(
-            Stream.of(locations.get(0) + STAGED_COMMIT),
+            Stream.of(locations.get(0) + TEMPORARY_SIDECAR),
             locations.stream().skip(1).map(location -> location + "/x"))
         .mapToInt(name -> StorageLimits.objectName(NormalizedURL.from(name)).length())
         .max()
@@ -366,8 +371,8 @@ public class StorageLocationValidatorTest {
         .extracting(Throwable::getMessage)
         .isEqualTo(
             "Storage root is too long. For the location of a managed table under it, the S3"
-                + " object key names of its Delta staged commit files have 1025 bytes, and the"
-                + " limit is 1024.");
+                + " object key names of its temporary Delta checkpoint sidecar files have 1025"
+                + " bytes, and the limit is 1024.");
   }
 
   @Test
@@ -669,45 +674,72 @@ public class StorageLocationValidatorTest {
                 + " characters, and the limit is 1024.");
   }
 
-  @Test
-  public void testDeltaTablesLeaveRoomForAStagedCommit() {
-    StorageLocationValidator validator = validatorFor(Optional.empty());
-    // The longest table location under which the staged commit's object key is 1,024 bytes.
-    NormalizedURL longest =
-        NormalizedURL.from(STATIC_BUCKET + "/" + "t".repeat(1024 - STAGED_COMMIT.length()));
-    assertThat(StorageLimits.objectName(NormalizedURL.from(longest + STAGED_COMMIT))).hasSize(1024);
+  private static Stream<Arguments> deltaFiles() {
+    return Stream.of(
+        Arguments.of(Extent.DELTA_TABLE, FIRST_COMMIT, "name of its first Delta commit file has"),
+        Arguments.of(
+            Extent.MANAGED_DELTA_TABLE,
+            TEMPORARY_SIDECAR,
+            "names of its temporary Delta checkpoint sidecar files have"));
+  }
 
-    assertThatCode(() -> validator.validateLocation(null, longest, 2048, Extent.DELTA_TABLE))
+  @ParameterizedTest
+  @MethodSource("deltaFiles")
+  public void testDeltaTablesLeaveRoomForTheirLongestFile(
+      Extent extent, String file, String files) {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    // The longest table location under which the file's object key is 1,024 bytes.
+    NormalizedURL longest =
+        NormalizedURL.from(STATIC_BUCKET + "/" + "t".repeat(1024 - file.length()));
+    assertThat(StorageLimits.objectName(NormalizedURL.from(longest + file))).hasSize(1024);
+
+    assertThatCode(() -> validator.validateLocation(null, longest, 2048, extent))
         .doesNotThrowAnyException();
-    assertThatCode(() -> validator.validateManagedLocation(null, longest, 2048, Extent.DELTA_TABLE))
+    assertThatCode(() -> validator.validateManagedLocation(null, longest, 2048, extent))
         .doesNotThrowAnyException();
     NormalizedURL tooLong = NormalizedURL.from(longest + "t");
-    String noRoomForACommit =
-        "Storage location is too long: the S3 object key names of its Delta staged commit files"
-            + " have 1025 bytes, and the limit is 1024.";
-    assertThatThrownBy(() -> validator.validateLocation(null, tooLong, 2048, Extent.DELTA_TABLE))
+    String noRoom =
+        "Storage location is too long: the S3 object key "
+            + files
+            + " 1025 bytes, and the limit"
+            + " is 1024.";
+    assertThatThrownBy(() -> validator.validateLocation(null, tooLong, 2048, extent))
         .isInstanceOf(BaseException.class)
-        .hasMessage(noRoomForACommit);
-    assertThatThrownBy(
-            () -> validator.validateManagedLocation(null, tooLong, 2048, Extent.DELTA_TABLE))
+        .hasMessage(noRoom);
+    assertThatThrownBy(() -> validator.validateManagedLocation(null, tooLong, 2048, extent))
         .isInstanceOf(BaseException.class)
-        .hasMessage(noRoomForACommit);
+        .hasMessage(noRoom);
     assertThatCode(() -> validator.validateLocation(null, tooLong, 2048, Extent.PREFIX))
         .doesNotThrowAnyException();
 
-    // A staged commit adds three path segments.
+    // The file adds a path segment for each directory it is in.
+    long fileSegments = file.chars().filter(c -> c == '/').count();
     String container = "abfss://container@account.dfs.core.windows.net/";
-    NormalizedURL deepest = NormalizedURL.from(container + "s/".repeat(250) + "s");
-    assertThatCode(() -> validator.validateLocation(null, deepest, 2048, Extent.DELTA_TABLE))
+    NormalizedURL deepest =
+        NormalizedURL.from(container + "s/".repeat(253 - (int) fileSegments) + "s");
+    assertThatCode(() -> validator.validateLocation(null, deepest, 2048, extent))
         .doesNotThrowAnyException();
     assertThatThrownBy(
             () ->
-                validator.validateLocation(
-                    null, NormalizedURL.from(deepest + "/s"), 2048, Extent.DELTA_TABLE))
+                validator.validateLocation(null, NormalizedURL.from(deepest + "/s"), 2048, extent))
         .isInstanceOf(BaseException.class)
         .hasMessage(
-            "Storage location is too long: the Azure blob names of its Delta staged commit files"
-                + " have 255 path segments, and the limit is 254.");
+            "Storage location is too long: the Azure blob "
+                + files
+                + " 255 path segments, and the limit is 254.");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"s3:a/b", "gs:a/b", "abfss:a/b"})
+  public void testOpaqueCloudRootIsRejected(String root) {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    for (String prefix : List.of(MANAGED_STORAGE_CATALOG_PREFIX, MANAGED_STORAGE_SCHEMA_PREFIX)) {
+      assertThat(rootRejection(validator, NormalizedURL.from(root), prefix))
+          .get()
+          .extracting(Throwable::getMessage)
+          .asString()
+          .startsWith("Invalid storage location: ");
+    }
   }
 
   @ParameterizedTest
