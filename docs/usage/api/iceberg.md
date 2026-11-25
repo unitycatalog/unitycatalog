@@ -136,10 +136,12 @@ keeps a later registration from racing an allocation; it can reduce allocation t
 Overlap checks treat `abfs` and `abfss` URLs for the same account, container, and path as one location,
 including URLs stored before registration was supported.
 Registration accepts these Azure scheme aliases in embedded file paths and directory properties too.
-S3 and GCS object keys can contain literal percent sequences, including encoded partition values.
-Cloud registration paths cannot contain queries or fragments. Azure registration, storage
-allocation, and path-credential requests also reject percent escapes. Their spelling must
-identify the same object prefix for reads, overlap checks, and cleanup.
+S3 and GCS file names and partition keys can contain literal percent sequences below a plain table
+root. The table root and the initial metadata file's parent directory cannot contain percent escapes:
+credential scopes decode URI paths and must name the same object prefix that registration checks.
+Cloud storage allocation and path-credential requests also reject percent escapes, queries, and
+fragments, including when registration or authorization is disabled. Azure registration rejects
+percent escapes in all embedded paths too.
 Local allocation URLs must use their canonical spelling. Registration and later allocation also
 check filesystem aliases, including case aliases on case-insensitive filesystems and existing
 ancestors of new directories. Registration rejects an overlap with a legacy local URL whose spelling

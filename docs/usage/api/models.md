@@ -2,6 +2,9 @@
 
 Use the `/models` endpoint to work with models.
 
+Creating a model reserves its storage location. For local storage, the server creates the directory
+when the first model version is created.
+
 | Method | Description                           | Endpoint                     |
 | ------ | ------------------------------------- | ---------------------------- |
 | GET    | Retrieve a list of models             | /models                      |

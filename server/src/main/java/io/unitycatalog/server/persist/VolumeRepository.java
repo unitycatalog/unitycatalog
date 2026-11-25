@@ -46,7 +46,7 @@ public class VolumeRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          ExternalLocationUtils.lockTableStorage(session);
+          ExternalLocationUtils.lockStorageAllocation(session);
           RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
               RepositoryUtils.getCatalogAndSchemaDaoOrThrow(
                   session,

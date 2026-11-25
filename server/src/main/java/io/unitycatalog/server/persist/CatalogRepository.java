@@ -73,7 +73,7 @@ public class CatalogRepository {
         sessionFactory,
         session -> {
           if (storageRoot != null) {
-            ExternalLocationUtils.lockTableStorage(session);
+            ExternalLocationUtils.lockStorageAllocation(session);
             ExternalLocationUtils.validateNotOverlapWithRegisteredTables(
                 session, NormalizedURL.from(catalogInfo.getStorageLocation()));
           }

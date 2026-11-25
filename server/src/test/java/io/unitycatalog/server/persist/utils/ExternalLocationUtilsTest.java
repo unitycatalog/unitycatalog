@@ -404,7 +404,7 @@ public class ExternalLocationUtilsTest {
     when(lockedSession.createSelectionQuery("FROM MetastoreDAO", MetastoreDAO.class))
         .thenReturn(query);
     when(query.getSingleResult()).thenThrow(lockFailure);
-    assertThatThrownBy(() -> ExternalLocationUtils.lockTableStorage(lockedSession))
+    assertThatThrownBy(() -> ExternalLocationUtils.lockStorageAllocation(lockedSession))
         .isInstanceOfSatisfying(
             BaseException.class,
             failure -> {
@@ -455,11 +455,17 @@ public class ExternalLocationUtilsTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"abfs", "abfss"})
-  public void azureAllocationAndPathCredentialsRejectAmbiguousUris(String scheme) {
+  @ValueSource(
+      strings = {
+        "s3://bucket",
+        "gs://bucket",
+        "abfs://c@a.dfs.core.windows.net",
+        "abfss://c@a.dfs.core.windows.net"
+      })
+  public void cloudAllocationAndPathCredentialsRejectAmbiguousUris(String storage) {
     for (String suffix :
         List.of("/%6frders", "/orders%2fchild", "/orders?query=1", "/orders#fragment")) {
-      NormalizedURL path = NormalizedURL.from(scheme + "://c@a.dfs.core.windows.net/root" + suffix);
+      NormalizedURL path = NormalizedURL.from(storage + "/root" + suffix);
       for (Runnable operation :
           List.<Runnable>of(
               () -> externalLocationUtils.getMapResourceIdsForPath(path),
@@ -632,11 +638,11 @@ public class ExternalLocationUtilsTest {
     createCleanupTask("s3://bucket/literalX/child");
     createCleanupTask("s3://bucket/percentXYZ25/child");
     for (String path : List.of("s3://bucket/literal_", "s3://bucket/percent%25")) {
-      assertThat(externalLocationUtils.getMapResourceIdsForPath(session, NormalizedURL.from(path)))
-          .isEmpty();
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, NormalizedURL.from(path)))
+          .isFalse();
       createCleanupTask(path + "/child");
-      assertPendingCleanupDenied(
-          () -> externalLocationUtils.getMapResourceIdsForPath(session, NormalizedURL.from(path)));
+      assertThat(ExternalLocationUtils.hasPendingCleanupOverlap(session, NormalizedURL.from(path)))
+          .isTrue();
     }
   }
 

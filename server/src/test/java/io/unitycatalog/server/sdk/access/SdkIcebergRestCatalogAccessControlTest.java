@@ -354,7 +354,7 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     doAnswer(
             invocation -> {
               if (reads.incrementAndGet() == changeAtRead) {
-                // The manifest read starts after the service's discovered-root check.
+                // The later cases mutate after the service's discovered-root check.
                 if (change.equals("overlap")) {
                   volumes.createVolume(
                       new CreateVolumeRequestContent()

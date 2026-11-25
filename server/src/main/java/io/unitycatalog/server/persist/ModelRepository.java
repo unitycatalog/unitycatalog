@@ -236,7 +236,7 @@ public class ModelRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          ExternalLocationUtils.lockTableStorage(session);
+          ExternalLocationUtils.lockStorageAllocation(session);
           String catalogName = registeredModelInfo.getCatalogName();
           String schemaName = registeredModelInfo.getSchemaName();
           RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
@@ -264,7 +264,7 @@ public class ModelRepository {
               .getOwnershipRepository()
               .initializeOwner(
                   session, registeredModelInfoDAO.getId(), callerId, schemaInfoDAO.getId());
-          FileOperations.createStorageLocationDir(storageLocation);
+          // The first version creates its directory and parents without the allocation lock.
           return registeredModelInfo;
         },
         "Error creating registered model: " + fullName,

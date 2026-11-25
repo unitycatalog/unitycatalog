@@ -81,7 +81,7 @@ public class StagingTableRepository {
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          ExternalLocationUtils.lockTableStorage(session);
+          ExternalLocationUtils.lockStorageAllocation(session);
           ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, location);
           ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, location);
           return null;
@@ -115,7 +115,7 @@ public class StagingTableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          ExternalLocationUtils.lockTableStorage(session);
+          ExternalLocationUtils.lockStorageAllocation(session);
           RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
               RepositoryUtils.getCatalogAndSchemaDaoOrThrow(
                   session, createStagingTable.getCatalogName(), createStagingTable.getSchemaName());

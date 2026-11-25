@@ -6,7 +6,9 @@ import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREF
 import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -102,7 +104,13 @@ public class ExternalLocationUtils {
 
   private static final DaoClassInfo REGISTERED_TABLE_RESERVATION_DAO_INFO =
       new DaoClassInfo(
-          StorageCleanupTaskDAO.class, "storageLocation", "resourceType='REGISTERED_TABLE'");
+          StorageCleanupTaskDAO.class,
+          "storageLocation",
+          "resourceType='%s'".formatted(ManagedResourceType.REGISTERED_TABLE.name()));
+
+  private static final String MANAGED_ICEBERG_TABLE_FILTER =
+      "type='%s' AND dataSourceFormat='%s'"
+          .formatted(TableType.MANAGED.getValue(), DataSourceFormat.ICEBERG.getValue());
 
   /**
    * List of securable types that represent data objects (tables, volumes, registered models). Used
@@ -169,7 +177,7 @@ public class ExternalLocationUtils {
 
   private Map<SecurableType, UUID> getMapResourceIdsForPath(
       Session session, NormalizedURL url, boolean isStorageRoot) {
-    validateAzurePathSpelling(url);
+    validateCloudStoragePath(url);
     // 1. Cleanup tasks and completed registration cleanups reserve their paths.
     if (hasCleanupReservationOverlap(session, url, !isStorageRoot)) {
       throw new BaseException(
@@ -1014,7 +1022,7 @@ public class ExternalLocationUtils {
   }
 
   /** Serializes storage allocation with table registration; use READ COMMITTED. */
-  public static void lockTableStorage(Session session) {
+  public static void lockStorageAllocation(Session session) {
     RepositoryUtils.unavailableOnLockFailure(
         "managed storage",
         () ->
@@ -1027,13 +1035,12 @@ public class ExternalLocationUtils {
   /** Prevents later creates from claiming an adopted directory, including after a drop. */
   public static void validateNotOverlapWithRegisteredTables(Session session, NormalizedURL path) {
     LocalStorageLocationValidator.validateCanonicalLocalLocation(path);
-    validateAzurePathSpelling(path);
+    validateCloudStoragePath(path);
     List<TableInfoDAO> overlaps =
         ExternalLocationUtils.<TableInfoDAO>generateEntitiesDAOsWithURLOverlapQuery(
                 session,
                 path,
-                new DaoClassInfo(
-                    TableInfoDAO.class, "url", "type='MANAGED' AND dataSourceFormat='ICEBERG'"),
+                new DaoClassInfo(TableInfoDAO.class, "url", MANAGED_ICEBERG_TABLE_FILTER),
                 Integer.MAX_VALUE,
                 /* includeParent= */ true,
                 /* includeSelf= */ true,
@@ -1044,7 +1051,8 @@ public class ExternalLocationUtils {
       try (Stream<TableInfoDAO> localTables =
           session
               .createSelectionQuery(
-                  "FROM TableInfoDAO WHERE type='MANAGED' AND dataSourceFormat='ICEBERG'"
+                  "FROM TableInfoDAO WHERE "
+                      + MANAGED_ICEBERG_TABLE_FILTER
                       + " AND url LIKE 'file:%'",
                   TableInfoDAO.class)
               .getResultStream()) {
@@ -1068,20 +1076,33 @@ public class ExternalLocationUtils {
     }
   }
 
-  private static boolean isStrictSubpath(NormalizedURL path, NormalizedURL root) {
+  /**
+   * Checks strict containment, including equivalent Azure schemes.
+   *
+   * @param path the candidate child location
+   * @param root the containing directory
+   * @return whether path is below root and does not name the same location
+   */
+  public static boolean isStrictSubpath(NormalizedURL path, NormalizedURL root) {
     return stillCovers(root, path) && !stillCovers(path, root);
   }
 
-  private static void validateAzurePathSpelling(NormalizedURL path) {
+  /**
+   * Rejects cloud credential roots whose decoded path differs from the checked object prefix.
+   *
+   * @param path the storage allocation or credential root
+   * @throws BaseException with INVALID_ARGUMENT if a cloud path contains escapes, a query, or a
+   *     fragment
+   */
+  public static void validateCloudStoragePath(NormalizedURL path) {
     UriScheme scheme = UriScheme.fromURI(path.toUri());
-    if (scheme == UriScheme.ABFS || scheme == UriScheme.ABFSS) {
-      // ADLS directory cleanup decodes URI paths. Allocation and credential checks must use the
-      // same spelling so a later request cannot reach a reserved directory through an escape.
+    if (scheme != UriScheme.FILE) {
+      // Credential scopes decode URI paths. The checked prefix must keep the same object key.
       ValidationUtils.checkArgument(
           !path.toString().contains("%")
               && path.toUri().getRawQuery() == null
               && path.toUri().getRawFragment() == null,
-          "Azure storage path ('%s') must not contain percent escapes, a query, or a fragment.",
+          "Cloud storage path ('%s') must not contain percent escapes, a query, or a fragment.",
           path);
     }
   }

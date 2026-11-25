@@ -90,6 +90,7 @@ public class MetadataService {
         isLocal
             ? storageRoot
             : NormalizedURL.from(new Path(metadataLocation.toString()).getParent().toString());
+    ExternalLocationUtils.validateCloudStoragePath(readLocation);
     TableMetadata metadata;
     try (FileIO fileIO = fileOperations.getFileIO(readLocation)) {
       metadata = TableMetadataParser.read(fileIO, metadataLocation.toString());
@@ -106,6 +107,7 @@ public class MetadataService {
         metadataLocation);
     NormalizedURL tableLocation =
         registrationLocation(metadata.location(), /* isDirectory= */ true);
+    ExternalLocationUtils.validateCloudStoragePath(tableLocation);
     validateMetadataLocation(tableLocation, storageRoot);
     validateMetadataLocation(metadataLocation, tableLocation);
     validateTableMetadataLocation(metadata, tableLocation);
@@ -221,8 +223,9 @@ public class MetadataService {
     // Cleanup deletes descendants of the table directory, so only directory properties may equal
     // it.
     ValidationUtils.checkArgument(
-        ExternalLocationUtils.stillCovers(tableLocation, location)
-            && (isDirectory || !ExternalLocationUtils.stillCovers(location, tableLocation)),
+        isDirectory
+            ? ExternalLocationUtils.stillCovers(tableLocation, location)
+            : ExternalLocationUtils.isStrictSubpath(location, tableLocation),
         "Iceberg registration location ('%s') must be %s the table location ('%s').",
         location,
         isDirectory ? "at or below" : "strictly below",
@@ -346,8 +349,7 @@ public class MetadataService {
     ValidationUtils.checkArgument(
         metadataLocation.toUri().getRawQuery() == null
             && metadataLocation.toUri().getRawFragment() == null
-            && ExternalLocationUtils.stillCovers(persistedTableLocation, metadataLocation)
-            && !ExternalLocationUtils.stillCovers(metadataLocation, persistedTableLocation),
+            && ExternalLocationUtils.isStrictSubpath(metadataLocation, persistedTableLocation),
         "Iceberg metadata location ('%s') must be a subpath of the persisted table location"
             + " ('%s').",
         metadataLocation,

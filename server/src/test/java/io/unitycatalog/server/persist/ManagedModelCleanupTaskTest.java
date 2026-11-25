@@ -24,6 +24,7 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.net.URI;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -128,6 +129,45 @@ class ManagedModelCleanupTaskTest {
     if (marker != null) {
       assertThat(Files.readString(marker)).isEqualTo("model data");
     }
+  }
+
+  @Test
+  void modelStorageIsCreatedWithFirstVersion() {
+    RegisteredModelInfo model = createModel(tempDir.toUri().toString());
+    Path directory = Path.of(URI.create(model.getStorageLocation()));
+    assertThat(directory).doesNotExist();
+    assertThat(find(RegisteredModelInfoDAO.class, model.getId()).getUrl())
+        .isEqualTo(model.getStorageLocation());
+
+    ModelVersionInfo version = createVersion();
+
+    assertThat(directory).isDirectory();
+    assertThat(Path.of(URI.create(version.getStorageLocation()))).isDirectory();
+    assertThat(find(ModelVersionInfoDAO.class, version.getId())).isNotNull();
+  }
+
+  @Test
+  void failedFirstVersionCreationPreservesModelWithoutVersion() throws Exception {
+    RegisteredModelInfo model = createModel(tempDir.toUri().toString());
+    Path directory = Path.of(URI.create(model.getStorageLocation()));
+    Files.createDirectories(directory.getParent());
+    Files.writeString(directory, "occupied");
+
+    assertThatThrownBy(this::createVersion)
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL))
+        .hasMessage("Error creating model version for model: catalog.schema.model")
+        .hasRootCauseInstanceOf(FileSystemException.class);
+
+    assertThat(find(RegisteredModelInfoDAO.class, model.getId()).getMaxVersionNumber()).isZero();
+    try (var session = sessionFactory.openSession()) {
+      assertThat(
+              session
+                  .createSelectionQuery("SELECT count(*) FROM ModelVersionInfoDAO", Long.class)
+                  .getSingleResult())
+          .isZero();
+    }
+    assertThat(Files.readString(directory)).isEqualTo("occupied");
   }
 
   @Test

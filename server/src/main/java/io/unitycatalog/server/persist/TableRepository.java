@@ -894,7 +894,7 @@ public class TableRepository {
         sessionFactory,
         session -> {
           if (createTable.getStorageLocation() != null) {
-            ExternalLocationUtils.lockTableStorage(session);
+            ExternalLocationUtils.lockStorageAllocation(session);
           }
           String catalogName = createTable.getCatalogName();
           String schemaName = createTable.getSchemaName();

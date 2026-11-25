@@ -12,6 +12,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
@@ -105,9 +106,11 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   public HttpResponse generateTemporaryPathCredential(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "url") @AuthorizeKey(key = "operation")
           GenerateTemporaryPathCredential generateTemporaryPathCredential) {
+    NormalizedURL location = NormalizedURL.from(generateTemporaryPathCredential.getUrl());
+    ExternalLocationUtils.validateCloudStoragePath(location);
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
-            NormalizedURL.from(generateTemporaryPathCredential.getUrl()),
+            location,
             pathOperationToPrivileges(generateTemporaryPathCredential.getOperation()),
             CredentialUse.CLIENT));
   }

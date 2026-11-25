@@ -4,6 +4,9 @@ import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -55,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import lombok.SneakyThrows;
 import org.apache.iceberg.CatalogProperties;
@@ -69,6 +73,7 @@ import org.apache.iceberg.avro.Avro;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.avro.DataReader;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.rest.RESTCatalog;
 import org.apache.iceberg.rest.RESTClient;
 import org.apache.iceberg.rest.RESTSessionCatalog;
@@ -108,8 +113,8 @@ public class IcebergRegisterTableTest extends BaseServerTest {
 
   @Override
   protected FileOperations decorateFileOperations(FileOperations operations) {
-    fileOperations = operations;
-    return operations;
+    fileOperations = spy(operations);
+    return fileOperations;
   }
 
   @BeforeEach
@@ -692,7 +697,7 @@ public class IcebergRegisterTableTest extends BaseServerTest {
     int status =
         runBlockedByHeldWrite(
             session -> {
-              ExternalLocationUtils.lockTableStorage(session);
+              ExternalLocationUtils.lockStorageAllocation(session);
               TableInfoDAO table = session.get(TableInfoDAO.class, firstId);
               table.setUrl(NormalizedURL.from(directory.toUri()).toString());
               table.setIcebergMetadataLocation(NormalizedURL.from(file.toUri()).toString());
@@ -797,6 +802,21 @@ public class IcebergRegisterTableTest extends BaseServerTest {
       original = writeMetadata(registered);
     }
     byte[] contents = Files.readAllBytes(original);
+    AtomicInteger outputOpens = new AtomicInteger();
+    doAnswer(
+            invocation -> {
+              FileIO fileIO = spy((FileIO) invocation.callRealMethod());
+              doAnswer(
+                      output -> {
+                        outputOpens.incrementAndGet();
+                        return output.callRealMethod();
+                      })
+                  .when(fileIO)
+                  .newOutputFile(any(String.class));
+              return fileIO;
+            })
+        .when(fileOperations)
+        .getFileIO(any(), any());
     for (boolean stage : List.of(false, true)) {
       var builder =
           CreateTableRequest.builder()
@@ -810,6 +830,7 @@ public class IcebergRegisterTableTest extends BaseServerTest {
           () -> client.createTable(CATALOG, NAMESPACE, builder.build()), 400, "overlap");
       assertThat(Files.readAllBytes(original)).isEqualTo(contents);
       assertThat(registered.resolve("data")).doesNotExist();
+      assertThat(outputOpens.get()).as("metadata output files opened").isZero();
     }
   }
 

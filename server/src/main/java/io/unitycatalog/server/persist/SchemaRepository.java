@@ -61,7 +61,7 @@ public class SchemaRepository {
         sessionFactory,
         session -> {
           if (storageRoot != null) {
-            ExternalLocationUtils.lockTableStorage(session);
+            ExternalLocationUtils.lockStorageAllocation(session);
           }
           CatalogInfoDAO catalogDAO =
               repositories

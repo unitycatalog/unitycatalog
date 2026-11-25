@@ -5,8 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +21,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.apache.iceberg.BaseTable;
@@ -343,7 +343,7 @@ class RegistrationMetadataTest {
   @ParameterizedTest
   @ValueSource(strings = {"s3://bucket", "gs://bucket"})
   void acceptsPercentKeysInObjectStorage(String storage) throws Exception {
-    String root = storage + "/warehouse/a%20b";
+    String root = storage + "/warehouse/orders";
     String metadataLocation = root + "/metadata/v1%25.metadata.json";
     FileIO fileIO =
         new LocalMappingFileIO(
@@ -399,6 +399,27 @@ class RegistrationMetadataTest {
       assertThat(registered.properties())
           .containsEntry(TableProperties.WRITE_DATA_LOCATION, root + "/data/value=%25");
     }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"s3://bucket", "gs://bucket"})
+  void rejectsEscapedCredentialRootsBeforeReadingMetadata(String storage) {
+    FileOperations operations = mock();
+    MetadataService metadataService = new MetadataService(operations);
+    for (String directory :
+        List.of("a%20b/metadata", "x%2Fy/metadata", "t%61bles/metadata", "orders/metadata%25")) {
+      String metadata = storage + "/warehouse/" + directory + "/v1.metadata.json";
+      assertThatThrownBy(
+              () ->
+                  metadataService.readRegistrationMetadata(
+                      MetadataService.registrationMetadataLocation(metadata),
+                      NormalizedURL.from(storage + "/warehouse")))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+          .hasMessageContaining("must not contain percent escapes");
+    }
+    verifyNoInteractions(operations);
   }
 
   @Test
@@ -502,20 +523,32 @@ class RegistrationMetadataTest {
   @Test
   void checksDiscoveredRootBeforeOpeningManifests() throws Exception {
     appendRecord();
+    List<String> openedInputs = new ArrayList<>();
+    String metadataLocation =
+        NormalizedURL.from(table.operations().current().metadataFileLocation()).toString();
     FileOperations operations = mock();
-    when(operations.getFileIO(any())).thenReturn(new SimpleLocalFileIO(directory));
+    when(operations.getFileIO(any()))
+        .thenAnswer(
+            ignored ->
+                new SimpleLocalFileIO(directory) {
+                  @Override
+                  public InputFile newInputFile(String path) {
+                    openedInputs.add(path);
+                    return super.newInputFile(path);
+                  }
+                });
     BaseException overlap = new BaseException(ErrorCode.INVALID_ARGUMENT, "Directory is occupied");
     assertThatThrownBy(
             () ->
                 new MetadataService(operations)
                     .readRegistrationMetadata(
-                        NormalizedURL.from(table.operations().current().metadataFileLocation()),
+                        NormalizedURL.from(metadataLocation),
                         NormalizedURL.from(directory.toUri()),
                         root -> {
                           throw overlap;
                         }))
         .isSameAs(overlap);
-    verify(operations, times(1)).getFileIO(any());
+    assertThat(openedInputs).containsOnly(metadataLocation);
   }
 
   @Test
