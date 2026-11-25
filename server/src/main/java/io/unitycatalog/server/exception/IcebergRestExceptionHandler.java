@@ -21,6 +21,7 @@ import org.apache.iceberg.exceptions.RESTException;
 import org.apache.iceberg.exceptions.ServiceFailureException;
 import org.apache.iceberg.exceptions.ServiceUnavailableException;
 import org.apache.iceberg.exceptions.UnprocessableEntityException;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 
 /**
@@ -162,7 +163,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
         || cause instanceof CommitFailedException) {
       return wrapException(ErrorCode.ALREADY_EXISTS, cause);
     }
-    if (cause instanceof BadRequestException) {
+    if (cause instanceof BadRequestException || cause instanceof ValidationException) {
       return wrapException(ErrorCode.INVALID_ARGUMENT, cause);
     }
     if (cause instanceof UnprocessableEntityException) {

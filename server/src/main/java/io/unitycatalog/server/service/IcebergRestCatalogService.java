@@ -81,6 +81,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.RetryableValidationException;
 import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
@@ -684,7 +685,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     request.requirements().forEach(requirement -> requirement.validate(base));
 
     TableMetadata.Builder builder = TableMetadata.buildFrom(base);
-    request.updates().forEach(update -> update.applyTo(builder));
+    applyUpdates(request.updates(), builder);
     TableMetadata updatedWithoutLocation = builder.build();
     if (updatedWithoutLocation.changes().isEmpty()) {
       // No-op update: requirements were validated, but there is no new metadata file or DAO write.
@@ -756,6 +757,28 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         "Keeping Iceberg metadata file {}: the commit that wrote it may have succeeded ({})",
         metadataLocation,
         failure.toString());
+  }
+
+  /**
+   * Applies a commit's updates to {@code builder} as Iceberg's reference catalog does. An update
+   * built on table state that another commit has since moved past becomes a {@link
+   * CommitFailedException}, which an Iceberg client answers by refreshing the table and retrying
+   * the commit; a 5xx would instead leave the client unsure whether the commit happened. An update
+   * that does not apply to a table, such as a view update, is a bad request.
+   *
+   * @param updates the updates the commit carries
+   * @param builder the builder of the table metadata the commit produces
+   * @throws CommitFailedException if an update carries stale table state
+   * @throws BadRequestException if an update does not apply to a table
+   */
+  private static void applyUpdates(List<MetadataUpdate> updates, TableMetadata.Builder builder) {
+    try {
+      updates.forEach(update -> update.applyTo(builder));
+    } catch (RetryableValidationException e) {
+      throw new CommitFailedException(e, "Validation failed, please retry: %s", e.getMessage());
+    } catch (UnsupportedOperationException e) {
+      throw new BadRequestException(e, "%s", e.getMessage());
+    }
   }
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
@@ -832,7 +855,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     // buildFromEmpty(int) seeds the requested version; the no-arg overload uses the default.
     TableMetadata.Builder builder =
         formatVersion.map(TableMetadata::buildFromEmpty).orElseGet(TableMetadata::buildFromEmpty);
-    request.updates().forEach(update -> update.applyTo(builder));
+    applyUpdates(request.updates(), builder);
     TableMetadata tableMetadata = builder.build();
     if (tableMetadata.location() == null || tableMetadata.location().isEmpty()) {
       throw new BadRequestException(

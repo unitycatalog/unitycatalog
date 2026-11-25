@@ -4,6 +4,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.READ_O
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -14,10 +15,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.CatalogRepository;
@@ -38,6 +43,9 @@ import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SnapshotParser;
+import org.apache.iceberg.SnapshotRefType;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
@@ -48,6 +56,8 @@ import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
+import org.apache.iceberg.rest.responses.ErrorResponse;
+import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.types.Types;
 import org.hibernate.SessionFactory;
@@ -419,6 +429,163 @@ public class IcebergRestCatalogServiceTest {
     verify(metadataService, never()).deleteTableMetadata(any(), any());
     verify(tableRepository, never())
         .commitIcebergTable(any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  public void updateTableAsksAWriterWithAStaleSnapshotToRetry() {
+    // Another writer appended snapshot 2 to main after this writer read the table at snapshot 1,
+    // so the snapshot this writer adds to a new branch reuses sequence number 2.
+    TableMetadata base =
+        TableMetadata.buildFrom(
+                TableMetadata.newTableMetadata(
+                    SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of()))
+            .setBranchSnapshot(appendSnapshot(1, null, 1), "main")
+            .setBranchSnapshot(appendSnapshot(2, 1L, 2), "main")
+            .build();
+    givenTable(base);
+    UpdateTableRequest request =
+        new UpdateTableRequest(
+            List.of(
+                new UpdateRequirement.AssertTableUUID(base.uuid()),
+                new UpdateRequirement.AssertRefSnapshotID("audit", null)),
+            List.of(
+                new MetadataUpdate.AddSnapshot(appendSnapshot(3, 1L, 2)),
+                new MetadataUpdate.SetSnapshotRef(
+                    "audit", 3L, SnapshotRefType.BRANCH, null, null, null)));
+
+    ErrorResponse error =
+        icebergErrorResponse(
+            catchThrowable(() -> service.updateTable("cat", "ns", "tbl", request)));
+
+    assertThat(error.code()).isEqualTo(409);
+    assertThat(error.type()).isEqualTo("CommitFailedException");
+    assertThat(error.message())
+        .isEqualTo(
+            "Validation failed, please retry: Cannot add snapshot with sequence number 2 older"
+                + " than last sequence number 2");
+    verifyNothingWritten();
+  }
+
+  /** Updates Iceberg rejects for a reason a retry cannot fix, and the error each is reported as. */
+  static Stream<Arguments> rejectedUpdates() {
+    return Stream.of(
+        Arguments.of(
+            new MetadataUpdate.SetSnapshotRef(
+                "main", 999L, SnapshotRefType.BRANCH, null, null, null),
+            "ValidationException",
+            "Cannot set main to unknown snapshot: 999"),
+        Arguments.of(
+            new MetadataUpdate.SetCurrentViewVersion(1),
+            "BadRequestException",
+            "Cannot apply update SetCurrentViewVersion to a table"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("rejectedUpdates")
+  public void updateTableAnswersAnUpdateIcebergRejectsAsABadRequest(
+      MetadataUpdate update, String errorType, String message) {
+    TableMetadata base =
+        TableMetadata.newTableMetadata(
+            SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of());
+    givenTable(base);
+    UpdateTableRequest request =
+        new UpdateTableRequest(
+            List.of(new UpdateRequirement.AssertTableUUID(base.uuid())), List.of(update));
+
+    ErrorResponse error =
+        icebergErrorResponse(
+            catchThrowable(() -> service.updateTable("cat", "ns", "tbl", request)));
+
+    assertThat(error.code()).isEqualTo(400);
+    assertThat(error.type()).isEqualTo(errorType);
+    assertThat(error.message()).isEqualTo(message);
+    verifyNothingWritten();
+  }
+
+  @ParameterizedTest
+  @MethodSource("rejectedUpdates")
+  public void stagedCreateCommitAnswersAnUpdateIcebergRejectsAsABadRequest(
+      MetadataUpdate update, String errorType, String message) {
+    UpdateTableRequest staged = stagedCreateCommit();
+    UpdateTableRequest request =
+        new UpdateTableRequest(
+            staged.requirements(),
+            Stream.concat(staged.updates().stream(), Stream.of(update)).toList());
+
+    ErrorResponse error =
+        icebergErrorResponse(
+            catchThrowable(() -> service.updateTable("cat", "ns", "tbl", request)));
+
+    assertThat(error.code()).isEqualTo(400);
+    assertThat(error.type()).isEqualTo(errorType);
+    assertThat(error.message()).isEqualTo(message);
+    verify(metadataService, never()).writeTableMetadata(any(), any(), any());
+    verify(tableRepository, never()).createTableForIceberg(any(), any());
+  }
+
+  @Test
+  public void createTableAnswersMetadataIcebergRejectsAsABadRequest() {
+    CreateTableRequest request =
+        CreateTableRequest.builder()
+            .withName("tbl")
+            .withSchema(SCHEMA)
+            .withLocation(TABLE_LOCATION)
+            .setProperty("write.metadata.metrics.column.missing", "full")
+            .build();
+
+    ErrorResponse error =
+        icebergErrorResponse(catchThrowable(() -> service.createTable("cat", "ns", request)));
+
+    assertThat(error.code()).isEqualTo(400);
+    assertThat(error.type()).isEqualTo("ValidationException");
+    assertThat(error.message())
+        .startsWith(
+            "Invalid metrics config, could not find column missing from table prop"
+                + " write.metadata.metrics.column.missing in schema");
+    verify(metadataService, never()).writeTableMetadata(any(), any(), any());
+    verify(tableRepository, never()).createTableForIceberg(any(), any());
+  }
+
+  /** Serves {@code metadata} as the current metadata of table {@code cat.ns.tbl}. */
+  private void givenTable(TableMetadata metadata) {
+    when(tableRepository.getNativeIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                UUID.randomUUID(),
+                DataSourceFormat.ICEBERG,
+                TABLE_LOCATION + "/metadata/00001-" + UUID.randomUUID() + ".metadata.json",
+                TABLE_LOCATION));
+    when(metadataService.readTableMetadata(any(), any())).thenReturn(metadata);
+  }
+
+  /** Checks that a rejected commit wrote no metadata file and left the metadata pointer alone. */
+  private void verifyNothingWritten() {
+    verify(metadataService, never()).writeTableMetadata(any(), any(), any());
+    verify(metadataService, never()).deleteTableMetadata(any(), any());
+    verify(tableRepository, never())
+        .commitIcebergTable(any(), any(), any(), any(), any(), any(), any());
+  }
+
+  /** An append snapshot of schema 0, with {@code parentId} null for the first snapshot. */
+  private static Snapshot appendSnapshot(long id, Long parentId, long sequenceNumber) {
+    String parent = parentId == null ? "" : "\"parent-snapshot-id\": " + parentId + ", ";
+    return SnapshotParser.fromJson(
+        """
+        {"snapshot-id": %d, %s"sequence-number": %d, "timestamp-ms": %d, "schema-id": 0,
+         "summary": {"operation": "append"}, "manifest-list": "%s/metadata/snap-%d.avro"}\
+        """
+            .formatted(id, parent, sequenceNumber, id * 1000, TABLE_LOCATION, id));
+  }
+
+  /** The error response the Iceberg REST catalog sends for {@code failure}. */
+  private static ErrorResponse icebergErrorResponse(Throwable failure) {
+    HttpRequest request = HttpRequest.of(HttpMethod.POST, "/");
+    return ErrorResponseParser.fromJson(
+        IcebergRestExceptionHandler.INSTANCE
+            .handleException(ServiceRequestContext.of(request), request, failure)
+            .aggregate()
+            .join()
+            .contentUtf8());
   }
 
   /** The commit an Iceberg client sends to finish a staged create of an external table. */
