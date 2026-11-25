@@ -122,6 +122,8 @@ and UC metrics remain enabled.
 - `method`: the annotated Java handler name, such as `createCatalog`, **not** the HTTP verb.
   When no annotated handler is selected, the service is
   `com.linecorp.armeria.server.FallbackService` and the method is the HTTP verb, such as `GET`.
+  The API root `/` is served directly, so it is reported with
+  `service="io.unitycatalog.server.ArmeriaServerBuilder"` and the method set to the HTTP verb.
 - `http_status`: the final HTTP response status, such as `200`, `400`, or `500`; `0` when no
   response was sent, for example when the client cancelled the request.
 

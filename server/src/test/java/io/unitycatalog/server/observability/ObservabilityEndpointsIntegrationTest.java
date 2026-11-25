@@ -80,6 +80,22 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
         1.0);
   }
 
+  @Test
+  public void rootRouteIsRecordedUnderAStableServiceName() throws Exception {
+    HttpResponse<String> response = sendRawGet(serverConfig, "/");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.ArmeriaServerBuilder",
+        "GET",
+        200,
+        1.0);
+    assertThat(httpRequestMetrics())
+        .allSatisfy(line -> assertThat(line).doesNotContain("$$Lambda"));
+  }
+
   private void assertHealthAndPortIsolation() throws Exception {
     HttpResponse<String> apiRoot = sendRawGet(serverConfig, "/");
     assertThat(apiRoot.statusCode()).isEqualTo(200);

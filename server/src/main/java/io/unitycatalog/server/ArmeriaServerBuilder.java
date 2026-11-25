@@ -143,7 +143,14 @@ public class ArmeriaServerBuilder {
     // /metrics only on the observability port.
     this.apiVirtualHost = armeriaServerBuilder.virtualHost(port);
     this.apiVirtualHost.serviceUnder("/docs", new DocService());
-    this.apiVirtualHost.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
+    // Named so the service label in /metrics stays the same across restarts; a lambda's class name
+    // changes on every JVM start. The class name is today's label without the lambda suffix, so
+    // existing queries that match on ArmeriaServerBuilder keep working.
+    this.apiVirtualHost
+        .route()
+        .path("/")
+        .defaultServiceName(ArmeriaServerBuilder.class.getName())
+        .build((ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
     this.basePath = basePath;
     this.controlPath = controlPath;
     // Renders the 404s and 405s Armeria answers before a service is reached as Iceberg error
