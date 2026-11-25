@@ -150,11 +150,72 @@ jobs:
           # The driver jar goes on the module path, and the database name and URL parameters are encoded: + would
           # read as a space.
           out="$(helm template uc helm -f helm/ci/mysql-values.yaml --set-string 'server.db.mysqlConfig.dbName=uc+db' \
-            --set-string 'server.db.mysqlConfig.extraParams.connectionTimeZone=+05:30' \
+            --set-string 'server.db.mysqlConfig.extraParams.connectionTimeZone=+05:30&x=1' \
             --set-string 'server.db.mysqlConfig.extraParams.sslMode=REQUIRED')"
-          grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30&sslMode=REQUIRED' <<<"$out"
+          grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30%26x%3D1&sslMode=REQUIRED' <<<"$out"
           grep -qF -- '--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           grep -qF 'mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
+          # Each PostgreSQL extra parameter is a URL parameter of its own, next to the ones ssl sets, with its value
+          # encoded and its name as given.
+          pg=(-f helm/ci/postgresql-values.yaml --set server.db.postgresqlConfig.ssl.enabled=true
+            --set-string server.db.postgresqlConfig.ssl.rootCert=ci-cert)
+          # A value with a backslash escape and a line break must stay one value once the server loads it.
+          escapes_file="$(mktemp)"
+          printf 'server:\n  db:\n    postgresqlConfig:\n      extraParams:\n        options: %s\n' \
+            '"a\\u0026sslmode=disable\nx"' >"$escapes_file"
+          out="$(helm template uc helm "${pg[@]}" -f "$escapes_file" \
+            --set-string 'server.db.postgresqlConfig.extraParams.ApplicationName=uc ci+test&x=1' \
+            --set-string 'server.db.postgresqlConfig.extraParams.a b=1' \
+            --set-string 'server.db.postgresqlConfig.extraParams.currentSchema=uc' \
+            --set server.db.postgresqlConfig.extraParams.socketTimeout=0 \
+            --set server.db.postgresqlConfig.extraParams.tcpKeepAlive=false)"
+          url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
+          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?ApplicationName=uc+ci%2Btest%26x%3D1&a b=1&currentSchema=uc&options=a%5Cu0026sslmode%3Ddisable%0Ax&socketTimeout=0&sslmode=verify-full&sslrootcert=%2Fhome%2Funitycatalog%2Fetc%2Fconf%2Fdbrootca.crt&tcpKeepAlive=false' ]
+          # An extra parameter that ssl also sets fails the render, with the root certificate given inline or from a
+          # config map. Without ssl, it is passed on.
+          pg_cm=(-f helm/ci/postgresql-values.yaml --set server.db.postgresqlConfig.ssl.enabled=true
+            --set-string server.db.postgresqlConfig.ssl.rootCertConfigMapName=db-root-cert
+            --set-string server.db.postgresqlConfig.ssl.rootCertConfigMapKey=ca.crt)
+          out="$(helm template uc helm "${pg_cm[@]}")"
+          url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
+          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?sslmode=verify-full&sslrootcert=%2Fhome%2Funitycatalog%2Fetc%2Fconf%2Fdbrootca.crt' ]
+          check_ssl_params_clash() {
+            for key in sslmode sslrootcert; do
+              if err="$(helm template uc helm "$@" --set-string "server.db.postgresqlConfig.extraParams.${key}=/x" 2>&1)"; then
+                echo "expected the render to fail for extraParams.${key}"
+                exit 1
+              fi
+              grep -qF "server.db.postgresqlConfig.extraParams.${key} is set by server.db.postgresqlConfig.ssl" <<<"$err"
+            done
+          }
+          check_ssl_params_clash "${pg[@]}"
+          check_ssl_params_clash "${pg_cm[@]}"
+          # A name with & or = would add a URL parameter of its own, such as a second sslmode, and so would a $
+          # reference that envsubst expands, a backslash escape or a line break once the server loads
+          # hibernate.properties. These fail the render, with ssl or without.
+          names_dir="$(mktemp -d)"
+          name_files=()
+          for name in '"a=sslmode"' '"sslmode${UNSET}"' '"x\\u0026sslmode\\u003ddisable\\u0026y"' '"x\nsslmode"'; do
+            name_files+=("$names_dir/${#name_files[@]}.yaml")
+            printf 'server:\n  db:\n    postgresqlConfig:\n      extraParams:\n        %s: disable\n' "$name" >"${name_files[-1]}"
+          done
+          for ssl_args in "${pg[*]}" "-f helm/ci/postgresql-values.yaml"; do
+            for name_args in "--set-string server.db.postgresqlConfig.extraParams.z&sslmode=disable" "${name_files[@]/#/-f }"; do
+              if err="$(helm template uc helm $ssl_args $name_args 2>&1)"; then
+                echo "expected the render to fail for $ssl_args $name_args"
+                exit 1
+              fi
+              grep -qF 'a parameter name cannot contain &, =, $, a backslash or a control character' <<<"$err"
+            done
+          done
+          out="$(helm template uc helm -f helm/ci/postgresql-values.yaml \
+            --set-string server.db.postgresqlConfig.extraParams.sslmode=require \
+            --set-string server.db.postgresqlConfig.extraParams.sslrootcert=/certs/ca.crt)"
+          url="$(sed -n 's/^ *hibernate\.connection\.url=//p' <<<"$out")"
+          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb?sslmode=require&sslrootcert=%2Fcerts%2Fca.crt' ]
+          # Without parameters the URL has no ?.
+          url="$(helm template uc helm -f helm/ci/postgresql-values.yaml | sed -n 's/^ *hibernate\.connection\.url=//p')"
+          [ "$url" = 'jdbc:postgresql://postgresql:5432/ucdb' ]
           # With storage secrets too, the server container has one env list that holds both. The upgrade-schema
           # container gets the database password and the driver, but no storage secrets.
           out="$(helm template uc helm -f helm/ci/mysql-values.yaml -f helm/ci/secrets-values.yaml \
