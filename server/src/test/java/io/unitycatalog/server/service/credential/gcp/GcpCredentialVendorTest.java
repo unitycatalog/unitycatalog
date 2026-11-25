@@ -124,11 +124,12 @@ public class GcpCredentialVendorTest {
   }
 
   @Test
-  public void testCelControlCharactersAreEscaped() {
-    String location = "gs://test-bucket/team/\u0007\b\f\n\r\t\u000Bdata";
-
-    assertThat(availabilityConditionFor(location))
-        .isEqualTo(expectedCondition("test-bucket", "team/\\a\\b\\f\\n\\r\\t\\vdata"));
+  public void testControlCharactersAreRejected() {
+    assertThatThrownBy(() -> ruleFor("gs://test-bucket/team/\u0007\b\f\n\r\t\u000Bdata"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("control characters")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
   }
 
   @Test
