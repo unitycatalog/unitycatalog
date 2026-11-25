@@ -188,7 +188,9 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     } catch {
       case e: ApiException if e.getCode == 409 =>
         throw new ViewAlreadyExistsException(ident)
-      case e: ApiException if UCSingleCatalog.isNamespaceNotFound(e) =>
+      // A missing schema of a view dependency fails the same way, so check the view's own schema.
+      case e: ApiException
+          if UCSingleCatalog.isNamespaceNotFound(e) && !namespaceExists(ident.namespace()) =>
         throw new NoSuchNamespaceException(Array(name(), ident.namespace().head))
     }
     loadView(ident)

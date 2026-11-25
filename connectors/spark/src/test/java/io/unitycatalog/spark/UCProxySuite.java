@@ -815,6 +815,14 @@ public class UCProxySuite {
       assertThat(readId(spark, "t")).isEqualTo(0);
       assertThat(spark.sql("SHOW TABLES").select("tableName").as(Encoders.STRING()).collectAsList())
           .containsExactly("t");
+      assertThat(
+              spark
+                  .catalog()
+                  .listTables(CATALOG_NAME + ".default")
+                  .select("name")
+                  .as(Encoders.STRING())
+                  .collectAsList())
+          .containsExactly("t");
 
       String noSchema = CATALOG_NAME + ".t";
       spark.sql("DROP TABLE IF EXISTS " + noSchema);

@@ -260,7 +260,9 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
     `<catalog_name>.default` unless a different schema was selected with `USE <schema_name>`. The default schema must
     exist. If it does not, create it with `CREATE SCHEMA <catalog_name>.default` or qualify the name. Be careful with
     unqualified writes: when the current schema is `default`, `DROP TABLE t` and `INSERT INTO t` act on
-    `<catalog_name>.default.t`. `SELECT current_schema()` shows the current schema.
+    `<catalog_name>.default.t`. `SELECT current_schema()` shows the current schema. `spark.catalog.listTables()` without
+    arguments does not list the tables of `<catalog_name>.default`, even when it is the current schema. Pass the full
+    namespace, as in `spark.catalog.listTables("<catalog_name>.default")`.
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 

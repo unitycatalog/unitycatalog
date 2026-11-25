@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -23,6 +24,7 @@ import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
 import io.unitycatalog.client.model.ListTablesResponse;
+import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
@@ -69,6 +71,7 @@ public class UCViewProxySuite {
 
   private UCProxyTestFixture fixture;
   private TablesApi mockTablesApi;
+  private SchemasApi mockSchemasApi;
   private TableCatalog proxy;
   private RelationCatalog proxyRelations;
   private ViewCatalog proxyViews;
@@ -77,6 +80,7 @@ public class UCViewProxySuite {
   public void setUp() throws Exception {
     fixture = new UCProxyTestFixture().build();
     mockTablesApi = fixture.mockTablesApi;
+    mockSchemasApi = fixture.mockSchemasApi;
     proxy = fixture.proxy;
     // These casts succeed only on the Spark 4.2 build, where UCProxy's UCProxyViewSupport mixes in
     // RelationCatalog (which extends ViewCatalog). On 4.0/4.1 they would throw, which is why this
@@ -586,6 +590,8 @@ public class UCViewProxySuite {
     View view = plainViewBuilder().build();
     Identifier ident = Identifier.of(NAMESPACE, "v1");
     ApiException tableNotFound = UCProxySuite.notFound("TABLE_NOT_FOUND");
+    when(mockSchemasApi.getSchema(CATALOG_NAME + "." + SCHEMA_NAME, false))
+        .thenThrow(UCProxySuite.notFound("SCHEMA_NOT_FOUND"));
     when(mockTablesApi.createTable(any(CreateTable.class)))
         .thenThrow(UCProxySuite.notFound("SCHEMA_NOT_FOUND"))
         .thenThrow(tableNotFound);
@@ -594,6 +600,23 @@ public class UCViewProxySuite {
         .isInstanceOf(NoSuchNamespaceException.class)
         .hasMessageContaining("`" + CATALOG_NAME + "`.`" + SCHEMA_NAME + "`");
     assertThatThrownBy(() -> proxyViews.createView(ident, view)).isSameAs(tableNotFound);
+  }
+
+  /**
+   * The server also reports SCHEMA_NOT_FOUND for a view dependency in a missing schema. When the
+   * view's own schema exists, that error is passed on instead of naming the view's schema.
+   */
+  @Test
+  public void testCreateViewPassesOnMissingDependencySchema() throws Exception {
+    View view = plainViewBuilder().build();
+    ApiException dependencySchemaNotFound = UCProxySuite.notFound("SCHEMA_NOT_FOUND");
+    when(mockSchemasApi.getSchema(CATALOG_NAME + "." + SCHEMA_NAME, false))
+        .thenReturn(
+            new SchemaInfo().catalogName(CATALOG_NAME).name(SCHEMA_NAME).properties(Map.of()));
+    when(mockTablesApi.createTable(any(CreateTable.class))).thenThrow(dependencySchemaNotFound);
+
+    assertThatThrownBy(() -> proxyViews.createView(Identifier.of(NAMESPACE, "v1"), view))
+        .isSameAs(dependencySchemaNotFound);
   }
 
   @Test

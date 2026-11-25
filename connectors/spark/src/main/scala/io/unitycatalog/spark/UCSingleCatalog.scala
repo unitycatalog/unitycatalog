@@ -984,6 +984,18 @@ object UCSingleCatalog extends Logging {
   }
 
   /**
+   * Rejects a nested namespace. An empty namespace passes.
+   *
+   * @param namespace the namespace Spark passed to the catalog
+   * @throws ApiException if the namespace is nested
+   */
+  def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
+    if (namespace.length > 1) {
+      throw new ApiException("Nested namespaces are not supported: " + namespace.mkString("."))
+    }
+  }
+
+  /**
    * Rejects a namespace that is not exactly one schema name.
    *
    * @param namespace the namespace Spark passed to the catalog
@@ -994,9 +1006,7 @@ object UCSingleCatalog extends Logging {
       throw new ApiException(
         "Empty namespaces are not supported: name a schema, as in catalog.schema")
     }
-    if (namespace.length > 1) {
-      throw new ApiException("Nested namespaces are not supported: " + namespace.mkString("."))
-    }
+    checkUnsupportedNestedNamespace(namespace)
   }
 
   /**
