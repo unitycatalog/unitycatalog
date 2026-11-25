@@ -697,8 +697,9 @@ public class UCProxySuite {
   /**
    * Spark hands each {@code OPTIONS} entry to the catalog as {@code option.<key>}, so the CSV
    * {@code comment} option must reach the reader even though {@code comment} is also the reserved
-   * table comment key. Both tables read the same file. Only the second one has a table comment, set
-   * by {@code COMMENT}.
+   * table comment key. All three tables read the same file. Only the second one has a table
+   * comment, set by {@code COMMENT}. The third sets {@code COMMENT} to the same value as the
+   * option, which Spark passes exactly like the option alone, so it gets no table comment either.
    */
   @Test
   public void testCsvCommentOptionSkipsCommentLines(@TempDir Path dir) throws Exception {
@@ -706,6 +707,7 @@ public class UCProxySuite {
     fakeTableStore(mockTablesApi, new HashMap<>());
     String optionOnly = String.join(".", CATALOG_NAME, SCHEMA_NAME, "option_only");
     String withComment = String.join(".", CATALOG_NAME, SCHEMA_NAME, "with_comment");
+    String withEqualComment = String.join(".", CATALOG_NAME, SCHEMA_NAME, "with_equal_comment");
     SparkSession spark = sessionWithCatalog(CATALOG_NAME);
     try {
       routeToProxy(spark, CATALOG_NAME, (UCProxy) proxy);
@@ -718,13 +720,19 @@ public class UCProxySuite {
               "CREATE TABLE %s (s STRING, i INT) USING CSV COMMENT 'Exported rows'"
                   + " OPTIONS (comment '#') LOCATION '%s'",
               withComment, dir.toUri()));
+      spark.sql(
+          String.format(
+              "CREATE TABLE %s (s STRING, i INT) USING CSV COMMENT '#'"
+                  + " OPTIONS (comment '#') LOCATION '%s'",
+              withEqualComment, dir.toUri()));
 
-      for (String tableName : List.of(optionOnly, withComment)) {
+      for (String tableName : List.of(optionOnly, withComment, withEqualComment)) {
         assertThat(spark.sql("SELECT s, i FROM " + tableName + " ORDER BY s").collectAsList())
             .containsExactly(RowFactory.create("x", 1), RowFactory.create("y", 2));
       }
       assertThat(spark.catalog().getTable(optionOnly).description()).isNull();
       assertThat(spark.catalog().getTable(withComment).description()).isEqualTo("Exported rows");
+      assertThat(spark.catalog().getTable(withEqualComment).description()).isNull();
     } finally {
       spark.stop();
     }

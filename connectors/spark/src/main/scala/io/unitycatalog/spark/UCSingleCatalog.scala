@@ -1258,8 +1258,9 @@ private[spark] class UCProxy(
     val dataSourceFormat = convertDatasourceFormat(format)
     // Spark also passes each OPTIONS entry without the `option.` prefix, so OPTIONS (comment '#')
     // arrives as the table comment unless a COMMENT clause replaced it. For non-Delta tables,
-    // which split options from properties the same way on load, a comment equal to the option is
-    // that copy.
+    // which split options from properties the same way on load, equal values are treated as the
+    // option's bare copy. Spark passes the same properties for an explicit COMMENT with the same
+    // value, so that description is also dropped.
     val comment = Option(properties.get(TableCatalog.PROP_COMMENT)).filterNot { c =>
       dataSourceFormat != DataSourceFormat.DELTA &&
         c == properties.get(TableCatalog.OPTION_PREFIX + TableCatalog.PROP_COMMENT)
