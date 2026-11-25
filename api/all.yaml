@@ -1247,8 +1247,13 @@ paths:
       summary: Create a credential
       description: |-
         Creates a new credential. The type of credential to be created is determined by the **purpose** field.
-        Set exactly one of `aws_iam_role` and `s3_compatible`; otherwise the request fails with
-        `INVALID_ARGUMENT`.
+        Set exactly one of `aws_iam_role`, `s3_compatible` and `gcp_service_account_key`; otherwise the
+        request fails with `INVALID_ARGUMENT`.
+
+        A `gcp_service_account_key` credential holds a Google Cloud service account key: the server
+        encrypts its `private_key` with `server.credential-encryption-key` and never returns it, and
+        its external locations must be `gs://` paths. For now it is only stored: a request for access
+        under such a location fails with `UNIMPLEMENTED`.
 
         EXPERIMENTAL: `s3_compatible` is available only when the server property
         `server.s3-compatible-storage.enabled` is `true`. Otherwise a create or update request that
@@ -1371,6 +1376,9 @@ paths:
         and leaving out `assume_role` removes it. Updates without either, such as of the name or
         comment, keep the stored credential.
 
+        A `gcp_service_account_key` credential cannot change its type or private key through this
+        endpoint. Its name and comment can still be updated.
+
         EXPERIMENTAL: whoever may update a credential is trusted with where the data under it lives.
         Changing `s3_endpoint` of an `s3_compatible` credential moves data access for every path
         under its external locations, including tables and volumes other principals own, to the new
@@ -1419,8 +1427,9 @@ paths:
       summary: Create an external location
       description: |
         Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
-        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
-        otherwise the request fails with `INVALID_ARGUMENT`.
+        A location whose credential is `gcp_service_account_key` must have a `gs://` URL, and
+        (EXPERIMENTAL) one whose credential is `s3_compatible` must have an `s3://` URL; otherwise
+        the request fails with `INVALID_ARGUMENT`.
       operationId: createExternalLocation
       requestBody:
         required: true
@@ -1526,8 +1535,9 @@ paths:
         or have MANAGE on the external location.
         Unless force is true, changing the url fails if the location is in use (as described for
         deleting it), unless the new url is the same as, or a parent of, the old one.
-        EXPERIMENTAL: a location whose credential is `s3_compatible` must have an `s3://` URL;
-        otherwise the request fails with `INVALID_ARGUMENT`.
+        A location whose credential is `gcp_service_account_key` must have a `gs://` URL, and
+        (EXPERIMENTAL) one whose credential is `s3_compatible` must have an `s3://` URL; otherwise
+        the request fails with `INVALID_ARGUMENT`.
       operationId: updateExternalLocation
       requestBody:
         required: true
@@ -3015,6 +3025,8 @@ components:
           $ref: '#/components/schemas/AwsIamRoleResponse'
         s3_compatible:
           $ref: '#/components/schemas/S3CompatibleResponse'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyResponse'
         comment:
           description: Comment associated with the credential.
           type: string
@@ -3058,6 +3070,8 @@ components:
           $ref: '#/components/schemas/AwsIamRoleRequest'
         s3_compatible:
           $ref: '#/components/schemas/S3CompatibleRequest'
+        gcp_service_account_key:
+          $ref: '#/components/schemas/GcpServiceAccountKeyRequest'
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     UpdateCredentialRequest:
@@ -3192,6 +3206,47 @@ components:
             '_' and '-'. If not set, the region of the S3-compatible storage holding the requested
             path is used.
           type: string
+    GcpServiceAccountEmail:
+      description: The email of the Google Cloud service account.
+      type: string
+      maxLength: 1024
+    GcpPrivateKeyId:
+      description: The ID of the service account key.
+      type: string
+      maxLength: 1024
+    GcpServiceAccountKeyRequest:
+      description: |
+        A key of a Google Cloud service account with access to Google Cloud Storage. Set `email`
+        from the key file's `client_email`, and copy `private_key_id` and `private_key`. Its
+        locations must be `gs://` paths. The server stores `private_key` encrypted with
+        `server.credential-encryption-key`, so it cannot create one without that key. It checks the
+        fields and that the private key parses, not that Google accepts the key.
+      type: object
+      required:
+        - email
+        - private_key_id
+        - private_key
+      properties:
+        email:
+          $ref: "#/components/schemas/GcpServiceAccountEmail"
+        private_key_id:
+          $ref: "#/components/schemas/GcpPrivateKeyId"
+        private_key:
+          description: The PEM-encoded PKCS#8 private key of the service account key. Write-only; never returned.
+          type: string
+          maxLength: 4096
+          writeOnly: true
+    GcpServiceAccountKeyResponse:
+      description: The service account key of a `gcp_service_account_key` credential, without its write-only `private_key`.
+      type: object
+      required:
+        - email
+        - private_key_id
+      properties:
+        email:
+          $ref: "#/components/schemas/GcpServiceAccountEmail"
+        private_key_id:
+          $ref: "#/components/schemas/GcpPrivateKeyId"
     ListCredentialsResponse:
       type: object
       properties:

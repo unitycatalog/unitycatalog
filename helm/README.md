@@ -47,22 +47,29 @@ server:
       server.audit.sink: io.unitycatalog.server.audit.FileAuditSink
 ```
 
-## S3-compatible storage credentials
-The experimental `s3_compatible` storage credentials need both the server flag and a key that the
-server encrypts their secret values with in its database. Create the key once and keep it for as
-long as such credentials exist:
+## Storage credentials that need an encryption key
+The `gcp_service_account_key` storage credentials and the experimental `s3_compatible` ones need a
+key that the server encrypts their secret values with in its database. Create the key once and keep
+it for as long as such credentials exist:
 
 ```sh
 kubectl create secret generic uc-credential-encryption \
   --from-literal=encryptionKey="$(openssl rand -base64 32)"
 ```
 
-Then set both values:
+Then set the Secret:
 
 ```yaml
 server:
   credentialEncryptionKeySecret:
     name: uc-credential-encryption
+```
+
+That is all `gcp_service_account_key` credentials need. The `s3_compatible` ones also need the
+server flag:
+
+```yaml
+server:
   config:
     extraProperties:
       server.s3-compatible-storage.enabled: "true"
@@ -404,7 +411,7 @@ encryption key, to the server as environment variables, and a secret in `server.
 is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`, `${S3_SECRET_KEY_<n>}` or
 `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated too: the server reads
 `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment. For the
-encryption key, see [S3-compatible storage credentials](#s3-compatible-storage-credentials).
+encryption key, see [Storage credentials that need an encryption key](#storage-credentials-that-need-an-encryption-key).
 </td>
 		</tr>
 		<tr>
@@ -488,13 +495,13 @@ not set
 </td>
 			<td>Name of a Secret with the key that the server encrypts the secret values of storage credentials with in its database
 
-Only the experimental `s3_compatible` storage credentials need it, and only when
-`server.s3-compatible-storage.enabled` is `"true"`: setting the Secret alone leaves them
-disabled. With the flag set, the server refuses to start with a malformed key. Keep the same
-key for as long as such credentials exist: values stored with a key cannot be read with
-another. The chart passes the key to the server container as
+The `gcp_service_account_key` storage credentials and the experimental `s3_compatible` ones
+need it. `s3_compatible` also needs `server.s3-compatible-storage.enabled` to be `"true"`:
+setting the Secret alone leaves it disabled. Whenever a key is set, the server refuses to
+start with a malformed key. Keep the same key for as long as such credentials exist: values
+stored with a key cannot be read with another. The chart passes the key to the server container as
 `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY`. See
-[S3-compatible storage credentials](#s3-compatible-storage-credentials) for a complete example.
+[Storage credentials that need an encryption key](#storage-credentials-that-need-an-encryption-key) for a complete example.
 </td>
 		</tr>
 		<tr>
