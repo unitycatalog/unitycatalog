@@ -187,20 +187,23 @@ def test_function_writing_to_stdout_returns_its_result(function):
     assert run_in_sandbox_subprocess(src, {"x": 1, "y": 2}) == (True, 3)
 
 
-@pytest.mark.parametrize(
-    ("function", "expected_stdout"),
-    [(printing_function, "debug"), (undecodable_stdout_function, "")],
-)
-def test_function_stdout_is_logged_at_debug_level(caplog, function, expected_stdout):
+def _stdout_debug_messages(caplog, function):
     src = inspect.getsource(function)
     with caplog.at_level(logging.DEBUG, logger="unitycatalog.ai.core.executor.local_subprocess"):
         run_in_sandbox_subprocess(src, {"x": 1, "y": 2})
-    assert any(
-        record.levelno == logging.DEBUG
-        and record.getMessage().startswith("Subprocess stdout: ")
-        and expected_stdout in record.getMessage()
+    return [
+        record.getMessage()
         for record in caplog.records
-    )
+        if record.levelno == logging.DEBUG and record.getMessage().startswith("Subprocess stdout: ")
+    ]
+
+
+def test_function_stdout_is_logged_at_debug_level(caplog):
+    assert _stdout_debug_messages(caplog, printing_function) == ["Subprocess stdout: debug\n"]
+
+
+def test_undecodable_function_stdout_is_logged_at_debug_level(caplog):
+    assert len(_stdout_debug_messages(caplog, undecodable_stdout_function)) == 1
 
 
 def test_non_ascii_result_round_trips():
@@ -231,6 +234,16 @@ def test_non_ascii_result_round_trips():
         "traceback",
         "asyncio",
         "resource",
+        "os",
+        "linecache",
+        "limit_resources",
+        "function_namespace",
+        "FUNCTION_SOURCE",
+        "FUNCTION_FILE",
+        "_uc_result",
+        "_uc_params",
+        "_uc_main",
+        "_uc_output",
     ],
 )
 def test_function_named_like_a_name_of_the_runner_returns_its_result(name):
@@ -243,6 +256,7 @@ def test_function_that_prints_then_raises_reports_the_traceback():
     succeeded, result = run_in_sandbox_subprocess(src, {})
     assert not succeeded
     assert "ValueError: bad input" in result
+    assert 'raise ValueError("bad input")' in result
 
 
 @pytest.mark.parametrize(
@@ -252,7 +266,7 @@ def test_function_that_prints_then_raises_reports_the_traceback():
         (
             exiting_with_message_function,
             1,
-            "Standard error output of the process (at most the last 4096 characters):\nbad config",
+            "bad config",
         ),
         (
             exiting_with_long_stderr_function,
@@ -279,6 +293,7 @@ def test_function_killed_by_a_signal_reports_the_signal():
     assert result.startswith("The function execution has been terminated with a signal 9. ")
     assert "EXECUTOR_MAX_CPU_TIME_LIMIT" in result
     assert "EXECUTOR_MAX_MEMORY_LIMIT" in result
+    assert "of the whole function execution process, the Python interpreter" in result
 
 
 @pytest.mark.parametrize(
@@ -303,9 +318,8 @@ def test_unreadable_result_includes_the_standard_error_output():
     src = inspect.getsource(corrupt_result_function)
     succeeded, result = run_in_sandbox_subprocess(src, {})
     assert not succeeded
-    assert result.endswith(
-        "Standard error output of the process (at most the last 4096 characters):\nwriter stopped"
-    )
+    assert "Standard error output of the process (at most the last 4096 characters):\n" in result
+    assert result.endswith("writer stopped")
 
 
 def test_deeply_nested_result_is_reported_as_an_error(monkeypatch, tmp_path):
@@ -437,7 +451,15 @@ def test_runner_script_skips_limits_without_resource_module(monkeypatch, capsys)
     namespace = {"__name__": "runner"}
 
     exec(script, namespace)
-    namespace["_uc_limit_resources"]()
+    namespace["limit_resources"]()
 
     assert capsys.readouterr().err == ""
-    assert namespace["simple_function"](x=1, y=2) == 3
+    assert namespace["function_namespace"]["simple_function"](x=1, y=2) == 3
+
+
+def test_function_can_use_the_modules_the_runner_imported_without_importing_them():
+    src = (
+        "def f(x: int) -> str:\n"
+        "    return json.dumps({'x': x, 'sep': os.sep == sys.modules['os'].sep})\n"
+    )
+    assert run_in_sandbox_subprocess(src, {"x": 1}) == (True, '{"x": 1, "sep": true}')

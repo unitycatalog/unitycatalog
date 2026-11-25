@@ -17,6 +17,7 @@ from unitycatalog.ai.core.envs.executor_env_vars import (
 )
 from unitycatalog.ai.core.executor.common import (
     EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE,
+    LOCAL_MEMORY_LIMIT_SCOPE,
     MB_CONVERSION,
     NO_OUTPUT_MESSAGE,
     TERMINATED_MESSAGE_TEMPLATE,
@@ -54,50 +55,65 @@ def _generate_runner_script(function_source: str, cpu_time_limit: int, memory_li
     function_source = dedent_code(function_source)
     function_name = _extract_function_name(function_source)
     script = f"""
-import sys, base64, cloudpickle, json, traceback, asyncio, os
-import sys as _uc_sys, base64 as _uc_base64, builtins as _uc_builtins
-import cloudpickle as _uc_cloudpickle, json as _uc_json, traceback as _uc_traceback
-import asyncio as _uc_asyncio
+import sys, base64, cloudpickle, json, traceback, asyncio, os, linecache
 
 try:
     import resource
 except ImportError:
     resource = None
-_uc_resource = resource
 
-{function_source}
+FUNCTION_FILE = "<unity catalog function>"
+FUNCTION_SOURCE = {function_source!r}
+linecache.cache[FUNCTION_FILE] = (
+    len(FUNCTION_SOURCE), None, FUNCTION_SOURCE.splitlines(True), FUNCTION_FILE
+)
+# The function gets a namespace of its own, so its names can't replace the runner's. It still
+# sees the modules the runner imported, as before.
+function_namespace = {{
+    "__name__": "__main__",
+    "__builtins__": __builtins__,
+    "sys": sys,
+    "base64": base64,
+    "cloudpickle": cloudpickle,
+    "json": json,
+    "traceback": traceback,
+    "asyncio": asyncio,
+    "os": os,
+    "resource": resource,
+}}
+exec(compile(FUNCTION_SOURCE, FUNCTION_FILE, "exec"), function_namespace)
 
-def _uc_limit_resources():
-    if _uc_resource is None:
+def limit_resources():
+    if resource is None:
         return
     try:
-        _uc_resource.setrlimit(_uc_resource.RLIMIT_CPU, ({cpu_time_limit}, {cpu_time_limit}))
+        resource.setrlimit(resource.RLIMIT_CPU, ({cpu_time_limit}, {cpu_time_limit}))
     except Exception as e:
-        _uc_sys.stderr.write("Warning: unable to set RLIMIT_CPU: " + str(e) + "\\n")
+        sys.stderr.write("Warning: unable to set RLIMIT_CPU: " + str(e) + "\\n")
     try:
         mem_bytes = {memory_limit} * {MB_CONVERSION}
-        _uc_resource.setrlimit(_uc_resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+        resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
     except Exception as e:
-        _uc_sys.stderr.write("Warning: unable to set RLIMIT_AS: " + str(e) + "\\n")
+        sys.stderr.write("Warning: unable to set RLIMIT_AS: " + str(e) + "\\n")
 
-def _uc_main():
-    _uc_limit_resources()
-    _uc_result_path = _uc_sys.argv[2]
+def main():
+    limit_resources()
+    result_path = sys.argv[2]
     try:
-        _uc_params = _uc_cloudpickle.loads(_uc_base64.b64decode(_uc_sys.argv[1]))
-        _uc_result = {function_name}(**_uc_params)
-        if _uc_asyncio.iscoroutine(_uc_result):
-            _uc_result = _uc_asyncio.run(_uc_result)
-        if _uc_result is None:
-            _uc_result = "{NO_OUTPUT_MESSAGE}"
-        _uc_output = _uc_json.dumps({{"success": True, "result": _uc_result}})
+        params = cloudpickle.loads(base64.b64decode(sys.argv[1]))
+        result = function_namespace[{function_name!r}](**params)
+        if asyncio.iscoroutine(result):
+            result = asyncio.run(result)
+        if result is None:
+            result = "{NO_OUTPUT_MESSAGE}"
+        output = json.dumps({{"success": True, "result": result}})
     except Exception:
-        _uc_output = _uc_json.dumps({{"success": False, "error": _uc_traceback.format_exc()}})
-    with _uc_builtins.open(_uc_result_path, "w", encoding="utf-8") as _uc_file:
-        _uc_file.write(_uc_output)
+        output = json.dumps({{"success": False, "error": traceback.format_exc()}})
+    with open(result_path, "w", encoding="utf-8") as f:
+        f.write(output)
 
 if __name__ == "__main__":
-    _uc_main()
+    main()
 """
     return script
 
@@ -205,7 +221,9 @@ def run_in_sandbox_subprocess(function_source: str, params: dict[str, Any]) -> t
             return True, result_data.get("result")
         return False, result_data.get("error")
     if proc.returncode < 0:
-        return False, TERMINATED_MESSAGE_TEMPLATE.format(signal_num=-proc.returncode)
+        return False, TERMINATED_MESSAGE_TEMPLATE.format(
+            signal_num=-proc.returncode, memory_limit_scope=LOCAL_MEMORY_LIMIT_SCOPE
+        )
     if read_error is not None:
         message = UNREADABLE_RESULT_MESSAGE_TEMPLATE.format(
             exit_code=proc.returncode, error=read_error
