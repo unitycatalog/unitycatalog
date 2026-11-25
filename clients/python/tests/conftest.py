@@ -19,7 +19,7 @@ from unitycatalog.client import (
     TemporaryCredentialsApi,
     VolumesApi,
 )
-from unitycatalog.client.delta.api import DeltaTablesApi
+from unitycatalog.client.delta.api import DeltaTablesApi, DeltaTemporaryCredentialsApi
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -121,3 +121,8 @@ async def volumes_api(api_client):
 @pytest_asyncio.fixture()
 async def delta_tables_api(api_client):
     return DeltaTablesApi(api_client)
+
+
+@pytest_asyncio.fixture()
+async def delta_temporary_credentials_api(api_client):
+    return DeltaTemporaryCredentialsApi(api_client)

@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.dao;
 
+import static io.unitycatalog.server.utils.Constants.MAX_STORAGE_LOCATION_LENGTH;
+
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -33,7 +35,7 @@ public class VolumeInfoDAO extends IdentifiableDAO {
   @Column(name = "comment", length = 65536)
   private String comment;
 
-  @Column(name = "storage_location")
+  @Column(name = "storage_location", length = MAX_STORAGE_LOCATION_LENGTH)
   private String storageLocation;
 
   @Column(name = "owner")

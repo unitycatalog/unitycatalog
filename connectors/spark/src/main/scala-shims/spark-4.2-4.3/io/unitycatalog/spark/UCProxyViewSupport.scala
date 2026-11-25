@@ -17,6 +17,7 @@ import io.unitycatalog.client.model.{
 }
 import io.unitycatalog.client.api.TablesApi
 import org.apache.spark.sql.catalyst.analysis.{
+  NoSuchNamespaceException,
   NoSuchTableException,
   NoSuchViewException,
   SchemaCompensation,
@@ -50,7 +51,7 @@ import org.apache.spark.sql.types.DataType
 trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
 
   override def listViews(namespace: Array[String]): Array[Identifier] = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkSingleLevelNamespace(namespace)
     listUCTableLikes(namespace)
       .filter(t => UCViewTypes.isViewLikeTableType(t.getTableType))
       .map(table => Identifier.of(namespace, table.getName))
@@ -74,7 +75,7 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
    * real read (e.g. `SELECT`) still correctly fails, since that genuinely needs credentials.
    */
   override def listTableSummaries(namespace: Array[String]): Array[TableSummary] = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkSingleLevelNamespace(namespace)
     listUCTableLikes(namespace)
       .filterNot(t => UCViewTypes.isViewLikeTableType(t.getTableType))
       .map { table =>
@@ -125,7 +126,7 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
   }
 
   override def createView(ident: Identifier, view: View): View = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    UCSingleCatalog.checkSingleLevelNamespace(ident)
     val properties: util.Map[String, String] = view.properties()
     // A plain `CREATE VIEW` may omit PROP_TABLE_TYPE; treat that as a regular VIEW.
     val sparkTableType =
@@ -187,6 +188,10 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     } catch {
       case e: ApiException if e.getCode == 409 =>
         throw new ViewAlreadyExistsException(ident)
+      // A missing schema of a view dependency fails the same way, so check the view's own schema.
+      case e: ApiException
+          if UCSingleCatalog.isNamespaceNotFound(e) && !namespaceExists(ident.namespace()) =>
+        throw new NoSuchNamespaceException(Array(name(), ident.namespace().head))
     }
     loadView(ident)
   }

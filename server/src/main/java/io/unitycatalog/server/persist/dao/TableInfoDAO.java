@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.dao;
 
+import static io.unitycatalog.server.utils.Constants.MAX_STORAGE_LOCATION_LENGTH;
+
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
@@ -68,7 +70,7 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "comment", length = 65535)
   private String comment;
 
-  @Column(name = "url", length = 2048)
+  @Column(name = "url", length = MAX_STORAGE_LOCATION_LENGTH)
   private String url;
 
   @Column(name = "column_count")
