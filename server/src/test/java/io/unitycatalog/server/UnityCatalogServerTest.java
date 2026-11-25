@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.auth0.jwt.JWT;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
@@ -29,15 +28,12 @@ import io.unitycatalog.server.logging.RequestContextDataProvider;
 import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
-import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.ServerSocket;
 import java.net.URI;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -277,12 +273,12 @@ public class UnityCatalogServerTest extends BaseServerTest {
 
   @Test
   public void startFailsWhenThePortIsTaken() throws Exception {
-    // The server setUp() built writes token.txt to configurationFolder.
-    assertThat(configurationFolder.resolve("token.txt")).isNotEmptyFile();
     assertThatThrownBy(() -> UnityCatalogServer.builder().configurationFolder(null))
         .isInstanceOf(NullPointerException.class);
 
     try (ServerSocket occupied = new ServerSocket(0)) {
+      // A server deletes the admin token file that earlier versions wrote there.
+      Files.writeString(configurationFolder.resolve("token.txt"), "a stale admin token");
       UnityCatalogServer server =
           UnityCatalogServer.builder()
               .port(occupied.getLocalPort())
@@ -290,6 +286,18 @@ public class UnityCatalogServerTest extends BaseServerTest {
               .hibernateConfigurator(hibernateConfigurator)
               .configurationFolder(configurationFolder)
               .build();
+      assertThat(configurationFolder.resolve("token.txt")).doesNotExist();
+      // One it cannot delete stays, and the server is still built. A non-empty directory cannot be
+      // deleted by any user, root included, unlike a file in a read-only folder.
+      Files.createDirectories(configurationFolder.resolve("token.txt").resolve("x"));
+      UnityCatalogServer.builder()
+          .port(0)
+          .serverProperties(new ServerProperties(serverProperties))
+          .hibernateConfigurator(hibernateConfigurator)
+          .configurationFolder(configurationFolder)
+          .build()
+          .close();
+      assertThat(configurationFolder.resolve("token.txt")).isDirectory();
       // BaseServerTest retries only a ServerPortBindException, so the cause is part of the
       // contract, as is a close() that releases what the failed start left behind.
       assertThatThrownBy(server::start)
@@ -300,7 +308,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
   }
 
   @Test
-  public void startupUsesTheTokenSigningKeyFileSettings() throws Exception {
+  public void startupUsesTheTokenSigningKeyFileSettings() {
     Properties properties = new Properties();
     properties.putAll(serverProperties);
     properties.setProperty("server.token-signing-private-key-file", "/no/such/private_key.pem");
@@ -313,43 +321,20 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .build())
         .hasMessageContaining("No token signing key file");
 
-    // The server creates a configuration folder that does not exist yet.
-    Path missing = configurationFolder.resolve("not-yet").resolve("conf");
+    // With a key file set, the server generates no key of its own in the configuration folder.
+    Path folder = configurationFolder.resolve("with-key-file");
     properties.setProperty(
         "server.token-signing-private-key-file",
         configurationFolder.resolve("private_key.der").toString());
-    try (UnityCatalogServer server =
-        UnityCatalogServer.builder()
-            .port(0)
-            .serverProperties(new ServerProperties(properties))
-            .hibernateConfigurator(hibernateConfigurator)
-            .configurationFolder(missing)
-            .build()) {
-      assertThat(missing.resolve("token.txt")).isNotEmptyFile();
-      // The token is signed with the configured key, and no fallback key was generated.
-      SecurityConfiguration configured =
-          SecurityConfiguration.load(new ServerProperties(properties), missing);
-      JWT.require(configured.algorithmRSA())
-          .build()
-          .verify(Files.readString(missing.resolve("token.txt")));
-      assertThat(missing.resolve("private_key.der")).doesNotExist();
-      assertThat(missing.resolve("public_key.der")).doesNotExist();
-    }
-
-    // An empty relative configuration folder has no parent path. A zip file system under @TempDir
-    // gives one without the working directory, which a test cannot change.
-    try (FileSystem zip =
-            FileSystems.newFileSystem(
-                configurationFolder.resolve("conf.zip"), Map.of("create", "true"));
-        UnityCatalogServer server =
-            UnityCatalogServer.builder()
-                .port(0)
-                .serverProperties(new ServerProperties(properties))
-                .hibernateConfigurator(hibernateConfigurator)
-                .configurationFolder(zip.getPath(""))
-                .build()) {
-      assertThat(zip.getPath("token.txt")).isNotEmptyFile();
-    }
+    UnityCatalogServer.builder()
+        .port(0)
+        .serverProperties(new ServerProperties(properties))
+        .hibernateConfigurator(hibernateConfigurator)
+        .configurationFolder(folder)
+        .build()
+        .close();
+    assertThat(folder.resolve("private_key.der")).doesNotExist();
+    assertThat(folder.resolve("public_key.der")).doesNotExist();
   }
 
   @Test

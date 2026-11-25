@@ -752,15 +752,14 @@ public class UnityCatalogServer implements AutoCloseable {
     }
 
     /**
-     * Sets the folder for the {@code token.txt} the server writes when constructed and, unless
-     * {@code server.token-signing-private-key-file} is set, the signing keys, which the server
-     * creates if missing. Defaults to {@code etc/conf}; tests pass their own folder so concurrent
-     * servers do not share these files.
+     * Sets the folder for the signing keys the server keeps, and creates if missing, when {@code
+     * server.token-signing-private-key-file} is not set. Defaults to {@code etc/conf}; tests pass
+     * their own folder so concurrent servers do not share these files.
      *
      * <p>Only these files move: {@code server.properties}, {@code hibernate.properties} and the
      * log4j configuration are still read from {@code etc/conf}.
      *
-     * @param configurationFolder the folder for {@code token.txt} and any server-kept signing keys
+     * @param configurationFolder the folder for the server-kept signing keys
      * @return this builder
      */
     public UnityCatalogServer.Builder configurationFolder(Path configurationFolder) {

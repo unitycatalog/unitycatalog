@@ -1,18 +1,20 @@
 package io.unitycatalog.server.migrate;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.security.SecurityConfiguration;
+import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.ServerSocket;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 
@@ -70,14 +72,13 @@ final class TestServer implements AutoCloseable {
     }
   }
 
-  /** A client for this server, authenticated with the server's own service token. */
+  /** A client for this server, authenticated with an admin token signed with the server's key. */
   ApiClient apiClient() {
-    try {
-      String token = Files.readString(Path.of("etc/conf/token.txt")).trim();
-      return createApiClient(new ServerConfig("http://localhost:" + port, token));
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
+    Path conf = Path.of("etc", "conf");
+    String token =
+        new SecurityContext(conf, new SecurityConfiguration(conf), "server", INTERNAL)
+            .createServiceToken();
+    return createApiClient(new ServerConfig("http://localhost:" + port, token));
   }
 
   @Override

@@ -2,6 +2,7 @@ package io.unitycatalog.server.security;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -9,7 +10,8 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 import lombok.Getter;
-import lombok.SneakyThrows;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SecurityContext {
 
@@ -17,10 +19,11 @@ public class SecurityContext {
     String INTERNAL = "internal";
   }
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(SecurityContext.class);
+
   private final Path serviceTokenFile;
 
   @Getter private final Algorithm algorithm;
-  @Getter private final String serviceToken;
   @Getter private final String serviceName;
   @Getter private final String localIssuer;
 
@@ -36,11 +39,7 @@ public class SecurityContext {
 
     algorithm = securityConfiguration.algorithmRSA();
 
-    // Do this every time because the SecurityConfiguration parameters
-    // might have changed since last started.
-    serviceToken = createServiceToken();
-
-    createServiceTokenFile();
+    deleteServiceTokenFile();
   }
 
   public String createAccessToken(String principalEmail, Duration ttl) {
@@ -57,6 +56,11 @@ public class SecurityContext {
   }
 
   public String createServiceToken() {
+    return createServiceToken(algorithm, serviceName, localIssuer);
+  }
+
+  /** Creates an admin service token. It has no expiry, so it is valid while the key is. */
+  static String createServiceToken(Algorithm algorithm, String serviceName, String localIssuer) {
     return JWT.create()
         .withSubject(serviceName)
         .withIssuer(localIssuer)
@@ -67,9 +71,25 @@ public class SecurityContext {
         .sign(algorithm);
   }
 
-  @SneakyThrows
-  public void createServiceTokenFile() {
-    Files.createDirectories(serviceTokenFile.toAbsolutePath().getParent());
-    Files.writeString(serviceTokenFile, serviceToken);
+  // Earlier versions wrote an admin token that does not expire to token.txt in the configuration
+  // folder, so remove that plaintext copy; bin/uc-admin-token prints an admin token when needed.
+  // Removing the file does not revoke copies; changing the signing key does. A file it cannot
+  // delete is left in place with a warning, so a configuration folder the server cannot write to
+  // does not stop startup.
+  private void deleteServiceTokenFile() {
+    try {
+      if (Files.deleteIfExists(serviceTokenFile)) {
+        LOGGER.warn(
+            "Deleted {}: the server no longer writes an admin token, and bin/uc-admin-token"
+                + " prints one. Copies of the deleted token stay valid until the signing key"
+                + " changes.",
+            serviceTokenFile);
+      }
+    } catch (IOException e) {
+      LOGGER.warn(
+          "Cannot delete {}, which holds an admin token that does not expire; delete it: {}",
+          serviceTokenFile,
+          e.toString());
+    }
   }
 }
