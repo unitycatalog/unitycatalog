@@ -852,6 +852,28 @@ public class UCProxySuite {
     }
   }
 
+  /** With the Delta API on, a name without a schema must not reach Delta's own UC client either. */
+  @Test
+  public void testNameWithoutASchemaWithTheDeltaApiEnabled(@TempDir Path dir) {
+    SparkSession spark = sessionWithCatalog(CATALOG_NAME, /* deltaApiEnabled= */ true);
+    try {
+      routeToProxy(spark, CATALOG_NAME, (UCProxy) proxy);
+      String noSchema = CATALOG_NAME + ".t";
+      spark.sql("DROP TABLE IF EXISTS " + noSchema);
+      assertThatThrownBy(
+              () ->
+                  spark.sql(
+                      "CREATE TABLE IF NOT EXISTS "
+                          + noSchema
+                          + String.format(" (id INT) USING PARQUET LOCATION '%s'", dir.toUri())))
+          .isInstanceOf(ApiException.class)
+          .hasMessage(
+              "Empty namespaces are not supported: name a schema for t, as in catalog.schema.t");
+    } finally {
+      spark.stop();
+    }
+  }
+
   private static void assertTableOrViewNotFound(ThrowingCallable sql) {
     assertThatThrownBy(sql)
         .isInstanceOfSatisfying(

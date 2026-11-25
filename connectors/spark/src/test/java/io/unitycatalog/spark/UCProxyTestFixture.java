@@ -105,6 +105,14 @@ final class UCProxyTestFixture {
 
   /** Builds a new session, never another test's, with {@code catalogName} as a UC catalog. */
   static SparkSession sessionWithCatalog(String catalogName) {
+    return sessionWithCatalog(catalogName, false);
+  }
+
+  /**
+   * Builds a new session, never another test's, with {@code catalogName} as a UC catalog that uses
+   * Delta's own UC client when {@code deltaApiEnabled}.
+   */
+  static SparkSession sessionWithCatalog(String catalogName, boolean deltaApiEnabled) {
     SparkSession.clearActiveSession();
     SparkSession.clearDefaultSession();
     String catalogConf = "spark.sql.catalog." + catalogName;
@@ -114,7 +122,7 @@ final class UCProxyTestFixture {
         .config(catalogConf + "." + OptionsUtil.URI, "http://localhost:8080")
         .config(catalogConf + "." + OptionsUtil.TOKEN, "token")
         // Delta's own UC client would load tables from the server instead of the fake proxy.
-        .config(catalogConf + "." + OptionsUtil.DELTA_API_ENABLED, "false")
+        .config(catalogConf + "." + OptionsUtil.DELTA_API_ENABLED, String.valueOf(deltaApiEnabled))
         .getOrCreate();
   }
 

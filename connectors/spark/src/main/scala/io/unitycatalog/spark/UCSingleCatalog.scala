@@ -260,13 +260,16 @@ class UCSingleCatalog
   }
 
   /**
-   * Parquet-style path identifiers are absent (so Spark can fall through to SQL-on-file). Empty
-   * and nested names still go to the delegate: Delta rejects nested names client-side with
+   * Parquet-style path identifiers are absent (so Spark can fall through to SQL-on-file). A name
+   * without a schema is absent too, since Delta's own UC client rejects it when the Delta API is
+   * enabled. Nested names still go to the delegate: Delta rejects them client-side with
    * IllegalArgumentException, which Spark DROP/EXISTS tests expect. Do not throw
    * [[UCSingleCatalog.checkSingleLevelNamespace]] here.
    */
   override def tableExists(ident: Identifier): Boolean = {
-    if (isDeltaOrIcebergPath(ident) || ident.namespace().length != 1) {
+    if (ident.namespace().isEmpty) {
+      false
+    } else if (isDeltaOrIcebergPath(ident) || ident.namespace().length != 1) {
       delegate.tableExists(ident)
     } else if (!UCSingleCatalog.isAddressableTableName(ident)) {
       false
