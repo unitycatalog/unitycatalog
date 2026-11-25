@@ -28,12 +28,14 @@ import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.spark.utils.OptionsUtil;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
@@ -692,6 +694,81 @@ public class UCProxySuite {
     }
   }
 
+  /**
+   * Spark hands each {@code OPTIONS} entry to the catalog as {@code option.<key>}, so the CSV
+   * {@code comment} option must reach the reader even though {@code comment} is also the reserved
+   * table comment key. All three tables read the same file. Only the second one has a table
+   * comment, set by {@code COMMENT}. The third sets {@code COMMENT} to the same value as the
+   * option, which Spark passes exactly like the option alone, so it gets no table comment either.
+   */
+  @Test
+  public void testCsvCommentOptionSkipsCommentLines(@TempDir Path dir) throws Exception {
+    Files.writeString(dir.resolve("data.csv"), "# exported by tool\nx,1\ny,2\n");
+    fakeTableStore(mockTablesApi, new HashMap<>());
+    String optionOnly = String.join(".", CATALOG_NAME, SCHEMA_NAME, "option_only");
+    String withComment = String.join(".", CATALOG_NAME, SCHEMA_NAME, "with_comment");
+    String withEqualComment = String.join(".", CATALOG_NAME, SCHEMA_NAME, "with_equal_comment");
+    SparkSession spark = sessionWithCatalog(CATALOG_NAME);
+    try {
+      routeToProxy(spark, CATALOG_NAME, (UCProxy) proxy);
+      spark.sql(
+          String.format(
+              "CREATE TABLE %s (s STRING, i INT) USING CSV OPTIONS (comment '#') LOCATION '%s'",
+              optionOnly, dir.toUri()));
+      spark.sql(
+          String.format(
+              "CREATE TABLE %s (s STRING, i INT) USING CSV COMMENT 'Exported rows'"
+                  + " OPTIONS (comment '#') LOCATION '%s'",
+              withComment, dir.toUri()));
+      spark.sql(
+          String.format(
+              "CREATE TABLE %s (s STRING, i INT) USING CSV COMMENT '#'"
+                  + " OPTIONS (comment '#') LOCATION '%s'",
+              withEqualComment, dir.toUri()));
+
+      for (String tableName : List.of(optionOnly, withComment, withEqualComment)) {
+        assertThat(spark.sql("SELECT s, i FROM " + tableName + " ORDER BY s").collectAsList())
+            .containsExactly(RowFactory.create("x", 1), RowFactory.create("y", 2));
+      }
+      assertThat(spark.catalog().getTable(optionOnly).description()).isNull();
+      assertThat(spark.catalog().getTable(withComment).description()).isEqualTo("Exported rows");
+      assertThat(spark.catalog().getTable(withEqualComment).description()).isNull();
+    } finally {
+      spark.stop();
+    }
+  }
+
+  /**
+   * Spark passes {@code OPTIONS (comment '#')} to the catalog both as {@code option.comment} and as
+   * the bare table comment key. A non-Delta table does not take that copy as its comment, while a
+   * Delta table keeps the comment it was given.
+   */
+  @ParameterizedTest
+  @CsvSource({"csv,", "delta,#"})
+  public void testCreateTableCommentEqualToCommentOption(String provider, String expectedComment)
+      throws Exception {
+    Map<String, TableInfo> tables = new HashMap<>();
+    fakeTableStore(mockTablesApi, tables);
+    String name = "t_" + provider;
+
+    proxy.createTable(
+        Identifier.of(NAMESPACE, name),
+        new StructType().add("i", DataTypes.IntegerType),
+        new Transform[0],
+        Map.of(
+            "provider",
+            provider,
+            "location",
+            "file:/tmp/uc/" + name,
+            "comment",
+            "#",
+            "option.comment",
+            "#"));
+
+    assertThat(tables.get("test_catalog.test_schema." + name).getComment())
+        .isEqualTo(expectedComment);
+  }
+
   private static void fakeTableStore(TablesApi tablesApi, Map<String, TableInfo> tables)
       throws ApiException {
     when(tablesApi.getTable(anyString(), anyBoolean(), anyBoolean(), anyBoolean()))
@@ -708,8 +785,17 @@ public class UCProxySuite {
             invocation -> {
               CreateTable create = invocation.getArgument(0);
               TableInfo table =
-                  parquetTable(
-                      create.getCatalogName(), create.getName(), create.getStorageLocation());
+                  new TableInfo()
+                      .catalogName(create.getCatalogName())
+                      .schemaName(create.getSchemaName())
+                      .name(create.getName())
+                      .tableId("table-id-" + create.getName())
+                      .tableType(create.getTableType())
+                      .dataSourceFormat(create.getDataSourceFormat())
+                      .storageLocation(create.getStorageLocation())
+                      .comment(create.getComment())
+                      .properties(create.getProperties())
+                      .columns(create.getColumns());
               tables.put(
                   String.join(
                       ".", create.getCatalogName(), create.getSchemaName(), create.getName()),
