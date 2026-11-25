@@ -723,6 +723,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       deleteMetadataIfRejected(e, newMetadataLocation, tableLocation);
       throw e;
     }
+    metadataService.deleteRemovedMetadataFiles(base, updated, tableLocation);
 
     return LoadTableResponse.builder()
         .withTableMetadata(updated)

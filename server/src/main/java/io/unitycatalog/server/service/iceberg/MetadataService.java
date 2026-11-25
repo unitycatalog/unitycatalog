@@ -8,10 +8,14 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadata.MetadataLogEntry;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.io.FileIO;
@@ -92,6 +96,52 @@ public class MetadataService {
       // log at warn so a persistent cleanup failure (e.g. a credential or permission problem) stays
       // diagnosable rather than being silently swallowed.
       LOGGER.warn("Best-effort cleanup of Iceberg metadata file {} failed", metadataLocation, e);
+    }
+  }
+
+  /**
+   * Best-effort deletion of the metadata files a commit dropped from the table's metadata log, when
+   * the committed metadata sets {@link TableProperties#METADATA_DELETE_AFTER_COMMIT_ENABLED}. A
+   * REST client leaves this to the catalog. A log entry outside the persisted table location is
+   * skipped, since the log comes from metadata files that may not have been written by this server.
+   *
+   * @param base the metadata the commit replaced
+   * @param committed the metadata the commit stored
+   * @param persistedTableLocation the table location every deleted file must be under
+   */
+  public void deleteRemovedMetadataFiles(
+      TableMetadata base, TableMetadata committed, NormalizedURL persistedTableLocation) {
+    if (!committed.propertyAsBoolean(
+        TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED,
+        TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED_DEFAULT)) {
+      return;
+    }
+    Set<String> kept =
+        committed.previousFiles().stream().map(MetadataLogEntry::file).collect(Collectors.toSet());
+    List<String> removed =
+        base.previousFiles().stream()
+            .map(MetadataLogEntry::file)
+            .filter(file -> !kept.contains(file))
+            .toList();
+    if (removed.isEmpty()) {
+      return;
+    }
+    try (FileIO fileIO =
+        fileOperations.getFileIO(persistedTableLocation, CredentialContext.READ_WRITE)) {
+      removed.forEach(file -> deleteRemovedMetadataFile(fileIO, file, persistedTableLocation));
+    } catch (RuntimeException e) {
+      LOGGER.warn("Failed to delete Iceberg metadata files {} after a commit", removed, e);
+    }
+  }
+
+  private static void deleteRemovedMetadataFile(
+      FileIO fileIO, String file, NormalizedURL persistedTableLocation) {
+    try {
+      NormalizedURL location = NormalizedURL.from(file);
+      validateMetadataLocation(location, persistedTableLocation);
+      fileIO.deleteFile(location.toString());
+    } catch (RuntimeException e) {
+      LOGGER.warn("Skipped deleting Iceberg metadata file {} after a commit", file, e);
     }
   }
 

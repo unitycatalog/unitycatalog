@@ -33,6 +33,14 @@ To enable them, set 'server.iceberg-table.enabled=true' in server.properties`. T
 readable. `GET /v1/config` only lists the endpoints the server supports, so the list it returns changes with this
 setting.
 
+## Old metadata files
+
+Each commit writes a new metadata file and keeps the last `write.metadata.previous-versions-max` (default 100) earlier
+ones in the table's metadata log. When the table property `write.metadata.delete-after-commit.enabled` is `true`, the
+server deletes the metadata files that a commit drops from the log, since an Iceberg client leaves this to a REST
+catalog. The deletion is best effort and never fails the commit, and a log entry outside the table location is not
+deleted.
+
 ## Endpoints
 
 All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation column is the operation name in the
