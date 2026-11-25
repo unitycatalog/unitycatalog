@@ -2,6 +2,7 @@ package io.unitycatalog.server.service.credential.gcp;
 
 import static java.lang.String.format;
 
+import com.google.api.client.http.HttpResponseException;
 import com.google.auth.Retryable;
 import com.google.auth.http.HttpTransportFactory;
 import com.google.auth.oauth2.AccessToken;
@@ -469,6 +470,10 @@ public class GcpCredentialVendor {
   /** Whether google-auth says that asking again cannot succeed, e.g. an HTTP 403 or 400. */
   private static boolean isPermanentFailure(Throwable failure) {
     for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+      if (cause instanceof HttpResponseException response) {
+        int status = response.getStatusCode();
+        return status >= 400 && status < 500 && status != 408 && status != 429;
+      }
       if (cause instanceof Retryable retryable && !retryable.isRetryable()) {
         return true;
       }

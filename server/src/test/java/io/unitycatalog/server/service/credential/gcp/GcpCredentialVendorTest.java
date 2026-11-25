@@ -16,6 +16,7 @@ import com.google.auth.oauth2.CredentialAccessBoundary;
 import com.google.auth.oauth2.CredentialAccessBoundary.AccessBoundaryRule;
 import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.ImpersonatedCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateCredentialRequest;
@@ -769,6 +770,74 @@ public class GcpCredentialVendorTest {
                     contextWithServerIdentity(CredentialContext.Privilege.SELECT)));
 
     assertThat(error.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+    assertThat(error.getMessage()).doesNotContain("gcs_ambient_credential");
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "400, FAILED_PRECONDITION",
+    "401, FAILED_PRECONDITION",
+    "403, FAILED_PRECONDITION",
+    "429, UNAVAILABLE",
+    "503, UNAVAILABLE"
+  })
+  public void testServerIdentityImpersonationHttpErrors(int statusCode, ErrorCode expectedCode) {
+    MockHttpTransport iamErrorTransport =
+        new MockHttpTransport() {
+          @Override
+          public LowLevelHttpRequest buildRequest(String method, String url) {
+            return new MockLowLevelHttpRequest(url) {
+              @Override
+              public LowLevelHttpResponse execute() {
+                if (url.contains("/universe/universe-domain")) {
+                  return new MockLowLevelHttpResponse()
+                      .setStatusCode(200)
+                      .setContent("googleapis.com");
+                }
+                if (url.contains("computeMetadata/v1")) {
+                  return new MockLowLevelHttpResponse()
+                      .setStatusCode(200)
+                      .setContentType("application/json")
+                      .setContent(
+                          "{\"access_token\": \"source-token\", \"expires_in\": 3600,"
+                              + " \"token_type\": \"Bearer\"}");
+                }
+                return new MockLowLevelHttpResponse()
+                    .setStatusCode(statusCode)
+                    .setContentType("application/json")
+                    .setContent(
+                        "{\"error\":{\"code\":" + statusCode + ",\"message\":\"iam err\"}}");
+              }
+            };
+          }
+        };
+    GcpApplicationDefaultCredentials adc =
+        () ->
+            ImpersonatedCredentials.newBuilder()
+                .setSourceCredentials(
+                    ComputeEngineCredentials.newBuilder()
+                        .setHttpTransportFactory(() -> iamErrorTransport)
+                        .build())
+                .setTargetPrincipal("target@my-project.iam.gserviceaccount.com")
+                .setScopes(List.of("https://www.googleapis.com/auth/cloud-platform"))
+                .setHttpTransportFactory(() -> iamErrorTransport)
+                .build();
+    GcpCredentialVendor vendor =
+        new GcpCredentialVendor(
+            new ServerProperties(new Properties()),
+            SECRET_STORE,
+            null,
+            adc,
+            () -> iamErrorTransport);
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class,
+            () ->
+                vendor.vendGcpCredential(
+                    contextWithServerIdentity(CredentialContext.Privilege.SELECT)));
+
+    assertThat(error.getErrorCode()).isEqualTo(expectedCode);
     assertThat(error.getMessage()).doesNotContain("gcs_ambient_credential");
   }
 }
