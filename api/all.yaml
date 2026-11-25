@@ -1246,7 +1246,7 @@ paths:
       operationId: createCredential
       summary: Create a credential
       description: |-
-        Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+        Creates a new credential. The credential type is determined by which credential field is set.
         Set exactly one of `aws_iam_role` and `s3_compatible`; otherwise the request fails with
         `INVALID_ARGUMENT`.
 
@@ -3047,6 +3047,7 @@ components:
       type: object
       required:
         - name
+        - purpose
       properties:
         name:
           description: The credential name. The name must be unique within the metastore.

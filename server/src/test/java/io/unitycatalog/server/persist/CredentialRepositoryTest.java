@@ -181,6 +181,27 @@ class CredentialRepositoryTest {
         .isEqualTo(ErrorCode.NOT_FOUND);
   }
 
+  @Test
+  void testCreateWithoutPurposeIsRejected() {
+    AwsIamRoleRequest role = new AwsIamRoleRequest().roleArn("arn:aws:iam::123456789012:role/r");
+    List<CreateCredentialRequest> requests =
+        List.of(
+            new CreateCredentialRequest().name("role_unset").awsIamRole(role),
+            new CreateCredentialRequest().name("compat_unset").s3Compatible(s3Compatible("value")));
+    for (CreateCredentialRequest request : requests) {
+      assertThatThrownBy(() -> credentialRepository.addCredential(request), request.getName())
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+          .hasMessage("purpose is required.");
+    }
+    assertThat(
+            credentialRepository
+                .listCredentials(Optional.empty(), Optional.empty())
+                .getCredentials())
+        .isEmpty();
+  }
+
   private static S3CompatibleRequest s3Compatible(String secret) {
     return new S3CompatibleRequest()
         .accessKeyId("key-id")
