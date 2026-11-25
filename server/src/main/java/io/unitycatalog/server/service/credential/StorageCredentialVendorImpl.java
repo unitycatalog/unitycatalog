@@ -102,8 +102,7 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
             // Requests to S3-compatible storage are signed with the region it reports, which is
             // part of the vend cache key, so a region reported later selects its own entry.
             s3Endpoint.map(
-                endpoint ->
-                    s3BucketRegions.getS3CompatibleRegion(endpoint, path.toUri().getAuthority())),
+                endpoint -> s3BucketRegions.getS3CompatibleRegion(endpoint, path.getS3Bucket())),
             /* isServerAccess= */ isServerAccess(use.getPurpose()));
     return cloudCredentialVendor.vendCredential(credentialContext).url(path.toString());
   }

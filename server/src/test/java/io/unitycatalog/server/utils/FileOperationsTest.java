@@ -705,18 +705,41 @@ public class FileOperationsTest {
 
   @Test
   public void testGetFileIOConfigS3DiscoversRegionWhenNotConfigured() {
-    S3Client s3 = mock(S3Client.class);
-    when(s3.headBucket(any(HeadBucketRequest.class)))
-        .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-central-1").build());
-    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+    // Also for valid bucket names that are not valid host names, such as data.2024 or my_bucket.
+    for (String bucket : List.of("my-bucket", "data.2024", "my_bucket")) {
+      S3Client s3 = mock(S3Client.class);
+      when(s3.headBucket(any(HeadBucketRequest.class)))
+          .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-central-1").build());
+      FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
 
-    Map<String, String> config =
-        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+      Map<String, String> config =
+          fileOps.getFileIOConfig(NormalizedURL.from("s3://" + bucket + "/table"));
 
-    assertThat(config).containsEntry(AwsClientProperties.CLIENT_REGION, "eu-central-1");
-    ArgumentCaptor<HeadBucketRequest> request = ArgumentCaptor.forClass(HeadBucketRequest.class);
-    verify(s3).headBucket(request.capture());
-    assertThat(request.getValue().bucket()).isEqualTo("my-bucket");
+      assertThat(config)
+          .as(bucket)
+          .containsEntry(AwsClientProperties.CLIENT_REGION, "eu-central-1");
+      ArgumentCaptor<HeadBucketRequest> request = ArgumentCaptor.forClass(HeadBucketRequest.class);
+      verify(s3).headBucket(request.capture());
+      assertThat(request.getValue().bucket()).as(bucket).isEqualTo(bucket);
+    }
+  }
+
+  @Test
+  public void testGetFileIOConfigS3RefusesAnInvalidBucketWithoutDiscovery() {
+    // Checked on the URL as written: the storage base would decode %62ucket into bucket.
+    for (String location : List.of("s3://%62ucket/t", "s3://*/t", "s3://user@bucket/t")) {
+      S3Client s3 = mock(S3Client.class);
+      FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+      NormalizedURL url = NormalizedURL.from(location);
+
+      assertThatThrownBy(() -> fileOps.getFileIOConfig(url))
+          .as(location)
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+          .hasMessageContaining(url.toString());
+      verify(s3, never()).headBucket(any(HeadBucketRequest.class));
+    }
   }
 
   @Test
