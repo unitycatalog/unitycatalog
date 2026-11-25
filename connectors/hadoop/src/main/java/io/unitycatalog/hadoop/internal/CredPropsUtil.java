@@ -52,7 +52,7 @@ public class CredPropsUtil {
   public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
       GenericCredentialFetcher::create;
 
-  static final CredentialCache<CredId, List<GenericCredential>> initialCredCache =
+  static final CredentialCache<InitialCredKey, List<GenericCredential>> initialCredCache =
       CredentialCache.createInitialCredentialCache();
 
   // Keys used to build the credential-context id (see #credContextId).
@@ -195,7 +195,13 @@ public class CredPropsUtil {
     }
     List<GenericCredential> credentials =
         fetchGenericCredentials(
-            hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
+            renewCredEnabled,
+            hadoopConf,
+            apiClient,
+            catalogUri,
+            tokenProvider,
+            appVersions,
+            credId);
     // A table's credentials are assumed to be all with keys or all without: this connector does
     // not yet support mixing them, as it sets one S3A credentials provider for every path, while a
     // location vended only its S3 endpoint relies on the engine's own keys.
@@ -248,6 +254,7 @@ public class CredPropsUtil {
   }
 
   private static List<GenericCredential> fetchGenericCredentials(
+      boolean renewCredEnabled,
       Configuration hadoopConf,
       ApiClient apiClient,
       String catalogUri,
@@ -269,19 +276,46 @@ public class CredPropsUtil {
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
 
     return initialCredCache.access(
-        credId,
+        new InitialCredKey(credId, renewCredEnabled),
         () -> {
           Clock clock = ClockUtil.resolveClock(hadoopConf);
           List<GenericCredential> credentials =
               createCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
+          long vendedAtMillis = clock.now().toEpochMilli();
           return new RenewableCredential<>(credentials) {
             @Override
             public boolean readyToRenew() {
               return credentials.stream()
-                  .anyMatch(c -> c.readyToRenew(clock, renewalLeadTimeMillis));
+                  .anyMatch(
+                      c ->
+                          c.readyToRenew(
+                              clock,
+                              renewCredEnabled
+                                  ? renewalLeadTimeMillis
+                                  : fixedCredLeadTimeMillis(
+                                      c, vendedAtMillis, renewalLeadTimeMillis)));
             }
           };
         });
+  }
+
+  /**
+   * Returns how long before its expiration a cached credential stops being reused when renewal is
+   * disabled. Nothing renews the fixed keys it is written as, so a query must not start on one that
+   * is about to expire: it is reused only while at least half of the lifetime it was vended with
+   * remains, and never within the renewal lead time.
+   *
+   * @param credential the cached credential
+   * @param vendedAtMillis when {@code credential} was received from Unity Catalog, in epoch ms
+   * @param renewalLeadTimeMillis the lead time a renewable credential is renewed at
+   * @return the lead time to pass to {@link GenericCredential#readyToRenew}
+   */
+  private static long fixedCredLeadTimeMillis(
+      GenericCredential credential, long vendedAtMillis, long renewalLeadTimeMillis) {
+    Long expirationTimeMillis = credential.expirationTimeMillis();
+    return expirationTimeMillis == null
+        ? renewalLeadTimeMillis
+        : Math.max(renewalLeadTimeMillis, (expirationTimeMillis - vendedAtMillis) / 2);
   }
 
   private static List<GenericCredential> createCredentials(
@@ -307,5 +341,33 @@ public class CredPropsUtil {
 
   private static boolean hasKeys(GenericCredential credential) {
     return !(credential instanceof AwsCredential) || ((AwsCredential) credential).hasKeys();
+  }
+
+  /**
+   * Key of {@link #initialCredCache}. Loads with and without renewal reuse a credential for
+   * different lengths of time, so they never share one.
+   */
+  static final class InitialCredKey {
+    private final CredId credId;
+    private final boolean renewCredEnabled;
+
+    InitialCredKey(CredId credId, boolean renewCredEnabled) {
+      this.credId = credId;
+      this.renewCredEnabled = renewCredEnabled;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (!(o instanceof InitialCredKey)) {
+        return false;
+      }
+      InitialCredKey that = (InitialCredKey) o;
+      return renewCredEnabled == that.renewCredEnabled && credId.equals(that.credId);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(credId, renewCredEnabled);
+    }
   }
 }
