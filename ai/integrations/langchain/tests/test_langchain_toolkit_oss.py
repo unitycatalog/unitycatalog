@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from unittest import mock
@@ -32,6 +33,7 @@ from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     RETRIEVER_TABLE_RETURN_PARAMS_OSS,
     create_function_and_cleanup_oss,
+    generate_function_info_with_params_oss,
 )
 from unitycatalog.client import (
     ApiClient,
@@ -316,6 +318,35 @@ async def test_langgraph_agents(uc_client):
                 {"messages": [{"role": "user", "content": "What is the result of 2**10?"}]}
             )
         assert "1024" in result
+
+
+@pytest.mark.parametrize("method", ["invoke", "ainvoke", "arun"])
+@pytest.mark.asyncio
+async def test_tool_passes_reserved_parameter_names_to_local_function(method):
+    api_client = ApiClient(configuration=Configuration())
+    client = UnitycatalogFunctionClient(api_client=api_client, execution_mode="local")
+    function_info = generate_function_info_with_params_oss(
+        {"config": ("string", "string"), "run_manager": ("string", "string")}
+    ).model_copy(
+        update={
+            "routine_body": "EXTERNAL",
+            "external_language": "PYTHON",
+            "routine_definition": 'return f"{config}|{run_manager}"',
+        }
+    )
+    arguments = {"config": "config value", "run_manager": "run_manager value"}
+    try:
+        with mock.patch.object(client, "get_function", return_value=function_info):
+            toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+            tool = toolkit.tools[0]
+            if method == "invoke":
+                result = tool.invoke(arguments)
+            else:
+                result = await asyncio.wait_for(getattr(tool, method)(arguments), timeout=30)
+    finally:
+        await client.close_async()
+
+    assert json.loads(result)["value"] == "config value|run_manager value"
 
 
 @pytest.mark.parametrize("use_async", [False, True])
