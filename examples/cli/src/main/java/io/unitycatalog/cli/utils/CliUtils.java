@@ -373,6 +373,7 @@ public class CliUtils {
                               CliParams.COMMENT,
                               CliParams.AWS_IAM_ROLE_ARN,
                               CliParams.GCP_SERVICE_ACCOUNT_KEY_FILE,
+                              CliParams.GCP_SERVER_IDENTITY,
                               CliParams.S3_ACCESS_KEY_ID,
                               CliParams.S3_ENDPOINT,
                               CliParams.S3_SECRET_ACCESS_KEY,
@@ -661,9 +662,11 @@ public class CliUtils {
       if (Arrays.asList(SERVER, AUTH_TOKEN, OUTPUT).contains(opt.getLongOpt())) {
         continue;
       }
-      String optValue = opt.getValue();
-      if (optValue != null) {
-        json.put(CliParams.fromString(opt.getLongOpt()).getServerParam(), optValue);
+      CliParams param = CliParams.fromString(opt.getLongOpt());
+      if (!param.hasArg()) {
+        json.put(param.getServerParam(), true);
+      } else if (opt.getValue() != null) {
+        json.put(param.getServerParam(), opt.getValue());
       }
     }
     return json;

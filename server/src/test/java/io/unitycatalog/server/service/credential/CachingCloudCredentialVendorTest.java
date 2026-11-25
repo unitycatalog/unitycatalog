@@ -198,8 +198,14 @@ public class CachingCloudCredentialVendorTest {
 
   /** A context for a GCP service account key credential. */
   private static CredentialContext gcpCtx(UUID credentialId, String fingerprint) {
+    return gcpCtx(CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY, credentialId, fingerprint);
+  }
+
+  /** A context for a GCP storage credential of the given type. */
+  private static CredentialContext gcpCtx(
+      CredentialDAO.CredentialType type, UUID credentialId, String fingerprint) {
     CredentialDAO dao = mock(CredentialDAO.class);
-    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY);
+    when(dao.getCredentialType()).thenReturn(type);
     when(dao.getId()).thenReturn(credentialId);
     when(dao.getCredentialFingerprint()).thenReturn(fingerprint);
     // As the real DAO does for a credential of another type.
@@ -253,6 +259,21 @@ public class CachingCloudCredentialVendorTest {
             "another GCP credential",
             gcpCtx(GCP_KEY_ID, "fingerprint-1"),
             gcpCtx(UUID.fromString("00000000-0000-0000-0000-0000000000bb"), "fingerprint-1")),
+        Arguments.of(
+            "GCP server identity instead of gcs.* settings",
+            perBucket("gs://bucket/tableG"),
+            gcpCtx(
+                CredentialDAO.CredentialType.GCP_SERVER_IDENTITY,
+                GCP_KEY_ID,
+                "server-identity-fp")),
+        Arguments.of(
+            "another GCP server identity credential",
+            gcpCtx(
+                CredentialDAO.CredentialType.GCP_SERVER_IDENTITY, GCP_KEY_ID, "server-identity-fp"),
+            gcpCtx(
+                CredentialDAO.CredentialType.GCP_SERVER_IDENTITY,
+                UUID.fromString("00000000-0000-0000-0000-0000000000cc"),
+                "server-identity-fp")),
         Arguments.of(
             "location sharing a prefix",
             perBucket("s3://bucket/data"),

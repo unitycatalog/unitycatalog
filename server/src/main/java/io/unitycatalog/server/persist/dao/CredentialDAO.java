@@ -11,6 +11,7 @@ import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.GcpServerIdentityResponse;
 import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.server.model.S3AssumeRole;
@@ -34,6 +35,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -80,6 +82,7 @@ public class CredentialDAO extends IdentifiableDAO {
 
   public enum CredentialType {
     AWS_IAM_ROLE,
+    GCP_SERVER_IDENTITY,
     GCP_SERVICE_ACCOUNT_KEY,
     S3_COMPATIBLE,
     // Add other types as necessary
@@ -144,22 +147,31 @@ public class CredentialDAO extends IdentifiableDAO {
         Stream.of(
                     createRequest.getAwsIamRole(),
                     createRequest.getS3Compatible(),
-                    createRequest.getGcpServiceAccountKey())
+                    createRequest.getGcpServiceAccountKey(),
+                    createRequest.getGcpServerIdentity())
                 .filter(Objects::nonNull)
                 .count()
             == 1,
-        "Specify exactly one of aws_iam_role, s3_compatible and gcp_service_account_key.");
+        "Specify exactly one of aws_iam_role, s3_compatible, gcp_service_account_key and"
+            + " gcp_server_identity.");
     if (createRequest.getAwsIamRole() != null) {
       dao.setAwsIamRole(createRequest.getAwsIamRole());
     } else if (createRequest.getS3Compatible() != null) {
       dao.setS3Compatible(createRequest.getS3Compatible(), secretStore);
-    } else {
+    } else if (createRequest.getGcpServiceAccountKey() != null) {
       dao.setGcpServiceAccountKey(createRequest.getGcpServiceAccountKey(), secretStore);
+    } else {
+      dao.setGcpServerIdentity(createRequest.getGcpServerIdentity());
     }
     return dao;
   }
 
   public CredentialInfo toCredentialInfo(Optional<String> masterAwsIamRoleArn) {
+    return toCredentialInfo(masterAwsIamRoleArn, Optional.empty());
+  }
+
+  public CredentialInfo toCredentialInfo(
+      Optional<String> masterAwsIamRoleArn, Optional<String> gcpServerIdentityEmail) {
     CredentialInfo credentialInfo =
         new CredentialInfo()
             .id(getId().toString())
@@ -182,6 +194,11 @@ public class CredentialDAO extends IdentifiableDAO {
         break;
       case GCP_SERVICE_ACCOUNT_KEY:
         credentialInfo.setGcpServiceAccountKey(getGcpServiceAccountKeyResponse());
+        break;
+      case GCP_SERVER_IDENTITY:
+        GcpServerIdentityResponse gcpServerIdentity = getGcpServerIdentityResponse();
+        gcpServerIdentityEmail.ifPresent(gcpServerIdentity::setUnityCatalogServiceAccountEmail);
+        credentialInfo.setGcpServerIdentity(gcpServerIdentity);
         break;
       // TODO: support Azure.
       default:
@@ -359,9 +376,26 @@ public class CredentialDAO extends IdentifiableDAO {
     return parseCredential(CredentialType.S3_COMPATIBLE, S3CompatibleResponse.class);
   }
 
+  /**
+   * Validates a {@code gcp_server_identity} credential and stores it. No secret is stored: the
+   * server uses its own Application Default Credentials at vend time.
+   *
+   * @param gcpServerIdentity must be an empty JSON object ({@code {}})
+   */
+  public void setGcpServerIdentity(Object gcpServerIdentity) {
+    ValidationUtils.checkArgument(
+        gcpServerIdentity instanceof Map<?, ?> map && map.isEmpty(),
+        "gcp_server_identity must be an empty JSON object ({}).");
+    setCredential(CredentialType.GCP_SERVER_IDENTITY, objectMapper.createObjectNode());
+  }
+
   public GcpServiceAccountKeyResponse getGcpServiceAccountKeyResponse() {
     return parseCredential(
         CredentialType.GCP_SERVICE_ACCOUNT_KEY, GcpServiceAccountKeyResponse.class);
+  }
+
+  public GcpServerIdentityResponse getGcpServerIdentityResponse() {
+    return parseCredential(CredentialType.GCP_SERVER_IDENTITY, GcpServerIdentityResponse.class);
   }
 
   /**

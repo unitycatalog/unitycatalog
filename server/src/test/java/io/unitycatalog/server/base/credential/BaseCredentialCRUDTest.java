@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
+import com.google.auth.oauth2.ServiceAccountCredentials;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
@@ -15,6 +16,7 @@ import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.GcpServerIdentityResponse;
 import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.client.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.client.model.S3AssumeRole;
@@ -26,10 +28,12 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.utils.GcpServiceAccountKeys;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,12 +57,27 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   protected abstract ExternalLocationOperations createExternalLocationOperations(
       ServerConfig config);
 
+  private static final String TEST_GCP_SERVER_IDENTITY_EMAIL =
+      "uc-server@my-project.iam.gserviceaccount.com";
+
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.setProperty(
         ServerProperties.Property.AWS_MASTER_ROLE_ARN.getKey(), TEST_AWS_MASTER_ROLE_ARN);
     enableS3CompatibleStorage();
+    ServiceAccountCredentials testServerCredentials;
+    try {
+      testServerCredentials =
+          GcpServiceAccountKeys.credentialsOf(
+              new io.unitycatalog.server.model.GcpServiceAccountKeyRequest()
+                  .email(TEST_GCP_SERVER_IDENTITY_EMAIL)
+                  .privateKeyId("test-key-id")
+                  .privateKey(TestUtils.generatePkcs8PrivateKeyPem()));
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+    gcpApplicationDefaultCredentials = () -> testServerCredentials;
   }
 
   @BeforeEach
@@ -128,10 +147,12 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
         List.of(
             new InvalidCreate(
                 request(keyPair()).awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)),
-                "Specify exactly one of aws_iam_role, s3_compatible and gcp_service_account_key."),
+                "Specify exactly one of aws_iam_role, s3_compatible, gcp_service_account_key and"
+                    + " gcp_server_identity."),
             new InvalidCreate(
                 request(null),
-                "Specify exactly one of aws_iam_role, s3_compatible and gcp_service_account_key."),
+                "Specify exactly one of aws_iam_role, s3_compatible, gcp_service_account_key and"
+                    + " gcp_server_identity."),
             new InvalidCreate(
                 request(
                     keyPair()
@@ -318,7 +339,8 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
         List.of(
             new InvalidCreate(
                 gcpRequest(privateKey).awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)),
-                "Specify exactly one of aws_iam_role, s3_compatible and gcp_service_account_key."),
+                "Specify exactly one of aws_iam_role, s3_compatible, gcp_service_account_key and"
+                    + " gcp_server_identity."),
             new InvalidCreate(gcpRequest(privateKey, " "), String.format(missing, "email")),
             new InvalidCreate(
                 gcpRequest(privateKey).gcpServiceAccountKey(gcpKey(privateKey).privateKeyId(null)),
@@ -424,6 +446,88 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
                 CREDENTIAL_NAME, new UpdateCredentialRequest().s3Compatible(keyPair())),
         ErrorCode.INVALID_ARGUMENT,
         "is a gcp_service_account_key credential");
+    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME, Optional.empty());
+    credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.empty());
+  }
+
+  @Test
+  public void testGcpServerIdentityCredential() throws ApiException {
+    assertApiException(
+        () ->
+            credentialOperations.createCredential(
+                new CreateCredentialRequest()
+                    .name(CREDENTIAL_NAME)
+                    .purpose(CredentialPurpose.STORAGE)
+                    .gcpServerIdentity(Map.of())
+                    .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN))),
+        ErrorCode.INVALID_ARGUMENT,
+        "Specify exactly one of aws_iam_role, s3_compatible, gcp_service_account_key and"
+            + " gcp_server_identity.");
+
+    CredentialInfo created =
+        credentialOperations.createCredential(
+            new CreateCredentialRequest()
+                .name(CREDENTIAL_NAME)
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServerIdentity(Map.of()));
+    GcpServerIdentityResponse expected =
+        new GcpServerIdentityResponse()
+            .unityCatalogServiceAccountEmail(TEST_GCP_SERVER_IDENTITY_EMAIL);
+    assertThat(created.getGcpServerIdentity()).isEqualTo(expected);
+    assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(created);
+    assertThat(credentialOperations.listCredentials(Optional.empty(), CredentialPurpose.STORAGE))
+        .contains(created);
+
+    // Cannot change type; comment and name still update.
+    assertApiException(
+        () ->
+            credentialOperations.updateCredential(
+                CREDENTIAL_NAME,
+                new UpdateCredentialRequest()
+                    .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN))),
+        ErrorCode.INVALID_ARGUMENT,
+        "is a gcp_server_identity credential, so aws_iam_role and s3_compatible cannot be"
+            + " set on it.");
+    assertApiException(
+        () ->
+            credentialOperations.updateCredential(
+                CREDENTIAL_NAME, new UpdateCredentialRequest().s3Compatible(keyPair())),
+        ErrorCode.INVALID_ARGUMENT,
+        "is a gcp_server_identity credential");
+    assertThat(
+            credentialOperations
+                .updateCredential(CREDENTIAL_NAME, new UpdateCredentialRequest().comment(COMMENT))
+                .getGcpServerIdentity())
+        .isEqualTo(expected);
+
+    // Its external locations must be gs:// paths.
+    String gsUrl = "gs://unitycatalog-test-ambient";
+    String notGs =
+        "Storage credential 'uc_testcredential' is a gcp_server_identity credential, so its"
+            + " external locations must be gs:// paths: ";
+    assertApiException(
+        () ->
+            externalLocationOperations.createExternalLocation(
+                new CreateExternalLocation()
+                    .name(EXTERNAL_LOCATION_NAME)
+                    .url(URL)
+                    .credentialName(CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        notGs + URL);
+    externalLocationOperations.createExternalLocation(
+        new CreateExternalLocation()
+            .name(EXTERNAL_LOCATION_NAME)
+            .url(gsUrl)
+            .credentialName(CREDENTIAL_NAME));
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(URL)),
+        ErrorCode.INVALID_ARGUMENT,
+        notGs + URL);
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(gsUrl);
+
     externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME, Optional.empty());
     credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.empty());
   }

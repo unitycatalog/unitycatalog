@@ -3,6 +3,8 @@ package io.unitycatalog.server.sdk.storagecredential;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.auth.oauth2.AccessToken;
+import com.google.auth.oauth2.GoogleCredentials;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CredentialInfo;
@@ -14,6 +16,9 @@ import io.unitycatalog.server.base.credential.CredentialOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,17 +30,27 @@ import org.junit.jupiter.api.Test;
  */
 public class GcpOnlyServerCredentialTest extends BaseServerTest {
   private CredentialOperations credentialOperations;
+  private final AtomicReference<IOException> adcFailure = new AtomicReference<>();
 
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.setProperty(
         Property.CREDENTIAL_ENCRYPTION_KEY.getKey(), TestUtils.CREDENTIAL_ENCRYPTION_KEY);
+    gcpApplicationDefaultCredentials =
+        () -> {
+          IOException failure = adcFailure.get();
+          if (failure != null) {
+            throw failure;
+          }
+          return GoogleCredentials.create(new AccessToken("token", null));
+        };
   }
 
   @BeforeEach
   @Override
   public void setUp() {
+    adcFailure.set(null);
     super.setUp();
     credentialOperations = new SdkCredentialOperations(TestUtils.createApiClient(serverConfig));
   }
@@ -53,6 +68,25 @@ public class GcpOnlyServerCredentialTest extends BaseServerTest {
                         .privateKeyId("0123456789abcdef")
                         .privateKey(TestUtils.generatePkcs8PrivateKeyPem())));
     assertThat(credentialOperations.getCredential("gcp_cred")).isEqualTo(created);
+
+    CredentialInfo ambient =
+        credentialOperations.createCredential(
+            new CreateCredentialRequest()
+                .name("gcp_ambient_cred")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServerIdentity(Map.of()));
+    assertThat(credentialOperations.getCredential("gcp_ambient_cred")).isEqualTo(ambient);
+
+    adcFailure.set(new IOException("Your default credentials were not found."));
+    assertApiException(
+        () ->
+            credentialOperations.createCredential(
+                new CreateCredentialRequest()
+                    .name("gcp_ambient_missing_adc")
+                    .purpose(CredentialPurpose.STORAGE)
+                    .gcpServerIdentity(Map.of())),
+        ErrorCode.FAILED_PRECONDITION,
+        "Application Default Credentials");
 
     assertApiException(
         () ->

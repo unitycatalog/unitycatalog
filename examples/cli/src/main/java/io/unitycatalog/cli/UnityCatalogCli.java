@@ -38,14 +38,14 @@ public class UnityCatalogCli {
     Options options = new Options();
     Arrays.stream(CliParams.values())
         .forEach(
-            cliParam ->
-                options.addOption(
-                    Option.builder()
-                        .longOpt(cliParam.val())
-                        .optionalArg(cliParam.val().equals("version"))
-                        .hasArg() // See
-                        // https://github.com/unitycatalog/unitycatalog/pull/398#issuecomment-2325039123
-                        .build()));
+            cliParam -> {
+              Option.Builder builder = Option.builder().longOpt(cliParam.val());
+              if (cliParam.hasArg()) {
+                builder.optionalArg(cliParam.val().equals("version")).hasArg(); // See
+                // https://github.com/unitycatalog/unitycatalog/pull/398#issuecomment-2325039123
+              }
+              options.addOption(builder.build());
+            });
     options.addOption("h", "help", false, "Print help message.");
     options.addOption("v", false, "Display the version of Unity Catalog CLI");
 
@@ -217,13 +217,13 @@ public class UnityCatalogCli {
       List<CliParams> optionalParams = allowedOptions.getOptionalParams();
       List<CliParams> specifiedParams = new ArrayList<>();
       for (Option option : cmd.getOptions()) {
-        String val = option.getValue();
-        if (val == null) {
+        CliParams param = CliParams.fromString(option.getLongOpt());
+        if (param.hasArg() && option.getValue() == null) {
           System.out.println("Please provide a value for " + option.getLongOpt());
           CliUtils.printSubCommandHelp(entity, operation);
           return false;
         }
-        specifiedParams.add(CliParams.fromString(option.getLongOpt()));
+        specifiedParams.add(param);
       }
       if (!specifiedParams.containsAll(requiredParams)) {
         System.out.println("All required parameters are not provided.");

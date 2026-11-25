@@ -25,6 +25,7 @@ import io.unitycatalog.client.model.UpdateCredentialRequest;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -129,6 +130,13 @@ public class CredentialCli {
             .privateKey(key.path("private_key").asText(null)));
   }
 
+  private static Optional<Object> extractGcpServerIdentity(JSONObject json) {
+    if (json.optBoolean(CliParams.GCP_SERVER_IDENTITY.getServerParam(), false)) {
+      return Optional.of(Map.of());
+    }
+    return Optional.empty();
+  }
+
   private static String createCredential(CredentialsApi credentialsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     CreateCredentialRequest createCredentialRequest =
@@ -138,7 +146,8 @@ public class CredentialCli {
             .purpose(CredentialPurpose.STORAGE)
             .awsIamRole(extractAwsIamRole(json).orElse(null))
             .s3Compatible(extractS3Compatible(json).orElse(null))
-            .gcpServiceAccountKey(extractGcpServiceAccountKey(json).orElse(null));
+            .gcpServiceAccountKey(extractGcpServiceAccountKey(json).orElse(null))
+            .gcpServerIdentity(extractGcpServerIdentity(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.createCredential(createCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }

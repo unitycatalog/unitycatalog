@@ -18,6 +18,8 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.security.KeyPairGenerator;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -290,5 +292,56 @@ public class CredentialDAOTest {
     assertThat(dao.getAwsIamRoleResponse().getRoleArn()).isEqualTo(ROLE_ARN);
     assertThat(dao.getAwsIamRoleResponse().getExternalId()).isEqualTo("ext-id");
     assertThat(dao.toCredentialInfo(Optional.empty()).getS3Compatible()).isNull();
+  }
+
+  @Test
+  public void testGcpServerIdentityNeedsNoEncryptionKeyAndPopulatesEmail() throws Exception {
+    CredentialDAO dao =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("gcs_ambient")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServerIdentity(Map.of()),
+            "caller",
+            new EncryptedCredentialSecretStore(Optional.empty()));
+
+    assertThat(dao.getCredentialType()).isEqualTo(CredentialDAO.CredentialType.GCP_SERVER_IDENTITY);
+    assertThat(storedJson(dao)).isEqualTo("{}");
+    assertThat(dao.toCredentialInfo(Optional.empty()).getGcpServerIdentity())
+        .isNotNull()
+        .returns(null, r -> r.getUnityCatalogServiceAccountEmail());
+    String serverEmail = "uc-server@my-project.iam.gserviceaccount.com";
+    assertThat(
+            dao.toCredentialInfo(Optional.empty(), Optional.of(serverEmail))
+                .getGcpServerIdentity()
+                .getUnityCatalogServiceAccountEmail())
+        .isEqualTo(serverEmail);
+  }
+
+  static Stream<Object> invalidGcpServerIdentityPayloads() {
+    return Stream.of(
+        "string",
+        123,
+        true,
+        List.of(),
+        Map.of("service_account_email", "a@b.iam.gserviceaccount.com"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("invalidGcpServerIdentityPayloads")
+  public void testGcpServerIdentityRejectsNonEmptyObjectOrNonObject(Object payload) {
+    assertThatThrownBy(
+            () ->
+                CredentialDAO.from(
+                    new CreateCredentialRequest()
+                        .name("gcs_ambient")
+                        .purpose(CredentialPurpose.STORAGE)
+                        .gcpServerIdentity(payload),
+                    "caller",
+                    SECRET_STORE))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("gcp_server_identity must be an empty JSON object ({}).")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
   }
 }

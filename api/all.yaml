@@ -1247,8 +1247,8 @@ paths:
       summary: Create a credential
       description: |-
         Creates a new credential. The type of credential to be created is determined by the **purpose** field.
-        Set exactly one of `aws_iam_role`, `s3_compatible` and `gcp_service_account_key`; otherwise the
-        request fails with `INVALID_ARGUMENT`.
+        Set exactly one of `aws_iam_role`, `s3_compatible`, `gcp_service_account_key` and
+        `gcp_server_identity`; otherwise the request fails with `INVALID_ARGUMENT`.
 
         A `gcp_service_account_key` credential holds a Google Cloud service account key: the server
         encrypts its `private_key` with `server.credential-encryption-key` and never returns it, and
@@ -1256,6 +1256,19 @@ paths:
         vended from the stored key. It fails with `FAILED_PRECONDITION` if Google rejects or refuses
         the key, `INVALID_ARGUMENT` if Google rejects the location, `UNAVAILABLE` if Google cannot be
         reached, and `INTERNAL` if Google rejects the server's clock.
+
+        A `gcp_server_identity` credential uses the Unity Catalog server's own Google Cloud
+        Application Default Credentials (for example, a GKE Workload Identity or Compute Engine
+        service account) without storing a key or requiring `server.credential-encryption-key`.
+        Creating one checks that Application Default Credentials are available on the server and
+        fails with `FAILED_PRECONDITION` if not. Responses include
+        `unity_catalog_service_account_email` when the server's credentials identify a service
+        account; grant that account access to the GCS buckets covered by its external locations. Its
+        external locations must be `gs://` paths. A request for access under such a location is
+        vended by downscoping the server's Application Default Credentials. It fails with
+        `FAILED_PRECONDITION` if Application Default Credentials are unavailable or Google rejects or
+        refuses them, `INVALID_ARGUMENT` if Google rejects the location, `UNAVAILABLE` if Google
+        cannot be reached, and `INTERNAL` if Google rejects the server's clock.
 
         EXPERIMENTAL: `s3_compatible` is available only when the server property
         `server.s3-compatible-storage.enabled` is `true`. Otherwise a create or update request that
@@ -1378,8 +1391,9 @@ paths:
         and leaving out `assume_role` removes it. Updates without either, such as of the name or
         comment, keep the stored credential.
 
-        A `gcp_service_account_key` credential cannot change its type or private key through this
-        endpoint. Its name and comment can still be updated.
+        A `gcp_service_account_key` or `gcp_server_identity` credential cannot change its type
+        through this endpoint, and a `gcp_service_account_key` credential cannot change its private
+        key. Their name, owner and comment can still be updated.
 
         EXPERIMENTAL: whoever may update a credential is trusted with where the data under it lives.
         Changing `s3_endpoint` of an `s3_compatible` credential moves data access for every path
@@ -1429,9 +1443,9 @@ paths:
       summary: Create an external location
       description: |
         Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
-        A location whose credential is `gcp_service_account_key` must have a `gs://` URL, and
-        (EXPERIMENTAL) one whose credential is `s3_compatible` must have an `s3://` URL; otherwise
-        the request fails with `INVALID_ARGUMENT`.
+        A location whose credential is `gcp_service_account_key` or `gcp_server_identity` must have
+        a `gs://` URL, and (EXPERIMENTAL) one whose credential is `s3_compatible` must have an
+        `s3://` URL; otherwise the request fails with `INVALID_ARGUMENT`.
       operationId: createExternalLocation
       requestBody:
         required: true
@@ -1537,9 +1551,9 @@ paths:
         or have MANAGE on the external location.
         Unless force is true, changing the url fails if the location is in use (as described for
         deleting it), unless the new url is the same as, or a parent of, the old one.
-        A location whose credential is `gcp_service_account_key` must have a `gs://` URL, and
-        (EXPERIMENTAL) one whose credential is `s3_compatible` must have an `s3://` URL; otherwise
-        the request fails with `INVALID_ARGUMENT`.
+        A location whose credential is `gcp_service_account_key` or `gcp_server_identity` must have
+        a `gs://` URL, and (EXPERIMENTAL) one whose credential is `s3_compatible` must have an
+        `s3://` URL; otherwise the request fails with `INVALID_ARGUMENT`.
       operationId: updateExternalLocation
       requestBody:
         required: true
@@ -3029,6 +3043,8 @@ components:
           $ref: '#/components/schemas/S3CompatibleResponse'
         gcp_service_account_key:
           $ref: '#/components/schemas/GcpServiceAccountKeyResponse'
+        gcp_server_identity:
+          $ref: '#/components/schemas/GcpServerIdentityResponse'
         comment:
           description: Comment associated with the credential.
           type: string
@@ -3074,6 +3090,8 @@ components:
           $ref: '#/components/schemas/S3CompatibleRequest'
         gcp_service_account_key:
           $ref: '#/components/schemas/GcpServiceAccountKeyRequest'
+        gcp_server_identity:
+          $ref: '#/components/schemas/GcpServerIdentityRequest'
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     UpdateCredentialRequest:
@@ -3249,6 +3267,26 @@ components:
           $ref: "#/components/schemas/GcpServiceAccountEmail"
         private_key_id:
           $ref: "#/components/schemas/GcpPrivateKeyId"
+    GcpServerIdentityRequest:
+      description: |
+        Configures a storage credential that uses the Unity Catalog server's own Google Cloud
+        Application Default Credentials (for example, a GKE Workload Identity or Compute Engine
+        service account). Pass an empty JSON object (`{}`). No key is sent or stored, and
+        `server.credential-encryption-key` is not required. Its external locations must be `gs://`
+        paths. Creating one checks that Application Default Credentials are available on the server
+        and fails with `FAILED_PRECONDITION` if not.
+      type: object
+    GcpServerIdentityResponse:
+      description: A `gcp_server_identity` storage credential as returned by the server.
+      type: object
+      properties:
+        unity_catalog_service_account_email:
+          description: |
+            The email of the Google Cloud service account the Unity Catalog server runs as, when
+            its Application Default Credentials identify one. Grant this service account access to
+            the Google Cloud Storage buckets covered by external locations using this credential.
+          type: string
+          maxLength: 1024
     ListCredentialsResponse:
       type: object
       properties:

@@ -92,6 +92,26 @@ key and returns a short-lived access token limited to that path. The service acc
 `roles/storage.objectViewer` on the bucket to read, and `roles/storage.objectAdmin` to read and
 write.
 
+If the Unity Catalog server runs with Google Cloud Application Default Credentials (for example, on
+GKE with Workload Identity or on Compute Engine with an attached service account), you can create a
+keyless Credential that uses the server's own identity instead of storing a private key:
+
+```sh
+bin/uc credential create \
+  --name <name> # (1) \
+  --gcp_server_identity # (2)
+```
+
+1. `name`: The name of the Credential.
+2. `gcp_server_identity`: Uses the server's Google Cloud Application Default Credentials. No key is
+   stored and `UC_SERVER_CREDENTIAL_ENCRYPTION_KEY` is not required.
+
+When the server's Application Default Credentials identify a service account, the response includes
+`unity_catalog_service_account_email` under `GCP_SERVER_IDENTITY`. Grant that service account
+`roles/storage.objectViewer` on the GCS bucket to read, and `roles/storage.objectAdmin` to read and
+write. External locations using this credential must be `gs://` paths, and take precedence over the
+`gcs.*` server settings.
+
 ### List Credentials
 
 Here's how to list Credentials contained in a Unity Catalog instance.

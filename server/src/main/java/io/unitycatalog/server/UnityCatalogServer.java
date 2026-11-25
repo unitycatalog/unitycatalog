@@ -54,6 +54,7 @@ import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
@@ -338,7 +339,8 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.cloudCredentialVendor,
             unityCatalogServerBuilder.fileOperationsDecorator,
             domainMetrics,
-            audit);
+            audit,
+            unityCatalogServerBuilder.gcpApplicationDefaultCredentials);
     cloudCredentialVendor = repositories.getOwnedCloudCredentialVendor().orElse(null);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
@@ -697,6 +699,7 @@ public class UnityCatalogServer implements AutoCloseable {
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
+    private GcpApplicationDefaultCredentials gcpApplicationDefaultCredentials;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
     private Path configurationFolder = Path.of("etc", "conf");
     private Path hibernatePropertiesFile = Path.of("etc", "conf", "hibernate.properties");
@@ -737,6 +740,16 @@ public class UnityCatalogServer implements AutoCloseable {
     public UnityCatalogServer.Builder credentialOperations(
         CloudCredentialVendor cloudCredentialVendor) {
       this.cloudCredentialVendor = cloudCredentialVendor;
+      return this;
+    }
+
+    /**
+     * Sets how the server loads Google Cloud Application Default Credentials, e.g. for tests.
+     * Defaults to {@link GcpApplicationDefaultCredentials#DEFAULT}.
+     */
+    public UnityCatalogServer.Builder gcpApplicationDefaultCredentials(
+        GcpApplicationDefaultCredentials gcpApplicationDefaultCredentials) {
+      this.gcpApplicationDefaultCredentials = gcpApplicationDefaultCredentials;
       return this;
     }
 

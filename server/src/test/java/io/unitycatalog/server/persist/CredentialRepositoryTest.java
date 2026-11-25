@@ -3,6 +3,14 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.google.api.client.http.LowLevelHttpRequest;
+import com.google.api.client.http.LowLevelHttpResponse;
+import com.google.api.client.testing.http.MockHttpTransport;
+import com.google.api.client.testing.http.MockLowLevelHttpRequest;
+import com.google.api.client.testing.http.MockLowLevelHttpResponse;
+import com.google.auth.oauth2.AccessToken;
+import com.google.auth.oauth2.ComputeEngineCredentials;
+import com.google.auth.oauth2.GoogleCredentials;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.util.SafeCloseable;
@@ -26,9 +34,12 @@ import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
+import io.unitycatalog.server.utils.GcpServiceAccountKeys;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import jakarta.persistence.LockModeType;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -42,6 +53,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.hibernate.Session;
@@ -651,5 +664,139 @@ class CredentialRepositoryTest {
                     }))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("is an s3_compatible credential");
+  }
+
+  @Test
+  void testGcpServerIdentityChecksAdcOnCreateAndResilienceOnRead() throws Exception {
+    AtomicInteger adcCalls = new AtomicInteger();
+    AtomicReference<GcpApplicationDefaultCredentials> adcBehavior = new AtomicReference<>();
+    CredentialRepository repo =
+        new CredentialRepository(
+            repositories,
+            testDatabase.sessionFactory(),
+            serverProperties(/* isS3CompatibleStorageEnabled= */ false),
+            new EncryptedCredentialSecretStore(Optional.empty()),
+            () -> {
+              adcCalls.incrementAndGet();
+              return adcBehavior.get().load();
+            });
+
+    // 1. Non-GCP credentials never touch ADC.
+    repo.addCredential(
+        new CreateCredentialRequest()
+            .name("aws_only")
+            .purpose(CredentialPurpose.STORAGE)
+            .awsIamRole(new AwsIamRoleRequest().roleArn("arn:aws:iam::123456789012:role/r")));
+    repo.getCredential("aws_only");
+    repo.listCredentials(Optional.empty(), Optional.empty());
+    assertThat(adcCalls).hasValue(0);
+
+    // 2. Missing ADC fails fast on create without persisting a row.
+    adcBehavior.set(
+        () -> {
+          throw new IOException("Your default credentials were not found.");
+        });
+    assertThatThrownBy(
+            () ->
+                repo.addCredential(
+                    new CreateCredentialRequest()
+                        .name("missing_adc")
+                        .purpose(CredentialPurpose.STORAGE)
+                        .gcpServerIdentity(Map.of())))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThatThrownBy(() -> repo.getCredential("missing_adc")).isInstanceOf(BaseException.class);
+
+    // 3. GCE metadata returning 404 for default email fails fast on create.
+    MockHttpTransport metadata404 =
+        new MockHttpTransport() {
+          @Override
+          public LowLevelHttpRequest buildRequest(String method, String url) {
+            return new MockLowLevelHttpRequest(url) {
+              @Override
+              public LowLevelHttpResponse execute() {
+                return new MockLowLevelHttpResponse().setStatusCode(404).setContent("not found");
+              }
+            };
+          }
+        };
+    adcBehavior.set(
+        () ->
+            ComputeEngineCredentials.newBuilder()
+                .setHttpTransportFactory(() -> metadata404)
+                .build());
+    assertThatThrownBy(
+            () ->
+                repo.addCredential(
+                    new CreateCredentialRequest()
+                        .name("no_gce_sa")
+                        .purpose(CredentialPurpose.STORAGE)
+                        .gcpServerIdentity(Map.of())))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+
+    // 4. Service-account ADC succeeds without an encryption key and returns the server SA email.
+    String serverEmail = "uc-server@my-project.iam.gserviceaccount.com";
+    GoogleCredentials saCreds =
+        GcpServiceAccountKeys.credentialsOf(
+            new GcpServiceAccountKeyRequest()
+                .email(serverEmail)
+                .privateKeyId("key-1")
+                .privateKey(TestUtils.generatePkcs8PrivateKeyPem()));
+    adcBehavior.set(() -> saCreds);
+    CredentialInfo created =
+        repo.addCredential(
+            new CreateCredentialRequest()
+                .name("ambient_1")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServerIdentity(Map.of()));
+    assertThat(created.getGcpServerIdentity().getUnityCatalogServiceAccountEmail())
+        .isEqualTo(serverEmail);
+    repo.addCredential(
+        new CreateCredentialRequest()
+            .name("ambient_2")
+            .purpose(CredentialPurpose.STORAGE)
+            .gcpServerIdentity(Map.of()));
+
+    // Listing two gcp_server_identity credentials resolves ADC at most once for the page.
+    adcCalls.set(0);
+    List<CredentialInfo> listed =
+        repo.listCredentials(Optional.empty(), Optional.empty()).getCredentials();
+    assertThat(adcCalls).hasValue(1);
+    assertThat(listed)
+        .filteredOn(c -> c.getGcpServerIdentity() != null)
+        .hasSize(2)
+        .allSatisfy(
+            c ->
+                assertThat(c.getGcpServerIdentity().getUnityCatalogServiceAccountEmail())
+                    .isEqualTo(serverEmail));
+
+    // 5. Non-service-account ADC (e.g. user credentials) still succeeds with email omitted.
+    adcBehavior.set(() -> GoogleCredentials.create(new AccessToken("user-token", null)));
+    assertThat(
+            repo.getCredential("ambient_1")
+                .getGcpServerIdentity()
+                .getUnityCatalogServiceAccountEmail())
+        .isNull();
+
+    // 6. If ADC becomes unavailable later, get/list/update still succeed (email omitted).
+    adcBehavior.set(
+        () -> {
+          throw new IOException("metadata unreachable");
+        });
+    assertThat(
+            repo.getCredential("ambient_1")
+                .getGcpServerIdentity()
+                .getUnityCatalogServiceAccountEmail())
+        .isNull();
+    assertThat(
+            repo.updateCredential("ambient_1", new UpdateCredentialRequest().comment("still works"))
+                .getComment())
+        .isEqualTo("still works");
+
+    // 7. findUnreadableSecrets ignores GCP_SERVER_IDENTITY (it holds no encrypted secret).
+    assertThat(repo.findUnreadableSecrets()).isEmpty();
   }
 }

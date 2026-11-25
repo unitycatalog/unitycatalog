@@ -11,6 +11,7 @@ import com.google.api.client.testing.http.MockHttpTransport;
 import com.google.api.client.testing.http.MockLowLevelHttpRequest;
 import com.google.api.client.testing.http.MockLowLevelHttpResponse;
 import com.google.auth.oauth2.AccessToken;
+import com.google.auth.oauth2.ComputeEngineCredentials;
 import com.google.auth.oauth2.CredentialAccessBoundary;
 import com.google.auth.oauth2.CredentialAccessBoundary.AccessBoundaryRule;
 import com.google.auth.oauth2.DownscopedCredentials;
@@ -23,6 +24,7 @@ import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.secret.EncryptedCredentialSecretStore;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
@@ -32,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -432,6 +435,9 @@ public class GcpCredentialVendorTest {
       return new MockLowLevelHttpRequest(url) {
         @Override
         public LowLevelHttpResponse execute() throws IOException {
+          if (url.contains("/universe/universe-domain")) {
+            return new MockLowLevelHttpResponse().setStatusCode(200).setContent("googleapis.com");
+          }
           urls.add(url);
           bodies.add(getContentAsString());
           boolean isSts = url.contains("sts.googleapis.com");
@@ -521,5 +527,102 @@ public class GcpCredentialVendorTest {
                     .build())
             .build();
     return catchThrowableOfType(IOException.class, downscoped::refreshAccessToken);
+  }
+
+  private static CredentialContext contextWithServerIdentity(
+      CredentialContext.Privilege privilege) {
+    CredentialDAO ambient =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("gcs_ambient_credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .gcpServerIdentity(Map.of()),
+            "caller",
+            new EncryptedCredentialSecretStore(Optional.empty()));
+    return CredentialContext.create(
+        NormalizedURL.from("gs://test-bucket/t"), Set.of(privilege), Optional.of(ambient));
+  }
+
+  @Test
+  public void testServerIdentityIsDownscopedFromComputeEngineMetadata() {
+    FakeGoogle google =
+        new FakeGoogle(
+            200,
+            "{\"access_token\": \"ambient-downscoped-token\", \"expires_in\": 3600,"
+                + " \"token_type\": \"Bearer\","
+                + " \"issued_token_type\": \"urn:ietf:params:oauth:token-type:access_token\"}");
+    GcpApplicationDefaultCredentials adc =
+        () -> ComputeEngineCredentials.newBuilder().setHttpTransportFactory(() -> google).build();
+    GcpCredentialVendor vendor =
+        new GcpCredentialVendor(
+            new ServerProperties(new Properties()), SECRET_STORE, null, adc, () -> google);
+
+    AccessToken token =
+        vendor.vendGcpCredential(contextWithServerIdentity(CredentialContext.Privilege.UPDATE));
+
+    assertThat(token.getTokenValue()).isEqualTo("ambient-downscoped-token");
+    assertThat(google.urls).hasSize(2);
+    assertThat(google.urls.get(0)).contains("computeMetadata/v1/instance/service-accounts/default");
+    String exchange = URLDecoder.decode(google.bodies.get(1), StandardCharsets.UTF_8);
+    assertThat(exchange)
+        .contains("source-token")
+        .contains("projects/_/buckets/test-bucket")
+        .contains("roles/storage.objectAdmin")
+        .contains("objects/t");
+  }
+
+  @Test
+  public void testServerIdentityTakesPrecedenceOverGcsSettingsAndDoesNotFallBack() {
+    ConfiguredGenerator.CALLS.set(0);
+    Properties properties = new Properties();
+    properties.setProperty("gcs.bucketPath.0", "gs://test-bucket");
+    properties.setProperty("gcs.credentialGenerator.0", ConfiguredGenerator.class.getName());
+    GcpCredentialVendor vendor =
+        new GcpCredentialVendor(
+            new ServerProperties(properties),
+            SECRET_STORE,
+            null,
+            () -> {
+              throw new IOException("Your default credentials were not found.");
+            },
+            null);
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class,
+            () ->
+                vendor.vendGcpCredential(
+                    contextWithServerIdentity(CredentialContext.Privilege.SELECT)));
+
+    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(error.getMessage())
+        .contains("Contact the server administrator")
+        .doesNotContain("gcs_ambient_credential");
+    assertThat(ConfiguredGenerator.CALLS).hasValue(0);
+  }
+
+  @Test
+  public void testServerIdentityErrorClassification() {
+    assertThat(
+            GcpCredentialVendor.serverIdentityError(
+                    new IOException(
+                        "Error code 404 trying to get security access token from Compute Engine"
+                            + " metadata for the default service account."))
+                .getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(
+            GcpCredentialVendor.serverIdentityError(
+                    new IOException("Error code invalid_request: boundary too large"))
+                .getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+    assertThat(
+            GcpCredentialVendor.serverIdentityError(
+                    new IOException("Token must be a short-lived token"))
+                .getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
+    assertThat(
+            GcpCredentialVendor.serverIdentityError(new IOException("connection reset"))
+                .getErrorCode())
+        .isEqualTo(ErrorCode.UNAVAILABLE);
   }
 }

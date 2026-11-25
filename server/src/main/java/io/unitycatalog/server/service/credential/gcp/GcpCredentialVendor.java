@@ -18,6 +18,7 @@ import io.unitycatalog.server.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
 import io.unitycatalog.server.utils.GcpServiceAccountKeys;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -25,6 +26,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,11 +49,23 @@ public class GcpCredentialVendor {
       new ConcurrentHashMap<>();
   private final CredentialSecretStore secretStore;
   private final Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> keyGenerators;
+  private final GcpApplicationDefaultCredentials defaultCredentials;
+  private final GcpCredentialGenerator serverIdentityGenerator;
   // How Google's token endpoints are reached, or null for the library's default; tests pass a mock.
   private final HttpTransportFactory transportFactory;
 
   public GcpCredentialVendor(ServerProperties serverProperties) {
-    this(serverProperties, CredentialSecretStore.from(serverProperties), null);
+    this(serverProperties, GcpApplicationDefaultCredentials.DEFAULT);
+  }
+
+  public GcpCredentialVendor(
+      ServerProperties serverProperties, GcpApplicationDefaultCredentials defaultCredentials) {
+    this(
+        serverProperties,
+        CredentialSecretStore.from(serverProperties),
+        null,
+        defaultCredentials,
+        null);
   }
 
   /**
@@ -63,7 +77,12 @@ public class GcpCredentialVendor {
       ServerProperties serverProperties,
       CredentialSecretStore secretStore,
       Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> keyGenerators) {
-    this(serverProperties, secretStore, keyGenerators, null);
+    this(
+        serverProperties,
+        secretStore,
+        keyGenerators,
+        GcpApplicationDefaultCredentials.DEFAULT,
+        null);
   }
 
   /**
@@ -75,17 +94,53 @@ public class GcpCredentialVendor {
       CredentialSecretStore secretStore,
       Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> keyGenerators,
       HttpTransportFactory transportFactory) {
+    this(
+        serverProperties,
+        secretStore,
+        keyGenerators,
+        GcpApplicationDefaultCredentials.DEFAULT,
+        transportFactory);
+  }
+
+  /**
+   * @param defaultCredentials loads the server's Application Default Credentials for {@code
+   *     gcp_server_identity} credentials
+   * @param transportFactory how the stored key signs in and how its token is downscoped, or null
+   *     for the library's default; tests pass one that does not call Google
+   */
+  GcpCredentialVendor(
+      ServerProperties serverProperties,
+      CredentialSecretStore secretStore,
+      Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> keyGenerators,
+      GcpApplicationDefaultCredentials defaultCredentials,
+      HttpTransportFactory transportFactory) {
     this.gcsConfigurations = serverProperties.getGcsConfigurations();
     this.secretStore = secretStore;
     this.keyGenerators = keyGenerators != null ? keyGenerators : this::createKeyGenerator;
+    this.defaultCredentials =
+        Objects.requireNonNullElse(defaultCredentials, GcpApplicationDefaultCredentials.DEFAULT);
     this.transportFactory = transportFactory;
+    this.serverIdentityGenerator = createServerIdentityGenerator();
   }
 
   public AccessToken vendGcpCredential(CredentialContext credentialContext) {
     Optional<CredentialDAO> credentialDAO = credentialContext.getCredentialDAO();
     if (credentialDAO.isPresent()) {
-      // The storage credential of the external location holds the service account key.
       CredentialDAO dao = credentialDAO.get();
+      if (dao.getCredentialType() == CredentialDAO.CredentialType.GCP_SERVER_IDENTITY) {
+        try {
+          return serverIdentityGenerator.generate(credentialContext);
+        } catch (BaseException e) {
+          LOGGER.warn(
+              "Cannot get a token with storage credential '{}': {}",
+              dao.getName(),
+              e.getMessage(),
+              e);
+          throw e;
+        }
+      }
+      // The storage credential of the external location holds the service account key (or is a
+      // non-GCP credential type that storedKey rejects without naming the credential).
       GcpServiceAccountKeyRequest key = storedKey(dao);
       try {
         return keyGenerators.apply(key).generate(credentialContext);
@@ -167,6 +222,26 @@ public class GcpCredentialVendor {
                 ? ServiceAccountCredentials.fromStream(Files.localInput(path).newStream())
                 : GoogleCredentials.getApplicationDefault(),
         GcpCredentialVendor::credentialError);
+  }
+
+  private GcpCredentialGenerator createServerIdentityGenerator() {
+    return context -> {
+      GoogleCredentials creds;
+      try {
+        creds = defaultCredentials.load();
+      } catch (IOException e) {
+        throw new BaseException(
+            ErrorCode.FAILED_PRECONDITION,
+            "The server has no usable Google Cloud Application Default Credentials. Contact the"
+                + " server administrator.",
+            e);
+      }
+      try {
+        return downscopeGcpCreds(creds.createScoped(INITIAL_SCOPES), context).refreshAccessToken();
+      } catch (IOException e) {
+        throw serverIdentityError(e);
+      }
+    };
   }
 
   private GcpCredentialGenerator createKeyGenerator(GcpServiceAccountKeyRequest key) {
@@ -335,12 +410,35 @@ public class GcpCredentialVendor {
    * the credential.
    */
   static BaseException storedKeyError(IOException e) {
+    return gcpTokenError(
+        e,
+        "Google rejected the service account key of the storage credential for this location:"
+            + " it may have been disabled, deleted or revoked. Contact the server administrator.",
+        /* checkMetadata404= */ false);
+  }
+
+  /**
+   * Maps a failure to get a downscoped token using the server's Application Default Credentials.
+   * Same error classification as {@link #storedKeyError}, plus Compute Engine metadata 404 (no
+   * service account or missing scopes on the instance) as {@code FAILED_PRECONDITION}.
+   */
+  static BaseException serverIdentityError(IOException e) {
+    return gcpTokenError(
+        e,
+        "Google rejected the server's Google Cloud credentials for this location. Contact the"
+            + " server administrator.",
+        /* checkMetadata404= */ true);
+  }
+
+  private static BaseException gcpTokenError(
+      IOException e, String rejectedCredentialsMessage, boolean checkMetadata404) {
     if (String.valueOf(e.getMessage()).startsWith("Error code invalid_request")) {
       return credentialError(e);
     }
-    // Google's answer to the key is in the causes: the downscoping step reports only that it could
-    // not refresh the source credential. The strings are the error codes and descriptions of
-    // Google's OAuth token endpoint, as google-auth puts them in its exception messages.
+    // Google's answer to the source credential is in the causes: the downscoping step reports only
+    // that it could not refresh the source credential. The strings are the error codes and
+    // descriptions of Google's OAuth token endpoint, as google-auth puts them in its exception
+    // messages.
     String reasons = causeMessages(e);
     // invalid_grant also means the server's clock is off, which the key cannot fix.
     if (reasons.contains("Token must be a short-lived token")) {
@@ -352,10 +450,14 @@ public class GcpCredentialVendor {
     if (reasons.contains("invalid_grant")
         || reasons.contains("invalid_client")
         || reasons.contains("unauthorized_client")) {
+      return new BaseException(ErrorCode.FAILED_PRECONDITION, rejectedCredentialsMessage, e);
+    }
+    if (checkMetadata404
+        && reasons.contains("Error code 404 trying to get security access token")) {
       return new BaseException(
           ErrorCode.FAILED_PRECONDITION,
-          "Google rejected the service account key of the storage credential for this location:"
-              + " it may have been disabled, deleted or revoked. Contact the server administrator.",
+          "The server's Compute Engine instance has no service account or permission scopes for"
+              + " Google Cloud Storage. Contact the server administrator.",
           e);
     }
     if (isPermanentFailure(e)) {

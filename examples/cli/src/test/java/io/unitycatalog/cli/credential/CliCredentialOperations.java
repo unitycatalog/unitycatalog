@@ -49,6 +49,9 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
         argsList.add("--gcp_service_account_key_file");
         argsList.add(keyFile.toString());
       }
+      if (createCredentialRequest.getGcpServerIdentity() != null) {
+        argsList.add("--gcp_server_identity");
+      }
       return execute(CredentialInfo.class, "create", argsList);
     } finally {
       if (keyFile != null) {
