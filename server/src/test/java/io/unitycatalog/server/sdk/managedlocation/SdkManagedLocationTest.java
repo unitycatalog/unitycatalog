@@ -9,11 +9,14 @@ import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.model.CreateModelVersion;
+import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.ModelVersionInfo;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.VolumeInfo;
@@ -120,5 +123,73 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
     VolumeInfo externalVolumeInfo = volumeOperations.createVolume(createExternalVolume);
     assertThat(externalVolumeInfo.getStorageLocation())
         .isEqualTo(NormalizedURL.normalize(storageRootDir.toString()));
+  }
+
+  @SneakyThrows
+  private void assertManagedVolumeUnder(String schemaName, String parentLocation) {
+    VolumeInfo managed =
+        volumeOperations.createVolume(
+            new CreateVolumeRequestContent()
+                .name(MANAGED_VOLUME_NAME1)
+                .catalogName(CATALOG_NAME)
+                .schemaName(schemaName)
+                .volumeType(VolumeType.MANAGED));
+    assertThat(managed.getStorageLocation()).startsWith(parentLocation + "/volumes/");
+    assertThat(volumeOperations.getVolume(managed.getFullName()).getStorageLocation())
+        .isEqualTo(managed.getStorageLocation());
+  }
+
+  @SneakyThrows
+  @Test
+  public void testStoragePathsLongerThan255Characters() {
+    String catalogRoot = "s3://catalog-bucket/" + "c".repeat(1000);
+    String schemaRoot = "s3://schema-bucket/" + "s".repeat(1200);
+    createCatalog(Optional.of(catalogRoot));
+    createSchema(Optional.of(schemaRoot));
+    assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageRoot()).isEqualTo(catalogRoot);
+    assertThat(catalogOperations.getCatalog(CATALOG_NAME).getStorageLocation())
+        .isEqualTo(catalogInfo.getStorageLocation());
+    assertThat(schemaOperations.getSchema(SCHEMA_FULL_NAME).getStorageRoot()).isEqualTo(schemaRoot);
+    assertThat(schemaOperations.getSchema(SCHEMA_FULL_NAME).getStorageLocation())
+        .isEqualTo(schemaInfo.getStorageLocation());
+
+    schemaOperations.createSchema(new CreateSchema().catalogName(CATALOG_NAME).name(SCHEMA_NAME2));
+    assertManagedVolumeUnder(SCHEMA_NAME, schemaInfo.getStorageLocation());
+    assertManagedVolumeUnder(SCHEMA_NAME2, catalogInfo.getStorageLocation());
+
+    String externalVolumeLocation = "s3://volume-bucket/" + "v".repeat(2029);
+    assertThat(externalVolumeLocation).hasSize(2048);
+    volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(EXTERNAL_VOLUME_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(externalVolumeLocation));
+    assertThat(
+            volumeOperations
+                .getVolume(SCHEMA_FULL_NAME + "." + EXTERNAL_VOLUME_NAME)
+                .getStorageLocation())
+        .isEqualTo(externalVolumeLocation);
+
+    String modelVersionSource = "s3://model-bucket/" + "m".repeat(2030);
+    assertThat(modelVersionSource).hasSize(2048);
+    modelOperations.createRegisteredModel(
+        new CreateRegisteredModel()
+            .name(MANAGED_MODEL_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME));
+    ModelVersionInfo version =
+        modelOperations.createModelVersion(
+            new CreateModelVersion()
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .modelName(MANAGED_MODEL_NAME)
+                .source(modelVersionSource));
+    assertThat(
+            modelOperations
+                .getModelVersion(SCHEMA_FULL_NAME + "." + MANAGED_MODEL_NAME, version.getVersion())
+                .getSource())
+        .isEqualTo(modelVersionSource);
   }
 }
