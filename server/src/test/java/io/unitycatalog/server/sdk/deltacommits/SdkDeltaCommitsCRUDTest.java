@@ -1406,6 +1406,71 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyIcebergMetadata(Optional.empty());
   }
 
+  /**
+   * A backfill-only request carries no commit, so it has no Iceberg conversion to report. It must
+   * work on a UniForm table without a uniform block, or a table at the commit limit can never be
+   * backfilled and stays unwritable.
+   */
+  @Test
+  public void testBackfillOnlyCommitOnUniformTable() throws ApiException, IOException {
+    String enabledFormats = TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS;
+    // Before UniForm is on, a uniform block without a commit is rejected the same way, also when
+    // its timestamp can't be parsed or it has no iceberg block.
+    assertApiException(
+        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(1L).uniform(uniformAt(1L))),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata requires an accompanying commit.");
+    assertApiException(
+        () ->
+            deltaCommitsApi.commit(createBackfillOnlyCommitObject(1L).uniform(new DeltaUniform())),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata requires an accompanying commit.");
+    DeltaUniform unparseableTimestamp = uniformAt(1L);
+    unparseableTimestamp.getIceberg().convertedDeltaTimestamp("not-a-timestamp");
+    assertApiException(
+        () ->
+            deltaCommitsApi.commit(
+                createBackfillOnlyCommitObject(1L).uniform(unparseableTimestamp)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata requires an accompanying commit.");
+    deltaCommitsApi.commit(
+        commitWithProperties(1L, Map.of(enabledFormats, "iceberg")).uniform(uniformAt(1L)));
+    for (long v = 2; v <= 10; v++) {
+      deltaCommitsApi.commit(commitKeepingProperties(v).uniform(uniformAt(v)));
+    }
+    assertApiException(
+        () -> deltaCommitsApi.commit(commitKeepingProperties(11L).uniform(uniformAt(11L))),
+        ErrorCode.RESOURCE_EXHAUSTED,
+        "Max number of commits per table reached");
+    writePublishedCommitFiles(1L, 10L);
+
+    // The uniform block is rejected before it is read, so its version doesn't matter here.
+    assertApiException(
+        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(10L).uniform(uniformAt(9L))),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata requires an accompanying commit.");
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
+    verifyIcebergMetadata(Optional.of(10L));
+
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(10L));
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 10);
+    verifyIcebergMetadata(Optional.of(10L));
+
+    assertApiException(
+        () -> deltaCommitsApi.commit(commitKeepingProperties(11L)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata must be set");
+    deltaCommitsApi.commit(commitKeepingProperties(11L).uniform(uniformAt(11L)));
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 11, 11);
+    verifyIcebergMetadata(Optional.of(11L));
+  }
+
+  /** A commit with no metadata, so the stored table properties stay as they are. */
+  private DeltaCommit commitKeepingProperties(long version) {
+    return createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation())
+        .metadata(null);
+  }
+
   /** A commit that replaces the table properties with the table ID plus {@code properties}. */
   private DeltaCommit commitWithProperties(long version, Map<String, String> properties) {
     return createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation())
@@ -1566,6 +1631,24 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
             .uniform(invalidUniform6);
     assertApiException(
         () -> deltaCommitsApi.commit(commit6), ErrorCode.INVALID_ARGUMENT, "must be a subpath");
+
+    // Test 7: converted_delta_timestamp without the trailing Z
+    DeltaUniformIceberg invalidIceberg7 =
+        new DeltaUniformIceberg()
+            .metadataLocation(URI.create(uniformMetadataLocation(1L)))
+            .convertedDeltaVersion(1L)
+            .convertedDeltaTimestamp("2025-01-04T03:13:11.423");
+    DeltaCommit commit7 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .metadata(uniformEnablingMetadata)
+            .uniform(new DeltaUniform().iceberg(invalidIceberg7));
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit7),
+        ErrorCode.INVALID_ARGUMENT,
+        "uniform.iceberg.converted_delta_timestamp must be an ISO 8601 UTC instant from year 1000"
+            + " to 9999, such as 2025-01-04T03:13:11.423Z, but was '2025-01-04T03:13:11.423'.");
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 0);
+    verifyIcebergMetadata(Optional.empty());
   }
 
   @Test

@@ -256,7 +256,13 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
     As noted in [Unity Catalog 101](https://www.unitycatalog.io/blogs/unity-catalog-oss), UC has a three-part naming
     convention of [`catalog`].[`schema`].[`asset`]. In the following examples, you can use the three-part notation such
     as `SELECT * FROM <catalog_name>.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the
-    `defaultCatalog` is already configured.
+    `defaultCatalog` is already configured. A name without a schema, such as `SELECT * FROM marksheet;`, resolves to
+    `<catalog_name>.default` unless a different schema was selected with `USE <schema_name>`. The default schema must
+    exist. If it does not, create it with `CREATE SCHEMA <catalog_name>.default` or qualify the name. Be careful with
+    unqualified writes: when the current schema is `default`, `DROP TABLE t` and `INSERT INTO t` act on
+    `<catalog_name>.default.t`. `SELECT current_schema()` shows the current schema. `spark.catalog.listTables()` without
+    arguments does not list the tables of `<catalog_name>.default`, even when it is the current schema. Pass the full
+    namespace, as in `spark.catalog.listTables("<catalog_name>.default")`.
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
@@ -520,9 +526,10 @@ Unity Catalog vends credentials for the table's own folder, and Delta uses them 
 there. The `checkpointLocation` of a streaming query is different: Spark writes its offsets and commit log there
 itself, not through the table, so Unity Catalog vends nothing for it. The Spark session needs its own access to the
 checkpoint location, for example a machine identity or an application default login (on GCS, also set
-`spark.hadoop.fs.gs.auth.type=APPLICATION_DEFAULT`). With the default renewing credentials, Unity Catalog sets its own
-auth type for each table, so that session-wide setting only applies to locations Unity Catalog does not vend for, such
-as the checkpoint.
+`spark.hadoop.fs.gs.auth.type=APPLICATION_DEFAULT`). Unity Catalog sets its own auth type for each table or path it
+vends a token for, so that session-wide setting only applies to locations Unity Catalog does not vend for, such as the
+checkpoint. The one exception is a table or path that gets several tokens while credential renewal is off
+(`spark.sql.catalog.<name>.renewCredential.enabled=false`), which also uses the session-wide setting.
 
 !!! warning
     Limit that login to the checkpoint location. If it can also read the table's storage, Spark can bypass the

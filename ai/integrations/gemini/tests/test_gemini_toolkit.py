@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import os
 from unittest import mock
@@ -9,7 +10,8 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from google.generativeai import GenerativeModel, protos
-from google.generativeai.types import CallableFunctionDeclaration
+from google.generativeai import client as generativeai_client
+from google.generativeai.types import CallableFunctionDeclaration, GenerateContentResponse
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import BaseFunctionClient
@@ -17,7 +19,8 @@ from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
-from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
+from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit, _restore_integers
+from unitycatalog.ai.gemini.utils import generate_tool_call_messages
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     client,  # noqa: F401
@@ -213,7 +216,7 @@ def test_convert_to_gemini_schema_with_valid_function_info():
 
     # Expected output
     expected_schema = {
-        "name": "test",
+        "name": "catalog__schema__test",
         "description": "Executes Python code and returns its stdout.",
         "parameters": {
             "properties": {
@@ -478,11 +481,13 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
     }
 
     assert {tool.name: tool.schema for tool in toolkit.tools}["catalog__schema__get_weather"] == {
-        "name": "get_weather",
+        "name": "catalog__schema__get_weather",
         "description": "Get the weather.",
     }
-    assert declarations["test"].to_proto().parameters.required == ["x"]
-    response = declarations["get_weather"](protos.FunctionCall(name="get_weather", args={}))
+    assert declarations["catalog__schema__test"].to_proto().parameters.required == ["x"]
+    response = declarations["catalog__schema__get_weather"](
+        protos.FunctionCall(name="catalog__schema__get_weather", args={})
+    )
     client.execute_function.assert_called_once_with(
         function_name="catalog.schema.get_weather", parameters={}, enable_retriever_tracing=False
     )
@@ -492,11 +497,149 @@ def test_toolkit_with_function_without_params(no_params_function_info, function_
     }
 
 
+def function_infos_named(generate, full_names):
+    function_info = generate({"x": ("STRING", "string")})
+    infos = {}
+    for full_name in full_names:
+        catalog, schema, name = full_name.split(".")
+        fields = {
+            "catalog_name": catalog,
+            "schema_name": schema,
+            "name": name,
+            "full_name": full_name,
+        }
+        if isinstance(function_info, OSSFunctionInfo):
+            infos[full_name.lower()] = function_info.model_copy(update=fields)
+        else:
+            infos[full_name.lower()] = dataclasses.replace(function_info, **fields)
+    return infos
+
+
+def function_infos_in_schemas(generate, schemas):
+    return function_infos_named(generate, [f"catalog.{schema}.test" for schema in schemas])
+
+
+def mock_client_for(function_infos):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.side_effect = lambda name, **kwargs: function_infos[name.lower()]
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    return client
+
+
+def model_response(part):
+    return protos.GenerateContentResponse(
+        candidates=[
+            protos.Candidate(
+                content=protos.Content(role="model", parts=[part]),
+                finish_reason=protos.Candidate.FinishReason.STOP,
+            )
+        ]
+    )
+
+
+def function_call_response(name, args):
+    return model_response(protos.Part(function_call=protos.FunctionCall(name=name, args=args)))
+
+
+SAME_NAMED_FUNCTIONS = ["catalog.sales.test", "catalog.hr.test"]
+
+FUNCTION_INFO_GENERATORS = pytest.mark.parametrize(
+    "generate",
+    [generate_function_info_with_params, generate_function_info_with_params_oss],
+    ids=["databricks", "oss"],
+)
+
+
+@FUNCTION_INFO_GENERATORS
+def test_toolkit_declares_same_named_functions_by_tool_name(generate):
+    client = mock_client_for(function_infos_in_schemas(generate, ["sales", "hr"]))
+    toolkit = UCFunctionToolkit(function_names=SAME_NAMED_FUNCTIONS, client=client)
+    declarations = toolkit.generate_callable_tool_list()
+
+    GenerativeModel(model_name="gemini-2.0-flash", tools=declarations)
+
+    assert [declaration.name for declaration in declarations] == [
+        "catalog__sales__test",
+        "catalog__hr__test",
+    ]
+    assert [tool.name for tool in toolkit.tools] == ["catalog__sales__test", "catalog__hr__test"]
+
+
+@pytest.mark.parametrize(
+    ("called", "tool_name"),
+    [("catalog.sales.test", "catalog__sales__test"), ("catalog.hr.test", "catalog__hr__test")],
+)
+@FUNCTION_INFO_GENERATORS
+def test_generate_tool_call_messages_runs_the_called_same_named_function(
+    generate, called, tool_name
+):
+    client = mock_client_for(function_infos_in_schemas(generate, ["sales", "hr"]))
+    toolkit = UCFunctionToolkit(function_names=SAME_NAMED_FUNCTIONS, client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    response = GenerateContentResponse.from_response(function_call_response(tool_name, {"x": "hi"}))
+
+    _, parts = generate_tool_call_messages(model=model, response=response, conversation_history=[])
+
+    client.execute_function.assert_called_once_with(
+        function_name=called, parameters={"x": "hi"}, enable_retriever_tracing=False
+    )
+    assert [part.function_response.name for part in parts] == [tool_name]
+
+
+@pytest.mark.parametrize(
+    ("called", "tool_name"),
+    [("catalog.sales.test", "catalog__sales__test"), ("catalog.hr.test", "catalog__hr__test")],
+)
+@FUNCTION_INFO_GENERATORS
+def test_automatic_function_calling_runs_the_called_same_named_function(
+    generate, called, tool_name
+):
+    client = mock_client_for(function_infos_in_schemas(generate, ["sales", "hr"]))
+    toolkit = UCFunctionToolkit(function_names=SAME_NAMED_FUNCTIONS, client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    gemini_client = mock.MagicMock()
+    gemini_client.generate_content.side_effect = [
+        function_call_response(tool_name, {"x": "hi"}),
+        model_response(protos.Part(text="done")),
+    ]
+
+    with mock.patch.object(
+        generativeai_client, "get_default_generative_client", return_value=gemini_client
+    ):
+        response = model.start_chat(enable_automatic_function_calling=True).send_message("hi")
+
+    assert response.text == "done"
+    client.execute_function.assert_called_once_with(
+        function_name=called, parameters={"x": "hi"}, enable_retriever_tracing=False
+    )
+
+
+@FUNCTION_INFO_GENERATORS
+def test_mixed_case_function_name_is_declared_as_the_tool_name(generate):
+    client = mock_client_for(function_infos_in_schemas(generate, ["hr"]))
+    toolkit = UCFunctionToolkit(function_names=["Catalog.HR.Test"], client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    response = GenerateContentResponse.from_response(
+        function_call_response("Catalog__HR__Test", {"x": "hi"})
+    )
+
+    generate_tool_call_messages(model=model, response=response, conversation_history=[])
+
+    assert [tool.name for tool in toolkit.tools] == ["Catalog__HR__Test"]
+    client.execute_function.assert_called_once_with(
+        function_name="Catalog.HR.Test", parameters={"x": "hi"}, enable_retriever_tracing=False
+    )
+
+
 # Unlike JSON_ARGUMENT_PARAMS, these have no DATE, TIMESTAMP or DECIMAL parameter and no nullable
-# struct field, since a Gemini function schema accepts no union type and no default. The struct
-# fields are strings because the protobuf Struct of a function call returns every number as a
-# float, so 150 would come back as 150.0, tracked in
-# https://github.com/unitycatalog/unitycatalog/issues/2308.
+# struct field, since a Gemini function schema accepts no union type and no default.
 PLACE_TYPE_JSON = {
     "type": "struct",
     "fields": [
@@ -550,3 +693,288 @@ def test_function_call_sends_arguments_as_json_values(function_info, encoded):
     declaration(protos.FunctionCall(name=declaration.name, args=arguments))
 
     assert client.execute_function.call_args.kwargs["parameters"] == arguments
+
+
+POINT_TYPE_JSON = {
+    "type": "struct",
+    "fields": [
+        {"name": "x", "type": "integer", "nullable": False, "metadata": {}},
+        {"name": "weight", "type": "double", "nullable": False, "metadata": {}},
+    ],
+}
+
+GEMINI_NUMBER_ARGUMENT_PARAMS = {
+    "tiny": ("byte", "byte"),
+    "small": ("short", "short"),
+    "medium": ("int", "integer"),
+    "big": ("long", "long"),
+    "ratio": ("double", "double"),
+    "label": ("string", "string"),
+    "point": ("struct<x:int,weight:double>", POINT_TYPE_JSON),
+    "ids": (
+        "array<long>",
+        {"type": "array", "elementType": "long", "containsNull": True},
+    ),
+    "counts": (
+        "map<string,short>",
+        {"type": "map", "keyType": "string", "valueType": "short", "valueContainsNull": False},
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (
+            {
+                "tiny": 1,
+                "small": 2,
+                "medium": 3,
+                "big": 4,
+                "ratio": 2,
+                "label": "5",
+                "point": {"x": 6, "weight": 7},
+                "ids": [8, None],
+                "counts": {"a": 9},
+            },
+            {
+                "tiny": 1,
+                "small": 2,
+                "medium": 3,
+                "big": 4,
+                "ratio": 2.0,
+                "label": "5",
+                "point": {"x": 6, "weight": 7.0},
+                "ids": [8, None],
+                "counts": {"a": 9},
+            },
+        ),
+        (
+            {"big": 4.5, "point": {"x": 6.5, "weight": 7.5}, "ids": [8.5], "counts": {"a": 9.5}},
+            {"big": 4.5, "point": {"x": 6.5, "weight": 7.5}, "ids": [8.5], "counts": {"a": 9.5}},
+        ),
+        (
+            {"big": 2**53 - 1, "ids": [-(2**53 - 1)]},
+            {"big": 2**53 - 1, "ids": [-(2**53 - 1)]},
+        ),
+        # The protobuf Struct rounds 2**53 + 1 to the double 2**53, so it is sent as a float, which
+        # the function client rejects for a LONG parameter, instead of as a different integer.
+        (
+            {"big": 2**53 + 1, "ids": [-(2**53 + 1)]},
+            {"big": float(2**53), "ids": [-float(2**53)]},
+        ),
+    ],
+    ids=["integral", "fractional", "largest-exact", "beyond-float-precision"],
+)
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params(GEMINI_NUMBER_ARGUMENT_PARAMS),
+        generate_function_info_with_params_oss(GEMINI_NUMBER_ARGUMENT_PARAMS),
+    ],
+    ids=["databricks", "oss"],
+)
+def test_function_call_sends_integer_arguments_as_int(function_info, arguments, expected):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    declaration = toolkit.generate_callable_tool_list()[0]
+
+    declaration(protos.FunctionCall(name=declaration.name, args=arguments))
+
+    parameters = client.execute_function.call_args.kwargs["parameters"]
+    assert json.dumps(parameters, sort_keys=True) == json.dumps(expected, sort_keys=True)
+
+
+@pytest.mark.parametrize(
+    "type_json",
+    [
+        '{"type": "long"}',
+        '{"name": "other", "type": "long", "nullable": false, "metadata": {}}',
+    ],
+    ids=["no-embedded-name", "different-embedded-name"],
+)
+def test_function_call_sends_integer_argument_by_parameter_name(type_json):
+    function_info = generate_function_info_with_params_oss({"n": ("long", "long")})
+    function_info.input_params.parameters[0].type_json = type_json
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    declaration = toolkit.generate_callable_tool_list()[0]
+
+    declaration(protos.FunctionCall(name=declaration.name, args={"n": 2}))
+
+    assert repr(client.execute_function.call_args.kwargs["parameters"]) == repr({"n": 2})
+
+
+INT_STRUCT_TYPE_JSON = {
+    "type": "struct",
+    "fields": [{"name": "x", "type": "integer", "nullable": False, "metadata": {}}],
+}
+
+
+@pytest.mark.parametrize(
+    ("value", "uc_type_json", "expected"),
+    [
+        (
+            [{"x": 1.0}, {"x": 2.0}],
+            {"type": "array", "elementType": INT_STRUCT_TYPE_JSON, "containsNull": False},
+            [{"x": 1}, {"x": 2}],
+        ),
+        (
+            {"a": [1.0, 2.0]},
+            {
+                "type": "map",
+                "keyType": "string",
+                "valueType": {"type": "array", "elementType": "long", "containsNull": True},
+                "valueContainsNull": False,
+            },
+            {"a": [1, 2]},
+        ),
+        ({"x": 1.0, "extra": 3.0}, INT_STRUCT_TYPE_JSON, {"x": 1, "extra": 3.0}),
+        ("1", "int", "1"),
+        ([1.0], INT_STRUCT_TYPE_JSON, [1.0]),
+        ({"a": 1.0}, {"type": "array", "elementType": "int", "containsNull": False}, {"a": 1.0}),
+        (float(2**53 - 1), "long", 2**53 - 1),
+        (float(2**53), "long", float(2**53)),
+        (-float(2**53), "long", -float(2**53)),
+    ],
+    ids=[
+        "array-of-structs",
+        "map-of-arrays",
+        "unknown-struct-key",
+        "string-for-int",
+        "list-for-struct",
+        "dict-for-array",
+        "largest-exact",
+        "first-inexact",
+        "first-inexact-negative",
+    ],
+)
+def test_restore_integers(value, uc_type_json, expected):
+    assert repr(_restore_integers(value, uc_type_json)) == repr(expected)
+
+
+LONG_FUNCTION_NAME = "main.customer_analytics_prod.compute_lifetime_value_by_segment"
+
+
+@pytest.mark.parametrize(
+    ("function_name", "declared_name"),
+    [
+        (
+            LONG_FUNCTION_NAME[:-1],
+            "main__customer_analytics_prod__compute_lifetime_value_by_segmen",
+        ),
+        (LONG_FUNCTION_NAME, "ain__customer_analytics_prod__compute_lifetime_value_by_segment"),
+        ("team@prod.sales.test", "team_prod__sales__test"),
+    ],
+    ids=["63-characters", "64-characters", "at-sign"],
+)
+@FUNCTION_INFO_GENERATORS
+def test_declared_name_follows_the_gemini_name_rules(generate, function_name, declared_name):
+    client = mock_client_for(function_infos_named(generate, [function_name]))
+    toolkit = UCFunctionToolkit(function_names=[function_name], client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    response = GenerateContentResponse.from_response(
+        function_call_response(declared_name, {"x": "hi"})
+    )
+
+    generate_tool_call_messages(model=model, response=response, conversation_history=[])
+
+    assert len(declared_name) <= 63
+    assert [(tool.name, tool.schema["name"]) for tool in toolkit.tools] == [
+        (declared_name, declared_name)
+    ]
+    client.execute_function.assert_called_once_with(
+        function_name=function_name, parameters={"x": "hi"}, enable_retriever_tracing=False
+    )
+
+
+@pytest.mark.parametrize(
+    "function_names",
+    [
+        ["catalog.s.a__b", "catalog.s__a.b"],
+        ["x" + LONG_FUNCTION_NAME, "y" + LONG_FUNCTION_NAME],
+        ["catalog.sales.a@b", "catalog.sales.a_b"],
+    ],
+    ids=["underscore-join", "cut-to-63", "replaced-character"],
+)
+@FUNCTION_INFO_GENERATORS
+def test_functions_whose_declared_names_collide_each_run_their_own_function(
+    generate, function_names
+):
+    client = mock_client_for(function_infos_named(generate, function_names))
+    toolkit = UCFunctionToolkit(function_names=function_names, client=client)
+    declarations = toolkit.generate_callable_tool_list()
+    model = GenerativeModel(model_name="gemini-2.0-flash", tools=declarations)
+    names = [tool.name for tool in toolkit.tools]
+
+    assert len(set(names)) == 2
+    assert all(len(name) <= 63 for name in names)
+    assert [declaration.name for declaration in declarations] == names
+    for function_name, name in zip(function_names, names):
+        client.execute_function.reset_mock()
+        response = GenerateContentResponse.from_response(function_call_response(name, {"x": "hi"}))
+        generate_tool_call_messages(model=model, response=response, conversation_history=[])
+        client.execute_function.assert_called_once_with(
+            function_name=function_name, parameters={"x": "hi"}, enable_retriever_tracing=False
+        )
+
+
+@pytest.mark.parametrize(
+    ("function_name", "logged"),
+    [(LONG_FUNCTION_NAME[:-1], False), (LONG_FUNCTION_NAME, True)],
+    ids=["63-characters", "64-characters"],
+)
+@FUNCTION_INFO_GENERATORS
+def test_cut_name_is_logged_as_declared(generate, function_name, logged, caplog):
+    client = mock_client_for(function_infos_named(generate, [function_name]))
+    toolkit = UCFunctionToolkit(function_names=[function_name], client=client)
+    [tool] = toolkit.tools
+
+    assert ("too long" in caplog.text) is logged
+    assert (f"characters {tool.name}." in caplog.text) is logged
+
+
+@FUNCTION_INFO_GENERATORS
+def test_hash_suffixed_name_does_not_take_the_name_of_another_tool(generate):
+    colliding = ["catalog.s.a__b", "catalog.s__a.b"]
+    client = mock_client_for(function_infos_named(generate, colliding))
+    suffixed = UCFunctionToolkit(function_names=colliding, client=client).tools[0].name
+    function_names = [*colliding, "catalog.s." + suffixed.removeprefix("catalog__s__")]
+    client = mock_client_for(function_infos_named(generate, function_names))
+    toolkit = UCFunctionToolkit(function_names=function_names, client=client)
+    model = GenerativeModel(
+        model_name="gemini-2.0-flash", tools=toolkit.generate_callable_tool_list()
+    )
+    names = [tool.name for tool in toolkit.tools]
+
+    assert names[2] == suffixed
+    assert len(set(names)) == 3
+    for function_name, name in zip(function_names, names):
+        client.execute_function.reset_mock()
+        response = GenerateContentResponse.from_response(function_call_response(name, {"x": "hi"}))
+        generate_tool_call_messages(model=model, response=response, conversation_history=[])
+        client.execute_function.assert_called_once_with(
+            function_name=function_name, parameters={"x": "hi"}, enable_retriever_tracing=False
+        )
+
+
+@FUNCTION_INFO_GENERATORS
+def test_same_named_function_infos_are_declared_by_distinct_names(generate):
+    client = mock_client_for({})
+    tools = [
+        UCFunctionToolkit.uc_function_to_gemini_tool(function_info=function_info, client=client)
+        for function_info in function_infos_in_schemas(generate, ["sales", "hr"]).values()
+    ]
+
+    assert [(tool.name, tool.schema["name"]) for tool in tools] == [
+        ("catalog__sales__test", "catalog__sales__test"),
+        ("catalog__hr__test", "catalog__hr__test"),
+    ]

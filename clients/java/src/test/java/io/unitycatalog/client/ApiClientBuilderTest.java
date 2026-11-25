@@ -10,8 +10,14 @@ import io.unitycatalog.client.auth.TokenProviderUtils;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 
 /**
@@ -195,5 +201,145 @@ public class ApiClientBuilderTest {
         ApiClientBuilder.create().uri(uriWithSuffix).tokenProvider(tokenProvider).build();
     assertThat(clientWithSuffix.getBaseUri())
         .isEqualTo("https://localhost:8080/path/to/uc/api/2.1/unity-catalog");
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "http://localhost:8080, http://localhost:8080/api/2.1/unity-catalog",
+    "http://localhost:8080/, http://localhost:8080/api/2.1/unity-catalog",
+    "http://localhost:8080/uc, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/uc/, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/uc//, http://localhost:8080/uc/api/2.1/unity-catalog",
+    "http://localhost:8080/gateway/uc/, http://localhost:8080/gateway/uc/api/2.1/unity-catalog",
+    "http://example.com/, http://example.com/api/2.1/unity-catalog",
+    "http://example.com/uc/, http://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com, https://example.com/api/2.1/unity-catalog",
+    "https://example.com/, https://example.com/api/2.1/unity-catalog",
+    "https://example.com/uc, https://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com/uc/, https://example.com/uc/api/2.1/unity-catalog",
+    "https://example.com:8443/, https://example.com:8443/api/2.1/unity-catalog",
+    "https://example.com:8443/uc//, https://example.com:8443/uc/api/2.1/unity-catalog"
+  })
+  public void testBaseUriIgnoresTrailingSlashes(String uri, String expectedBaseUri) {
+    ApiClient client =
+        ApiClientBuilder.create()
+            .uri(uri)
+            .tokenProvider(TokenProviderUtils.create(TEST_TOKEN))
+            .build();
+    assertThat(client.getBaseUri()).isEqualTo(expectedBaseUri);
+  }
+
+  @Test
+  public void testReusedBuilderKeepsEachClientsTokenProvider() {
+    ApiClientBuilder builder = ApiClientBuilder.create().uri(TEST_URI);
+    ApiClient alice = builder.tokenProvider(TokenProviderUtils.create("alice-token")).build();
+    ApiClient bob = builder.tokenProvider(TokenProviderUtils.create("bob-token")).build();
+
+    assertThat(sentHeaders(alice).allValues("Authorization")).containsExactly("Bearer alice-token");
+    assertThat(sentHeaders(bob).allValues("Authorization")).containsExactly("Bearer bob-token");
+  }
+
+  @Test
+  public void testReusedBuilderSendsEachHeaderOnce() {
+    ApiClientBuilder builder =
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(TokenProviderUtils.create(TEST_TOKEN));
+    ApiClient first = builder.build();
+    ApiClient second = builder.build();
+
+    for (ApiClient client : List.of(first, second)) {
+      HttpHeaders headers = sentHeaders(client);
+      assertThat(headers.allValues("Authorization")).containsExactly("Bearer " + TEST_TOKEN);
+      assertThat(headers.allValues("User-Agent"))
+          .singleElement()
+          .asString()
+          .startsWith("UnityCatalog-Java-Client/");
+    }
+  }
+
+  @Test
+  public void testBuilderChangesAfterBuildDoNotReachEarlierClients() {
+    ApiClientBuilder builder =
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(TokenProviderUtils.create(TEST_TOKEN));
+    ApiClient first = builder.build();
+    ApiClient second =
+        builder
+            .addRequestInterceptor(request -> request.header("X-A", "1"))
+            .addAppVersion("LaterApp", "2.0")
+            .build();
+
+    HttpHeaders firstHeaders = sentHeaders(first);
+    assertThat(firstHeaders.allValues("X-A")).isEmpty();
+    assertThat(firstHeaders.allValues("User-Agent"))
+        .singleElement()
+        .asString()
+        .doesNotContain("LaterApp");
+
+    HttpHeaders secondHeaders = sentHeaders(second);
+    assertThat(secondHeaders.allValues("X-A")).containsExactly("1");
+    assertThat(secondHeaders.allValues("User-Agent"))
+        .singleElement()
+        .asString()
+        .contains("LaterApp/2.0");
+  }
+
+  @Test
+  public void testCustomInterceptorsRunInOrderBeforeTheTokenIsRead() {
+    List<String> calls = new ArrayList<>();
+    ApiClient client =
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(rotatingTokenProvider(calls))
+            .addRequestInterceptor(request -> calls.add("first"))
+            .addRequestInterceptor(request -> calls.add("second"))
+            .build();
+
+    sentHeaders(client);
+
+    assertThat(calls).containsExactly("first", "second", "token-1");
+  }
+
+  @Test
+  public void testTokenIsReadForEachRequest() {
+    ApiClient client =
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(rotatingTokenProvider(new ArrayList<>()))
+            .build();
+
+    assertThat(sentHeaders(client).allValues("Authorization")).containsExactly("Bearer token-1");
+    assertThat(sentHeaders(client).allValues("Authorization")).containsExactly("Bearer token-2");
+  }
+
+  private static HttpHeaders sentHeaders(ApiClient client) {
+    HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(TEST_URI));
+    client.getRequestInterceptor().accept(request);
+    return request.build().headers();
+  }
+
+  /** Returns "token-1", "token-2", ... on successive calls and records each in {@code calls}. */
+  private static TokenProvider rotatingTokenProvider(List<String> calls) {
+    return new TokenProvider() {
+      private int count = 0;
+
+      @Override
+      public void initialize(Map<String, String> configs) {}
+
+      @Override
+      public String accessToken() {
+        count++;
+        String token = "token-" + count;
+        calls.add(token);
+        return token;
+      }
+
+      @Override
+      public Map<String, String> configs() {
+        return Map.of();
+      }
+    };
   }
 }

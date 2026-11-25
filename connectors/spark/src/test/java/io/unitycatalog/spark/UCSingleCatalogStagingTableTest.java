@@ -25,8 +25,11 @@ import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.connector.catalog.Column;
@@ -36,10 +39,12 @@ import org.apache.spark.sql.connector.catalog.StagingTableCatalog;
 import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.connector.catalog.TableChange;
+import org.apache.spark.sql.connector.catalog.TableWritePrivilege;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -154,6 +159,39 @@ public class UCSingleCatalogStagingTableTest {
 
     verify(mockDelegate, never()).loadTable(nested);
     verify(mockDelegate).tableExists(nested);
+  }
+
+  @ParameterizedTest(name = "deltaApiReady={0}")
+  @ValueSource(booleans = {true, false})
+  public void testEmptyNamespaceIsRejectedBeforeDelegate(boolean deltaApiReady) throws Exception {
+    setDeltaApiReady(deltaApiReady);
+    Identifier unqualified = Identifier.of(new String[0], "t");
+    Column[] columns = {Column.create("id", DataTypes.IntegerType)};
+    List<ThrowingCallable> calls =
+        List.of(
+            () -> catalog.createTable(unqualified, columns, PARTITIONS, MANAGED_DELTA_PROPS),
+            () -> catalog.stageCreate(unqualified, SCHEMA, PARTITIONS, MANAGED_DELTA_PROPS),
+            () -> catalog.stageReplace(unqualified, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS),
+            () ->
+                catalog.stageCreateOrReplace(unqualified, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS));
+
+    for (ThrowingCallable call : calls) {
+      assertThatThrownBy(call)
+          .isInstanceOf(ApiException.class)
+          .hasMessage(
+              "Empty namespaces are not supported: name a schema for t, as in catalog.schema.t");
+    }
+    List<ThrowingCallable> loads =
+        List.of(
+            () -> catalog.loadTable(unqualified),
+            () -> catalog.loadTable(unqualified, "v1"),
+            () -> catalog.loadTable(unqualified, 123L),
+            () -> catalog.loadTable(unqualified, Set.of(TableWritePrivilege.INSERT)));
+    for (ThrowingCallable load : loads) {
+      assertThatThrownBy(load).isExactlyInstanceOf(NoSuchTableException.class);
+    }
+
+    verifyNoInteractions(mockDelegate);
   }
 
   @AfterEach
@@ -389,21 +427,68 @@ public class UCSingleCatalogStagingTableTest {
             : null;
     when(tablesApi.createStagingTable(any(CreateStagingTable.class)))
         .thenThrow(new ApiException(status, "createStagingTable call failed", null, body));
-    Map<String, String> props = Map.of(TableCatalog.PROP_PROVIDER, "delta");
 
-    assertThatThrownBy(
-            () -> {
-              if (stageCreate) {
-                catalog.stageCreate(IDENT, SCHEMA, PARTITIONS, props);
-              } else {
-                catalog.createTable(
-                    IDENT,
-                    new Column[] {Column.create("id", DataTypes.IntegerType, false)},
-                    PARTITIONS,
-                    props);
-              }
-            })
+    assertThatThrownBy(() -> createManagedDeltaTable(stageCreate))
         .isInstanceOf(TableAlreadyExistsException.class);
+  }
+
+  /**
+   * A missing catalog or schema is reported as a missing schema on both managed paths. Another 404
+   * is rethrown as is.
+   */
+  @ParameterizedTest
+  @CsvSource({
+    "true, SCHEMA_NOT_FOUND, true",
+    "false, SCHEMA_NOT_FOUND, true",
+    "true, CATALOG_NOT_FOUND, true",
+    "false, CATALOG_NOT_FOUND, true",
+    "true, TABLE_NOT_FOUND, false",
+    "false, TABLE_NOT_FOUND, false"
+  })
+  public void testManagedCreateMapsMissingSchemaToNoSuchNamespace(
+      boolean stageCreate, String errorCode, boolean namespaceMissing) throws Exception {
+    TablesApi tablesApi = mock(TablesApi.class);
+    mockMissingTableLookup(tablesApi);
+    ApiException error = UCProxySuite.notFound(errorCode);
+    when(tablesApi.createStagingTable(any(CreateStagingTable.class))).thenThrow(error);
+
+    if (namespaceMissing) {
+      assertThatThrownBy(() -> createManagedDeltaTable(stageCreate))
+          .isInstanceOf(NoSuchNamespaceException.class)
+          .hasMessageContaining("`schema`");
+    } else {
+      assertThatThrownBy(() -> createManagedDeltaTable(stageCreate)).isSameAs(error);
+    }
+  }
+
+  /** A 400 with another error code is not a taken name, so both managed paths rethrow it as is. */
+  @ParameterizedTest(name = "stageCreate={0}")
+  @ValueSource(booleans = {true, false})
+  public void testManagedCreateKeepsUnrelatedStagingError(boolean stageCreate) throws Exception {
+    TablesApi tablesApi = mock(TablesApi.class);
+    mockMissingTableLookup(tablesApi);
+    ApiException error =
+        new ApiException(
+            400,
+            "createStagingTable call failed",
+            null,
+            "{\"error_code\":\"INVALID_ARGUMENT\",\"message\":\"Invalid name\"}");
+    when(tablesApi.createStagingTable(any(CreateStagingTable.class))).thenThrow(error);
+
+    assertThatThrownBy(() -> createManagedDeltaTable(stageCreate)).isSameAs(error);
+  }
+
+  private void createManagedDeltaTable(boolean stageCreate) throws Exception {
+    Map<String, String> props = Map.of(TableCatalog.PROP_PROVIDER, "delta");
+    if (stageCreate) {
+      catalog.stageCreate(IDENT, SCHEMA, PARTITIONS, props);
+    } else {
+      catalog.createTable(
+          IDENT,
+          new Column[] {Column.create("id", DataTypes.IntegerType, false)},
+          PARTITIONS,
+          props);
+    }
   }
 
   @Test
@@ -531,6 +616,16 @@ public class UCSingleCatalogStagingTableTest {
     Assumptions.assumeTrue(DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API));
     setDeltaApiReady(true);
     assertReplaceGoesToDelegateUnchanged(createOrReplace, IDENT);
+  }
+
+  @ParameterizedTest(name = "createOrReplace={0}")
+  @ValueSource(booleans = {true, false})
+  public void testReplaceNestedNameGoesToDeltaApiUnchanged(boolean createOrReplace)
+      throws Exception {
+    Assumptions.assumeTrue(DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API));
+    setDeltaApiReady(true);
+    assertReplaceGoesToDelegateUnchanged(
+        createOrReplace, Identifier.of(new String[] {"a", "b"}, "t"));
   }
 
   private void assertReplaceGoesToDelegateUnchanged(boolean createOrReplace, Identifier ident)

@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.dao;
 
+import static io.unitycatalog.server.utils.Constants.MAX_STORAGE_LOCATION_LENGTH;
+
 import io.unitycatalog.server.model.StagingTableInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -34,7 +36,7 @@ public class StagingTableDAO extends IdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
 
-  @Column(name = "staging_location", length = 2048, nullable = false)
+  @Column(name = "staging_location", length = MAX_STORAGE_LOCATION_LENGTH, nullable = false)
   private String stagingLocation;
 
   @Column(name = "created_at", nullable = false)
