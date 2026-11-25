@@ -117,7 +117,8 @@ def check_conf_stamps(run_tests) -> None:
              "connectors/spark/etc/conf/b.json"]
     saved = run_tests.ROOT
     with tempfile.TemporaryDirectory() as root:
-        for name in files:
+        # Three levels deep is past the limit, so this one must not be watched.
+        for name in files + ["a/b/c/etc/conf/deep.json"]:
             (Path(root) / name).parent.mkdir(parents=True, exist_ok=True)
             (Path(root) / name).write_text("x")
         run_tests.ROOT = root

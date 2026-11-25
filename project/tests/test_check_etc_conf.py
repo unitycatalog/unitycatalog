@@ -31,9 +31,14 @@ def main() -> None:
         (repo / "etc" / "conf").mkdir(parents=True)
         (repo / "etc" / "conf" / "server.properties").write_text("server.env=dev\n")
         # Like the real .gitignore: the generated files are ignored in etc/conf.
-        (repo / ".gitignore").write_text("etc/conf/*.txt\n")
+        (repo / ".gitignore").write_text("etc/conf/*.txt\nother/*.txt\n")
         git(repo, "add", ".")
         git(repo, "commit", "-q", "-m", "init")
+        # Untracked and ignored files outside etc/conf are none of the script's business, so they
+        # stay for the whole test: every passing check below also pins that.
+        (repo / "other").mkdir()
+        (repo / "other" / "new.json").write_text("x")
+        (repo / "other" / "x.txt").write_text("x")
 
         result = check(repo)
         assert result.returncode == 0, f"a clean tree must pass:\n{result.stdout}{result.stderr}"
@@ -41,6 +46,7 @@ def main() -> None:
         # Each case must fail and name the file: ignored, unignored in a module, hidden, edited.
         cases = {
             "etc/conf/token.txt": "!! etc/conf/token.txt",
+            "etc/conf/keys/private_key.der": "?? etc/conf/keys/private_key.der",
             "examples/cli/etc/conf/certs.json": "?? examples/cli/etc/conf/certs.json",
             "etc/conf/.hidden": "?? etc/conf/.hidden",
             "etc/conf/server.properties": " M etc/conf/server.properties",
@@ -56,6 +62,8 @@ def main() -> None:
                 f"{result.stdout}{result.stderr}")
             if original is None:
                 file.unlink()
+                if file.parent != repo / "etc" / "conf" and not any(file.parent.iterdir()):
+                    file.parent.rmdir()
             else:
                 file.write_text(original)
 

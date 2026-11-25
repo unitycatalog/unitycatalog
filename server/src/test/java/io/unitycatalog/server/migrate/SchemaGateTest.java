@@ -30,7 +30,7 @@ public class SchemaGateTest {
 
   @TempDir Path storageRoot;
 
-  // The server's signing keys, certs.json and token.txt, instead of the shared etc/conf.
+  // The server's signing keys and token.txt, instead of the shared etc/conf.
   @TempDir Path configurationFolder;
 
   @Test

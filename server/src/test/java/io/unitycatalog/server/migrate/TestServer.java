@@ -38,8 +38,8 @@ final class TestServer implements AutoCloseable {
    *
    * @param db the database to run on
    * @param storageRoot the root of the server's table storage
-   * @param configurationFolder the folder for the server's signing keys, {@code certs.json} and
-   *     {@code token.txt}, instead of the shared {@code etc/conf}
+   * @param configurationFolder the folder for the server's signing keys and {@code token.txt},
+   *     instead of the shared {@code etc/conf}
    * @return the started server
    */
   static TestServer start(TestDatabase db, Path storageRoot, Path configurationFolder) {
