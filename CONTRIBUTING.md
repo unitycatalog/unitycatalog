@@ -27,6 +27,24 @@ We have implemented a feature that allows users to comment "**take**" on an issu
 
 We generally follow the [Apache Spark Scala Style Guide](https://spark.apache.org/contributing.html).
 
+## Formatting and lint
+
+CI runs these checks on pull requests. Run the ones for the code you changed before you push:
+
+| Code | Check (what CI runs) | Fix | CI workflow (runs when) |
+|---|---|---|---|
+| Java | `build/sbt javafmtCheck` (main sources only; `build/sbt javafmtCheckAll` also checks test sources) | `build/sbt javafmtAll` (formats main and test sources) | `lint-check.yml` (every pull request to `main`) |
+| Java (server, cli, sampleDatabase, spark, hadoop, integrationTests; Java client tests only) | Checkstyle with `dev/checkstyle-config.xml` runs during compile and `Test/compile` of each module that enables it, and the build fails on a violation, for example `build/sbt server/compile server/Test/compile`. Running `build/sbt server/checkstyle` alone only writes a report and exits 0. | Fix what the build reports | `unit-tests.yml` (pull requests to `main` or `branch-*`), as part of compile and test |
+| UI (`ui/`) | `cd ui && bun install --frozen-lockfile && bun run test:format` | `cd ui && bun run format` | `lint-check.yml` (every pull request to `main`) |
+| UI lock file | `cd ui && bun run scripts/clean-bun-lock.ts --check` | `cd ui && bun run scripts/clean-bun-lock.ts` | `lint-check.yml` (every pull request to `main`) |
+| Python (`ai/`) | `cd ai && ruff check . && ruff format --check .` | `cd ai && ruff check --fix . && ruff format .` | `ucai-core-tests.yml` (pull requests that change `ai/` or `.github/workflows/ucai-*.yml`) |
+| YAML (`ai/`) | `cd ai && yamllint .` | Fix what it reports | `ucai-core-tests.yml` (pull requests that change `ai/` or `.github/workflows/ucai-*.yml`) |
+| Helm chart README (`helm/README.md`) | helm-docs v1.14.2 regenerates it, and CI fails if anything under `helm/` changes | `pre-commit run helm-docs --all-files` | `helm-chart-tests.yml` (pull requests that change the chart or what it runs) |
+| Helm chart (`helm/`) | `ct lint --charts helm --validate-maintainers=false --check-version-increment=false` ([chart-testing](https://github.com/helm/chart-testing)) | Fix what it reports | `helm-chart-tests.yml` (pull requests that change the chart or what it runs) |
+| Dependency licenses | `build/sbt licenseCheck` (primary H2 `all-tests` row only) | Set `licenseOverrides` or `licenseDepExclusions` in `build.sbt` | `unit-tests.yml` (pull requests to `main` or `branch-*`) |
+
+The `ai/` linters are pinned in `ai/requirements/lint-requirements.lock` (from `ai/`, in a virtualenv: `uv pip install --require-hashes -r requirements/lint-requirements.lock`). In `server`, `cli`, `sampleDatabase`, `spark`, `hadoop` and `integrationTests`, compile also runs `javafmtAll` on main and test sources. Compiling the Java client does not, so run `build/sbt javafmtAll` before you push.
+
 # Sign your work
 
 The sign-off is a simple line at the end of the explanation for the patch. Your signature certifies that you wrote the patch or otherwise have the right to pass it on as an open-source patch.

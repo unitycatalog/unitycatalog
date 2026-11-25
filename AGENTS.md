@@ -39,10 +39,10 @@ Run the server, CLI, and UI locally:
 build/sbt package
 bin/start-uc-server            # starts the server on localhost
 bin/uc table list           # exercise the CLI against it
-cd ui && yarn install && yarn start
+cd ui && bun install && bun run start
 ```
 
-Java follows the Google Java Format (a format check runs in CI; run `build/sbt javafmtAll` before pushing). Scala follows the Apache Spark Scala Style Guide. The UI has its own format check (`yarn test:format` in `ui/`).
+Java follows the Google Java Format (a format check runs in CI; run `build/sbt javafmtAll` before pushing). Scala follows the Apache Spark Scala Style Guide. The UI has its own format check (`bun run test:format` in `ui/`). The format and lint checks CI runs, and how to fix each, are in `CONTRIBUTING.md` under "Formatting and lint".
 
 **CI checks a pull request must satisfy:** unit tests across an engine/format matrix (currently Spark 4.0/4.1/4.2 with the pinned Delta release, plus informational non-blocking runs against a Delta development snapshot; the primary combination also runs license and connector tests), the Java and UI format checks, the cross-Spark build, and the Python client generation and tests. The development-snapshot runs do not block, but a failure there signals an upcoming incompatibility worth understanding.
 
@@ -88,7 +88,7 @@ Key points: HTTP verb annotations (`@Post`, `@Get`, `@Patch`, `@Delete`) with `@
 | `examples/cli/` | The `uc` command-line client. |
 | `examples/sample-database/` | Builds the sample H2 database (`etc/db/h2db.mv.db`) that the quickstart examples use. |
 | `integration-tests/` | Cross-module and end-to-end tests. |
-| `ui/` | The web UI (React, built with Yarn / Node). |
+| `ui/` | The web UI (React, managed and run with Bun). |
 | `docs/` | User documentation, published with MkDocs (`mkdocs.yml`). |
 | `ai/` | The Unity Catalog AI library: function-calling integrations for various frameworks. A separate Python subproject with its own `uv`-based toolchain. It is not the catalog server; do not confuse `ai/` with server code. |
 | `bin/` | `bin/start-uc-server`, `bin/uc`. |
