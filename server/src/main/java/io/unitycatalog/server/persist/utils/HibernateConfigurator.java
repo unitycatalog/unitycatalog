@@ -12,7 +12,6 @@ import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.FunctionParameterInfoDAO;
-import io.unitycatalog.server.persist.dao.IcebergWriteReservationDAO;
 import io.unitycatalog.server.persist.dao.MetastoreDAO;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -303,7 +302,6 @@ public class HibernateConfigurator implements AutoCloseable {
       configuration.addAnnotatedClass(SchemaInfoDAO.class);
       configuration.addAnnotatedClass(TableInfoDAO.class);
       configuration.addAnnotatedClass(StagingTableDAO.class);
-      configuration.addAnnotatedClass(IcebergWriteReservationDAO.class);
       configuration.addAnnotatedClass(ColumnInfoDAO.class);
       configuration.addAnnotatedClass(PropertyDAO.class);
       configuration.addAnnotatedClass(FunctionInfoDAO.class);

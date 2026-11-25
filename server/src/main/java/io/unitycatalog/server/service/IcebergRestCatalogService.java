@@ -586,7 +586,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         throw new AlreadyExistsException("Table already exists: %s.%s", namespace, request.name());
       }
       if (tableType == TableType.EXTERNAL) {
-        stagingTableRepository.reserveExternalIcebergWrites(location);
+        stagingTableRepository.validateExternalIcebergLocation(location);
       }
       metadataService.prepareTableLocation(tableMetadata, location);
       return LoadTableResponse.builder()
@@ -703,7 +703,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             .storageLocation(committed.location())
             .properties(committed.properties());
     if (tableType == TableType.EXTERNAL) {
-      stagingTableRepository.reserveExternalIcebergWrites(tableLocation);
+      stagingTableRepository.validateExternalIcebergLocation(tableLocation);
     }
     metadataService.writeTableMetadata(committed, metadataLocation, tableLocation);
     TableInfo tableInfo;

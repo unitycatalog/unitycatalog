@@ -17,9 +17,11 @@ import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.PermissionsChange;
@@ -27,11 +29,13 @@ import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.IcebergTestUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
@@ -41,9 +45,10 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
+import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
@@ -69,6 +74,8 @@ import org.apache.iceberg.types.Types;
 import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Exhaustive access-control tests for the Iceberg REST catalog endpoints, driving each through
@@ -290,8 +297,9 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     return file;
   }
 
-  @Test
-  public void registrationRejectsReplacedStorageBoundaryWithoutSideEffects() throws Exception {
+  @ParameterizedTest
+  @ValueSource(strings = {"metadata", "manifests", "overlap"})
+  public void registrationRechecksStorageWithoutSideEffects(String change) throws Exception {
     createCommonTestUsers();
     String importerId = createTestUser(CREATOR_ONLY).getId();
     setupCommonCatalogAndSchema(CAT, SCHEMA);
@@ -312,25 +320,61 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
         Privileges.CREATE_MANAGED_STORAGE,
         Privileges.READ_FILES,
         Privileges.WRITE_FILES);
-    Path file = registrationMetadata(root.resolve("orders"));
+    Path file;
+    var source =
+        IcebergTestUtils.createTable(
+            root.resolve("orders"),
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())));
+    try (var ignored = source.io()) {
+      source
+          .newFastAppend()
+          .appendFile(
+              DataFiles.builder(source.spec())
+                  .withPath(source.location() + "/data/record.avro")
+                  .withFormat("avro")
+                  .withFileSizeInBytes(1)
+                  .withRecordCount(1)
+                  .build())
+          .commit();
+      file =
+          Path.of(NormalizedURL.from(source.operations().current().metadataFileLocation()).toUri());
+    }
     byte[] original = Files.readAllBytes(file);
     ExternalLocationsApi locations = new ExternalLocationsApi(adminApiClient);
     String originalId = locations.getExternalLocation("registration_storage", null).getId();
-    AtomicBoolean replaced = new AtomicBoolean();
+    grantPermissions(
+        PRINCIPAL_1,
+        SecurableType.EXTERNAL_LOCATION,
+        "registration_storage",
+        Privileges.CREATE_EXTERNAL_VOLUME);
+    var volumes =
+        new VolumesApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));
+    AtomicInteger reads = new AtomicInteger();
+    int changeAtRead = change.equals("metadata") ? 1 : 2;
     doAnswer(
             invocation -> {
-              // Discovery and authorization have finished; persistence has not started.
-              if (replaced.compareAndSet(false, true)) {
-                locations.deleteExternalLocation("registration_storage", false);
-                assertThat(
-                        locations
-                            .createExternalLocation(
-                                new CreateExternalLocation()
-                                    .name("registration_storage")
-                                    .credentialName("registration_credential")
-                                    .url(root.toUri().toString()))
-                            .getId())
-                    .isNotEqualTo(originalId);
+              if (reads.incrementAndGet() == changeAtRead) {
+                // The manifest read starts after the service's discovered-root check.
+                if (change.equals("overlap")) {
+                  volumes.createVolume(
+                      new CreateVolumeRequestContent()
+                          .catalogName(CAT)
+                          .schemaName(SCHEMA)
+                          .name("conflicting_volume")
+                          .volumeType(VolumeType.EXTERNAL)
+                          .storageLocation(root.resolve("orders").toString()));
+                } else {
+                  locations.deleteExternalLocation("registration_storage", false);
+                  assertThat(
+                          locations
+                              .createExternalLocation(
+                                  new CreateExternalLocation()
+                                      .name("registration_storage")
+                                      .credentialName("registration_credential")
+                                      .url(root.toUri().toString()))
+                              .getId())
+                      .isNotEqualTo(originalId);
+                }
               }
               return invocation.callRealMethod();
             })
@@ -348,8 +392,10 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
                         .metadataLocation(file.toString())
                         .build()),
         400,
-        "The registration storage boundary changed; retry the request.");
-    assertThat(replaced).isTrue();
+        change.equals("overlap")
+            ? "The path overlaps an existing table, volume"
+            : "The registration storage boundary changed; retry the request.");
+    assertThat(reads.get()).isGreaterThanOrEqualTo(changeAtRead);
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       assertThat(
               session

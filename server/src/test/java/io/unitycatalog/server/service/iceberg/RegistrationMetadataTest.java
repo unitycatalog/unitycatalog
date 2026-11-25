@@ -15,7 +15,9 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.IcebergTestUtils;
+import io.unitycatalog.server.utils.LocalMappingFileIO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.net.SocketTimeoutException;
 import java.nio.file.Files;
@@ -34,8 +36,10 @@ import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.avro.Avro;
 import org.apache.iceberg.avro.GenericAvroWriter;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.exceptions.RuntimeIOException;
+import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.io.FileAppender;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
@@ -322,14 +326,8 @@ class RegistrationMetadataTest {
   }
 
   @ParameterizedTest
-  @ValueSource(
-      strings = {
-        "s3://bucket",
-        "gs://bucket",
-        "abfs://c@a.dfs.core.windows.net",
-        "abfss://c@a.dfs.core.windows.net"
-      })
-  void rejectsEncodedCloudRegistrationPaths(String root) {
+  @ValueSource(strings = {"abfs://c@a.dfs.core.windows.net", "abfss://c@a.dfs.core.windows.net"})
+  void rejectsEncodedAzureRegistrationPaths(String root) {
     for (String escaped : List.of("%20", "%2f", "%2e", "%25")) {
       assertThatThrownBy(
               () ->
@@ -339,6 +337,67 @@ class RegistrationMetadataTest {
               BaseException.class,
               e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
           .hasMessageContaining("canonical cloud object path");
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"s3://bucket", "gs://bucket"})
+  void acceptsPercentKeysInObjectStorage(String storage) throws Exception {
+    String root = storage + "/warehouse/a%20b";
+    String metadataLocation = root + "/metadata/v1%25.metadata.json";
+    FileIO fileIO =
+        new LocalMappingFileIO(
+            NormalizedURL.from(root),
+            directory.resolve("cloud"),
+            Map.of(
+                S3FileIOProperties.ACCESS_KEY_ID, "test-key",
+                S3FileIOProperties.SECRET_ACCESS_KEY, "test-secret",
+                S3FileIOProperties.SESSION_TOKEN, "test-token",
+                GCPProperties.GCS_OAUTH2_TOKEN, "test-token"),
+            Map.of(),
+            CredentialContext.READ_WRITE);
+    var cloudTable = IcebergTestUtils.createTable(root, table.schema(), Map.of(), fileIO);
+    try (var ignored = cloudTable.io()) {
+      cloudTable
+          .newFastAppend()
+          .appendFile(
+              DataFiles.builder(cloudTable.spec())
+                  .withPath(root + "/data/ts=2024-01-01T10%3A00%3A00/file.avro")
+                  .withFormat("avro")
+                  .withFileSizeInBytes(1)
+                  .withRecordCount(1)
+                  .build())
+          .commit();
+      cloudTable
+          .newRowDelta()
+          .addDeletes(
+              FileMetadata.deleteFileBuilder(cloudTable.spec())
+                  .ofPositionDeletes()
+                  .withPath(root + "/data/value=%2F%2e%25/delete.avro")
+                  .withFormat("avro")
+                  .withFileSizeInBytes(1)
+                  .withRecordCount(1)
+                  .build())
+          .commit();
+      cloudTable
+          .updateProperties()
+          .set(TableProperties.WRITE_METADATA_LOCATION, root + "/metadata")
+          .set(TableProperties.WRITE_DATA_LOCATION, root + "/data/value=%25")
+          .commit();
+      TableMetadata original = cloudTable.operations().current();
+      TableMetadataParser.write(original, fileIO.newOutputFile(metadataLocation));
+      FileOperations operations = mock();
+      when(operations.getFileIO(any())).thenReturn(fileIO);
+      TableMetadata registered =
+          new MetadataService(operations)
+              .readRegistrationMetadata(
+                  MetadataService.registrationMetadataLocation(metadataLocation),
+                  NormalizedURL.from(storage + "/warehouse"));
+      assertThat(registered.location()).isEqualTo(root);
+      assertThat(registered.metadataFileLocation()).isEqualTo(metadataLocation);
+      assertThat(registered.snapshots()).hasSize(2);
+      assertThat(registered.properties())
+          .containsEntry(TableProperties.WRITE_DATA_LOCATION, root + "/data/value=%25");
     }
   }
 

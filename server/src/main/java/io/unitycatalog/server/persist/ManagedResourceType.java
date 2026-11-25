@@ -26,7 +26,7 @@ public enum ManagedResourceType {
   /** Cleanup kind for a managed table, whose in-place Iceberg directory may not carry its UC id. */
   public static ManagedResourceType forTable(TableInfoDAO table) {
     return DataSourceFormat.ICEBERG.getValue().equals(table.getDataSourceFormat())
-            && !table.getUrl().endsWith("/tables/" + table.getId())
+            && !table.getUrl().endsWith("/" + TABLE.pathSegment() + "/" + table.getId())
         ? REGISTERED_TABLE
         : TABLE;
   }

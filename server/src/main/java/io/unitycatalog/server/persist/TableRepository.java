@@ -925,12 +925,6 @@ public class TableRepository {
                 createTable.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
             ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, storageLocation);
-            // Transfer the staged-write reservation to the external table in this transaction.
-            session
-                .createMutationQuery(
-                    "DELETE FROM IcebergWriteReservationDAO WHERE storageLocation = :location")
-                .setParameter("location", storageLocation.toString())
-                .executeUpdate();
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());

@@ -11,7 +11,6 @@ import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
-import io.unitycatalog.server.persist.dao.IcebergWriteReservationDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.MetastoreDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
@@ -101,8 +100,9 @@ public class ExternalLocationUtils {
   private static final DaoClassInfo PENDING_CLEANUP_TASK_DAO_INFO =
       new DaoClassInfo(StorageCleanupTaskDAO.class, "storageLocation", "completedAt IS NULL");
 
-  private static final DaoClassInfo ICEBERG_WRITE_RESERVATION_DAO_INFO =
-      new DaoClassInfo(IcebergWriteReservationDAO.class, "storageLocation");
+  private static final DaoClassInfo REGISTERED_TABLE_RESERVATION_DAO_INFO =
+      new DaoClassInfo(
+          StorageCleanupTaskDAO.class, "storageLocation", "resourceType='REGISTERED_TABLE'");
 
   /**
    * List of securable types that represent data objects (tables, volumes, registered models). Used
@@ -792,6 +792,11 @@ public class ExternalLocationUtils {
     return hasOverlap(session, url, STORAGE_CLEANUP_TASK_DAO_INFO, includeSubdir);
   }
 
+  private static boolean hasRegisteredTableReservationOverlap(Session session, NormalizedURL url) {
+    return hasOverlap(session, url, REGISTERED_TABLE_RESERVATION_DAO_INFO, true)
+        || hasLocalStorageAlias(session, url, List.of(REGISTERED_TABLE_RESERVATION_DAO_INFO));
+  }
+
   private static boolean hasOverlap(
       Session session, NormalizedURL url, DaoClassInfo type, boolean includeSubdir) {
     return !generateEntitiesDAOsWithURLOverlapQuery(
@@ -914,10 +919,7 @@ public class ExternalLocationUtils {
     List<DaoClassInfo> types =
         Stream.concat(
                 SECURABLE_TYPE_TO_DAO_MAP.values().stream(),
-                Stream.of(
-                    UNCOMMITTED_STAGING_TABLE_DAO_INFO,
-                    STORAGE_CLEANUP_TASK_DAO_INFO,
-                    ICEBERG_WRITE_RESERVATION_DAO_INFO))
+                Stream.of(UNCOMMITTED_STAGING_TABLE_DAO_INFO, STORAGE_CLEANUP_TASK_DAO_INFO))
             .toList();
     if (hasLocalStorageAlias(session, path, types)) {
       throw new BaseException(
@@ -990,12 +992,11 @@ public class ExternalLocationUtils {
                 /* includeSubdir= */ true)
             .getResultList()
             .isEmpty()
-        || hasCleanupReservationOverlap(session, path, true)
-        || hasOverlap(session, path, ICEBERG_WRITE_RESERVATION_DAO_INFO, true)) {
+        || hasCleanupReservationOverlap(session, path, true)) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "The path overlaps an existing table, volume, model, staging table, pending storage"
-              + " cleanup, a retired registered directory, or an external staged write.");
+              + " cleanup, or a retired registered directory.");
     }
     if (!getAllEntityDAOsWithURLOverlap(
             session,
@@ -1054,22 +1055,7 @@ public class ExternalLocationUtils {
                         && hasLocalStorageAlias(path, table.getUrl()));
       }
     }
-    DaoClassInfo registeredCleanup =
-        new DaoClassInfo(
-            StorageCleanupTaskDAO.class, "storageLocation", "resourceType='REGISTERED_TABLE'");
-    boolean pending =
-        !generateEntitiesDAOsWithURLOverlapQuery(
-                    session,
-                    path,
-                    registeredCleanup,
-                    1,
-                    /* includeParent= */ true,
-                    /* includeSelf= */ true,
-                    /* includeSubdir= */ true)
-                .getResultList()
-                .isEmpty()
-            || hasLocalStorageAlias(session, path, List.of(registeredCleanup));
-    if (pending
+    if (hasRegisteredTableReservationOverlap(session, path)
         || hasLocalAlias
         || overlaps.stream()
             .anyMatch(

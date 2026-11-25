@@ -35,7 +35,6 @@ import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
-import io.unitycatalog.server.persist.dao.IcebergWriteReservationDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -59,11 +58,13 @@ import java.util.UUID;
 import java.util.function.Function;
 import lombok.SneakyThrows;
 import org.apache.iceberg.CatalogProperties;
+import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
+import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.avro.Avro;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.data.GenericRecord;
@@ -75,6 +76,7 @@ import org.apache.iceberg.rest.auth.OAuth2Properties;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ImmutableRegisterTableRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
+import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.types.Types;
 import org.hibernate.Session;
 import org.junit.jupiter.api.BeforeEach;
@@ -224,20 +226,7 @@ public class IcebergRegisterTableTest extends BaseServerTest {
       assertThat(task.getStorageLocation())
           .isEqualTo(NormalizedURL.from(directory.toUri()).toString());
     }
-    Properties cleanupProperties = new Properties();
-    cleanupProperties.putAll(serverProperties);
-    StorageCleanupTestSupport.configureFastCleanup(cleanupProperties);
-    try (var worker =
-        new StorageCleanupWorker(
-            new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory()),
-            fileOperations,
-            Clock.systemUTC(),
-            new ServerProperties(cleanupProperties),
-            UnityCatalogMetrics.noop())) {
-      worker.start();
-      StorageCleanupTestSupport.awaitCleanup(
-          hibernateConfigurator.getSessionFactory(), id, Duration.ofSeconds(5), directory);
-    }
+    awaitStorageCleanup(id, directory);
     assertThat(directory).doesNotExist();
     assertThat(sibling).hasContent("keep");
     assertThat(
@@ -775,8 +764,7 @@ public class IcebergRegisterTableTest extends BaseServerTest {
               "SchemaInfoDAO",
               "CatalogInfoDAO",
               "RegisteredModelInfoDAO",
-              "StagingTableDAO",
-              "IcebergWriteReservationDAO")) {
+              "StagingTableDAO")) {
         count +=
             session
                 .createSelectionQuery(
@@ -791,39 +779,24 @@ public class IcebergRegisterTableTest extends BaseServerTest {
     assertThat(file).exists();
   }
 
-  @Test
-  public void externalStageReservesWritesAndRejectsRegisteredStorage() throws Exception {
-    Path directory = externalRoot.resolve("staged");
-    var staged =
-        client.createTable(
-            CATALOG,
-            NAMESPACE,
-            CreateTableRequest.builder()
-                .withName("staged")
-                .withSchema(SCHEMA)
-                .withLocation(directory.toString())
-                .stageCreate()
-                .build());
-    assertThat(staged.tableMetadata().location())
-        .isEqualTo(NormalizedURL.from(directory.toUri()).toString());
-    Path metadata = writeMetadata(directory);
-    assertIcebergApiException(
-        () -> client.registerTable(CATALOG, NAMESPACE, request("imported", metadata.toString())),
-        400,
-        "external staged write");
-    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      assertThat(
-              session
-                  .createSelectionQuery(
-                      "FROM IcebergWriteReservationDAO", IcebergWriteReservationDAO.class)
-                  .getResultList())
-          .extracting(IcebergWriteReservationDAO::getStorageLocation)
-          .containsExactly(NormalizedURL.from(directory.toUri()).toString());
-    }
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void externalCreatesRejectRegisteredStorageBeforeWriting(boolean retired)
+      throws Exception {
     Path registered = externalRoot.resolve("registered");
     Path original = writeMetadata(registered);
-    byte[] contents = Files.readAllBytes(original);
     client.registerTable(CATALOG, NAMESPACE, request("registered", original.toString()));
+    if (retired) {
+      UUID id =
+          UUID.fromString(
+              tables
+                  .getTable(CATALOG + "." + NAMESPACE + ".registered", null, null, null)
+                  .getTableId());
+      client.dropTable(CATALOG, NAMESPACE, "registered");
+      awaitStorageCleanup(id, registered);
+      original = writeMetadata(registered);
+    }
+    byte[] contents = Files.readAllBytes(original);
     for (boolean stage : List.of(false, true)) {
       var builder =
           CreateTableRequest.builder()
@@ -964,8 +937,65 @@ public class IcebergRegisterTableTest extends BaseServerTest {
         .isEqualTo(locationId.toString());
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void nativeManagedIcebergDropRemovesCleanupTask(boolean staged) throws Exception {
+    var builder = CreateTableRequest.builder().withName("native_table").withSchema(SCHEMA);
+    if (staged) {
+      builder.stageCreate();
+    }
+    TableMetadata metadata =
+        client.createTable(CATALOG, NAMESPACE, builder.build()).tableMetadata();
+    if (staged) {
+      client.updateTable(
+          CATALOG,
+          NAMESPACE,
+          "native_table",
+          new UpdateTableRequest(
+              List.of(new UpdateRequirement.AssertTableDoesNotExist()),
+              List.of(
+                  new MetadataUpdate.AssignUUID(metadata.uuid()),
+                  new MetadataUpdate.UpgradeFormatVersion(metadata.formatVersion()),
+                  new MetadataUpdate.AddSchema(metadata.schema()),
+                  new MetadataUpdate.SetCurrentSchema(-1),
+                  new MetadataUpdate.AddPartitionSpec(metadata.spec()),
+                  new MetadataUpdate.SetDefaultPartitionSpec(-1),
+                  new MetadataUpdate.AddSortOrder(metadata.sortOrder()),
+                  new MetadataUpdate.SetDefaultSortOrder(-1),
+                  new MetadataUpdate.SetLocation(metadata.location()))));
+    }
+    UUID id =
+        UUID.fromString(
+            tables
+                .getTable(CATALOG + "." + NAMESPACE + ".native_table", null, null, null)
+                .getTableId());
+    client.dropTable(CATALOG, NAMESPACE, "native_table");
+    var task = StorageCleanupTestSupport.findTask(hibernateConfigurator.getSessionFactory(), id);
+    assertThat(task.getResourceType()).isEqualTo(ManagedResourceType.TABLE);
+    awaitStorageCleanup(id, Path.of(NormalizedURL.from(metadata.location()).toUri()));
+    assertThat(StorageCleanupTestSupport.findTask(hibernateConfigurator.getSessionFactory(), id))
+        .isNull();
+  }
+
   private static RegisterTableRequest request(String name, String location) {
     return ImmutableRegisterTableRequest.builder().name(name).metadataLocation(location).build();
+  }
+
+  private void awaitStorageCleanup(UUID id, Path directory) throws Exception {
+    Properties cleanupProperties = new Properties();
+    cleanupProperties.putAll(serverProperties);
+    StorageCleanupTestSupport.configureFastCleanup(cleanupProperties);
+    try (var worker =
+        new StorageCleanupWorker(
+            new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory()),
+            fileOperations,
+            Clock.systemUTC(),
+            new ServerProperties(cleanupProperties),
+            UnityCatalogMetrics.noop())) {
+      worker.start();
+      StorageCleanupTestSupport.awaitCleanup(
+          hibernateConfigurator.getSessionFactory(), id, Duration.ofSeconds(10), directory);
+    }
   }
 
   private static Path writeMetadata(Path directory) throws Exception {

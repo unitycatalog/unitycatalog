@@ -4,7 +4,6 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
-import io.unitycatalog.server.persist.dao.IcebergWriteReservationDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
@@ -70,12 +69,11 @@ public class StagingTableRepository {
   }
 
   /**
-   * Reserves an external staged-write path before directory creation or credential vending.
-   * Registration uses the same allocation lock and rejects these durable reservations.
+   * Checks an external write directory under the allocation lock before storage I/O.
    *
-   * @param location the directory the staged writer will use
+   * @param location the directory the external writer will use
    */
-  public void reserveExternalIcebergWrites(NormalizedURL location) {
+  public void validateExternalIcebergLocation(NormalizedURL location) {
     ValidationUtils.checkArgument(
         !location.isCloudStorageRoot(),
         "External table storage location must include a non-empty path prefix: %s",
@@ -86,26 +84,9 @@ public class StagingTableRepository {
           ExternalLocationUtils.lockTableStorage(session);
           ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, location);
           ExternalLocationUtils.validateNotOverlapWithRegisteredTables(session, location);
-          boolean exists =
-              session
-                  .createSelectionQuery(
-                      "FROM IcebergWriteReservationDAO WHERE storageLocation = :location",
-                      IcebergWriteReservationDAO.class)
-                  .setParameter("location", location.toString())
-                  .setMaxResults(1)
-                  .uniqueResultOptional()
-                  .isPresent();
-          if (!exists) {
-            session.persist(
-                IcebergWriteReservationDAO.builder()
-                    .id(UUID.randomUUID())
-                    .name("external-staged-write")
-                    .storageLocation(location.toString())
-                    .build());
-          }
           return null;
         },
-        "Failed to reserve external Iceberg writes",
+        "Failed to validate external Iceberg storage",
         /* readOnly= */ false,
         Optional.of(Connection.TRANSACTION_READ_COMMITTED));
   }

@@ -238,12 +238,14 @@ public class MetadataService {
   private static NormalizedURL registrationLocation(String path, boolean isDirectory) {
     NormalizedURL location = NormalizedURL.from(path);
     LocalStorageLocationValidator.validateCanonicalLocalLocation(location);
-    if (UriScheme.fromURI(location.toUri()) != UriScheme.FILE) {
+    UriScheme scheme = UriScheme.fromURI(location.toUri());
+    if (scheme != UriScheme.FILE) {
+      // ADLS cleanup decodes URI paths; S3 and GCS keep percent sequences in object keys.
       ValidationUtils.checkArgument(
           (path.equals(location.toString()) || (isDirectory && path.equals(location + "/")))
               && location.toUri().getRawQuery() == null
               && location.toUri().getRawFragment() == null
-              && !path.contains("%"),
+              && ((scheme != UriScheme.ABFS && scheme != UriScheme.ABFSS) || !path.contains("%")),
           "Iceberg registration location ('%s') must use its canonical cloud object path.",
           path);
     }

@@ -125,7 +125,7 @@ location, the caller must also own the location or hold all three privileges: `C
 `READ_FILES`, and `WRITE_FILES`. UC checks these privileges before reading the metadata file.
 
 Registration rejects directory overlaps with tables, volumes, models, uncommitted staging tables,
-pending storage cleanup, and external staged-write reservations. It also rejects shared storage roots
+pending storage cleanup, and retired registered directories. It also rejects shared storage roots
 and directories that contain them. The discovered table root is checked before manifest traversal
 and is checked again in the write transaction.
 Table, volume, model, catalog, and schema storage allocation checks registered directories and
@@ -136,8 +136,9 @@ keeps a later registration from racing an allocation; it can reduce allocation t
 Overlap checks treat `abfs` and `abfss` URLs for the same account, container, and path as one location,
 including URLs stored before registration was supported.
 Registration accepts these Azure scheme aliases in embedded file paths and directory properties too.
-Cloud registration paths cannot contain percent escapes, queries, or fragments. Azure storage
-allocation and path-credential requests apply the same restriction. Their spelling must
+S3 and GCS object keys can contain literal percent sequences, including encoded partition values.
+Cloud registration paths cannot contain queries or fragments. Azure registration, storage
+allocation, and path-credential requests also reject percent escapes. Their spelling must
 identify the same object prefix for reads, overlap checks, and cleanup.
 Local allocation URLs must use their canonical spelling. Registration and later allocation also
 check filesystem aliases, including case aliases on case-insensitive filesystems and existing
@@ -158,11 +159,10 @@ schema can use a parent raw storage root if its generated storage directory is d
 credentials remain blocked for the retired directory and its ancestors and descendants, because
 credentials for an ancestor could allow writes into the retired directory.
 
-An external Iceberg create reserves its directory under the allocation lock before storage writes
-or staged credential vending. A successful create replaces that reservation with the external table
-row. An abandoned staged create keeps its reservation: its writer can still hold write access.
-Registration cannot adopt an overlapping directory while that reservation exists. Dropping a
-committed external table preserves its files and permits later registration after other writers stop.
+External Iceberg creates check directory overlaps under the allocation lock before storage writes
+or staged credential vending. External staged writes have no durable reservation. Stop these writers,
+and any writers outside UC, before registration. Dropping a committed external table preserves its
+files and permits later registration after other writers stop.
 
 Malformed metadata or manifests return HTTP 400. Wrapped transport I/O failures return HTTP 503 so
 clients can retry. Legacy format-v1 metadata with embedded manifest paths remains supported.
