@@ -7,6 +7,7 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.spark.utils.OptionsUtil;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
@@ -14,6 +15,8 @@ import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.connector.catalog.DelegatingCatalogExtension;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
@@ -98,5 +101,36 @@ final class UCProxyTestFixture {
 
     proxyNs = (SupportsNamespaces) proxyObj;
     return this;
+  }
+
+  /** Builds a new session, never another test's, with {@code catalogName} as a UC catalog. */
+  static SparkSession sessionWithCatalog(String catalogName) {
+    return sessionWithCatalog(catalogName, false);
+  }
+
+  /**
+   * Builds a new session, never another test's, with {@code catalogName} as a UC catalog that uses
+   * Delta's own UC client when {@code deltaApiEnabled}.
+   */
+  static SparkSession sessionWithCatalog(String catalogName, boolean deltaApiEnabled) {
+    SparkSession.clearActiveSession();
+    SparkSession.clearDefaultSession();
+    String catalogConf = "spark.sql.catalog." + catalogName;
+    return SparkSession.builder()
+        .master("local[1]")
+        .config(catalogConf, UCSingleCatalog.class.getName())
+        .config(catalogConf + "." + OptionsUtil.URI, "http://localhost:8080")
+        .config(catalogConf + "." + OptionsUtil.TOKEN, "token")
+        // Delta's own UC client would load tables from the server instead of the fake proxy.
+        .config(catalogConf + "." + OptionsUtil.DELTA_API_ENABLED, String.valueOf(deltaApiEnabled))
+        .getOrCreate();
+  }
+
+  /** Points the session's {@link UCSingleCatalog}, through its Delta catalog, at {@code proxy}. */
+  static void routeToProxy(SparkSession spark, String catalogName, UCProxy proxy) {
+    UCSingleCatalog catalog =
+        (UCSingleCatalog) spark.sessionState().catalogManager().catalog(catalogName);
+    catalog.ucProxy_$eq(proxy);
+    ((DelegatingCatalogExtension) catalog.delegate()).setDelegateCatalog(proxy);
   }
 }
