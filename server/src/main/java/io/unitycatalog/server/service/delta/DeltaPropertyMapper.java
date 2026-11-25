@@ -12,6 +12,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.delta.DeltaConsts.DomainMetadataNames;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -87,11 +88,20 @@ public final class DeltaPropertyMapper {
    * has been validated -- if a reader-feature is missing from writer-features (a Delta-spec
    * violation that {@link UcManagedDeltaContract#validate} catches), this method still emits an
    * entry for it.
+   *
+   * @throws BaseException with INVALID_ARGUMENT if {@code min-reader-version} or {@code
+   *     min-writer-version} is missing
    */
   public static void deriveFromProtocol(Map<String, String> props, DeltaProtocol protocol) {
     if (protocol == null) return;
-    props.put(TableProperties.MIN_READER_VERSION, protocol.getMinReaderVersion().toString());
-    props.put(TableProperties.MIN_WRITER_VERSION, protocol.getMinWriterVersion().toString());
+    Integer minReader =
+        ValidationUtils.checkNotNull(
+            protocol.getMinReaderVersion(), "protocol.min-reader-version is required.");
+    Integer minWriter =
+        ValidationUtils.checkNotNull(
+            protocol.getMinWriterVersion(), "protocol.min-writer-version is required.");
+    props.put(TableProperties.MIN_READER_VERSION, minReader.toString());
+    props.put(TableProperties.MIN_WRITER_VERSION, minWriter.toString());
     addFeatureProperties(props, protocol.getReaderFeatures());
     addFeatureProperties(props, protocol.getWriterFeatures());
   }
