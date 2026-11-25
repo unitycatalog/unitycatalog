@@ -1,0 +1,48 @@
+name: unitycatalog-ui-new
+
+services:
+  bridge:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      args:
+        CARGO_REGISTRY_URL: "${CARGO_REGISTRY_URL:-}"
+      secrets:
+        - cargo_config
+    restart: unless-stopped
+    # Lets an in-flight RPC reach the bridge's 30-second Unity Catalog timeout.
+    stop_grace_period: 35s
+    environment:
+      UC_SERVER: "${UC_SERVER:?set UC_SERVER to the remote Unity Catalog URL}"
+      UI_AUTH_ENABLED: "${UI_AUTH_ENABLED:-true}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      OKTA_AUTH_ENABLED: "${OKTA_AUTH_ENABLED:-false}"
+      KEYCLOAK_AUTH_ENABLED: "${KEYCLOAK_AUTH_ENABLED:-false}"
+      RUST_LOG: "${RUST_LOG:-info}"
+    expose:
+      - "8081"
+    init: true
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        NPM_REGISTRY_URL: "${NPM_REGISTRY_URL:-}"
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${UI_PORT:-3000}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 5s
+      retries: 12
+    init: true
+
+secrets:
+  cargo_config:
+    file: "${CARGO_CONFIG_FILE:-./docker/empty-registry-config}"

@@ -22,7 +22,7 @@ error toast.
 - `server/` — the bridge: a Rust [axum](https://docs.rs/axum) service exposing
   typed Connect services for each catalog domain, the allowlisted
   `UnityProxyService/Call` used by control-plane and permissions calls,
-  `/config`, and `/healthz`. Vite or a separate web server serves the SPA.
+  `/config`, and `/healthz`. Vite or Nginx serves the SPA.
 - `proto/` — the typed domain services plus the generic control/permissions proxy;
   `buf.gen.yaml` generates the TypeScript clients.
 
@@ -112,7 +112,123 @@ UC_SERVER=http://localhost:8080 ./target/release/uc-ui-bridge
 
 Serve `web/dist` from a web server that proxies `/uc.v1.*`, `/config`, and
 `/healthz` to the bridge, and falls back to `index.html` for any other path so
-client-side routes load on refresh or from a link.
+client-side routes load on refresh or from a link. The container setup below
+supplies that Nginx layer.
+
+## Containers
+
+The Compose files need Docker Compose v2 with BuildKit, the default builder in
+current Docker releases: the bridge Dockerfile mounts build secrets and caches,
+and the repository Dockerfile uses `COPY --parents` and heredocs. Both the
+bridge and web builds fetch the protovalidate module from the Buf Schema
+Registry, so they need to reach `buf.build` even when the registry mirrors
+below are set.
+
+The default Compose file builds this checkout's Java server and starts the full
+local stack: PostgreSQL metadata, RustFS object storage, the Rust bridge, and
+the Nginx-hosted SPA. Unity Catalog runs with authorization off, since the stack
+sets up no identity provider; to try sign-in, run the remote Compose file
+against a server that has it on.
+
+The repository's `etc/conf` remains the configuration source: `config-init`
+copies it into a runtime volume and appends local PostgreSQL and storage
+overrides. Before the server starts, a one-shot `upgrade-schema` service runs
+`bin/start-uc-server --upgrade-schema`, as the Helm chart's init container
+does, to set up or upgrade the PostgreSQL schema. Once the server is up,
+`storage-init` registers RustFS as an `s3_compatible` storage credential with
+an external location for `s3://uc-warehouse`, so the server reaches the bucket
+at RustFS and vends short-lived sessions scoped to the requested path.
+`RUSTFS_ACCESS_KEY` and `RUSTFS_SECRET_KEY` (both `rustfsadmin` by default) set
+RustFS's root keys, and `storage-init` updates the credential to the current
+keys on every start. It passes the secret key to `bin/uc` as an argument, so the
+key shows in the process list while `storage-init` runs. The bucket name is
+fixed: once anything uses the external location, the server refuses to move it
+to another bucket. The bridge starts only after `storage-init` succeeds, so a
+storage setup failure keeps the UI down; `docker compose logs storage-init`
+shows the cause.
+
+```bash
+cd ui-new
+docker compose up --build
+```
+
+Open the UI at http://localhost:3000, Unity Catalog at
+http://localhost:8080, and the RustFS console at http://localhost:9001
+(`rustfsadmin` / `rustfsadmin` by default). Managed volumes and models need a
+storage location on their catalog or schema, so create the catalog with a
+storage root in the bucket, such as `s3://uc-warehouse/<catalog>`. Managed
+tables, including those created through Iceberg REST and Spark, also work in a
+catalog without one: `config-init` sets the deprecated `storage-root.tables`
+fallback to the bucket.
+
+To restart the stack in order, run `docker compose down` and then
+`docker compose up`; the volumes are kept. `docker compose restart` restarts
+every service at once, without that order. Docker restarts the long-running
+services when they exit, including after a daemon restart, so the server comes
+back if it starts before PostgreSQL is ready. `upgrade-schema` and
+`storage-init` reuse the image the `unitycatalog` service builds, so run
+`docker compose build unitycatalog` before starting either on its own.
+
+Vended credentials name the endpoint `http://rustfs:9000`, which resolves inside
+the Compose network. To read or write with them from an engine on the host, add
+`127.0.0.1 rustfs` to `/etc/hosts`; this works while `RUSTFS_API_PORT` is 9000,
+its default.
+
+The server encrypts the storage credential's secret with
+`UC_SERVER_CREDENTIAL_ENCRYPTION_KEY`, the variable the Helm chart sets from
+`server.credentialEncryptionKeySecret`. Export it, as 32 random bytes in base64
+(`openssl rand -base64 32`), to use your own key. Left empty, the server uses a
+key that `config-init` generates once into the `uc_conf` volume. `storage-init`
+re-encrypts its own credential with the current key on every start, but any
+other `s3_compatible` credential stored with one key can't be read with another,
+so keep using the same key while the database holds such credentials.
+
+Use the remote Compose file to omit Unity Catalog, PostgreSQL, and RustFS and
+point the bridge at an existing open-source Unity Catalog server:
+
+```bash
+# Replace with your UC URL. The remote file turns UI_AUTH_ENABLED on by default.
+UC_SERVER=https://uc.YOUR_DOMAIN.dev \
+  docker compose -f docker-compose-remote.yaml up --build
+```
+
+With auth on, set `GOOGLE_CLIENT_ID`, `OKTA_AUTH_ENABLED`, or
+`KEYCLOAK_AUTH_ENABLED` for the providers your server has. With none set, the
+sign-in page says no provider is enabled and offers only pasting a Unity
+Catalog access token.
+
+The bridge resolves `UC_SERVER` inside its container, where `localhost` is the
+container itself. For a server on the host, use an address the container can
+reach, such as `http://host.docker.internal:8080` on Docker Desktop.
+
+Both files use the Compose project `unitycatalog-ui-new`, so starting one
+replaces the other's bridge and web containers. Stop a stack with the file
+that started it: `docker compose -f docker-compose-remote.yaml down` leaves the
+full stack's Unity Catalog, PostgreSQL, and RustFS running. Every
+`docker compose` command against the remote file, including `ps` and `down`,
+needs `UC_SERVER` set.
+
+The default file publishes the UI on `UI_PORT`, Unity Catalog on `UC_PORT`,
+PostgreSQL on `POSTGRES_PORT`, and RustFS on `RUSTFS_API_PORT` and
+`RUSTFS_CONSOLE_PORT`; the remote file publishes only the UI, on `UI_PORT`.
+Both publish on `127.0.0.1` only; set `BIND_ADDRESS`, for example to `0.0.0.0`,
+to publish on other interfaces. In the default file, Unity Catalog's
+authorization is off, and PostgreSQL and RustFS use default credentials unless
+`POSTGRES_PASSWORD`, `RUSTFS_ACCESS_KEY`, and `RUSTFS_SECRET_KEY` are set, so
+publish it only on a network you trust. `UI_AUTH_ENABLED` gates only the UI:
+Unity Catalog's own port stays open without authorization. PostgreSQL keeps the
+password its volume was created with, so set `POSTGRES_PASSWORD` before the
+first start. Local state is kept in named volumes; remove it with
+`docker compose down --volumes`.
+
+Set `CARGO_CONFIG_FILE` to pass private Cargo registry settings into the bridge
+build stage as a BuildKit secret. When unset, Compose uses a checked-in inert
+placeholder and Cargo uses its public registry. To use a mirror instead, set
+`CARGO_REGISTRY_URL` to its sparse index URL, ending in `/` and without the
+`sparse+` prefix, which the build adds; it takes precedence over
+`CARGO_CONFIG_FILE`. `NPM_REGISTRY_URL` sets the npm registry for the web build,
+and `MAVEN_PROXY_URL` is forwarded to the repository Dockerfile for the Java
+build.
 
 ## Bridge configuration (env)
 

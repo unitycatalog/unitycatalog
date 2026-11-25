@@ -11,7 +11,7 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
   (file-based) + TanStack Query, connect-web + connect-query.
 - `server/` — Rust axum bridge. Typed domain Connect services translate to UC
   REST; `UnityProxyService/Call` remains for control-plane endpoints. It also
-  serves `/config` and `/healthz`; Vite (development) or a separate web server
+  serves `/config` and `/healthz`; Vite (development) or Nginx (containers)
   serves the SPA.
 - `proto/` — typed catalog-domain RPCs plus the generic control-plane proxy.
   `buf.gen.yaml` generates TS clients into `web/src/gen` (`bun run generate`
@@ -62,6 +62,12 @@ settings can differ, so UC may still reject the operation.
   Connect and `protovalidate-buffa` code at compile time.
 - Add a page: add a typed hook in `web/src/hooks`, a page in `web/src/pages`, and
   a file route in `web/src/routes/_authed/**` that reads params and renders it.
+- Run the full local container stack (PostgreSQL, RustFS, UC, bridge, and web)
+  with `cd ui-new && docker compose up --build`. To run only the bridge and web
+  against a remote UC deployment, use
+  `cd ui-new && UC_SERVER=<url> docker compose -f docker-compose-remote.yaml up --build`.
+  Local UC configuration is copied from the repository's `etc/conf`; do not
+  create a second config tree under `ui-new`.
 
 ## Testing
 

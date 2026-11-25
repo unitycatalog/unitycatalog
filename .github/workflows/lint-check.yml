@@ -29,6 +29,17 @@ jobs:
       - name: Check bun lock
         run: (cd ui && bun run scripts/clean-bun-lock.ts --check)
 
+      - name: Check ui-new container files
+        run: |
+          shellcheck -s sh ui-new/docker/unitycatalog/*.sh
+          for test in ui-new/docker/unitycatalog/*-test.sh; do sh "$test"; done
+          cd ui-new
+          docker compose config --quiet
+          UC_SERVER=http://uc.invalid docker compose -f docker-compose-remote.yaml config --quiet
+
+      - name: Check ui-new bun lock
+        run: (cd ui-new/web && bun run scripts/clean-bun-lock.ts --check)
+
       - name: Run lint check
         run: |
           (cd ui && bun install --frozen-lockfile && bun run test:format)
