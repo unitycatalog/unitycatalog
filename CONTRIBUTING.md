@@ -41,6 +41,7 @@ CI runs these checks on pull requests. Run the ones for the code you changed bef
 | YAML (`ai/`) | `cd ai && yamllint .` | Fix what it reports | `ucai-core-tests.yml` (pull requests that change `ai/` or `.github/workflows/ucai-*.yml`) |
 | Helm chart README (`helm/README.md`) | helm-docs v1.14.2 regenerates it, and CI fails if anything under `helm/` changes | `pre-commit run helm-docs --all-files` | `helm-chart-tests.yml` (pull requests that change the chart or what it runs) |
 | Helm chart (`helm/`) | `ct lint --charts helm --validate-maintainers=false --check-version-increment=false` ([chart-testing](https://github.com/helm/chart-testing)) | Fix what it reports | `helm-chart-tests.yml` (pull requests that change the chart or what it runs) |
+| Dependency licenses | `build/sbt licenseCheck` (primary H2 `all-tests` row only) | Set `licenseOverrides` or `licenseDepExclusions` in `build.sbt` | `unit-tests.yml` (pull requests to `main` or `branch-*`) |
 
 The `ai/` linters are pinned in `ai/requirements/lint-requirements.lock` (from `ai/`, in a virtualenv: `uv pip install --require-hashes -r requirements/lint-requirements.lock`). In `server`, `cli`, `sampleDatabase`, `spark`, `hadoop` and `integrationTests`, compile also runs `javafmtAll` on main and test sources. Compiling the Java client does not, so run `build/sbt javafmtAll` before you push.
 
