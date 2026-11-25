@@ -538,8 +538,16 @@ public class CloudCredentialVendorTest {
           Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
       assertThat(requestCaptor.getValue().policy().length()).isGreaterThan(2048);
     }
-    assertThat(requestCaptor.getValue().roleArn()).isEqualTo(ROLE_ARN);
-    assertThat(requestCaptor.getValue().policy()).contains("arn:aws:s3:::compat-bucket/data");
+    assertThat(requestCaptor.getAllValues())
+        .hasSize(2)
+        .allSatisfy(
+            request -> {
+              assertThat(request.roleArn()).isEqualTo(ROLE_ARN);
+              assertThat(request.policy()).contains("arn:aws:s3:::compat-bucket/data");
+              assertThat(signingKeyId(request)).isEqualTo("key-id-1");
+              assertThat(signer(request).resolveCredentials().secretAccessKey())
+                  .isEqualTo("key-value-1");
+            });
     verify(mockBuilder)
         .endpointOverride(URI.create(stsEndpoint == null ? S3_ENDPOINT : stsEndpoint));
     // STS runs on the storage, so AssumeRole is signed with the storage's region.
@@ -547,9 +555,6 @@ public class CloudCredentialVendorTest {
     // The client holds no keys; the request is signed with the credential's key pair.
     verify(mockBuilder).credentialsProvider(providerCaptor.capture());
     assertThat(providerCaptor.getValue()).isInstanceOf(AnonymousCredentialsProvider.class);
-    assertThat(signingKeyId(requestCaptor.getValue())).isEqualTo("key-id-1");
-    assertThat(signer(requestCaptor.getValue()).resolveCredentials().secretAccessKey())
-        .isEqualTo("key-value-1");
     // Closing the vendor, as the server does on shutdown, closes its STS client. A call after that
     // uses a client of its own, which it closes too.
     verify(mockStsClient, never()).close();

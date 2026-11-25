@@ -11,6 +11,7 @@ import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.UriScheme;
 import java.time.Instant;
 import java.util.Optional;
 import software.amazon.awssdk.services.sts.model.Credentials;
@@ -65,6 +66,18 @@ public class CloudCredentialVendor implements AutoCloseable {
       case GS -> gcpCredentialVendor.limitViolation(context, extent);
       case S3 -> awsCredentialVendor.limitViolation(context, extent);
       case FILE, NULL -> Optional.empty();
+    };
+  }
+
+  /**
+   * Whether {@link #limitViolation} reads the storage credential of a location with this scheme. S3
+   * builds its policy from the credential. GCS builds an access boundary only for a location
+   * without one, since it can't vend with a storage credential yet.
+   */
+  public boolean limitsDependOnCredential(UriScheme scheme) {
+    return switch (scheme) {
+      case S3, GS -> true;
+      case ABFS, ABFSS, FILE, NULL -> false;
     };
   }
 

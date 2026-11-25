@@ -10,6 +10,7 @@ import io.unitycatalog.server.service.credential.StorageLimits.Unit;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.UriScheme;
+import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -59,12 +60,6 @@ public class StorageLocationValidator {
       this.privileges = privileges;
     }
   }
-
-  // The S3 and GCS limit checks depend on the location's storage credential. S3 builds its policy
-  // from it. GCS builds an access boundary only for a location without one, since it can't vend
-  // with a storage credential yet.
-  private static final Set<String> CREDENTIAL_SCHEMES =
-      Set.of(UriScheme.S3.toString(), UriScheme.GS.toString());
 
   // Managed locations are laid out the same for every id.
   private static final UUID ANY_ID = new UUID(0, 0);
@@ -294,7 +289,7 @@ public class StorageLocationValidator {
    * looked up for the schemes whose limits depend on it. It is unresolvable when the covering
    * external location's credential was force-deleted.
    */
-  private static VendCredential vendCredential(
+  private VendCredential vendCredential(
       NormalizedURL location, Supplier<CoveringCredential> coveringCredential) {
     if (!limitsDependOnCredential(location)) {
       return new Resolved(Optional.empty());
@@ -315,15 +310,15 @@ public class StorageLocationValidator {
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for a location without a bucket
    *     or container, such as {@code s3:///}, which normalizes to a URL that does not parse
    */
-  private static boolean limitsDependOnCredential(NormalizedURL location) {
-    String scheme;
+  private boolean limitsDependOnCredential(NormalizedURL location) {
+    URI uri;
     try {
-      scheme = location.toUri().getScheme();
+      uri = location.toUri();
     } catch (IllegalArgumentException e) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "Invalid storage location: " + location, e);
     }
-    return CREDENTIAL_SCHEMES.contains(scheme);
+    return cloudCredentialVendor.limitsDependOnCredential(UriScheme.fromURI(uri));
   }
 
   private void validateLocation(
