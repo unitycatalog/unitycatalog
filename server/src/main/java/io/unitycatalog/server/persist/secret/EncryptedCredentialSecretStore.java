@@ -46,18 +46,13 @@ public class EncryptedCredentialSecretStore implements CredentialSecretStore {
   }
 
   /**
-   * The store with the key the server is configured with. The key is read only when {@code
-   * server.s3-compatible-storage.enabled} is true, the only feature that uses it, so a malformed
-   * key stops the server only then.
+   * The store with the key the server is configured with, if any.
    *
-   * @throws IllegalArgumentException if the feature is on and the key is not a base64-encoded
-   *     256-bit key
+   * @throws IllegalArgumentException if a key is set and it is not a base64-encoded 256-bit key
    */
   public static EncryptedCredentialSecretStore from(ServerProperties serverProperties) {
     return new EncryptedCredentialSecretStore(
-        serverProperties.isS3CompatibleStorageEnabled()
-            ? Optional.ofNullable(serverProperties.get(Property.CREDENTIAL_ENCRYPTION_KEY))
-            : Optional.empty());
+        Optional.ofNullable(serverProperties.get(Property.CREDENTIAL_ENCRYPTION_KEY)));
   }
 
   private static SecretKey parseKey(String base64Key) {

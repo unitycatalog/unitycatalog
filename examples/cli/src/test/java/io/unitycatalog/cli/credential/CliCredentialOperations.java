@@ -1,15 +1,21 @@
 package io.unitycatalog.cli.credential;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.cli.BaseCliOperations;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.client.model.S3CompatibleRequest;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.credential.CredentialOperations;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,7 +42,38 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add(createCredentialRequest.getAwsIamRole().getRoleArn());
     }
     addS3CompatibleArgs(argsList, createCredentialRequest.getS3Compatible());
-    return execute(CredentialInfo.class, "create", argsList);
+    Path keyFile = null;
+    try {
+      if (createCredentialRequest.getGcpServiceAccountKey() != null) {
+        keyFile = writeKeyFile(createCredentialRequest.getGcpServiceAccountKey());
+        argsList.add("--gcp_service_account_key_file");
+        argsList.add(keyFile.toString());
+      }
+      return execute(CredentialInfo.class, "create", argsList);
+    } finally {
+      if (keyFile != null) {
+        try {
+          Files.deleteIfExists(keyFile);
+        } catch (IOException e) {
+          throw new UncheckedIOException(e);
+        }
+      }
+    }
+  }
+
+  /** Writes the key the way Google Cloud's JSON key file has it. */
+  private static Path writeKeyFile(GcpServiceAccountKeyRequest key) {
+    Map<String, Object> fields = new LinkedHashMap<>();
+    fields.put("client_email", key.getEmail());
+    fields.put("private_key_id", key.getPrivateKeyId());
+    fields.put("private_key", key.getPrivateKey());
+    try {
+      Path file = Files.createTempFile("uc-test-key", ".json");
+      Files.writeString(file, new ObjectMapper().writeValueAsString(fields));
+      return file;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 
   @Override
