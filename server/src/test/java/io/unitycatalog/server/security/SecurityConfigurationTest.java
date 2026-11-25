@@ -7,8 +7,12 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
+import java.security.interfaces.RSAPrivateCrtKey;
+import java.security.spec.RSAPrivateKeySpec;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Properties;
@@ -123,6 +127,69 @@ class SecurityConfigurationTest {
     SecurityConfiguration configuration = new SecurityConfiguration(configurationFolder);
 
     assertThat(configuration.rsaPublicKey()).isEqualTo(signingKeyPair.getPublic());
+  }
+
+  @Test
+  void ignoresMalformedPublicKeyWhenPrivateKeyHasCrtFields() throws Exception {
+    KeyPair keyPair = newKeyPair();
+    Files.write(configurationFolder.resolve("private_key.der"), keyPair.getPrivate().getEncoded());
+    Path publicKeyFile = configurationFolder.resolve("public_key.der");
+    Files.write(publicKeyFile, new byte[] {1, 2, 3});
+
+    SecurityConfiguration configuration = new SecurityConfiguration(configurationFolder);
+
+    assertThat(configuration.rsaPublicKey()).isEqualTo(keyPair.getPublic());
+    assertThat(Files.readAllBytes(publicKeyFile)).isEqualTo(keyPair.getPublic().getEncoded());
+  }
+
+  @Test
+  void preservesPrivateKeyAndRecreatesMissingPublicKey() throws Exception {
+    KeyPair keyPair = newKeyPair();
+    Path privateKeyFile = configurationFolder.resolve("private_key.der");
+    Path publicKeyFile = configurationFolder.resolve("public_key.der");
+    byte[] privateKey = keyPair.getPrivate().getEncoded();
+    Files.write(privateKeyFile, privateKey);
+
+    SecurityConfiguration configuration = new SecurityConfiguration(configurationFolder);
+
+    assertThat(Files.readAllBytes(privateKeyFile)).isEqualTo(privateKey);
+    assertThat(Files.readAllBytes(publicKeyFile)).isEqualTo(keyPair.getPublic().getEncoded());
+    assertThat(configuration.rsaPublicKey()).isEqualTo(keyPair.getPublic());
+  }
+
+  @Test
+  void loadsExistingNonCrtKeyPairFromConfigurationFolder() throws Exception {
+    KeyPair keyPair = newKeyPair();
+    RSAPrivateCrtKey crtKey = (RSAPrivateCrtKey) keyPair.getPrivate();
+    PrivateKey nonCrtKey =
+        KeyFactory.getInstance("RSA")
+            .generatePrivate(
+                new RSAPrivateKeySpec(crtKey.getModulus(), crtKey.getPrivateExponent()));
+    assertThat(nonCrtKey).isNotInstanceOf(RSAPrivateCrtKey.class);
+    Files.write(configurationFolder.resolve("private_key.der"), nonCrtKey.getEncoded());
+    Files.write(configurationFolder.resolve("public_key.der"), keyPair.getPublic().getEncoded());
+
+    SecurityConfiguration configuration = new SecurityConfiguration(configurationFolder);
+
+    assertThat(configuration.rsaPrivateKey()).isEqualTo(nonCrtKey);
+    assertThat(configuration.rsaPublicKey()).isEqualTo(keyPair.getPublic());
+  }
+
+  @Test
+  void rejectsMismatchedNonCrtKeyPairFromConfigurationFolder() throws Exception {
+    KeyPair signingKeyPair = newKeyPair();
+    KeyPair mismatchedKeyPair = newKeyPair();
+    RSAPrivateCrtKey crtKey = (RSAPrivateCrtKey) signingKeyPair.getPrivate();
+    PrivateKey nonCrtKey =
+        KeyFactory.getInstance("RSA")
+            .generatePrivate(
+                new RSAPrivateKeySpec(crtKey.getModulus(), crtKey.getPrivateExponent()));
+    Files.write(configurationFolder.resolve("private_key.der"), nonCrtKey.getEncoded());
+    Files.write(
+        configurationFolder.resolve("public_key.der"), mismatchedKeyPair.getPublic().getEncoded());
+
+    assertThatThrownBy(() -> new SecurityConfiguration(configurationFolder))
+        .hasMessageContaining("do not match");
   }
 
   private static ServerProperties settings(Path privateKey) {

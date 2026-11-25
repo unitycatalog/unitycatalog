@@ -13,12 +13,15 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.Signature;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.RSAPublicKeySpec;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,8 +35,9 @@ import org.slf4j.LoggerFactory;
  * <p>The private key is read from the file set in {@code server.token-signing-private-key-file}: an
  * unencrypted PEM key (PKCS #8 or PKCS #1), or a PKCS #8 DER key. The public key is derived from it
  * once, when the configuration is loaded. Leaving the setting unset is deprecated: the server then
- * uses {@code private_key.der} and {@code public_key.der} in the UC configuration folder,
- * generating them on first start.
+ * uses {@code private_key.der} and {@code public_key.der} in the UC configuration folder, deriving
+ * the public key from the private key. The public key is also written on first start for
+ * compatibility with earlier versions.
  */
 public class SecurityConfiguration {
 
@@ -71,7 +75,13 @@ public class SecurityConfiguration {
     Path publicKeyFile = configurationFolder.resolve("public_key.der");
     initializeIfMissing(privateKeyFile, publicKeyFile);
     privateKey = readPrivateKey(privateKeyFile);
-    publicKey = publicKeyOf(privateKey, privateKeyFile);
+    if (privateKey instanceof RSAPrivateCrtKey) {
+      publicKey = publicKeyOf(privateKey, privateKeyFile);
+      writePublicKeyIfNeeded(publicKeyFile, publicKey);
+    } else {
+      publicKey = readPublicKey(publicKeyFile);
+      verifyKeyPair(privateKey, publicKey, privateKeyFile, publicKeyFile);
+    }
   }
 
   private SecurityConfiguration(RSAPrivateKey privateKey, RSAPublicKey publicKey) {
@@ -139,7 +149,7 @@ public class SecurityConfiguration {
 
   @SneakyThrows
   private static void initializeIfMissing(Path privateKeyFile, Path publicKeyFile) {
-    if (Files.notExists(publicKeyFile) || Files.notExists(privateKeyFile)) {
+    if (Files.notExists(privateKeyFile)) {
       log.info("Initializing security configuration.");
       KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
       keyPairGenerator.initialize(2048);
@@ -150,8 +160,41 @@ public class SecurityConfiguration {
       if (parentDirectory != null && !Files.exists(parentDirectory)) {
         Files.createDirectories(parentDirectory);
       }
-      Files.write(publicKeyFile, keyPair.getPublic().getEncoded(), StandardOpenOption.CREATE);
+      Files.write(
+          publicKeyFile,
+          keyPair.getPublic().getEncoded(),
+          StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING);
       writeOwnerOnly(privateKeyFile, keyPair.getPrivate().getEncoded());
+    }
+  }
+
+  private static void writePublicKeyIfNeeded(Path file, RSAPublicKey publicKey) throws IOException {
+    byte[] encoded = publicKey.getEncoded();
+    if (Files.notExists(file) || !Arrays.equals(Files.readAllBytes(file), encoded)) {
+      Files.write(file, encoded);
+    }
+  }
+
+  @SneakyThrows
+  private static void verifyKeyPair(
+      RSAPrivateKey privateKey, RSAPublicKey publicKey, Path privateKeyFile, Path publicKeyFile) {
+    byte[] probe = "unitycatalog-key-pair-check".getBytes(StandardCharsets.US_ASCII);
+    Signature signer = Signature.getInstance("SHA512withRSA");
+    signer.initSign(privateKey);
+    signer.update(probe);
+    byte[] signedProbe = signer.sign();
+
+    Signature verifier = Signature.getInstance("SHA512withRSA");
+    verifier.initVerify(publicKey);
+    verifier.update(probe);
+    if (!verifier.verify(signedProbe)) {
+      throw new IllegalStateException(
+          "The RSA keys in "
+              + privateKeyFile.toAbsolutePath()
+              + " and "
+              + publicKeyFile.toAbsolutePath()
+              + " do not match");
     }
   }
 
@@ -175,6 +218,17 @@ public class SecurityConfiguration {
 
   public RSAPrivateKey rsaPrivateKey() {
     return privateKey;
+  }
+
+  @SneakyThrows
+  private static RSAPublicKey readPublicKey(Path file) {
+    X509EncodedKeySpec spec = new X509EncodedKeySpec(readKeyFile(file, "PUBLIC KEY"));
+    try {
+      return (RSAPublicKey) KeyFactory.getInstance("RSA").generatePublic(spec);
+    } catch (InvalidKeySpecException e) {
+      throw new IllegalStateException(
+          "Cannot read the RSA public key in " + file.toAbsolutePath(), e);
+    }
   }
 
   @SneakyThrows
