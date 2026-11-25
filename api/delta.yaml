@@ -703,7 +703,10 @@ components:
           description: Table type (always MANAGED for staging tables)
         location:
           type: string
-          description: UC allocated storage location for this table
+          description: >-
+            UC allocated storage location for this table, as a Hadoop-style path: the literal object
+            path with no URI escaping. Convert it to a URI (for example with
+            new Path(location).toUri().toString()) before passing it to createTable.
         storage-credentials:
           type: array
           description: Temporary credentials for initial commit
@@ -753,7 +756,9 @@ components:
           description: The table name
         location:
           type: string
-          description: Storage location
+          description: >-
+            Storage location of the table, as a URI. For a managed table this is the URI form of the
+            location returned by createStagingTable (a space is sent as %20).
         table-type:
           $ref: '#/components/schemas/DeltaTableType'
         comment:
