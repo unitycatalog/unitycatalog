@@ -1,6 +1,9 @@
+import asyncio
 import base64
+import contextvars
 import json
 import os
+import threading
 from unittest import mock
 
 import pytest
@@ -11,11 +14,12 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from databricks_langchain.chat_models import ChatDatabricks, ChatGeneration
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableGenerator
 from langgraph.prebuilt import create_react_agent
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from tests.helper_functions import wrap_output
 from unitycatalog.ai.core.base import (
@@ -24,7 +28,7 @@ from unitycatalog.ai.core.base import (
 )
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
-from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
+from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit, UnityCatalogTool
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     client,  # noqa: F401
@@ -365,6 +369,15 @@ def test_toolkit_fields_validation(client):
         UCFunctionToolkit(client=test_tool, function_names=[])
 
 
+def _mock_client_and_tool(function_info):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    return client, toolkit.tools[0]
+
+
 @pytest.mark.parametrize("native", [False, True], ids=["json", "native"])
 @pytest.mark.parametrize("use_async", [False, True])
 @pytest.mark.parametrize("encoded", BINARY_ARGUMENTS)
@@ -378,11 +391,7 @@ def test_toolkit_fields_validation(client):
 )
 @pytest.mark.asyncio
 async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_async, native):
-    client = mock.create_autospec(BaseFunctionClient, instance=True)
-    client.get_function.return_value = function_info
-    client.to_dict.return_value = {}
-    client.execute_function.return_value = FunctionExecutionResult(format="SCALAR", value="ok")
-    tool = UCFunctionToolkit(function_names=[function_info.full_name], client=client).tools[0]
+    client, tool = _mock_client_and_tool(function_info)
     arguments = {**JSON_ARGUMENTS, "data": encoded}
     tool_call_arguments = {
         **json.loads(json.dumps(arguments)),
@@ -418,3 +427,138 @@ def test_tool_rejects_missing_argument_without_default(function_info):
 
     assert [(e["type"], e["loc"]) for e in exc_info.value.errors()] == [("missing", ("a",))]
     client.execute_function.assert_not_called()
+
+
+async def _call_tool(tool, method, arguments, *, tool_call_id=None, callbacks=None):
+    tool_input = (
+        {"type": "tool_call", "name": tool.name, "args": arguments, "id": tool_call_id}
+        if tool_call_id
+        else arguments
+    )
+    if method == "invoke":
+        return tool.invoke(tool_input, config={"callbacks": callbacks})
+    if method == "ainvoke":
+        return await asyncio.wait_for(
+            tool.ainvoke(tool_input, config={"callbacks": callbacks}), timeout=30
+        )
+    return await asyncio.wait_for(
+        tool.arun(arguments, tool_call_id=tool_call_id, callbacks=callbacks), timeout=30
+    )
+
+
+@pytest.mark.parametrize("param_name", ["config", "run_manager", "callbacks"])
+@pytest.mark.parametrize("tool_call_id", [None, "call-1"], ids=["no_call_id", "call_id"])
+@pytest.mark.parametrize("method", ["invoke", "ainvoke", "arun"])
+@pytest.mark.parametrize(
+    "generate_info",
+    [generate_function_info_with_params, generate_function_info_with_params_oss],
+    ids=["databricks", "oss"],
+)
+@pytest.mark.asyncio
+async def test_tool_forwards_parameters_named_like_langchain_run_arguments(
+    generate_info, method, tool_call_id, param_name
+):
+    function_info = generate_info({param_name: ("string", "string"), "other": ("string", "string")})
+    client, tool = _mock_client_and_tool(function_info)
+
+    await _call_tool(
+        tool, method, {param_name: "model value", "other": "other value"}, tool_call_id=tool_call_id
+    )
+
+    client.execute_function.assert_called_once()
+    assert client.execute_function.call_args.kwargs["parameters"] == {
+        param_name: "model value",
+        "other": "other value",
+    }
+
+
+class _ToolEventRecorder(BaseCallbackHandler):
+    def __init__(self):
+        self.events = []
+
+    def on_tool_start(self, serialized, input_str, **kwargs):
+        self.events.append(("start", serialized["name"]))
+
+    def on_tool_end(self, output, **kwargs):
+        self.events.append(("end", output))
+
+
+@pytest.mark.parametrize("method", ["invoke", "ainvoke", "arun"])
+@pytest.mark.asyncio
+async def test_tool_with_reserved_parameter_names_still_runs_callbacks(method):
+    function_info = generate_function_info_with_params(
+        {"config": ("string", "string"), "run_manager": ("string", "string")}
+    )
+    client, tool = _mock_client_and_tool(function_info)
+    arguments = {"config": "config value", "run_manager": "run_manager value"}
+    recorder = _ToolEventRecorder()
+
+    output = await _call_tool(tool, method, arguments, callbacks=[recorder])
+
+    assert client.execute_function.call_args.kwargs["parameters"] == arguments
+    assert json.loads(output)["value"] == "ok"
+    assert recorder.events == [("start", tool.name), ("end", output)]
+
+
+@pytest.mark.asyncio
+async def test_tool_arun_runs_function_off_the_event_loop_in_caller_context():
+    request_id = contextvars.ContextVar("request_id")
+    request_id.set("request-1")
+    client, tool = _mock_client_and_tool(
+        generate_function_info_with_params({"config": ("string", "string")})
+    )
+    seen = {}
+
+    def execute_function(**kwargs):
+        seen["thread"] = threading.get_ident()
+        return FunctionExecutionResult(format="SCALAR", value=request_id.get("not set"))
+
+    client.execute_function.side_effect = execute_function
+
+    output = await _call_tool(tool, "arun", {"config": "config value"})
+
+    assert json.loads(output)["value"] == "request-1"
+    assert seen["thread"] != threading.get_ident()
+
+
+class _ToolArgs(BaseModel):
+    x: str
+
+
+def _unity_catalog_tool(func=None, coroutine=None):
+    return UnityCatalogTool(
+        name="tool",
+        description="",
+        func=func,
+        coroutine=coroutine,
+        args_schema=_ToolArgs,
+        uc_function_name="catalog.schema.tool",
+        client_config={},
+    )
+
+
+@pytest.mark.parametrize("with_func", [False, True], ids=["coroutine_only", "func_and_coroutine"])
+@pytest.mark.parametrize("method", ["ainvoke", "arun"])
+@pytest.mark.asyncio
+async def test_unity_catalog_tool_awaits_its_coroutine(method, with_func):
+    def func(x):
+        return f"sync {x}"
+
+    async def coroutine(x):
+        return f"async {x}"
+
+    tool = _unity_catalog_tool(func=func if with_func else None, coroutine=coroutine)
+
+    output = await getattr(tool, method)({"x": "value"})
+
+    assert output == "async value"
+
+
+def test_unity_catalog_tool_without_func_does_not_support_sync_invocation():
+    async def coroutine(x):
+        return x
+
+    tool = _unity_catalog_tool(coroutine=coroutine)
+
+    with pytest.raises(NotImplementedError, match="does not support sync invocation"):
+        tool.invoke({"x": "value"})
