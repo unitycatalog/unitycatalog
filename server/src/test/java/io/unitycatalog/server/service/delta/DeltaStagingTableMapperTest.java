@@ -44,6 +44,18 @@ public class DeltaStagingTableMapperTest {
         .containsEntry(TableProperties.UC_TABLE_ID, info.getId());
   }
 
+  @Test
+  public void testLocalStorageCredentialSendsNullExpiration() throws Exception {
+    String json =
+        DeltaApiMappers.MAPPER.writeValueAsString(
+            DeltaStagingTableMapper.toStagingTableResponse(
+                sampleStagingInfo(), new TemporaryCredentials().url("file:///tmp/uc/staging")));
+
+    assertThat(json)
+        .contains("\"storage-credentials\":[{\"prefix\":\"file:///tmp/uc/staging\"")
+        .contains("\"expiration-time-ms\":null");
+  }
+
   /**
    * Pins the wire contract that null map values in {@code required-properties} and {@code
    * suggested-properties} survive ser + deser. The spec uses {@code null} to tell the client to
