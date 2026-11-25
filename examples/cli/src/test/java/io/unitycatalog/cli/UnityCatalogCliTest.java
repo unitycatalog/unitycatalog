@@ -18,6 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -30,6 +31,7 @@ public class UnityCatalogCliTest {
   private HttpServer server;
   private String responseBody;
   private final List<String> requestPaths = new CopyOnWriteArrayList<>();
+  private final List<String> requestBodies = new CopyOnWriteArrayList<>();
   private final List<String> authorizationHeaders = new CopyOnWriteArrayList<>();
 
   @BeforeEach
@@ -39,6 +41,8 @@ public class UnityCatalogCliTest {
         "/",
         exchange -> {
           requestPaths.add(exchange.getRequestURI().getRawPath());
+          requestBodies.add(
+              new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
           authorizationHeaders.add(
               String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
@@ -152,12 +156,49 @@ public class UnityCatalogCliTest {
         .containsExactly(expectedPrefix + "/api/2.1/unity-catalog/metastore_summary");
   }
 
+  @Test
+  public void testGcpServerIdentityBareFlagSendsRequest() {
+    responseBody = "{\"name\":\"gcs_ambient\",\"purpose\":\"STORAGE\",\"gcp_server_identity\":{}}";
+    JsonNode output =
+        runCli("", "credential", "create", "--name", "gcs_ambient", "--gcp_server_identity");
+    assertThat(requestPaths).containsExactly("/api/2.1/unity-catalog/credentials");
+    assertThat(requestBodies).singleElement().asString().contains("\"gcp_server_identity\":{}");
+    assertThat(output.get("name").asText()).isEqualTo("gcs_ambient");
+  }
+
+  @Test
+  public void testGcpServerIdentityRejectsSpaceSeparatedFalse() {
+    responseBody = "{\"name\":\"gcs_ambient\"}";
+    String output =
+        runCliForOutput(
+            "", "credential", "create", "--name", "gcs_ambient", "--gcp_server_identity", "false");
+    assertThat(output).contains("Unexpected positional arguments: false");
+    assertThat(requestPaths).isEmpty();
+  }
+
+  @Test
+  public void testGcpServerIdentityRejectsEqualsFalse() {
+    responseBody = "{\"name\":\"gcs_ambient\"}";
+    String output =
+        runCliForOutput(
+            "", "credential", "create", "--name", "gcs_ambient", "--gcp_server_identity=false");
+    assertThat(output).contains("Error occurred while parsing the command");
+    assertThat(requestPaths).isEmpty();
+  }
+
   private JsonNode runCli(String serverPath, String... args) {
+    return TestUtils.executeCliCommand(cliArgs(serverPath, args));
+  }
+
+  private String runCliForOutput(String serverPath, String... args) {
+    return TestUtils.executeCliCommandForOutput(cliArgs(serverPath, args));
+  }
+
+  private List<String> cliArgs(String serverPath, String... args) {
     String serverUrl = "http://127.0.0.1:" + server.getAddress().getPort() + serverPath;
-    return TestUtils.executeCliCommand(
-        Stream.concat(
-                Stream.of("--server", serverUrl, "--auth_token", "test-token", "--output", "json"),
-                Stream.of(args))
-            .toList());
+    return Stream.concat(
+            Stream.of("--server", serverUrl, "--auth_token", "test-token", "--output", "json"),
+            Stream.of(args))
+        .toList();
   }
 }

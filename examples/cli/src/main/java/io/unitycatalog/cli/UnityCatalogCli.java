@@ -211,6 +211,13 @@ public class UnityCatalogCli {
         CliUtils.printEntityHelp(entity);
         return false;
       }
+      if (subArgs.length > 2) {
+        System.out.println(
+            "Unexpected positional arguments: "
+                + String.join(" ", Arrays.copyOfRange(subArgs, 2, subArgs.length)));
+        CliUtils.printSubCommandHelp(entity, operation);
+        return false;
+      }
       CliUtils.CliOptions allowedOptions =
           CliUtils.cliOptions.get(entity.toLowerCase()).get(operation.toLowerCase());
       List<CliParams> requiredParams = allowedOptions.getNecessaryParams();

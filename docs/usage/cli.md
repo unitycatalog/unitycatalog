@@ -109,7 +109,8 @@ bin/uc credential create \
 When the server's Application Default Credentials identify a service account, the response includes
 `unity_catalog_service_account_email` under `GCP_SERVER_IDENTITY`. Grant that service account
 `roles/storage.objectViewer` on the GCS bucket to read, and `roles/storage.objectAdmin` to read and
-write. External locations using this credential must be `gs://` paths, and take precedence over the
+write. All `gcp_server_identity` credentials share the server's single Google Cloud identity, so
+separate credential names do not isolate IAM boundaries. External locations using this credential must be `gs://` paths, and take precedence over the
 `gcs.*` server settings.
 
 ### List Credentials

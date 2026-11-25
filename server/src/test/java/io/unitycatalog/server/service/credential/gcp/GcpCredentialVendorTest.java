@@ -612,6 +612,20 @@ public class GcpCredentialVendorTest {
         .isEqualTo(ErrorCode.FAILED_PRECONDITION);
     assertThat(
             GcpCredentialVendor.serverIdentityError(
+                    new IOException(
+                        "Error code 401 trying to get security access token from Compute Engine"
+                            + " metadata for the default service account."))
+                .getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(
+            GcpCredentialVendor.serverIdentityError(
+                    new IOException(
+                        "Error code 403 trying to get security access token from Compute Engine"
+                            + " metadata for the default service account."))
+                .getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(
+            GcpCredentialVendor.serverIdentityError(
                     new IOException("Error code invalid_request: boundary too large"))
                 .getErrorCode())
         .isEqualTo(ErrorCode.INVALID_ARGUMENT);
@@ -624,5 +638,137 @@ public class GcpCredentialVendorTest {
             GcpCredentialVendor.serverIdentityError(new IOException("connection reset"))
                 .getErrorCode())
         .isEqualTo(ErrorCode.UNAVAILABLE);
+  }
+
+  static Stream<RuntimeException> malformedAdcErrors() {
+    return Stream.of(
+        new IllegalArgumentException("Malformed credentials JSON"),
+        new NullPointerException("Missing required credentials field"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("malformedAdcErrors")
+  public void testServerIdentityMalformedAdcMapsToFailedPrecondition(RuntimeException loadFailure) {
+    GcpCredentialVendor vendor =
+        new GcpCredentialVendor(
+            new ServerProperties(new Properties()),
+            SECRET_STORE,
+            null,
+            () -> {
+              throw loadFailure;
+            },
+            null);
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class,
+            () ->
+                vendor.vendGcpCredential(
+                    contextWithServerIdentity(CredentialContext.Privilege.SELECT)));
+
+    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION);
+    assertThat(error.getMessage())
+        .contains("Contact the server administrator")
+        .doesNotContain("gcs_ambient_credential");
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "401, FAILED_PRECONDITION",
+    "403, FAILED_PRECONDITION",
+    "404, FAILED_PRECONDITION",
+    "429, UNAVAILABLE",
+    "503, UNAVAILABLE"
+  })
+  public void testServerIdentityMetadataTokenErrors(int statusCode, ErrorCode expectedCode) {
+    MockHttpTransport metadataErrorTransport =
+        new MockHttpTransport() {
+          @Override
+          public LowLevelHttpRequest buildRequest(String method, String url) {
+            return new MockLowLevelHttpRequest(url) {
+              @Override
+              public LowLevelHttpResponse execute() {
+                if (url.contains("/universe/universe-domain")) {
+                  return new MockLowLevelHttpResponse()
+                      .setStatusCode(200)
+                      .setContent("googleapis.com");
+                }
+                return new MockLowLevelHttpResponse()
+                    .setStatusCode(statusCode)
+                    .setContent("metadata error " + statusCode);
+              }
+            };
+          }
+        };
+    GcpApplicationDefaultCredentials adc =
+        () ->
+            ComputeEngineCredentials.newBuilder()
+                .setHttpTransportFactory(() -> metadataErrorTransport)
+                .build();
+    GcpCredentialVendor vendor =
+        new GcpCredentialVendor(
+            new ServerProperties(new Properties()),
+            SECRET_STORE,
+            null,
+            adc,
+            () -> metadataErrorTransport);
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class,
+            () ->
+                vendor.vendGcpCredential(
+                    contextWithServerIdentity(CredentialContext.Privilege.SELECT)));
+
+    assertThat(error.getErrorCode()).isEqualTo(expectedCode);
+    assertThat(error.getMessage()).doesNotContain("gcs_ambient_credential");
+  }
+
+  @Test
+  public void testServerIdentityUniverseDomain503MapsToUnavailable() {
+    MockHttpTransport universe503Transport =
+        new MockHttpTransport() {
+          @Override
+          public LowLevelHttpRequest buildRequest(String method, String url) {
+            return new MockLowLevelHttpRequest(url) {
+              @Override
+              public LowLevelHttpResponse execute() {
+                if (url.contains("/universe/universe-domain")) {
+                  return new MockLowLevelHttpResponse()
+                      .setStatusCode(503)
+                      .setContent("service unavailable");
+                }
+                return new MockLowLevelHttpResponse()
+                    .setStatusCode(200)
+                    .setContentType("application/json")
+                    .setContent(
+                        "{\"access_token\": \"metadata-token\", \"expires_in\": 3600,"
+                            + " \"token_type\": \"Bearer\"}");
+              }
+            };
+          }
+        };
+    GcpApplicationDefaultCredentials adc =
+        () ->
+            ComputeEngineCredentials.newBuilder()
+                .setHttpTransportFactory(() -> universe503Transport)
+                .build();
+    GcpCredentialVendor vendor =
+        new GcpCredentialVendor(
+            new ServerProperties(new Properties()),
+            SECRET_STORE,
+            null,
+            adc,
+            () -> universe503Transport);
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class,
+            () ->
+                vendor.vendGcpCredential(
+                    contextWithServerIdentity(CredentialContext.Privilege.SELECT)));
+
+    assertThat(error.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+    assertThat(error.getMessage()).doesNotContain("gcs_ambient_credential");
   }
 }

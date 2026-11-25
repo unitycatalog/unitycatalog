@@ -1260,15 +1260,17 @@ paths:
         A `gcp_server_identity` credential uses the Unity Catalog server's own Google Cloud
         Application Default Credentials (for example, a GKE Workload Identity or Compute Engine
         service account) without storing a key or requiring `server.credential-encryption-key`.
-        Creating one checks that Application Default Credentials are available on the server and
-        fails with `FAILED_PRECONDITION` if not. Responses include
-        `unity_catalog_service_account_email` when the server's credentials identify a service
-        account; grant that account access to the GCS buckets covered by its external locations. Its
-        external locations must be `gs://` paths. A request for access under such a location is
-        vended by downscoping the server's Application Default Credentials. It fails with
-        `FAILED_PRECONDITION` if Application Default Credentials are unavailable or Google rejects or
-        refuses them, `INVALID_ARGUMENT` if Google rejects the location, `UNAVAILABLE` if Google
-        cannot be reached, and `INTERNAL` if Google rejects the server's clock.
+        All `gcp_server_identity` credentials share the server's single Google Cloud identity, so
+        separate credential names do not isolate IAM boundaries. Creating one checks that
+        Application Default Credentials are available on the server and fails with
+        `FAILED_PRECONDITION` if not. Responses include `unity_catalog_service_account_email` when
+        the server's credentials identify a service account; grant that account access to the GCS
+        buckets covered by its external locations. Its external locations must be `gs://` paths. A
+        request for access under such a location is vended by downscoping the server's Application
+        Default Credentials. It fails with `FAILED_PRECONDITION` if Application Default Credentials
+        are unavailable or Google rejects or refuses them, `INVALID_ARGUMENT` if Google rejects the
+        location, `UNAVAILABLE` if Google cannot be reached, and `INTERNAL` if Google rejects the
+        server's clock.
 
         EXPERIMENTAL: `s3_compatible` is available only when the server property
         `server.s3-compatible-storage.enabled` is `true`. Otherwise a create or update request that
@@ -3272,9 +3274,11 @@ components:
         Configures a storage credential that uses the Unity Catalog server's own Google Cloud
         Application Default Credentials (for example, a GKE Workload Identity or Compute Engine
         service account). Pass an empty JSON object (`{}`). No key is sent or stored, and
-        `server.credential-encryption-key` is not required. Its external locations must be `gs://`
-        paths. Creating one checks that Application Default Credentials are available on the server
-        and fails with `FAILED_PRECONDITION` if not.
+        `server.credential-encryption-key` is not required. All `gcp_server_identity` credentials
+        share the server's single Google Cloud identity, so separate credential names do not isolate
+        IAM boundaries. Its external locations must be `gs://` paths. Creating one checks that
+        Application Default Credentials are available on the server and fails with
+        `FAILED_PRECONDITION` if not.
       type: object
     GcpServerIdentityResponse:
       description: A `gcp_server_identity` storage credential as returned by the server.
