@@ -259,7 +259,10 @@ public class VolumeCli {
       resolved =
           URI.create(basePath.toUri() + "/").resolve(isName ? "./" + relativePath : relativePath);
     } catch (IllegalArgumentException e) {
-      return literalPath(basePath, relativePath);
+      // A raw space or similar makes the path an invalid URI: read it literally.
+      return isName || relativePath.startsWith("/")
+          ? literalPath(basePath, relativePath)
+          : new Path(relativePath);
     }
     URI decoded = new Path(resolved).toUri();
     return new Path(decoded.getScheme(), decoded.getAuthority(), decoded.getPath());

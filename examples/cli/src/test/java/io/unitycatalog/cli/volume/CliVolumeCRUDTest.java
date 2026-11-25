@@ -27,6 +27,7 @@ import io.unitycatalog.server.base.volume.BaseVolumeCRUDTest;
 import io.unitycatalog.server.base.volume.VolumeOperations;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
@@ -41,6 +42,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 
 public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
+  /** The URI the last {@code runCli} passed to {@code DeltaKernelUtils.getFileSystem}. */
+  private URI fileSystemUri;
+
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
@@ -70,6 +74,11 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
         + " /tmp/uc-cli-volume-test/my vol/a.txt",
     "file:///tmp/uc-cli-volume-test/my%20vol, file:/tmp/uc-cli-volume-test/my%20vol/a.txt,"
         + " /tmp/uc-cli-volume-test/my vol/a.txt",
+    "file:///tmp/uc-cli-volume-test/my%20vol, a b/%20c, /tmp/uc-cli-volume-test/my vol/a b/%20c",
+    "file:///tmp/uc-cli-volume-test/my%20vol, a%20b/%20c, /tmp/uc-cli-volume-test/my vol/a b/ c",
+    "file:///tmp/uc-cli-volume-test/my%20vol, file:/tmp/uc-cli-volume-test/my vol/a.txt,"
+        + " /tmp/uc-cli-volume-test/my vol/a.txt",
+    "file:///tmp/uc-cli-volume-test/my%20vol, file:/tmp/other dir/a.txt,",
     "file:///tmp/uc-cli-volume-test/my%20vol, %2E%2E/my%20vol2/x,",
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3:report.pdf, /tmp/uc-cli-volume-test/my"
         + " vol/Q3:report.pdf"
@@ -103,6 +112,8 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     assertThat(path.getValue().toUri().getPath().replaceAll("/$", ""))
         .as("CLI read path must be the registered location joined with --path")
         .isEqualTo(expectedPath);
+    assertSchemeAndAuthority(path.getValue().toUri(), location);
+    assertSchemeAndAuthority(fileSystemUri, location);
   }
 
   @ParameterizedTest
@@ -162,6 +173,15 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     ArgumentCaptor<Path> path = ArgumentCaptor.forClass(Path.class);
     verify(fileSystem).create(path.capture(), eq(true));
     assertThat(path.getValue().getParent().toUri().getPath()).isEqualTo("/team reports");
+    assertSchemeAndAuthority(path.getValue().toUri(), "s3://test-bucket0/team reports");
+    assertSchemeAndAuthority(fileSystemUri, "s3://test-bucket0/team reports");
+  }
+
+  /** The CLI reaches cloud volumes through s3a, so an s3 location is expected as s3a. */
+  private void assertSchemeAndAuthority(URI actual, String location) {
+    URI expected = new Path(location).toUri();
+    assertThat(actual.getScheme()).isEqualTo(expected.getScheme().replace("s3", "s3a"));
+    assertThat(actual.getAuthority()).isEqualTo(expected.getAuthority());
   }
 
   private VolumeInfo createExternalVolume(String name, String location) throws Exception {
@@ -183,6 +203,9 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
                     ? fileSystem
                     : invocation.callRealMethod())) {
       UnityCatalogCli.main(arguments.toArray(String[]::new));
+      ArgumentCaptor<URI> uri = ArgumentCaptor.forClass(URI.class);
+      ignored.verify(() -> DeltaKernelUtils.getFileSystem(uri.capture(), any()));
+      fileSystemUri = uri.getValue();
     }
   }
 
