@@ -292,8 +292,8 @@ jobs:
           printf '#!/bin/sh\necho token\n' > "$dir/bin/jwt"
           cp "$dir/bin/jwt" "$dir/bin/uuidgen"
           chmod +x "$dir/bin/"*
-          # Like the server, an unfiltered list returns the first 50 users, and the filter ignores case. raced@ exists
-          # but the lookup misses it, as when another client creates it after the lookup.
+          # Like Scim2UserService, an unfiltered list returns the first 50 users, and the filter ignores case. raced@
+          # exists but the lookup misses it, as when another client creates it after the lookup.
           python3 - "$dir" <<'EOF' &
           import json, os, re, sys
           from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -347,14 +347,16 @@ jobs:
           trap 'kill "$stub"' EXIT
           for _ in $(seq 50); do [ -f "$dir/port" ] && break; sleep 0.1; done
           port="$(cat "$dir/port")"
-          # Renders the job for the users in $1 and runs its script against the stub.
+          # Renders the job for the users in $1 and runs its script with the job's shell, curl and jq, in its image.
           run_job() {
             helm template uc helm --set auth.enabled=true --set server.service.port="$port" -f "$1" \
-              --show-only templates/server/create-users-job.yaml \
-              | sed -n '/^            - |-$/,/^          volumeMounts:$/{//!p}' | sed 's/^              //' \
+              --show-only templates/server/create-users-job.yaml > "$dir/job.yaml"
+            image="$(sed -n 's/^ *image: "\(.*\)"$/\1/p' "$dir/job.yaml")"
+            sed -n '/^            - |-$/,/^          volumeMounts:$/{//!p}' "$dir/job.yaml" | sed 's/^              //' \
               | sed "s#/key/#$dir/key/#g; s#http://uc-unitycatalog-server:#http://127.0.0.1:#g" > "$dir/job.sh"
             : > "$dir/requests.jsonl"
-            PATH="$dir/bin:$PATH" bash "$dir/job.sh"
+            docker run --rm --network host -v "$dir:$dir" "$image" /bin/sh -c \
+              'apk add --no-cache curl jq > /dev/null && PATH="$1/bin:$PATH" exec /bin/sh "$1/job.sh"' sh "$dir"
           }
           cat > "$dir/users.yaml" <<'EOF'
           auth:

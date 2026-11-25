@@ -58,10 +58,9 @@ spec:
               USERS_URL="http://{{ include "unitycatalog.server.fullname" $ }}:{{ $.Values.server.service.port }}/api/1.0/unity-control/scim2/Users"
 
               {{- range $index, $user := .Values.auth.users }}
-              EMAIL='{{ $user.email | default "" | toString | replace "'" "'\\''" }}'
+              EMAIL='{{ required "auth.users[].email is required" $user.email | toString | replace "'" "'\\''" }}'
               NAME='{{ $user.name | default "" | toString | replace "'" "'\\''" }}'
-              # The list returns one page of users, so look the user up by email. The filter ignores case,
-              # but users whose emails differ in case are different users.
+              # The list returns one page of users, so look the user up by email.
               FILTER=$(jq -rn --arg email "${EMAIL}" '"emails.value eq \($email | tojson)"')
               USER_EXISTS=$(curl --fail-with-body -sS -G -H "Authorization: Bearer ${TOKEN}" \
                   --data-urlencode "filter=${FILTER}" "${USERS_URL}" \
@@ -77,7 +76,7 @@ spec:
                   -d "$(jq -n --arg name "${NAME}" --arg email "${EMAIL}" '{displayName: $name, emails: [{primary: true, value: $email}]}')")
                   case "${STATUS}" in
                     201) echo "User ${EMAIL} created" ;;
-                    # Another client created the user after the lookup.
+                    # The lookup can miss a user that exists, for example one created after it.
                     409) echo "User ${EMAIL} already exists" ;;
                     *) echo "Creating user ${EMAIL} failed with HTTP ${STATUS}"; exit 1 ;;
                   esac
