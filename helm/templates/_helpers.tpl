@@ -136,7 +136,7 @@ Volume mounts of the server container, which the upgrade-schema init container s
 {{- end }}
 {{- range $index, $config := .Values.storage.credentials.gcs }}
 - name: gcs-credentials-{{ $index }}
-  mountPath: /home/unitycatalog/etc/conf/gcs-credentials-{{ $index }}.json
+  mountPath: {{ include "unitycatalog.server.gcsKeyFilePath" $index }}
   subPath: jsonKey
   readOnly: true
 {{- end }}
@@ -169,6 +169,13 @@ Keypair secret name
 */}}
 {{- define "unitycatalog.server.jwtKeypairSecretName" -}}
 {{- default (printf "%s-%s" (include "unitycatalog.server.fullname" .) "jwt-key") .Values.server.jwtKeypairSecret.name }}
+{{- end }}
+
+{{/*
+Path of the key file of GCS credential N in the server container. The volume mount and server.properties both use it.
+*/}}
+{{- define "unitycatalog.server.gcsKeyFilePath" -}}
+/home/unitycatalog/etc/conf/gcs-credentials-{{ . }}.json
 {{- end }}
 
 {{/*
