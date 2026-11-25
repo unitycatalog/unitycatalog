@@ -12,14 +12,12 @@ import com.google.common.base.CharMatcher;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.iceberg.Files;
@@ -130,81 +128,6 @@ public class GcpCredentialVendor {
     return literal.append('"').toString();
   }
 
-  /**
-   * Builds the credential access boundary condition that limits a downscoped credential to a
-   * location and everything under it.
-   *
-   * @param location a gs:// location
-   * @return the CEL condition, which Google limits to {@link #MAX_CONDITION_LENGTH} characters
-   */
-  private static String accessBoundaryCondition(NormalizedURL location) {
-    URI locationUri = location.toUri();
-    String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
-
-    // Match the path itself or anything under path/. Listing with the bare path as the
-    // prefix also returns sibling names such as path_archive, as the S3 policy allows.
-    String dirPrefix = path.isEmpty() ? "" : path + "/";
-    String objectsPrefix = format("projects/_/buckets/%s/objects/", locationUri.getHost());
-
-    // for reading/writing objects
-    String objectStartsWithExpr =
-        format("resource.name.startsWith(%s)", celStringLiteral(objectsPrefix + dirPrefix));
-
-    // for listing objects
-    String listStartsWithExpr =
-        format(
-            "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith(%s)",
-            celStringLiteral(dirPrefix));
-
-    // At a bucket root the startsWith clauses already match everything.
-    return path.isEmpty()
-        ? objectStartsWithExpr + " || " + listStartsWithExpr
-        : format(
-            "resource.name == %s || %s || api.getAttribute("
-                + "'storage.googleapis.com/objectListPrefix', '') == %s || %s",
-            celStringLiteral(objectsPrefix + path),
-            objectStartsWithExpr,
-            celStringLiteral(path),
-            listStartsWithExpr);
-  }
-
-  /**
-   * Checks the GCS limits that a vend for this context, or storing objects under its locations,
-   * would hit, without calling GCS: the object name limit of 1,024 bytes, and the access boundary
-   * condition limit when the vend builds one, which is for a configured bucket without a custom
-   * credential generator.
-   *
-   * @return why the locations can't be used on GCS, or empty
-   */
-  public Optional<String> limitViolation(CredentialContext context, StorageLimits.Extent extent) {
-    return StorageLimits.objectNameViolation(
-            context.getLocations(), "GCS object", StorageLimits.Unit.UTF8_BYTES, extent)
-        .or(
-            () ->
-                buildsAccessBoundary(context)
-                    ? context.getLocations().stream()
-                        .map(location -> conditionViolation(accessBoundaryCondition(location)))
-                        .flatMap(Optional::stream)
-                        .findFirst()
-                    : Optional.empty());
-  }
-
-  private boolean buildsAccessBoundary(CredentialContext context) {
-    GcsStorageConfig config = gcsConfigurations.get(context.getStorageBase());
-    return context.getCredentialDAO().isEmpty()
-        && config != null
-        && (config.getCredentialGenerator() == null || config.getCredentialGenerator().isEmpty());
-  }
-
-  private static Optional<String> conditionViolation(String condition) {
-    return condition.length() <= MAX_CONDITION_LENGTH
-        ? Optional.empty()
-        : Optional.of(
-            format(
-                "its GCS access boundary condition is %d characters, and the limit is %d",
-                condition.length(), MAX_CONDITION_LENGTH));
-  }
-
   OAuth2Credentials downscopeGcpCreds(GoogleCredentials credentials, CredentialContext context) {
     CredentialAccessBoundary.Builder boundaryBuilder = CredentialAccessBoundary.newBuilder();
     List<String> roles = resolvePrivilegesToRoles(context.getPrivileges());
@@ -214,18 +137,49 @@ public class GcpCredentialVendor {
         .forEach(
             location -> {
               URI locationUri = location.toUri();
+              String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
+
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
-              String combinedExpr = accessBoundaryCondition(location);
-              conditionViolation(combinedExpr)
-                  .ifPresent(
-                      violation -> {
-                        throw new BaseException(
-                            ErrorCode.INVALID_ARGUMENT,
-                            format(
-                                "GCS location %s is too long for a downscoped credential: %s.",
-                                location, violation));
-                      });
+
+              // Match the path itself or anything under path/. Listing with the bare path as the
+              // prefix also returns sibling names such as path_archive, as the S3 policy allows.
+              String dirPrefix = path.isEmpty() ? "" : path + "/";
+              String objectsPrefix =
+                  format("projects/_/buckets/%s/objects/", locationUri.getHost());
+
+              // for reading/writing objects
+              String objectStartsWithExpr =
+                  format(
+                      "resource.name.startsWith(%s)", celStringLiteral(objectsPrefix + dirPrefix));
+
+              // for listing objects
+              String listStartsWithExpr =
+                  format(
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix',"
+                          + " '').startsWith(%s)",
+                      celStringLiteral(dirPrefix));
+
+              // At a bucket root the startsWith clauses already match everything.
+              String combinedExpr =
+                  path.isEmpty()
+                      ? objectStartsWithExpr + " || " + listStartsWithExpr
+                      : format(
+                          "resource.name == %s || %s || api.getAttribute("
+                              + "'storage.googleapis.com/objectListPrefix', '') == %s || %s",
+                          celStringLiteral(objectsPrefix + path),
+                          objectStartsWithExpr,
+                          celStringLiteral(path),
+                          listStartsWithExpr);
+
+              if (combinedExpr.length() > MAX_CONDITION_LENGTH) {
+                throw new BaseException(
+                    ErrorCode.INVALID_ARGUMENT,
+                    format(
+                        "GCS location %s is too long for a downscoped credential: its access"
+                            + " boundary condition is %d characters, and the limit is %d.",
+                        location, combinedExpr.length(), MAX_CONDITION_LENGTH));
+              }
 
               boundaryBuilder.addRule(
                   CredentialAccessBoundary.AccessBoundaryRule.newBuilder()

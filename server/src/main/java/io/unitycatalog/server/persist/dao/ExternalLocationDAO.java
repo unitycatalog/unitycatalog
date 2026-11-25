@@ -1,7 +1,5 @@
 package io.unitycatalog.server.persist.dao;
 
-import static io.unitycatalog.server.utils.Constants.MAX_EXTERNAL_LOCATION_URL_LENGTH;
-
 import io.unitycatalog.server.model.ExternalLocationInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -34,7 +32,7 @@ import org.hibernate.annotations.DynamicUpdate;
 @EqualsAndHashCode(callSuper = true)
 public class ExternalLocationDAO extends IdentifiableDAO {
 
-  @Column(name = "url", length = MAX_EXTERNAL_LOCATION_URL_LENGTH, nullable = false)
+  @Column(name = "url", nullable = false)
   private String url;
 
   @Column(name = "comment")

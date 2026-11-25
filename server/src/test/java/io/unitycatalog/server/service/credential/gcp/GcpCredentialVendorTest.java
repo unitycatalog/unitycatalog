@@ -1,7 +1,5 @@
 package io.unitycatalog.server.service.credential.gcp;
 
-import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
-import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -16,22 +14,14 @@ import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.StorageLocationValidator;
-import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.util.Date;
-import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -39,15 +29,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 public class GcpCredentialVendorTest {
 
-  private final GcpCredentialVendor credentialVendor = new GcpCredentialVendor(serverProperties());
-
-  // Buckets without a custom credential generator, whose vends build an access boundary.
-  private static ServerProperties serverProperties() {
-    Properties properties = new Properties();
-    properties.put("gcs.bucketPath.0", "gs://test-bucket");
-    properties.put("gcs.bucketPath.1", "gs://test-bucket0");
-    return new ServerProperties(properties);
-  }
+  private final GcpCredentialVendor credentialVendor =
+      new GcpCredentialVendor(new ServerProperties(new Properties()));
 
   private AccessBoundaryRule ruleFor(String location) {
     CredentialContext context =
@@ -169,96 +152,6 @@ public class GcpCredentialVendorTest {
         .hasMessageContaining("2052 characters, and the limit is 2048")
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.INVALID_ARGUMENT);
-  }
-
-  private boolean canVend(NormalizedURL location) {
-    try {
-      ruleFor(location.toString());
-      return true;
-    } catch (BaseException e) {
-      assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
-      return false;
-    }
-  }
-
-  private boolean rootAccepted(NormalizedURL root, String prefix) {
-    StorageLocationValidator validator =
-        new StorageLocationValidator(
-            new CloudCredentialVendor(null, null, credentialVendor),
-            (session, location) -> Optional.empty(),
-            () -> StorageLimits.Unit.UTF16_CODE_UNITS);
-    try {
-      if (prefix.equals(MANAGED_STORAGE_CATALOG_PREFIX)) {
-        validator.validateCatalogStorageRoot(null, root);
-      } else {
-        validator.validateSchemaStorageRoot(null, root);
-      }
-      return true;
-    } catch (BaseException e) {
-      assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
-      assertThat(e.getMessage()).contains("its GCS access boundary condition is");
-      return false;
-    }
-  }
-
-  @ParameterizedTest
-  @CsvSource({
-    MANAGED_STORAGE_CATALOG_PREFIX + ", test-bucket, r",
-    MANAGED_STORAGE_SCHEMA_PREFIX + ", test-bucket, r",
-    MANAGED_STORAGE_CATALOG_PREFIX + ", test-bucket0, r",
-    MANAGED_STORAGE_SCHEMA_PREFIX + ", test-bucket0, r",
-    MANAGED_STORAGE_CATALOG_PREFIX + ", test-bucket, %22",
-    MANAGED_STORAGE_SCHEMA_PREFIX + ", test-bucket, %5C"
-  })
-  public void testGcsStorageRootIsAcceptedExactlyWhenManagedCredentialsCanBeVended(
-      String prefix, String bucket, String pathChar) {
-    UUID id = UUID.randomUUID();
-    List<Integer> acceptedLengths =
-        IntStream.rangeClosed(1, 500)
-            .filter(
-                length -> {
-                  NormalizedURL root =
-                      NormalizedURL.from("gs://" + bucket + "/" + pathChar.repeat(length));
-                  NormalizedURL container =
-                      prefix.equals(MANAGED_STORAGE_CATALOG_PREFIX)
-                          ? ExternalLocationUtils.getManagedLocationForCatalog(root, id)
-                          : ExternalLocationUtils.getManagedLocationForSchema(root, id);
-                  NormalizedURL model =
-                      ExternalLocationUtils.getManagedLocationForModel(container, id);
-                  boolean vendable =
-                      Stream.of(
-                              ExternalLocationUtils.getManagedLocationForTable(container, id),
-                              ExternalLocationUtils.getManagedLocationForVolume(container, id),
-                              model,
-                              ExternalLocationUtils.getManagedLocationForModelVersion(model, id))
-                          .allMatch(this::canVend);
-                  boolean accepted = rootAccepted(root, prefix);
-                  assertThat(accepted)
-                      .as("root path of %d x %s", length, pathChar)
-                      .isEqualTo(vendable);
-                  return accepted;
-                })
-            .boxed()
-            .toList();
-
-    assertThat(acceptedLengths).isNotEmpty();
-    int longestAccepted = acceptedLengths.get(acceptedLengths.size() - 1);
-    assertThat(longestAccepted).isLessThan(500);
-    assertThat(acceptedLengths).hasSize(longestAccepted);
-
-    // Google: "The maximum length of the expression field is 2048 characters" (AccessBoundary,
-    // checked 2026-11-21). Each root character adds four to eight, so the longest condition vended
-    // is within eight of the limit.
-    NormalizedURL longestRoot =
-        NormalizedURL.from("gs://" + bucket + "/" + pathChar.repeat(longestAccepted));
-    NormalizedURL longestContainer =
-        prefix.equals(MANAGED_STORAGE_CATALOG_PREFIX)
-            ? ExternalLocationUtils.getManagedLocationForCatalog(longestRoot, id)
-            : ExternalLocationUtils.getManagedLocationForSchema(longestRoot, id);
-    NormalizedURL deepest =
-        ExternalLocationUtils.getManagedLocationForModelVersion(
-            ExternalLocationUtils.getManagedLocationForModel(longestContainer, id), id);
-    assertThat(availabilityConditionFor(deepest.toString()).length()).isBetween(2041, 2048);
   }
 
   @ParameterizedTest

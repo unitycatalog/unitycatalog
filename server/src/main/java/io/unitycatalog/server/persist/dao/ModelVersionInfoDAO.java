@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist.dao;
 
-import static io.unitycatalog.server.utils.Constants.MAX_MODEL_LOCATION_LENGTH;
 import static io.unitycatalog.server.utils.Constants.MAX_STORAGE_LOCATION_LENGTH;
 
 import io.unitycatalog.server.model.ModelVersionInfo;
@@ -69,7 +68,7 @@ public class ModelVersionInfoDAO {
   @Column(name = "comment", length = 65535)
   private String comment;
 
-  @Column(name = "url", length = MAX_MODEL_LOCATION_LENGTH)
+  @Column(name = "url", length = 4096)
   private String url;
 
   public static ModelVersionInfoDAO from(ModelVersionInfo modelVersionInfo) {

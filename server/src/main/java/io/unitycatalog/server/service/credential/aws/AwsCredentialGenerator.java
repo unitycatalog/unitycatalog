@@ -164,16 +164,6 @@ public interface AwsCredentialGenerator {
       String awsPolicy =
           AwsPolicyGenerator.generatePolicy(
               ctx.getPrivileges(), ctx.getLocations(), roleArn, awsRegion, isS3Compatible);
-      if (!isS3Compatible) {
-        AwsPolicyGenerator.sessionPolicyViolation(awsPolicy)
-            .ifPresent(
-                violation -> {
-                  throw new BaseException(
-                      ErrorCode.INVALID_ARGUMENT,
-                      String.format(
-                          "Can't vend credentials for %s: %s.", ctx.getLocations(), violation));
-                });
-      }
       String roleSessionName = "uc-%s".formatted(UUID.randomUUID());
 
       AssumeRoleRequest.Builder roleRequestBuilder =
