@@ -54,48 +54,50 @@ def _generate_runner_script(function_source: str, cpu_time_limit: int, memory_li
     function_source = dedent_code(function_source)
     function_name = _extract_function_name(function_source)
     script = f"""
-import sys, base64, builtins, cloudpickle, json, traceback, asyncio, os
+import sys, base64, cloudpickle, json, traceback, asyncio, os
+import sys as _uc_sys, base64 as _uc_base64, builtins as _uc_builtins
+import cloudpickle as _uc_cloudpickle, json as _uc_json, traceback as _uc_traceback
+import asyncio as _uc_asyncio
 
 try:
     import resource
 except ImportError:
     resource = None
+_uc_resource = resource
 
 {function_source}
 
-def _limit_resources():
-    if resource is None:
+def _uc_limit_resources():
+    if _uc_resource is None:
         return
     try:
-        resource.setrlimit(resource.RLIMIT_CPU, ({cpu_time_limit}, {cpu_time_limit}))
+        _uc_resource.setrlimit(_uc_resource.RLIMIT_CPU, ({cpu_time_limit}, {cpu_time_limit}))
     except Exception as e:
-        sys.stderr.write("Warning: unable to set RLIMIT_CPU: " + str(e) + "\\n")
+        _uc_sys.stderr.write("Warning: unable to set RLIMIT_CPU: " + str(e) + "\\n")
     try:
         mem_bytes = {memory_limit} * {MB_CONVERSION}
-        resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+        _uc_resource.setrlimit(_uc_resource.RLIMIT_AS, (mem_bytes, mem_bytes))
     except Exception as e:
-        sys.stderr.write("Warning: unable to set RLIMIT_AS: " + str(e) + "\\n")
+        _uc_sys.stderr.write("Warning: unable to set RLIMIT_AS: " + str(e) + "\\n")
 
-def main():
-    _limit_resources()
-    result_path = sys.argv[2]
+def _uc_main():
+    _uc_limit_resources()
+    _uc_result_path = _uc_sys.argv[2]
     try:
-        b64_params = sys.argv[1]
-        params = cloudpickle.loads(base64.b64decode(b64_params))
-        result = {function_name}(**params)
-        if asyncio.iscoroutine(result):
-            result = asyncio.run(result)
-        if result is None:
-            result = "{NO_OUTPUT_MESSAGE}"
-        output = json.dumps({{"success": True, "result": result}})
+        _uc_params = _uc_cloudpickle.loads(_uc_base64.b64decode(_uc_sys.argv[1]))
+        _uc_result = {function_name}(**_uc_params)
+        if _uc_asyncio.iscoroutine(_uc_result):
+            _uc_result = _uc_asyncio.run(_uc_result)
+        if _uc_result is None:
+            _uc_result = "{NO_OUTPUT_MESSAGE}"
+        _uc_output = _uc_json.dumps({{"success": True, "result": _uc_result}})
     except Exception:
-        tb = traceback.format_exc()
-        output = json.dumps({{"success": False, "error": tb}})
-    with builtins.open(result_path, "w", encoding="utf-8") as f:
-        f.write(output)
+        _uc_output = _uc_json.dumps({{"success": False, "error": _uc_traceback.format_exc()}})
+    with _uc_builtins.open(_uc_result_path, "w", encoding="utf-8") as _uc_file:
+        _uc_file.write(_uc_output)
 
 if __name__ == "__main__":
-    main()
+    _uc_main()
 """
     return script
 
@@ -118,6 +120,17 @@ def _read_result(result_path: str) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(result_data, dict):
         return None, f"expected a JSON object, got {type(result_data).__name__}"
     return result_data, None
+
+
+# TODO(#2359): share the no-result error handling with the sandbox executor.
+def _stderr_tail(stderr: str) -> str:
+    if not stderr:
+        return ""
+    return (
+        "Standard error output of the process "
+        f"(at most the last {_MAX_STDERR_CHARS_IN_MESSAGE} characters):\n"
+        f"{stderr[-_MAX_STDERR_CHARS_IN_MESSAGE:]}"
+    )
 
 
 def run_in_sandbox_subprocess(function_source: str, params: dict[str, Any]) -> tuple[bool, Any]:
@@ -200,13 +213,3 @@ def run_in_sandbox_subprocess(function_source: str, params: dict[str, Any]) -> t
     else:
         message = EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE.format(exit_code=proc.returncode)
     return False, message + _stderr_tail(proc.stderr)
-
-
-def _stderr_tail(stderr: str) -> str:
-    if not stderr:
-        return ""
-    return (
-        "Standard error output of the process "
-        f"(at most the last {_MAX_STDERR_CHARS_IN_MESSAGE} characters):\n"
-        f"{stderr[-_MAX_STDERR_CHARS_IN_MESSAGE:]}"
-    )

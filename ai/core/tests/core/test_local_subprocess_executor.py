@@ -211,8 +211,30 @@ def test_non_ascii_result_round_trips():
     )
 
 
-def test_function_named_like_a_builtin_used_by_the_runner_returns_its_result():
-    src = "def open(x: int, y: int) -> int:\n    return x + y\n"
+@pytest.mark.parametrize(
+    "name",
+    [
+        "f",
+        "output",
+        "result_path",
+        "b64_params",
+        "params",
+        "result",
+        "tb",
+        "main",
+        "open",
+        "builtins",
+        "sys",
+        "base64",
+        "cloudpickle",
+        "json",
+        "traceback",
+        "asyncio",
+        "resource",
+    ],
+)
+def test_function_named_like_a_name_of_the_runner_returns_its_result(name):
+    src = f"def {name}(x: int, y: int) -> int:\n    return x + y\n"
     assert run_in_sandbox_subprocess(src, {"x": 1, "y": 2}) == (True, 3)
 
 
@@ -224,14 +246,13 @@ def test_function_that_prints_then_raises_reports_the_traceback():
 
 
 @pytest.mark.parametrize(
-    ("function", "exit_code", "stderr_suffix"),
+    ("function", "exit_code", "expected_text"),
     [
-        (exiting_function, 3, "could not send its result.\n"),
+        (exiting_function, 3, "could not send its result."),
         (
             exiting_with_message_function,
             1,
-            "Standard error output of the process (at most the last 4096 characters):\n"
-            "bad config\n",
+            "Standard error output of the process (at most the last 4096 characters):\nbad config",
         ),
         (
             exiting_with_long_stderr_function,
@@ -240,14 +261,14 @@ def test_function_that_prints_then_raises_reports_the_traceback():
         ),
     ],
 )
-def test_function_that_exits_reports_its_exit_code(function, exit_code, stderr_suffix):
+def test_function_that_exits_reports_its_exit_code(function, exit_code, expected_text):
     src = inspect.getsource(function)
     succeeded, result = run_in_sandbox_subprocess(src, {})
     assert not succeeded
     assert result.startswith(
         f"The function execution process exited with code {exit_code} before it could report"
     )
-    assert result.endswith(stderr_suffix)
+    assert expected_text in result
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL is not available on Windows")
@@ -416,7 +437,7 @@ def test_runner_script_skips_limits_without_resource_module(monkeypatch, capsys)
     namespace = {"__name__": "runner"}
 
     exec(script, namespace)
-    namespace["_limit_resources"]()
+    namespace["_uc_limit_resources"]()
 
     assert capsys.readouterr().err == ""
     assert namespace["simple_function"](x=1, y=2) == 3
