@@ -463,8 +463,7 @@ public class ExternalLocationUtilsTest {
         "abfss://c@a.dfs.core.windows.net"
       })
   public void cloudAllocationAndPathCredentialsRejectAmbiguousUris(String storage) {
-    for (String suffix :
-        List.of("/%6frders", "/orders%2fchild", "/orders?query=1", "/orders#fragment")) {
+    for (String suffix : List.of("/orders?query=1", "/orders#fragment")) {
       NormalizedURL path = NormalizedURL.from(storage + "/root" + suffix);
       for (Runnable operation :
           List.<Runnable>of(
@@ -474,8 +473,32 @@ public class ExternalLocationUtilsTest {
             .isInstanceOfSatisfying(
                 BaseException.class,
                 e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
-            .hasMessageContaining("must not contain percent escapes, a query, or a fragment");
+            .hasMessageContaining("must not contain a query or a fragment");
       }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"s3://bucket", "gs://bucket"})
+  public void percentObjectKeysKeepDistinctReservations(String storage) {
+    session.beginTransaction();
+    String root = storage + "/warehouse/sales%20data/value=%2F%25";
+    TableInfoDAO table =
+        TableInfoDAO.builder()
+            .id(UUID.randomUUID())
+            .name("orders")
+            .type("MANAGED")
+            .dataSourceFormat("ICEBERG")
+            .url(root)
+            .build();
+    session.persist(table);
+    for (String path : List.of(root, root + "/data")) {
+      assertInvalidRegistrationOverlap(NormalizedURL.from(path));
+    }
+    for (String path :
+        List.of(root.replace("%20", "%2520"), root.replace("%2F", "/"), root + "-sibling")) {
+      ExternalLocationUtils.validateNotOverlapWithRegisteredTables(
+          session, NormalizedURL.from(path));
     }
   }
 

@@ -298,7 +298,8 @@ public class AwsPolicyGenerator {
         .collect(
             Collectors.toMap(
                 URI::getHost,
-                uri -> new LinkedList<>(List.of(uri.getPath())),
+                // Decoding percent sequences would scope a different object key.
+                uri -> new LinkedList<>(List.of(uri.getRawPath())),
                 (map, newPaths) -> {
                   map.addAll(newPaths);
                   return map;

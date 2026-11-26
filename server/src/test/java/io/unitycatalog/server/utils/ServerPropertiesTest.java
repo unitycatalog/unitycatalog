@@ -132,6 +132,29 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testCloudStorageRootsMatchAllocationValidation() {
+    for (Property property : List.of(Property.TABLE_STORAGE_ROOT, Property.MODEL_STORAGE_ROOT)) {
+      for (String root :
+          List.of("s3://bucket/data%20lake/value=%2F%25", "gs://bucket/data%20lake/value=%2F%25")) {
+        testValidProperty(property, root);
+      }
+      for (String root :
+          List.of(
+              "s3://bucket/data",
+              "gs://bucket/data",
+              "abfs://c@a.dfs.core.windows.net/data",
+              "abfss://c@a.dfs.core.windows.net/data")) {
+        for (String suffix : List.of("?query=1", "#fragment")) {
+          testInvalidProperty(property, root + suffix, "must not contain a query or a fragment");
+        }
+        if (root.startsWith("abfs")) {
+          testInvalidProperty(property, root + "%20lake", "must not contain percent escapes");
+        }
+      }
+    }
+  }
+
+  @Test
   public void testStoragePathValidator() {
     // Valid paths - local absolute and relative
     testValidProperty(Property.MODEL_STORAGE_ROOT, "/tmp/my-storage_123");

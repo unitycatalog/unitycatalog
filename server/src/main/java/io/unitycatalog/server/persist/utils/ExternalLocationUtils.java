@@ -1021,7 +1021,10 @@ public class ExternalLocationUtils {
     }
   }
 
-  /** Serializes storage allocation with table registration; use READ COMMITTED. */
+  /**
+   * Serializes storage allocation with table registration; use READ COMMITTED. Overlap checks can
+   * read local filesystem identity while this lock is held.
+   */
   public static void lockStorageAllocation(Session session) {
     RepositoryUtils.unavailableOnLockFailure(
         "managed storage",
@@ -1088,21 +1091,24 @@ public class ExternalLocationUtils {
   }
 
   /**
-   * Rejects cloud credential roots whose decoded path differs from the checked object prefix.
+   * Rejects cloud URI suffixes and Azure escapes that change the checked storage path.
    *
    * @param path the storage allocation or credential root
-   * @throws BaseException with INVALID_ARGUMENT if a cloud path contains escapes, a query, or a
-   *     fragment
+   * @throws BaseException with INVALID_ARGUMENT if a cloud path has a query or fragment, or an
+   *     Azure path has percent escapes
    */
   public static void validateCloudStoragePath(NormalizedURL path) {
     UriScheme scheme = UriScheme.fromURI(path.toUri());
     if (scheme != UriScheme.FILE) {
-      // Credential scopes decode URI paths. The checked prefix must keep the same object key.
       ValidationUtils.checkArgument(
-          !path.toString().contains("%")
-              && path.toUri().getRawQuery() == null
-              && path.toUri().getRawFragment() == null,
-          "Cloud storage path ('%s') must not contain percent escapes, a query, or a fragment.",
+          path.toUri().getRawQuery() == null && path.toUri().getRawFragment() == null,
+          "Cloud storage path ('%s') must not contain a query or a fragment.",
+          path);
+    }
+    if (scheme == UriScheme.ABFS || scheme == UriScheme.ABFSS) {
+      ValidationUtils.checkArgument(
+          !path.toString().contains("%"),
+          "Azure storage path ('%s') must not contain percent escapes.",
           path);
     }
   }

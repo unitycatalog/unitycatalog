@@ -343,7 +343,7 @@ class RegistrationMetadataTest {
   @ParameterizedTest
   @ValueSource(strings = {"s3://bucket", "gs://bucket"})
   void acceptsPercentKeysInObjectStorage(String storage) throws Exception {
-    String root = storage + "/warehouse/orders";
+    String root = storage + "/warehouse/a%20b/value=%2F%2e%25";
     String metadataLocation = root + "/metadata/v1%25.metadata.json";
     FileIO fileIO =
         new LocalMappingFileIO(
@@ -402,8 +402,8 @@ class RegistrationMetadataTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3://bucket", "gs://bucket"})
-  void rejectsEscapedCredentialRootsBeforeReadingMetadata(String storage) {
+  @ValueSource(strings = {"abfs://c@a.dfs.core.windows.net", "abfss://c@a.dfs.core.windows.net"})
+  void rejectsEscapedAzureCredentialRootsBeforeReadingMetadata(String storage) {
     FileOperations operations = mock();
     MetadataService metadataService = new MetadataService(operations);
     for (String directory :
@@ -412,8 +412,7 @@ class RegistrationMetadataTest {
       assertThatThrownBy(
               () ->
                   metadataService.readRegistrationMetadata(
-                      MetadataService.registrationMetadataLocation(metadata),
-                      NormalizedURL.from(storage + "/warehouse")))
+                      NormalizedURL.from(metadata), NormalizedURL.from(storage + "/warehouse")))
           .isInstanceOfSatisfying(
               BaseException.class,
               e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))

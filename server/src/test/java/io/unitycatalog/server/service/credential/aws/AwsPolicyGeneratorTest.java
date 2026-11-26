@@ -79,14 +79,16 @@ public class AwsPolicyGeneratorTest {
 
   @ParameterizedTest(name = "{index}: {0} becomes {1}")
   @CsvSource({
-    "%2A, ${*}",
-    "%2a, ${*}",
-    "%3F, ${?}",
-    "%3f, ${?}",
+    "%2A, %2A",
+    "%2a, %2a",
+    "%3F, %3F",
+    "%3f, %3f",
+    "sales%20data, sales%20data",
+    "value=%2F%2e%25, value=%2F%2e%25",
     "prefix*middle, prefix${*}middle",
-    "prefix%3Fmiddle, prefix${?}middle",
-    "%24%7Baws:username%7D, ${$}{aws:username}",
-    "$%7B*%7D, ${$}{${*}}"
+    "prefix%3Fmiddle, prefix%3Fmiddle",
+    "%24%7Baws:username%7D, %24%7Baws:username%7D",
+    "$%7B*%7D, ${$}%7B${*}%7D"
   })
   public void testPolicyEscapesIamSpecialCharacters(String encodedPath, String expectedPath)
       throws Exception {

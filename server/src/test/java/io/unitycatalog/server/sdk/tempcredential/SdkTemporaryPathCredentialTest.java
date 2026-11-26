@@ -67,7 +67,7 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testPathCredentialsRejectAmbiguousCloudRoots(String scheme) {
-    for (String suffix : List.of("/a%20b", "/x%2Fy", "/t%61bles", "?query=1", "#fragment")) {
+    for (String suffix : List.of("?query=1", "#fragment")) {
       String url = getTestCloudPath(scheme, true) + suffix;
       for (PathOperation operation :
           List.of(
@@ -79,11 +79,39 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
                 temporaryCredentialsApi.generateTemporaryPathCredentials(
                     new GenerateTemporaryPathCredential().url(url).operation(operation)),
             ErrorCode.INVALID_ARGUMENT,
-            "Cloud storage path ('"
-                + url
-                + "') must not contain percent escapes, a query, or a fragment.");
+            "Cloud storage path ('" + url + "') must not contain a query or a fragment.");
       }
     }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"s3", "gs"})
+  public void testPathCredentialsPreservePercentKeys(String scheme) throws ApiException {
+    for (String suffix : List.of("/a%20b", "/x%2Fy", "/t%61bles", "/value=%25")) {
+      String url = getTestCloudPath(scheme, true) + suffix;
+      for (PathOperation operation :
+          List.of(
+              PathOperation.PATH_READ,
+              PathOperation.PATH_READ_WRITE,
+              PathOperation.PATH_CREATE_TABLE)) {
+        assertTemporaryCredentials(
+            temporaryCredentialsApi.generateTemporaryPathCredentials(
+                new GenerateTemporaryPathCredential().url(url).operation(operation)),
+            scheme,
+            url);
+      }
+    }
+  }
+
+  @Test
+  public void testPathCredentialsRejectAzurePercentEscapes() {
+    String url = getTestCloudPath("abfs", true) + "/a%20b";
+    TestUtils.assertApiException(
+        () ->
+            temporaryCredentialsApi.generateTemporaryPathCredentials(
+                new GenerateTemporaryPathCredential().url(url).operation(PathOperation.PATH_READ)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Azure storage path ('" + url + "') must not contain percent escapes.");
   }
 
   @Test

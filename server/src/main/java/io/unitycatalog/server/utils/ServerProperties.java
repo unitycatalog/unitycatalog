@@ -4,6 +4,7 @@ import com.linecorp.armeria.client.Endpoint;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
@@ -152,7 +153,7 @@ public class ServerProperties {
     @Override
     public void validate(String key, String value) {
       try {
-        NormalizedURL.from(value);
+        ExternalLocationUtils.validateCloudStoragePath(NormalizedURL.from(value));
       } catch (Exception e) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,

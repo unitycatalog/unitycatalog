@@ -137,7 +137,8 @@ public class GcpCredentialVendor {
         .forEach(
             location -> {
               URI locationUri = location.toUri();
-              String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
+              // Decoding percent sequences would scope a different object key.
+              String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getRawPath());
 
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());

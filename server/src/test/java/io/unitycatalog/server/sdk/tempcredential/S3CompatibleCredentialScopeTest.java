@@ -49,6 +49,7 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -316,5 +317,19 @@ public class S3CompatibleCredentialScopeTest extends BaseCRUDTest {
       assertDenied(c -> c.deleteObject(b -> b.bucket(BUCKET).key(keyOf("events", FILE))), client);
     }
     assertThat(exists(keyOf("events", FILE))).isTrue();
+  }
+
+  @Test
+  public void testPathCredentialsReadLiteralPercentKeys() throws ApiException {
+    for (String name : List.of("sales%20data", "value=%2F%2e%25")) {
+      createDirectoryWithFile(name);
+      try (S3Client client = sessionClient(vend(Securable.PATH, name, /* isWrite= */ false))) {
+        assertThat(
+                client
+                    .getObjectAsBytes(b -> b.bucket(BUCKET).key(keyOf(name, FILE)))
+                    .asUtf8String())
+            .isEqualTo("x");
+      }
+    }
   }
 }

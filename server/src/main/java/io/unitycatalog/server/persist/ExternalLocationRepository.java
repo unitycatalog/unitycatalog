@@ -109,6 +109,7 @@ public class ExternalLocationRepository {
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
           validateUrlForCredential(url.toString(), credentialDAO);
+          ExternalLocationUtils.validateCloudStoragePath(url);
           UUID externalLocationId = UUID.randomUUID();
           ExternalLocationDAO externalLocationDAO =
               ExternalLocationDAO.builder()
@@ -255,6 +256,7 @@ public class ExternalLocationRepository {
           }
           if (updateExternalLocation.getUrl() != null) {
             NormalizedURL url = NormalizedURL.from(updateExternalLocation.getUrl());
+            ExternalLocationUtils.validateCloudStoragePath(url);
             ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(url);
             validateUrlNotUsedByAnyExternalLocation(
                 session, url, Optional.of(existingLocation.getId()));

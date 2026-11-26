@@ -149,6 +149,9 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
         };
     String subdir = scheme + "catalog";
     String root = bucketPrefix + testDirectoryRoot.toAbsolutePath() + "/" + subdir;
+    if (scheme.equals("s3") || scheme.equals("gs")) {
+      root += "/sales%20data/value=%2F%25";
+    }
     createCloudCatalog(CLOUD_CATALOG, root, testDirectoryRoot.toAbsolutePath().resolve(subdir));
     Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
 

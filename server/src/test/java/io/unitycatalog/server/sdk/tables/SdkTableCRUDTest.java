@@ -4,23 +4,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.RegisteredModelsApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTest;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -32,6 +42,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
@@ -74,6 +86,88 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   private StagingTableDAO getStagingTable(String tableId) {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       return session.get(StagingTableDAO.class, UUID.fromString(tableId));
+    }
+  }
+
+  @Test
+  public void testCreateExternalTablePreservesPercentKeys() throws Exception {
+    for (String scheme : List.of("s3", "gs")) {
+      String location = scheme + "://bucket/sales%20data/value=%2F%25";
+      TableInfo created =
+          localTablesApi.createTable(
+              new CreateTable()
+                  .name("percent_key_" + scheme)
+                  .catalogName(TestUtils.CATALOG_NAME)
+                  .schemaName(TestUtils.SCHEMA_NAME)
+                  .columns(columns)
+                  .tableType(TableType.EXTERNAL)
+                  .dataSourceFormat(DataSourceFormat.DELTA)
+                  .storageLocation(location));
+      try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+        assertThat(session.get(TableInfoDAO.class, UUID.fromString(created.getTableId())).getUrl())
+            .isEqualTo(location);
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({"s3,catalog", "s3,schema", "gs,catalog", "gs,schema"})
+  public void testStoredPercentRootsAllowChildAllocation(String scheme, String namespace)
+      throws Exception {
+    String rawRoot = scheme + "://bucket/data%20lake/value=%2F%25";
+    String managedRoot;
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      SchemaInfoDAO schema = session.get(SchemaInfoDAO.class, UUID.fromString(schemaId));
+      CatalogInfoDAO catalog = session.get(CatalogInfoDAO.class, schema.getCatalogId());
+      UUID namespaceId = namespace.equals("catalog") ? catalog.getId() : schema.getId();
+      managedRoot = rawRoot + "/__unitystorage/" + namespace + "s/" + namespaceId;
+      // Seed the stored locations directly to exercise roots accepted before an upgrade.
+      if (namespace.equals("catalog")) {
+        catalog.setStorageRoot(rawRoot);
+        catalog.setStorageLocation(managedRoot);
+      } else {
+        schema.setStorageRoot(rawRoot);
+        schema.setStorageLocation(managedRoot);
+      }
+      session.getTransaction().commit();
+    }
+
+    StagingTableInfo staging =
+        localTablesApi.createStagingTable(
+            new CreateStagingTable()
+                .name("percent_staging")
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME));
+    var client = TestUtils.createApiClient(serverConfig);
+    var volume =
+        new VolumesApi(client)
+            .createVolume(
+                new CreateVolumeRequestContent()
+                    .name("percent_volume")
+                    .catalogName(TestUtils.CATALOG_NAME)
+                    .schemaName(TestUtils.SCHEMA_NAME)
+                    .volumeType(VolumeType.MANAGED));
+    var model =
+        new RegisteredModelsApi(client)
+            .createRegisteredModel(
+                new CreateRegisteredModel()
+                    .name("percent_model")
+                    .catalogName(TestUtils.CATALOG_NAME)
+                    .schemaName(TestUtils.SCHEMA_NAME));
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(
+              session
+                  .get(StagingTableDAO.class, UUID.fromString(staging.getId()))
+                  .getStagingLocation())
+          .isEqualTo(managedRoot + "/tables/" + staging.getId());
+      assertThat(
+              session
+                  .get(VolumeInfoDAO.class, UUID.fromString(volume.getVolumeId()))
+                  .getStorageLocation())
+          .isEqualTo(managedRoot + "/volumes/" + volume.getVolumeId());
+      assertThat(session.get(RegisteredModelInfoDAO.class, UUID.fromString(model.getId())).getUrl())
+          .isEqualTo(managedRoot + "/models/" + model.getId());
     }
   }
 

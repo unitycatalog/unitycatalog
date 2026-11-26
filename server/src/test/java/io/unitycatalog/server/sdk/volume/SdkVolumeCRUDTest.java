@@ -15,6 +15,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 public class SdkVolumeCRUDTest extends BaseVolumeCRUDTest {
@@ -32,6 +33,23 @@ public class SdkVolumeCRUDTest extends BaseVolumeCRUDTest {
   @Override
   protected VolumeOperations createVolumeOperations(ServerConfig config) {
     return new SdkVolumeOperations(TestUtils.createApiClient(config));
+  }
+
+  @Test
+  public void testCreateExternalVolumePreservesPercentKeys() throws ApiException {
+    for (String scheme : List.of("s3", "gs")) {
+      String location = scheme + "://bucket/sales%20data/value=%2F%25";
+      var created =
+          volumeOperations.createVolume(
+              new CreateVolumeRequestContent()
+                  .name("percent_key_" + scheme)
+                  .catalogName(TestUtils.CATALOG_NAME)
+                  .schemaName(TestUtils.SCHEMA_NAME)
+                  .volumeType(VolumeType.EXTERNAL)
+                  .storageLocation(location));
+      assertThat(volumeOperations.getVolume(created.getFullName()).getStorageLocation())
+          .isEqualTo(location);
+    }
   }
 
   @Test

@@ -94,6 +94,13 @@ The server config file is at the location `etc/conf/server.properties` (relative
     lowercase hex, raw non-ASCII) is rejected with `400`, and an external location whose URL has such an escape
     cannot hold one.
 
+!!! note "Cloud storage locations"
+    Cloud allocation roots and path-credential requests cannot contain a query or fragment. Azure paths also
+    cannot contain percent escapes. These checks apply when external-location URLs, catalog/schema roots,
+    and deprecated `storage-root.*` properties are set. S3 and GCS retain literal percent sequences in object
+    keys: keep existing roots unchanged. See the [registration and upgrade guidance](../usage/api/iceberg.md#register-an-existing-table)
+    before upgrading a server with unsupported stored roots.
+
 ### Secrets
 
 Any setting can also come from an environment variable named `UC_`, then the key in upper case, with `_` for each

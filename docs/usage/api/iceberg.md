@@ -136,12 +136,22 @@ keeps a later registration from racing an allocation; it can reduce allocation t
 Overlap checks treat `abfs` and `abfss` URLs for the same account, container, and path as one location,
 including URLs stored before registration was supported.
 Registration accepts these Azure scheme aliases in embedded file paths and directory properties too.
-S3 and GCS file names and partition keys can contain literal percent sequences below a plain table
-root. The table root and the initial metadata file's parent directory cannot contain percent escapes:
-credential scopes decode URI paths and must name the same object prefix that registration checks.
-Cloud storage allocation and path-credential requests also reject percent escapes, queries, and
-fragments, including when registration or authorization is disabled. Azure registration rejects
-percent escapes in all embedded paths too.
+S3 and GCS paths retain literal percent sequences in table roots, metadata directories, file names,
+and partition keys. Credential policies use the same literal object keys as Iceberg: `sales%20data`
+names a key containing `%20`, not a space. Existing S3/GCS namespace roots with percent sequences
+continue to support child allocation and do not need a migration.
+Cloud storage allocation and path-credential requests reject queries and fragments, including when
+registration or authorization is disabled. Azure paths also reject percent escapes because Azure
+credential and cleanup paths decode them. These rules apply when external-location URLs, namespace
+roots, and the deprecated `storage-root.*` properties are written. Azure registration rejects percent
+escapes in all embedded paths too.
+
+Before upgrading, check existing cloud storage roots for query/fragment suffixes and Azure roots for
+percent escapes. These roots cannot be used for new allocation or path credentials. If affected data
+must move, use its engine's supported copy/export workflow to a namespace with a supported storage
+root, and verify reads before retiring the old namespace. UC cannot change a catalog or schema's
+managed location in place. Updating a covering external location does not move files or rewrite the
+stored namespace locations or table metadata. Keep S3/GCS percent sequences unchanged.
 Local allocation URLs must use their canonical spelling. Registration and later allocation also
 check filesystem aliases, including case aliases on case-insensitive filesystems and existing
 ancestors of new directories. Registration rejects an overlap with a legacy local URL whose spelling
