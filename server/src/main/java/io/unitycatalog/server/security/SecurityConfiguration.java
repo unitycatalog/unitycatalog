@@ -215,7 +215,6 @@ public class SecurityConfiguration {
     Signature signature = Signature.getInstance("SHA512withRSA");
     try {
       signature.initSign(key);
-      signature.update(new byte[0]);
       signature.sign();
     } catch (InvalidKeyException | SignatureException e) {
       throw new IllegalStateException(
