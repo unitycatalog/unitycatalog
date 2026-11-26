@@ -203,8 +203,9 @@ The server rejects a location with `INVALID_ARGUMENT` when its database column o
   policy, which is shorter. A long S3 location can be accepted and read but not written, and a write vend for it fails
   with `INVALID_ARGUMENT`. On a GCS bucket the server is configured for without a custom credential generator,
   the access boundary it builds has to fit its limit.
-- When the storage credential of an S3 or GCS location can't be found, such as after it was force-deleted, only the
-  column width is checked, because a vend then fails on the missing credential.
+- When an S3 or GCS location is covered by an external location whose storage credential was force-deleted, only the
+  column width is checked. This also skips the GCS object name check. A location that no external location covers
+  still gets the applicable cloud checks.
 - Changing only the storage credential of an external location checks only the limits that depend on the credential,
   the AWS STS session policy of an S3 location on AWS. The column width and object name limits depend on the URL
   alone, so they aren't checked again.
