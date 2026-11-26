@@ -12,6 +12,7 @@ import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -75,6 +76,26 @@ public class DeltaCreateTableMapperTest {
         DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties())
             .createTable();
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
+  }
+
+  @ParameterizedTest(name = "{1}")
+  @MethodSource("protocolsMissingAVersion")
+  public void externalTableRequiresBothProtocolVersions(DeltaProtocol protocol, String message) {
+    DeltaCreateTableRequest req = baseExternalRequest().protocol(protocol);
+    assertThatThrownBy(
+            () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(message)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  static Stream<Arguments> protocolsMissingAVersion() {
+    return Stream.of(
+        Arguments.of(
+            new DeltaProtocol().minWriterVersion(2), "protocol.min-reader-version is required."),
+        Arguments.of(
+            new DeltaProtocol().minReaderVersion(1), "protocol.min-writer-version is required."));
   }
 
   @ParameterizedTest(name = "{0}")

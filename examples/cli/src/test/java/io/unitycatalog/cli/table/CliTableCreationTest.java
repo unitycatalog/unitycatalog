@@ -7,6 +7,7 @@ import static io.unitycatalog.server.utils.TestUtils.TABLE_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -52,9 +53,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 public class CliTableCreationTest extends BaseServerTest {
 
@@ -120,6 +124,74 @@ public class CliTableCreationTest extends BaseServerTest {
         .doesNotThrowAnyException();
     assertThat(tableDir.resolve("_delta_log")).isDirectory();
     createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), COLUMNS);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = DataSourceFormat.class,
+      names = {"PARQUET", "JSON"})
+  public void testCreateExternalNonDeltaTableLeavesDirectoryUnchanged(DataSourceFormat format)
+      throws IOException, ApiException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+    Files.createDirectory(tableDir);
+    Files.writeString(tableDir.resolve("part-00000"), "1,a");
+
+    TableInfo tableInfo = createTableWithFormatArg(tableDir, format.name());
+
+    assertThat(listFileNames(tableDir)).containsExactly("part-00000");
+    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(format);
+    assertThat(tableOperations.getTable(TABLE_FULL_NAME).getDataSourceFormat()).isEqualTo(format);
+  }
+
+  @Test
+  public void testCreateExternalNonDeltaTableDoesNotCreateStorageDirectory()
+      throws IOException, ApiException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+
+    TableInfo tableInfo = createTableWithFormatArg(tableDir, "CSV");
+
+    assertThat(tableDir).doesNotExist();
+    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.CSV);
+  }
+
+  @Test
+  public void testCreateExternalNonDeltaTableLeavesExistingDeltaLogUnchanged()
+      throws IOException, ApiException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+    Path commit = tableDir.resolve("_delta_log").resolve("00000000000000000000.json");
+    Files.createDirectories(commit.getParent());
+    Files.writeString(commit, "existing");
+
+    TableInfo tableInfo = createTableWithFormatArg(tableDir, "PARQUET");
+
+    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.PARQUET);
+    assertThat(listFileNames(tableDir)).containsExactly("_delta_log");
+    assertThat(listFileNames(commit.getParent())).containsExactly("00000000000000000000.json");
+    assertThat(commit).hasContent("existing");
+  }
+
+  @Test
+  public void testCreateExternalIcebergTableRejectedWithoutWritingDeltaLog() throws IOException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+    Files.createDirectory(tableDir);
+
+    assertThatThrownBy(() -> createTableWithFormatArg(tableDir, "ICEBERG"))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("UNSUPPORTED_TABLE_FORMAT")
+        .hasMessageContaining("cannot create native ICEBERG tables");
+
+    assertThat(listFileNames(tableDir)).isEmpty();
+  }
+
+  @Test
+  public void testCreateExternalTableWithLowercaseDeltaFormatWritesDeltaLog()
+      throws IOException, ApiException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+
+    TableInfo tableInfo = createTableWithFormatArg(tableDir, "delta");
+
+    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+    assertThat(tableDir.resolve("_delta_log").resolve("00000000000000000000.json")).isRegularFile();
   }
 
   @Test
@@ -278,6 +350,27 @@ public class CliTableCreationTest extends BaseServerTest {
                         .columns(COLUMNS)));
     assertThat(ex2.getMessage())
         .contains("Only Delta tables are supported for managed tables: PARQUET");
+  }
+
+  private TableInfo createTableWithFormatArg(Path tableDir, String formatArg) throws ApiException {
+    return tableOperations.execute(
+        TableInfo.class,
+        "create",
+        List.of(
+            "--full_name",
+            TABLE_FULL_NAME,
+            "--columns",
+            "id INT, name STRING",
+            "--storage_location",
+            tableDir.toUri().toString(),
+            "--format",
+            formatArg));
+  }
+
+  private static List<String> listFileNames(Path dir) throws IOException {
+    try (Stream<Path> entries = Files.list(dir)) {
+      return entries.map(entry -> entry.getFileName().toString()).toList();
+    }
   }
 
   private void createTableAndAssertReadTableSucceeds(

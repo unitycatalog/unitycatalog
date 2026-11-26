@@ -60,7 +60,8 @@ public class ApiClientBuilder {
   /**
    * Sets the Unity Catalog server URI.
    *
-   * <p>The base path {@code /api/2.1/unity-catalog} will be automatically appended.
+   * <p>The base path {@code /api/2.1/unity-catalog} will be automatically appended, after any
+   * trailing slashes of the URI path are removed.
    *
    * @param uri the Unity Catalog server URI, must not be null
    * @return this builder instance for method chaining
@@ -168,6 +169,9 @@ public class ApiClientBuilder {
   /**
    * Builds and returns a configured {@link ApiClient} instance.
    *
+   * <p>The builder can be reused. Each built client keeps the settings the builder had when {@code
+   * build()} was called, so later changes to the builder only apply to clients built after them.
+   *
    * @return a configured {@link ApiClient} instance
    * @throws NullPointerException if {@code uri} or {@code tokenProvider} is null
    */
@@ -183,24 +187,21 @@ public class ApiClientBuilder {
     apiClient.setScheme(uri.getScheme());
     apiClient.setHost(uri.getHost());
     apiClient.setPort(uri.getPort());
-    apiClient.setBasePath(uri.getPath() + BASE_PATH);
+    apiClient.setBasePath(uri.getPath().replaceAll("/+$", "") + BASE_PATH);
 
-    // Add the User-Agent request interceptor.
-    if (!appVersionMap.isEmpty()) {
-      String userAgent =
-          appVersionMap.entrySet().stream()
-              .map(e -> String.format("%s/%s", e.getKey(), e.getValue()))
-              .collect(Collectors.joining(" "));
-      addRequestInterceptor(builder -> builder.header("User-Agent", userAgent));
-    }
-
-    // Add the client's token interceptor.
     Preconditions.checkNotNull(tokenProvider, "The unitycatalog token provider cannot be null");
-    addRequestInterceptor(
-        builder -> builder.header("Authorization", "Bearer " + tokenProvider.accessToken()));
-
-    // Set the composed request interceptor on the API client.
-    apiClient.setRequestInterceptor(requestInterceptor);
+    TokenProvider clientTokenProvider = tokenProvider;
+    Consumer<HttpRequest.Builder> customInterceptor = requestInterceptor;
+    String userAgent =
+        appVersionMap.entrySet().stream()
+            .map(e -> String.format("%s/%s", e.getKey(), e.getValue()))
+            .collect(Collectors.joining(" "));
+    apiClient.setRequestInterceptor(
+        builder -> {
+          customInterceptor.accept(builder);
+          builder.header("User-Agent", userAgent);
+          builder.header("Authorization", "Bearer " + clientTokenProvider.accessToken());
+        });
 
     return apiClient;
   }

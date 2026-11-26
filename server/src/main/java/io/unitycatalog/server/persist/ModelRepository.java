@@ -19,12 +19,14 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -405,6 +407,9 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = sessionFactory.openSession()) {
+      if (updateRegisteredModel.getOwner() != null) {
+        TransactionManager.setIsolationLevel(session, Connection.TRANSACTION_READ_COMMITTED);
+      }
       String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];

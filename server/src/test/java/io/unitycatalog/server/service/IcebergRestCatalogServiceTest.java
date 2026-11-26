@@ -26,6 +26,7 @@ import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
@@ -56,6 +57,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 public class IcebergRestCatalogServiceTest {
@@ -87,6 +89,74 @@ public class IcebergRestCatalogServiceTest {
     service =
         new IcebergRestCatalogService(
             authorizer, tableConfigService, metadataService, repositories, serverProperties);
+  }
+
+  @Test
+  public void unregisterClearsTablePermissionsAndHierarchyWithoutVendingCredentials() {
+    UUID id = UUID.randomUUID();
+    UUID schemaId = UUID.randomUUID();
+    String metadataLocation = TABLE_LOCATION + "/metadata/00000.json";
+    TableInfoDAO table =
+        TableInfoDAO.builder()
+            .id(id)
+            .schemaId(schemaId)
+            .url(TABLE_LOCATION)
+            .icebergMetadataLocation(metadataLocation)
+            .build();
+    TableMetadata metadata =
+        TableMetadata.buildFrom(
+                TableMetadata.newTableMetadata(
+                    SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of()))
+            .discardChanges()
+            .withMetadataLocation(metadataLocation)
+            .build();
+    when(tableRepository.getManagedIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                id, DataSourceFormat.ICEBERG, metadataLocation, TABLE_LOCATION));
+    when(tableRepository.unregisterManagedIcebergTable("cat", "ns", "tbl", id, metadataLocation))
+        .thenReturn(table);
+    when(metadataService.readTableMetadata(
+            NormalizedURL.from(metadataLocation), NormalizedURL.from(TABLE_LOCATION)))
+        .thenReturn(metadata);
+
+    assertThat(service.unregisterTable("cat", "ns", "tbl").metadataLocation())
+        .isEqualTo(metadataLocation);
+
+    verify(authorizer).clearAuthorizationsForResource(id);
+    verify(authorizer).removeHierarchyChild(schemaId, id);
+    verifyNoInteractions(tableConfigService);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void unregisterPreservesPermissionsOnFailure(boolean metadataReadFails) {
+    UUID id = UUID.randomUUID();
+    String metadataLocation = TABLE_LOCATION + "/metadata/00000.json";
+    when(tableRepository.getManagedIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                id, DataSourceFormat.ICEBERG, metadataLocation, TABLE_LOCATION));
+    RuntimeException failure =
+        metadataReadFails
+            ? new IllegalStateException("Could not read metadata")
+            : new BaseException(ErrorCode.UNAVAILABLE, "Table changed while reading metadata");
+    if (metadataReadFails) {
+      when(metadataService.readTableMetadata(any(), any())).thenThrow(failure);
+    } else {
+      when(tableRepository.unregisterManagedIcebergTable("cat", "ns", "tbl", id, metadataLocation))
+          .thenThrow(failure);
+    }
+
+    assertThatThrownBy(() -> service.unregisterTable("cat", "ns", "tbl")).isSameAs(failure);
+
+    verify(authorizer, never()).clearAuthorizationsForResource(any());
+    verify(authorizer, never()).removeHierarchyChild(any(), any());
+    verifyNoInteractions(tableConfigService);
+    if (metadataReadFails) {
+      verify(tableRepository, never())
+          .unregisterManagedIcebergTable(any(), any(), any(), any(), any());
+    }
   }
 
   @Test

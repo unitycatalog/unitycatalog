@@ -529,9 +529,9 @@ public final class DeltaUpdateTableMapper {
   /** Full replacement of the protocol block; other stored properties are left alone. */
   private static void applySetProtocol(MutablePropertyMap properties, DeltaProtocol protocol) {
     ValidationUtils.checkNotNull(protocol, "set-protocol requires a protocol.");
-    properties.removeMatchingPrefix(TableProperties.FEATURE_PREFIX);
     Map<String, String> derived = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(derived, protocol);
+    properties.removeMatchingPrefix(TableProperties.FEATURE_PREFIX);
     properties.putAll(derived);
   }
 

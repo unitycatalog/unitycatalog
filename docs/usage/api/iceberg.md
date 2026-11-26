@@ -21,8 +21,8 @@ and the requests would fail.
 The read endpoints are always available. You can use them to read native Iceberg tables and
 [UniForm](../tables/uniform.md) tables.
 
-The write endpoints (creating, updating, renaming and dropping namespaces and tables) are on by default. To turn them
-off, set this in `etc/conf/server.properties` and restart the server:
+The write endpoints (creating, updating, renaming and dropping namespaces and tables, and unregistering tables)
+are on by default. To turn them off, set this in `etc/conf/server.properties` and restart the server:
 
 ```properties
 server.iceberg-table.enabled=false
@@ -65,6 +65,7 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `loadTable`       | Load table metadata                                                                                                             |       |
 | POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `updateTable`     | Commit changes to a table                                                                                                       | Yes   |
 | DELETE | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}`             | `dropTable`       | Drop a table                                                                                                                    | Yes   |
+| POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/unregister`  | `unregisterTable` | Remove a managed Iceberg table from the catalog and preserve all its files                                                       | Yes   |
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials` | `loadCredentials` | Get temporary storage credentials                                                                                               |       |
 | POST   | `/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics`     | `reportMetrics`   | Report scan or commit metrics                                                                                                   |       |
 | POST   | `/v1/catalogs/{catalog}/tables/rename`                                     | `renameTable`     | Rename a table                                                                                                                  | Yes   |
@@ -75,14 +76,44 @@ All paths below are relative to `/api/2.1/unity-catalog/iceberg`. The Operation 
 |--------|--------------------------------------------------------------|------------|--------------------------------|
 | GET    | `/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}` | `loadView` | Always returns 404 (see below) |
 
+## Unregistering a managed Iceberg table
+
+`POST /v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/unregister` removes a managed
+Iceberg table from the catalog without deleting data or metadata files or scheduling storage cleanup.
+It returns HTTP 200 with `metadata-location` and `metadata` for the table's final committed state.
+Commits after unregister fail because the table no longer exists in this catalog.
+
+This operation requires the same privileges as dropping a table and is disabled when
+`server.iceberg-table.enabled=false`. It applies only to native Iceberg tables with table type `MANAGED`;
+external tables and Delta tables, including UniForm tables, return HTTP 400. A missing table returns HTTP 404.
+If the server cannot read the final metadata, it leaves the table registered and returns HTTP 500.
+The server reads metadata before the delete transaction, then checks the table UUID and metadata pointer
+under the commit lock. If either changed during the read, or the lock cannot be acquired, it leaves the table
+registered and returns HTTP 503. Retry the unregister request to read the current metadata.
+
+After unregister, the caller is responsible for the retained files and access to them. Unity Catalog does not
+schedule storage cleanup for these files. Deleting the catalog or schema with `force` also leaves them in place.
+Storage lifecycle or expiration policies can still delete the files, so exclude the table's folder if the data
+is still needed.
+
+After the table registration is removed, temporary path access can use an external location that covers the
+folder. Reads require `READ_FILES`; read/write access requires both `READ_FILES` and `WRITE_FILES`. The external
+location's `OWNER` can perform either operation. While the table is registered, access to its folder and files
+is authorized against the table and its parent catalog and schema. Access to a path above the table's folder,
+such as the external location root, is refused. The unregister response does not contain storage credentials.
+
+A retry after a successful unregister returns HTTP 404 and does not recover the metadata from the first response.
+This also applies if the successful response was lost. The `dropTable` operation and its storage cleanup behavior
+are unchanged.
+
 ## Limitations
 
 - **Views are not supported.** The load view endpoint exists only because Iceberg clients look for a view when a
   table is not found. It always returns 404.
 - **Nested namespaces are not supported.** A namespace maps to one Unity Catalog schema, so it can only have one level.
 - **Renaming a table into another namespace is not supported.** The source and destination namespace must be the same.
-- **UniForm tables are read-only here.** Commits, drops and renames work only on native Iceberg tables. Change UniForm
-  tables through the [Unity Catalog REST API](index.md).
+- **UniForm tables are read-only here.** Commits, drops, renames and unregister work only on native Iceberg tables.
+  Change UniForm tables through the [Unity Catalog REST API](index.md).
 - **`purgeRequested` does not delete files of external tables.** Dropping an external table removes it from the
   catalog but leaves its data and metadata files in place, even when the client asks for a purge. Dropping a managed
   table schedules its storage directory for removal by the storage cleanup worker, after
@@ -127,7 +158,8 @@ Load the sample table:
 curl -s "$UC_ICEBERG/v1/catalogs/unity/namespaces/default/tables/marksheet_uniform" | jq .
 ```
 
-## Engine integrations
+## Engine and tool integrations
 
 - [Spark](../tables/uniform.md#setting-up-rest-catalog-with-apache-spark)
 - [Trino](../../integrations/unity-catalog-trino.md)
+- [OLake Go](../../integrations/unity-catalog-olake.md) - replicate databases into Iceberg tables via this API

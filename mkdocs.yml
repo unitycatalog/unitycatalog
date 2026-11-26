@@ -48,6 +48,7 @@ nav:
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
       - Kuzu: integrations/unity-catalog-kuzu.md
+      - OLake Go: integrations/unity-catalog-olake.md
       - PuppyGraph: integrations/unity-catalog-puppygraph.md
       - SpiceAI: integrations/unity-catalog-spiceai.md
       - Trino: integrations/unity-catalog-trino.md

@@ -1,0 +1,7 @@
+{{- if and .Values.server.enabled .Values.server.jwtKeypairSecret.create }}
+WARNING: server.jwtKeypairSecret.create=true is deprecated. The chart generates the key the
+server signs its tokens with, and a later release will stop doing so. Set
+server.jwtKeypairSecret.create=false and server.jwtKeypairSecret.name to the Secret the chart
+generated ({{ include "unitycatalog.server.jwtKeypairSecretName" . }}), which keeps the current key,
+or to your own Secret holding private_key.pem.
+{{- end }}

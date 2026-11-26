@@ -48,6 +48,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -626,6 +627,33 @@ public class DeltaUpdateTableMapperTest {
         TableProperties.MIN_READER_VERSION,
         new DeltaSetProtocolUpdate().protocol(contractProtocol()),
         new DeltaSetPropertiesUpdate().updates(Map.of(TableProperties.MIN_READER_VERSION, "1")));
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @ParameterizedTest(name = "{0} table, null {1}")
+  @CsvSource({
+    "MANAGED, min-reader-version",
+    "MANAGED, min-writer-version",
+    "EXTERNAL, min-reader-version",
+    "EXTERNAL, min-writer-version"
+  })
+  public void setProtocolRequiresBothVersions(String tableType, String missingVersion) {
+    TableInfoDAO dao = managedDao();
+    dao.setType(tableType);
+    Map<String, String> stored = contractProperties(dao);
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaProtocol protocol =
+        missingVersion.equals("min-reader-version")
+            ? contractProtocol().minReaderVersion(null)
+            : contractProtocol().minWriterVersion(null);
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null, dao, props, collectSetProtocolRequest(protocol), new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("protocol." + missingVersion + " is required.")
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
     assertThat(props.asMap()).isEqualTo(stored);
   }
 

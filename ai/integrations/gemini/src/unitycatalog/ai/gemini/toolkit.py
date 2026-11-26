@@ -1,5 +1,9 @@
+import hashlib
+import itertools
 import json
 import logging
+import re
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -10,7 +14,6 @@ from pydantic_core import to_jsonable_python
 from unitycatalog.ai.core.client import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
-    get_tool_name,
     param_info_to_pydantic_type,
     process_function_names,
 )
@@ -18,9 +21,44 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
 )
 from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
-from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+from unitycatalog.ai.core.utils.validation_utils import FullFunctionName, mlflow_tracing_enabled
 
 _logger = logging.getLogger(__name__)
+
+# The Gemini FunctionDeclaration name allows a-z, A-Z, 0-9, underscores and dashes, with a maximum
+# length of 63.
+_GEMINI_NAME_MAX_LENGTH = 63
+_GEMINI_NAME_DISALLOWED_CHARACTERS = re.compile(r"[^a-zA-Z0-9_-]")
+_DISAMBIGUATION_HASH_LENGTH = 8
+
+
+def _gemini_function_name(function_name: str) -> str:
+    """
+    Returns the name Gemini declares a UC function by: its tool name, with every character that
+    Gemini does not allow replaced by an underscore, cut to its last 63 characters.
+    """
+    tool_name = FullFunctionName.validate_full_function_name(function_name).to_tool_name()
+    name = _GEMINI_NAME_DISALLOWED_CHARACTERS.sub("_", tool_name)
+    if len(name) <= _GEMINI_NAME_MAX_LENGTH:
+        return name
+    declared_name = name[-_GEMINI_NAME_MAX_LENGTH:]
+    _logger.warning(
+        f"Function name {name} is too long, truncating to {_GEMINI_NAME_MAX_LENGTH} characters "
+        f"{declared_name}."
+    )
+    return declared_name
+
+
+def _disambiguated_gemini_function_name(name: str, function_name: str, attempt: int) -> str:
+    """
+    Returns `name` with a short hash of the function name appended, still within 63 characters,
+    for a function whose declared name another function in the toolkit also has. A later attempt
+    hashes the function name with the attempt number, for when an earlier name is taken.
+    """
+    hashed = function_name if attempt == 0 else f"{function_name}#{attempt}"
+    digest = hashlib.sha256(hashed.encode("utf-8")).hexdigest()
+    suffix = "_" + digest[:_DISAMBIGUATION_HASH_LENGTH]
+    return name[-(_GEMINI_NAME_MAX_LENGTH - len(suffix)) :] + suffix
 
 
 def _function_call_value_to_python(value: Any) -> Any:
@@ -111,6 +149,27 @@ class GeminiTool(BaseModel):
         return {"name": self.name, "description": self.description, "schema": self.schema}
 
 
+def _with_unique_names(tools_dict: Dict[str, GeminiTool]) -> Dict[str, GeminiTool]:
+    """
+    Gives every tool whose declared name another tool in the toolkit shares a name of its own,
+    since Gemini rejects two declarations with the same name.
+    """
+    counts = Counter(tool.name for tool in tools_dict.values())
+    taken = {name for name, count in counts.items() if count == 1}
+    unique_tools = {}
+    for function_name, tool in tools_dict.items():
+        if counts[tool.name] > 1:
+            candidates = (
+                _disambiguated_gemini_function_name(tool.name, function_name, attempt)
+                for attempt in itertools.count()
+            )
+            name = next(candidate for candidate in candidates if candidate not in taken)
+            taken.add(name)
+            tool = tool.model_copy(update={"name": name, "schema": {**tool.schema, "name": name}})
+        unique_tools[function_name] = tool
+    return unique_tools
+
+
 class UCFunctionToolkit(BaseModel):
     """
     A toolkit for managing Unity Catalog functions and converting them into Autogen tools.
@@ -150,10 +209,15 @@ class UCFunctionToolkit(BaseModel):
             filter_accessible_functions=self.filter_accessible_functions,
             uc_function_to_tool_func=self.uc_function_to_gemini_tool,
         )
+        self.tools_dict = _with_unique_names(self.tools_dict)
         return self
 
     @staticmethod
-    def convert_to_gemini_schema(function_info: PydanticFunctionInputParams, strict: str = True):
+    def convert_to_gemini_schema(
+        function_info: PydanticFunctionInputParams,
+        strict: str = True,
+        name: Optional[str] = None,
+    ):
         """
         Converts Unity Catalog function metadata into a Gemini-compatible schema.
 
@@ -162,6 +226,9 @@ class UCFunctionToolkit(BaseModel):
                 The input parameter metadata of the UC function.
             strict (bool):
                 Indicates whether to enforce strict typing rules in parameter conversion.
+            name (Optional[str]):
+                The name to declare the function by. Defaults to the Gemini name built from the
+                function's `full_name`.
 
         Returns:
             Dict[str, Any]: A dictionary containing the Gemini-compatible function schema.
@@ -191,7 +258,10 @@ class UCFunctionToolkit(BaseModel):
                 )
             )
         ]
-        schema = dict(name=function_info.name, description=function_info.comment)
+        schema = dict(
+            name=name or _gemini_function_name(function_info.full_name),
+            description=function_info.comment,
+        )
         if parameters["properties"]:
             schema["parameters"] = parameters
         return schema
@@ -232,7 +302,11 @@ class UCFunctionToolkit(BaseModel):
         else:
             raise ValueError("Either function_name or function_info should be provided.")
 
-        schema = UCFunctionToolkit.convert_to_gemini_schema(function_info, strict=True)
+        # Gemini dispatches by the declared name, and the client's full_name can differ in case.
+        tool_name = _gemini_function_name(function_name)
+        schema = UCFunctionToolkit.convert_to_gemini_schema(
+            function_info, strict=True, name=tool_name
+        )
         param_infos = function_info.input_params.parameters if function_info.input_params else []
         params_type_json = {
             "type": "struct",
@@ -254,7 +328,7 @@ class UCFunctionToolkit(BaseModel):
 
         return GeminiTool(
             fn=func,
-            name=get_tool_name(function_name),
+            name=tool_name,
             description=function_info.comment or "",
             schema=schema,
         )

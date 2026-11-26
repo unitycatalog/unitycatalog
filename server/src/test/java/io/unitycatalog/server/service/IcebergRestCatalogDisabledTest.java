@@ -135,6 +135,13 @@ public class IcebergRestCatalogDisabledTest extends BaseCRUDTestWithMockCredenti
         400,
         "currently disabled");
 
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.unregisterTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+        400,
+        "currently disabled");
+
     // renameTable
     TestUtils.assertIcebergApiException(
         () ->

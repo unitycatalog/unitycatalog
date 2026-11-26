@@ -503,7 +503,7 @@ abstract class CredPropsBaseTest {
     return conf;
   }
 
-  private Map<String, String> createCredPropsFor(CredKind kind, boolean renew, boolean credScoped)
+  Map<String, String> createCredPropsFor(CredKind kind, boolean renew, boolean credScoped)
       throws Exception {
     return createCredPropsFor(kind, renew, credScoped, new Configuration(false), Map.of());
   }

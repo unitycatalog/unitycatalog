@@ -10,6 +10,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.AlgorithmMismatchException;
+import com.auth0.jwt.exceptions.SignatureVerificationException;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
@@ -23,9 +27,15 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
 import java.nio.file.Path;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
@@ -36,11 +46,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * How {@link AuthDecorator} answers a valid internal token whose user lookup fails or finds no
- * enabled user. The token is real, signed with keys generated in a temp folder; only the user
- * repository is mocked.
+ * enabled user, and an internal token signed with another key. The token is real, signed with keys
+ * generated in a temp folder; only the user repository is mocked.
  */
 class AuthDecoratorTest {
 
@@ -115,6 +126,55 @@ class AuthDecoratorTest {
     when(delegate.serve(any(), any())).thenReturn(response);
 
     assertThat(serve()).isSameAs(response);
+  }
+
+  @Test
+  void tokenSignedWithAnotherKeyIsRejected() throws Exception {
+    when(userRepository.getUserByEmail(EMAIL))
+        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED));
+    KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+    generator.initialize(2048);
+    KeyPair otherKey = generator.generateKeyPair();
+    token =
+        JWT.create()
+            .withSubject("server")
+            .withIssuer(INTERNAL)
+            // The key ID is ignored: the token is checked against the server's own key.
+            .withKeyId("another-key-id")
+            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
+            .withClaim(JwtClaim.SUBJECT.key(), EMAIL)
+            .sign(
+                Algorithm.RSA512(
+                    (RSAPublicKey) otherKey.getPublic(), (RSAPrivateKey) otherKey.getPrivate()));
+
+    assertThatThrownBy(this::serve).isInstanceOf(SignatureVerificationException.class);
+    verifyNotDelegated();
+  }
+
+  // The server's own key, but another algorithm: only RS512 is accepted.
+  @ParameterizedTest
+  @ValueSource(strings = {"RS256", "RS384", "HS512", "none"})
+  void tokenSignedWithAnotherAlgorithmIsRejected(String algorithm) throws Exception {
+    when(userRepository.getUserByEmail(EMAIL))
+        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED));
+    SecurityConfiguration keys = new SecurityConfiguration(configurationFolder);
+    Algorithm signer =
+        switch (algorithm) {
+          case "RS256" -> Algorithm.RSA256(keys.rsaPublicKey(), keys.rsaPrivateKey());
+          case "RS384" -> Algorithm.RSA384(keys.rsaPublicKey(), keys.rsaPrivateKey());
+          case "HS512" -> Algorithm.HMAC512(keys.rsaPublicKey().getEncoded());
+          default -> Algorithm.none();
+        };
+    token =
+        JWT.create()
+            .withSubject("server")
+            .withIssuer(INTERNAL)
+            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
+            .withClaim(JwtClaim.SUBJECT.key(), EMAIL)
+            .sign(signer);
+
+    assertThatThrownBy(this::serve).isInstanceOf(AlgorithmMismatchException.class);
+    verifyNotDelegated();
   }
 
   private HttpResponse serve() throws Exception {

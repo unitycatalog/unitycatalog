@@ -6,6 +6,9 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 from databricks.sdk.service.catalog import ColumnTypeName
+from llama_index.core.agent.workflow import FunctionAgent, ToolCallResult
+from llama_index.core.llms import MockFunctionCallingLLM
+from llama_index.core.tools import ToolSelection
 from pydantic import BaseModel, ValidationError
 
 from unitycatalog.ai.core.base import (
@@ -345,3 +348,42 @@ def test_toolkit_with_tracing_as_retriever(
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
 
         mlflow.llama_index.autolog(disable=True)
+
+
+@pytest.mark.asyncio
+async def test_toolkit_tool_acall_executes_uc_function(uc_client):
+    uc_client.execution_mode = ExecutionMode("local")
+    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
+        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
+        output = await toolkit.tools[0].acall(a=2, b=3)
+    assert json.loads(output.content)["value"] == "5"
+
+
+@pytest.mark.asyncio
+async def test_function_agent_executes_uc_tool_call(uc_client):
+    uc_client.execution_mode = ExecutionMode("local")
+    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
+        tool = UCFunctionToolkit(
+            function_names=[func_obj.full_function_name], client=uc_client
+        ).tools[0]
+        tool_call = ToolSelection(
+            tool_id="call-1", tool_name=tool.metadata.name, tool_kwargs={"a": 2, "b": 3}
+        )
+        tool_calls = iter([[tool_call], []])
+        with mock.patch.object(
+            MockFunctionCallingLLM,
+            "get_tool_calls_from_response",
+            lambda *_, **__: next(tool_calls),
+        ):
+            handler = FunctionAgent(
+                tools=[tool], llm=MockFunctionCallingLLM(), streaming=False
+            ).run(user_msg="2 + 3?")
+            results = [
+                event
+                async for event in handler.stream_events()
+                if isinstance(event, ToolCallResult)
+            ]
+            await handler
+
+    assert len(results) == 1
+    assert json.loads(results[0].tool_output.content)["value"] == "5"

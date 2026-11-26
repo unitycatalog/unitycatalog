@@ -192,6 +192,21 @@ jobs:
           grep -qF -- '- --upgrade-schema' <<<"$upgrade"
           grep -qF -- 'mountPath: /home/unitycatalog/etc/conf' <<<"$upgrade"
           grep -qF -- 'name: db-volume' <<<"$upgrade"
+          # The init container points the server at the key in the Secret mount, and the server mounts it.
+          init="$(sed -n '/^        - name: init$/,/^        - name: upgrade-schema$/p' <<<"$out")"
+          grep -qF "printf '\nserver.token-signing-private-key-file=%s\n' \"\$PRIVATE_KEY\" >> /home/unitycatalog/etc/conf/server.properties" \
+            <<<"$init"
+          # The server reads the last line that sets the key file: the init container keeps it only if non-empty.
+          guard="$(sed -n '/# A key file set to a non-empty value/,/^ *fi$/p' <<<"$init" | sed 's#/home/unitycatalog/etc/conf/server.properties#"$1"#')"
+          props="$(mktemp)"
+          key=server.token-signing-private-key-file
+          for case in "$key=/k/a|/k/a" "$key=|/secret/key" "$key=/k/a\n$key=|/secret/key" "$key=\n$key=/k/b|/k/b"; do
+            printf "${case%|*}\n" > "$props"
+            PRIVATE_KEY=/secret/key sh -c "$guard" sh "$props"
+            grep "^$key" "$props" | tail -n 1 | grep -qxF "$key=${case#*|}"
+          done
+          server="$(sed -n '/^        - name: server$/,/^      volumes:$/p' <<<"$out")"
+          grep -A1 -- '- name: jwt-key-volume$' <<<"$server" | grep -qF 'mountPath: /home/unitycatalog/etc/confJwtKey'
           # An in-memory database keeps the init container: --upgrade-schema succeeds on it without doing anything.
           for override in 'server.env=test' 'server.env: prod'$'\n''server.env=test'; do
             out="$(helm template uc helm --show-only templates/server/deployment.yaml --set-string "server.config.override=$override")"
@@ -250,6 +265,21 @@ jobs:
           grep -A6 -- '- name: OAUTH_CLIENT_SECRET$' <<<"$out" | grep -qF 'optional: true'
           out="$(helm template uc helm -f helm/ci/secrets-values.yaml)"
           ! grep -qE -- '- name: OAUTH_CLIENT_SECRET$' <<<"$out" || exit 1
+          # The server reads each GCS key file where the server container mounts it from the Secret.
+          gcs=()
+          for i in 0 1; do
+            gcs+=(--set "storage.credentials.gcs[$i].bucketPath=gs://ci-bucket-$i"
+              --set "storage.credentials.gcs[$i].credentialsSecretName=ci-gcs-$i")
+          done
+          out="$(helm template uc helm "${gcs[@]}")"
+          server="$(sed -n '/^        - name: server$/,/^      volumes:$/p' <<<"$out")"
+          for i in 0 1; do
+            key_file="$(sed -n "s/^ *gcs\.jsonKeyFilePath\.$i=//p" <<<"$out")"
+            [ -n "$key_file" ]
+            mount_path="$(awk -v n="gcs-credentials-$i" '$0 ~ "- name: " n "$" {f = 1; next}
+              f && /- name:/ {f = 0} f && /mountPath:/ {sub(/^ *mountPath: /, ""); print}' <<<"$server")"
+            [ "$mount_path" = "$key_file" ]
+          done
 
       - name: Build the server and UI images
         run: |

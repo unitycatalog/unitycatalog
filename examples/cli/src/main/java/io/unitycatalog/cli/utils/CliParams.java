@@ -37,7 +37,8 @@ public enum CliParams {
   DATA_SOURCE_FORMAT(
       "format",
       "The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO and"
-          + " TEXT.",
+          + " TEXT. For DELTA, table create writes a Delta log at the storage location unless one"
+          + " is already there. For other formats, it only registers the table.",
       "data_source_format"),
   COLUMNS(
       "columns",

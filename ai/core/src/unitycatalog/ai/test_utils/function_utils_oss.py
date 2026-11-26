@@ -1,7 +1,8 @@
 import json
 import logging
+import re
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, NamedTuple
+from typing import Any, Callable, Generator, NamedTuple, Optional
 
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
@@ -36,18 +37,25 @@ RETRIEVER_TABLE_RETURN_PARAMS_OSS = FunctionParameterInfos(
 
 def param_type_name(type_text: str) -> str:
     """
-    Returns the type name of a parameter type text, for example "STRUCT" for "struct<a:int>".
+    Returns the type name of a parameter type text, for example "STRUCT" for "struct<a:int>"
+    and "INTERVAL" for "interval day to second".
     """
-    return type_text.split("<")[0].split("(")[0].upper()
+    return re.split(r"[<( ]", type_text, maxsplit=1)[0].upper()
 
 
-def generate_function_info_with_params_oss(params: dict[str, tuple[str, Any]]) -> FunctionInfo:
+def generate_function_info_with_params_oss(
+    params: dict[str, tuple[str, Any]],
+    routine_definition: Optional[str] = None,
+    full_data_type: str = "STRING",
+) -> FunctionInfo:
     """
     Returns the FunctionInfo of the function `catalog.schema.test` with the given parameters.
 
     Args:
         params: The parameters by name, as (type_text, type) where type is the "type" entry
             of the parameter's type json.
+        routine_definition: The body of an EXTERNAL Python function, or None for no body.
+        full_data_type: The return type text of a function that has a body.
     """
     return FunctionInfo(
         catalog_name="catalog",
@@ -55,8 +63,10 @@ def generate_function_info_with_params_oss(params: dict[str, tuple[str, Any]]) -
         name="test",
         full_name="catalog.schema.test",
         comment="A test function.",
-        data_type="STRING",
-        full_data_type="STRING",
+        data_type=param_type_name(full_data_type),
+        full_data_type=full_data_type,
+        routine_body=None if routine_definition is None else "EXTERNAL",
+        routine_definition=routine_definition,
         input_params=FunctionParameterInfos(
             parameters=[
                 FunctionParameterInfo(

@@ -44,6 +44,7 @@ from unitycatalog.ai.test_utils.client_utils import client  # noqa: F401
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     async_int_func,
+    generate_function_info_with_params,
     random_func_name,
 )
 
@@ -1757,6 +1758,68 @@ def test_reconstruct_callable_complex_function(complex_function_info):
 
     assert "def _internal(g: float) -> int:" in reconstructed
     assert "return str(a+b+_internal(4.5))" in reconstructed
+
+
+@pytest.mark.parametrize(
+    ("type_text", "routine_definition", "value", "annotation", "expected"),
+    [
+        ("date", "return x.strftime('%A')", datetime.date(2024, 1, 15), datetime.date, "Monday"),
+        (
+            "timestamp",
+            "return x.isoformat()",
+            datetime.datetime(2024, 1, 15, 10, 30, tzinfo=datetime.timezone.utc),
+            datetime.datetime,
+            "2024-01-15T10:30:00+00:00",
+        ),
+        (
+            "timestamp_ntz",
+            "return x.isoformat()",
+            datetime.datetime(2024, 1, 15, 10, 30),
+            datetime.datetime,
+            "2024-01-15T10:30:00",
+        ),
+        ("decimal(10,2)", "return str(x * 2)", Decimal("1.25"), Decimal, "2.50"),
+        (
+            "interval day to second",
+            "return str(x.total_seconds())",
+            datetime.timedelta(minutes=2),
+            datetime.timedelta,
+            "120.0",
+        ),
+        (
+            "array<decimal(10,2)>",
+            "return str(sum(x))",
+            [Decimal("1.10"), Decimal("2.25")],
+            list[Decimal],
+            "3.35",
+        ),
+        (
+            "map<string,date>",
+            "return max(x.values()).isoformat()",
+            {"a": datetime.date(2024, 1, 15), "b": datetime.date(2023, 5, 1)},
+            dict[str, datetime.date],
+            "2024-01-15",
+        ),
+    ],
+)
+def test_get_function_as_callable_typed_parameter(
+    type_text, routine_definition, value, annotation, expected
+):
+    client = DatabricksFunctionClient(client=MagicMock(), execution_mode="local")
+    client.get_function = MagicMock(
+        return_value=generate_function_info_with_params(
+            {"x": (type_text, type_text)}, routine_definition=routine_definition
+        )
+    )
+
+    result = client.execute_function("catalog.schema.test", {"x": value})
+    fetched = client.get_function_as_callable("catalog.schema.test", register_function=False)
+    standalone = {}
+    exec(compile(client.get_function_source("catalog.schema.test"), "<source>", "exec"), standalone)
+
+    assert (result.error, result.value) == (None, expected)
+    assert fetched(x=value) == standalone["test"](x=value) == expected
+    assert fetched.__annotations__ == {"x": annotation, "return": str}
 
 
 def test_local_execution_mode_warning(caplog):
