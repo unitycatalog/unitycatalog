@@ -1,8 +1,10 @@
 package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.fail;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.AdditionalAnswers.delegatesTo;
@@ -34,14 +36,19 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.model.UpdateFunction;
+import io.unitycatalog.server.model.UpdateRegisteredModel;
+import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.model.UpdateTable;
+import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.CatalogService;
@@ -73,6 +80,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class OwnershipRepositoryTest {
@@ -81,7 +90,7 @@ public class OwnershipRepositoryTest {
   private static final String SECOND_OWNER = "second-owner@localhost";
   private static final String THIRD_OWNER = "third-owner@localhost";
 
-  private final UUID resourceId = UUID.randomUUID();
+  private final UUID resourceId = UUID.fromString("40000000-0000-0000-0000-000000000000");
   private final UUID firstId = UUID.randomUUID();
   private final UUID secondId = UUID.randomUUID();
   private final UUID thirdId = UUID.randomUUID();
@@ -262,9 +271,10 @@ public class OwnershipRepositoryTest {
   }
 
   @ParameterizedTest
-  @ValueSource(booleans = {false, true})
-  void sessionCloseFailureStillReloadsCommittedOwnership(boolean reloadFails) {
-    RuntimeException closeError = new IllegalStateException("session close failed");
+  @CsvSource({"false, false", "false, true", "true, false", "true, true"})
+  void committedOwnershipReloadsAfterCommitOrCloseFailure(
+      boolean commitFails, boolean reloadFails) {
+    RuntimeException updateError = new IllegalStateException("committed update failed");
     RuntimeException reloadError = new IllegalStateException("policy reload failed");
     UnityCatalogAuthorizer serviceAuthorizer =
         mock(UnityCatalogAuthorizer.class, delegatesTo(authorizer));
@@ -273,13 +283,27 @@ public class OwnershipRepositoryTest {
     }
     try (Session realSession = sessionFactory.openSession()) {
       Session session = mock(Session.class, delegatesTo(realSession));
-      doAnswer(
-              invocation -> {
-                realSession.close();
-                throw closeError;
-              })
-          .when(session)
-          .close();
+      if (commitFails) {
+        Transaction realTransaction = realSession.beginTransaction();
+        Transaction transaction = mock(Transaction.class, delegatesTo(realTransaction));
+        doReturn(transaction).when(session).beginTransaction();
+        doReturn(transaction).when(session).getTransaction();
+        doAnswer(
+                invocation -> {
+                  realTransaction.commit();
+                  throw updateError;
+                })
+            .when(transaction)
+            .commit();
+      } else {
+        doAnswer(
+                invocation -> {
+                  realSession.close();
+                  throw updateError;
+                })
+            .when(session)
+            .close();
+      }
       SessionFactory failingFactory = mock(SessionFactory.class);
       when(failingFactory.openSession()).thenReturn(session);
       Repositories serviceRepositories = spy(repositories);
@@ -289,17 +313,21 @@ public class OwnershipRepositoryTest {
       CatalogService service =
           new CatalogService(serviceAuthorizer, serviceRepositories, properties);
 
-      assertThatThrownBy(
-              () -> service.updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER)))
-          .isSameAs(closeError);
+      Throwable error =
+          catchThrowable(
+              () -> service.updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER)));
+      if (commitFails) {
+        assertThat(error).isInstanceOf(BaseException.class).hasCause(updateError);
+      } else {
+        assertThat(error).isSameAs(updateError);
+      }
       verify(serviceAuthorizer).reloadAuthorizations();
+      assertThat(error.getSuppressed())
+          .containsExactly(reloadFails ? new Throwable[] {reloadError} : new Throwable[0]);
     }
     assertThat(repositories.getCatalogRepository().getCatalog(CATALOG).getOwner())
         .isEqualTo(SECOND_OWNER);
-    if (reloadFails) {
-      assertThat(closeError.getSuppressed()).containsExactly(reloadError);
-    } else {
-      assertThat(closeError.getSuppressed()).isEmpty();
+    if (!reloadFails) {
       assertOwnership(SECOND_OWNER, secondId);
     }
   }
@@ -412,6 +440,162 @@ public class OwnershipRepositoryTest {
     assertThat(CapturingAuditSink.RECORDS)
         .extracting(AuditRecord::getAction, AuditRecord::getPrincipalId, AuditRecord::getResourceId)
         .containsExactly(tuple(AuditRecord.Action.GRANT, firstId, created));
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = SecurableType.class,
+      names = {"CATALOG", "SCHEMA", "VOLUME", "TABLE", "FUNCTION", "REGISTERED_MODEL"})
+  void transferringOwnerDoesNotBlockUnrelatedGrantsOrRevokes(SecurableType type) throws Exception {
+    UUID targetId = UUID.fromString("50000000-0000-0000-0000-000000000000");
+    IdentifiableDAO target =
+        sessionFactory.fromTransaction(
+            session -> {
+              UUID schemaId = UUID.randomUUID();
+              if (type != SecurableType.CATALOG && type != SecurableType.SCHEMA) {
+                session.persist(
+                    SchemaInfoDAO.builder()
+                        .id(schemaId)
+                        .name("schema")
+                        .catalogId(resourceId)
+                        .owner(FIRST_OWNER)
+                        .createdAt(new Date())
+                        .build());
+              }
+              IdentifiableDAO dao =
+                  switch (type) {
+                    case CATALOG ->
+                        CatalogInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .owner(FIRST_OWNER)
+                            .createdAt(new Date())
+                            .build();
+                    case SCHEMA ->
+                        SchemaInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .catalogId(resourceId)
+                            .owner(FIRST_OWNER)
+                            .createdAt(new Date())
+                            .build();
+                    case VOLUME ->
+                        VolumeInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .schemaId(schemaId)
+                            .owner(FIRST_OWNER)
+                            .createdAt(new Date())
+                            .storageLocation("s3://test-bucket/volume")
+                            .volumeType("EXTERNAL")
+                            .build();
+                    case TABLE ->
+                        TableInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .schemaId(schemaId)
+                            .owner(FIRST_OWNER)
+                            .type(TableType.EXTERNAL.getValue())
+                            .build();
+                    case FUNCTION ->
+                        FunctionInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .schemaId(schemaId)
+                            .owner(FIRST_OWNER)
+                            .build();
+                    case REGISTERED_MODEL ->
+                        RegisteredModelInfoDAO.builder()
+                            .id(targetId)
+                            .name("target")
+                            .schemaId(schemaId)
+                            .owner(FIRST_OWNER)
+                            .build();
+                    default -> throw new IllegalArgumentException("Unsupported target: " + type);
+                  };
+              session.persist(dao);
+              return dao;
+            });
+    authorizer.grantAuthorization(firstId, targetId, Privileges.OWNER);
+    authorizer.grantAuthorization(thirdId, targetId, Privileges.MANAGE);
+    UUID adjacent = UUID.fromString("60000000-0000-0000-0000-000000000000");
+    UUID unrelated = UUID.fromString("80000000-0000-0000-0000-000000000000");
+    authorizer.grantAuthorization(thirdId, unrelated, Privileges.MANAGE);
+    authorizer.grantAuthorization(thirdId, unrelated, Privileges.SELECT);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Runnable beforeCommit =
+          () -> {
+            Future<?> changes =
+                executor.submit(
+                    () -> {
+                      // This resource falls in the index gap after the transferred OWNER.
+                      assertThat(
+                              authorizer.grantAuthorization(thirdId, adjacent, Privileges.MODIFY))
+                          .isTrue();
+                      assertThat(
+                              authorizer.grantAuthorization(thirdId, unrelated, Privileges.MODIFY))
+                          .isTrue();
+                      assertThat(
+                              authorizer.revokeAuthorization(thirdId, unrelated, Privileges.SELECT))
+                          .isTrue();
+                    });
+            assertThatCode(() -> changes.get(10, TimeUnit.SECONDS)).doesNotThrowAnyException();
+          };
+      String fullName = CATALOG + ".schema.target";
+      switch (type) {
+        case CATALOG ->
+            repositories
+                .getCatalogRepository()
+                .updateCatalog("target", new UpdateCatalog().owner(SECOND_OWNER), beforeCommit);
+        case SCHEMA ->
+            repositories
+                .getSchemaRepository()
+                .updateSchema(
+                    CATALOG + ".target", new UpdateSchema().owner(SECOND_OWNER), beforeCommit);
+        case VOLUME ->
+            repositories
+                .getVolumeRepository()
+                .updateVolume(
+                    fullName, new UpdateVolumeRequestContent().owner(SECOND_OWNER), beforeCommit);
+        case TABLE ->
+            repositories
+                .getTableRepository()
+                .updateTable(fullName, new UpdateTable().owner(SECOND_OWNER), true, beforeCommit);
+        case FUNCTION ->
+            repositories
+                .getFunctionRepository()
+                .updateFunction(fullName, new UpdateFunction().owner(SECOND_OWNER), beforeCommit);
+        case REGISTERED_MODEL ->
+            repositories
+                .getModelRepository()
+                .updateRegisteredModel(
+                    fullName, new UpdateRegisteredModel().owner(SECOND_OWNER), beforeCommit);
+        default -> throw new IllegalArgumentException("Unsupported target: " + type);
+      }
+    } finally {
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
+    authorizer.reloadAuthorizations();
+    String savedOwner =
+        sessionFactory.fromSession(
+            session ->
+                session
+                    .createSelectionQuery(
+                        "select owner from "
+                            + target.getClass().getSimpleName()
+                            + " where id = :id",
+                        String.class)
+                    .setParameter("id", targetId)
+                    .getSingleResult());
+    assertThat(savedOwner).isEqualTo(SECOND_OWNER);
+    assertThat(authorizer.listAuthorizations(firstId, targetId)).isEmpty();
+    assertThat(authorizer.listAuthorizations(secondId, targetId)).containsExactly(Privileges.OWNER);
+    assertThat(authorizer.listAuthorizations(thirdId, targetId)).containsExactly(Privileges.MANAGE);
+    assertThat(authorizer.listAuthorizations(thirdId, adjacent)).containsExactly(Privileges.MODIFY);
+    assertThat(authorizer.listAuthorizations(thirdId, unrelated))
+        .containsExactlyInAnyOrder(Privileges.MANAGE, Privileges.MODIFY);
   }
 
   @Test

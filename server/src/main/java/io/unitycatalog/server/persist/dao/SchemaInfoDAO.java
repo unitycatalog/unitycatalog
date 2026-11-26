@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.dao;
 
+import static io.unitycatalog.server.utils.Constants.MAX_STORAGE_LOCATION_LENGTH;
+
 import io.unitycatalog.server.model.SchemaInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,10 +49,10 @@ public class SchemaInfoDAO extends IdentifiableDAO {
   @Column(name = "updated_by")
   private String updatedBy;
 
-  @Column(name = "storage_root")
+  @Column(name = "storage_root", length = MAX_STORAGE_LOCATION_LENGTH)
   private String storageRoot;
 
-  @Column(name = "storage_location")
+  @Column(name = "storage_location", length = MAX_STORAGE_LOCATION_LENGTH)
   private String storageLocation;
 
   public static SchemaInfoDAO from(SchemaInfo schemaInfo) {

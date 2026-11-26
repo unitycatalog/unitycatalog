@@ -4,6 +4,7 @@ import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.api.FunctionsApi;
+import io.unitycatalog.client.api.MetastoresApi;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateFunction;
 import io.unitycatalog.client.model.CreateFunctionRequest;
@@ -12,10 +13,15 @@ import io.unitycatalog.client.model.FunctionParameterInfo;
 import io.unitycatalog.client.model.FunctionParameterInfos;
 import io.unitycatalog.client.model.FunctionParameterMode;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.UpdateFunction;
+import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.UUID;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -32,6 +38,14 @@ import org.junit.jupiter.api.Test;
  * </ul>
  */
 public class SdkFunctionAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "true");
+    serverProperties.setProperty(Property.POLICY_REFRESH_INTERVAL.getKey(), "PT24H");
+    serverProperties.setProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL.getKey(), "PT0S");
+  }
 
   private static final FunctionParameterInfos TEST_PARAMS =
       new FunctionParameterInfos()
@@ -116,6 +130,31 @@ public class SdkFunctionAccessControlCRUDTest extends SdkAccessControlBaseCRUDTe
     // principal-1 owns the catalog/schema but not the function; a catalog/schema owner governs
     // children, so it can still delete it.
     principal1FunctionsApi.deleteFunction("cat_pr1.sch_pr1.fun_cf");
+  }
+
+  @Test
+  @SneakyThrows
+  public void ownershipTransferRefreshesNewAdminPrivileges() {
+    String managerId = createTestUser(PRINCIPAL_1).getId();
+    String recipientId = createTestUser(PRINCIPAL_2).getId();
+    setupCommonCatalogAndSchema();
+    String fullName = "cat_pr1.sch_pr1.transfer";
+    FunctionsApi functions =
+        new FunctionsApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));
+    FunctionInfo function = functions.createFunction(newCreateFunctionRequest("transfer"));
+    UpdateFunction update = new UpdateFunction().owner(PRINCIPAL_2);
+    assertPermissionDenied(() -> functions.updateFunction(fullName, update));
+
+    UUID metastoreId =
+        UUID.fromString(new MetastoresApi(adminApiClient).summary().getMetastoreId());
+    try (JCasbinAuthorizer other =
+        new JCasbinAuthorizer(hibernateConfigurator, new ServerProperties(serverProperties))) {
+      other.grantAuthorization(UUID.fromString(managerId), metastoreId, Privileges.OWNER);
+      assertThat(functions.updateFunction(fullName, update).getOwner()).isEqualTo(PRINCIPAL_2);
+    }
+    assertThat(new FunctionsApi(adminApiClient).getFunction(fullName, false).getOwner())
+        .isEqualTo(PRINCIPAL_2);
+    assertOwnerGrants(function.getFunctionId(), recipientId);
   }
 
   private static CreateFunctionRequest newCreateFunctionRequest(String name) {
