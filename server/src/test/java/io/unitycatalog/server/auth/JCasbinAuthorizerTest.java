@@ -4,28 +4,54 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.io.StringWriter;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.WriterAppender;
+import org.apache.logging.log4j.core.config.Configurator;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class JCasbinAuthorizerTest {
   private UnityCatalogAuthorizer authenticator;
   private HibernateConfigurator hibernateConfigurator;
+  private ServerProperties serverProperties;
   @TempDatabase private TestDatabase testDatabase;
 
   @BeforeEach
@@ -34,7 +60,7 @@ public class JCasbinAuthorizerTest {
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
     // Single-instance tests do not need background polling.
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
-    ServerProperties serverProperties = new ServerProperties(properties);
+    serverProperties = new ServerProperties(properties);
     hibernateConfigurator = testDatabase.hibernateConfigurator();
     authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
   }
@@ -70,6 +96,201 @@ public class JCasbinAuthorizerTest {
 
     authenticator.grantAuthorization(principal, resource, action);
     assertThat(authenticator.authorize(principal, METASTORE, resource, action)).isTrue();
+  }
+
+  @Test
+  void startupIndexesExistingOwnerPolicies() throws Exception {
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    authenticator.grantAuthorization(principal, resource, Privileges.OWNER);
+    dropOwnerLookupIndex();
+    Properties properties = new Properties();
+    properties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
+    try (JCasbinAuthorizer restarted =
+        new JCasbinAuthorizer(hibernateConfigurator, new ServerProperties(properties))) {
+      assertThat(restarted.listAuthorizations(principal, resource))
+          .containsExactly(Privileges.OWNER);
+    }
+    // Dropping the index proves that startup recreated it on the existing policy table.
+    dropOwnerLookupIndex();
+  }
+
+  @Test
+  void simultaneousStartupCreatesLookupIndex() throws Exception {
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    authenticator.grantAuthorization(principal, resource, Privileges.OWNER);
+    dropOwnerLookupIndex();
+    CountDownLatch creators = new CountDownLatch(2);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try (Connection firstConnection = hibernateConfigurator.getDataSource().getConnection();
+        Connection secondConnection = hibernateConfigurator.getDataSource().getConnection()) {
+      List<Connection> checkouts = new ArrayList<>();
+      for (Connection realConnection : List.of(firstConnection, secondConnection)) {
+        Connection connection = mock(Connection.class, delegatesTo(realConnection));
+        doAnswer(
+                createStatement -> {
+                  Statement realStatement = realConnection.createStatement();
+                  Statement statement = mock(Statement.class, delegatesTo(realStatement));
+                  doAnswer(
+                          createIndex -> {
+                            creators.countDown();
+                            if (!creators.await(10, TimeUnit.SECONDS)) {
+                              throw new SQLException("Concurrent index creation did not start");
+                            }
+                            return realStatement.executeUpdate(createIndex.getArgument(0));
+                          })
+                      .when(statement)
+                      .executeUpdate(
+                          "CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2)");
+                  return statement;
+                })
+            .when(connection)
+            .createStatement();
+        checkouts.add(connection);
+      }
+      HikariDataSource dataSource = mock(HikariDataSource.class);
+      doReturn(checkouts.get(0), checkouts.get(1)).when(dataSource).getConnection();
+      HibernateConfigurator config =
+          mock(HibernateConfigurator.class, delegatesTo(hibernateConfigurator));
+      doReturn(dataSource).when(config).getDataSource();
+      Callable<Void> start =
+          () -> {
+            try (JCasbinAuthorizer instance = new JCasbinAuthorizer(config, serverProperties)) {
+              assertThat(instance.listAuthorizations(principal, resource))
+                  .containsExactly(Privileges.OWNER);
+            }
+            return null;
+          };
+      var first = executor.submit(start);
+      var second = executor.submit(start);
+      first.get(20, TimeUnit.SECONDS);
+      second.get(20, TimeUnit.SECONDS);
+    } finally {
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void failedIndexSetupWarnsAndKeepsStarting(boolean recheckFails) throws Exception {
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    authenticator.grantAuthorization(principal, resource, Privileges.OWNER);
+    dropOwnerLookupIndex();
+    SQLException indexError = new SQLException("index creation denied");
+    SQLException recheckError = new SQLException("index metadata recheck failed");
+    AtomicBoolean createFailed = new AtomicBoolean();
+    StringWriter warnings = new StringWriter();
+    WriterAppender appender =
+        WriterAppender.newBuilder()
+            .setName("JCasbinAuthorizerTest")
+            .setLayout(PatternLayout.newBuilder().setPattern("%level %msg%n%throwable").build())
+            .setTarget(warnings)
+            .build();
+    Logger logger = (Logger) LogManager.getLogger(JCasbinAuthorizer.class);
+    Level previousLevel = logger.getLevel();
+    appender.start();
+    try (Connection realConnection = hibernateConfigurator.getDataSource().getConnection()) {
+      Configurator.setLevel(logger.getName(), Level.WARN);
+      logger.addAppender(appender);
+      Connection connection = mock(Connection.class, delegatesTo(realConnection));
+      doAnswer(
+              invocation -> {
+                Statement statement =
+                    mock(Statement.class, delegatesTo(realConnection.createStatement()));
+                doAnswer(
+                        create -> {
+                          createFailed.set(true);
+                          throw indexError;
+                        })
+                    .when(statement)
+                    .executeUpdate(
+                        "CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2)");
+                return statement;
+              })
+          .when(connection)
+          .createStatement();
+      if (recheckFails) {
+        doAnswer(
+                invocation -> {
+                  if (createFailed.get()) {
+                    throw recheckError;
+                  }
+                  return realConnection.getMetaData();
+                })
+            .when(connection)
+            .getMetaData();
+      }
+      HikariDataSource dataSource = mock(HikariDataSource.class);
+      doReturn(connection).when(dataSource).getConnection();
+      HibernateConfigurator config =
+          mock(HibernateConfigurator.class, delegatesTo(hibernateConfigurator));
+      doReturn(dataSource).when(config).getDataSource();
+
+      try (JCasbinAuthorizer restarted = new JCasbinAuthorizer(config, serverProperties)) {
+        assertThat(restarted.listAuthorizations(principal, resource))
+            .containsExactly(Privileges.OWNER);
+        assertThat(restarted.authorize(UUID.randomUUID(), METASTORE, resource, Privileges.OWNER))
+            .isFalse();
+        verify(connection, never()).close();
+        assertThat(realConnection.isClosed()).isFalse();
+      }
+      verify(connection).close();
+      assertThat(realConnection.isClosed()).isTrue();
+      assertThat(warnings.toString())
+          .contains(
+              "WARN Could not verify or create the permission lookup index",
+              "Ownership transfers may block unrelated grants and revokes",
+              "CREATE INDEX idx_casbin_rule_resource ON casbin_rule (ptype, v1, v2)",
+              indexError.getMessage());
+      assertThat(indexError.getSuppressed())
+          .containsExactly(recheckFails ? new Throwable[] {recheckError} : new Throwable[0]);
+      if (recheckFails) {
+        assertThat(warnings.toString()).contains(recheckError.getMessage());
+      }
+    } finally {
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void failedPolicyTableSetupClosesConnectionAndPreservesError(boolean closeFails)
+      throws Exception {
+    SQLException setupError = new SQLException("policy table setup failed");
+    SQLException closeError = new SQLException("connection close failed");
+    try (Connection realConnection = hibernateConfigurator.getDataSource().getConnection()) {
+      Connection connection = mock(Connection.class, delegatesTo(realConnection));
+      doThrow(setupError).when(connection).createStatement();
+      doAnswer(
+              invocation -> {
+                realConnection.close();
+                if (closeFails) {
+                  throw closeError;
+                }
+                return null;
+              })
+          .when(connection)
+          .close();
+      HikariDataSource dataSource =
+          mock(HikariDataSource.class, delegatesTo(hibernateConfigurator.getDataSource()));
+      doReturn(connection).when(dataSource).getConnection();
+      HibernateConfigurator config =
+          mock(HibernateConfigurator.class, delegatesTo(hibernateConfigurator));
+      doReturn(dataSource).when(config).getDataSource();
+
+      assertThatThrownBy(() -> new JCasbinAuthorizer(config, serverProperties))
+          .isSameAs(setupError);
+      verify(connection).close();
+      assertThat(realConnection.isClosed()).isTrue();
+      assertThat(setupError.getSuppressed())
+          .containsExactly(closeFails ? new Throwable[] {closeError} : new Throwable[0]);
+    }
   }
 
   @Test
@@ -284,5 +505,17 @@ public class JCasbinAuthorizerTest {
             () -> authenticator.revokeAuthorization(principal, resource, Privileges.OWNER))
         .isInstanceOf(Error.class)
         .hasCauseInstanceOf(SQLException.class);
+  }
+
+  private void dropOwnerLookupIndex() throws SQLException {
+    try (Connection connection = hibernateConfigurator.getDataSource().getConnection();
+        Statement statement = connection.createStatement()) {
+      statement.executeUpdate(
+          "DROP INDEX idx_casbin_rule_resource"
+              + (connection.getMetaData().getDatabaseProductName().equals("MySQL")
+                  ? " ON casbin_rule"
+                  : ""));
+      connection.commit();
+    }
   }
 }

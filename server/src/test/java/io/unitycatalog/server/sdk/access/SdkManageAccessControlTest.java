@@ -26,6 +26,7 @@ import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.FunctionsApi;
 import io.unitycatalog.client.api.GrantsApi;
+import io.unitycatalog.client.api.MetastoresApi;
 import io.unitycatalog.client.api.ModelVersionsApi;
 import io.unitycatalog.client.api.RegisteredModelsApi;
 import io.unitycatalog.client.api.SchemasApi;
@@ -82,6 +83,7 @@ import io.unitycatalog.client.model.UpdateTable;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeOperation;
 import io.unitycatalog.client.model.VolumeType;
+import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
@@ -90,6 +92,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
@@ -844,6 +847,28 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
                       .name(name));
       default -> fail("Unexpected resource type: " + type);
     }
+  }
+
+  @Test
+  @SneakyThrows
+  void ownershipTransferDoesNotRefreshNewAdminPrivilegesWhenRefreshDisabled() {
+    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.MANAGE);
+    FunctionsApi functions = new FunctionsApi(manager);
+    String originalOwner = new FunctionsApi(adminApiClient).getFunction(FUNCTION, false).getOwner();
+    UpdateFunction update = new UpdateFunction().owner(PRINCIPAL_2);
+    assertPermissionDenied(() -> functions.updateFunction(FUNCTION, update));
+
+    UUID metastoreId =
+        UUID.fromString(new MetastoresApi(adminApiClient).summary().getMetastoreId());
+    try (JCasbinAuthorizer other =
+        new JCasbinAuthorizer(hibernateConfigurator, new ServerProperties(serverProperties))) {
+      assertThat(
+              other.grantAuthorization(UUID.fromString(managerId), metastoreId, Privileges.OWNER))
+          .isTrue();
+      assertPermissionDenied(() -> functions.updateFunction(FUNCTION, update));
+    }
+    assertThat(new FunctionsApi(adminApiClient).getFunction(FUNCTION, false).getOwner())
+        .isEqualTo(originalOwner);
   }
 
   @Test
