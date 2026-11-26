@@ -1190,7 +1190,7 @@ paths:
         - name: principal
           in: query
           description: |
-            If provided, only the permissions for the specified principal (user or group) are returned.
+            If provided and not empty, only the permissions for the specified principal (user or group) are returned.
           schema:
             type: string
           required: false

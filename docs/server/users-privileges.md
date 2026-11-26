@@ -67,3 +67,16 @@ location, or storage credential. Metastore, catalog, and schema grants cover des
 and catalog grants need no usage grants. A schema grant needs `USE CATALOG`. A table, function,
 volume, or model grant needs both `USE CATALOG` and `USE SCHEMA`. It does not permit data access,
 inference, temporary credentials, writes, or permission changes.
+
+## Viewing Grants
+
+`permission get` lists the privileges granted directly on an object. Add `--principal` to list only
+one principal's grants:
+
+```sh
+bin/uc --auth_token $(cat etc/conf/token.txt) permission get --securable_type catalog --name unity --principal bobbie@rocinante
+```
+
+`--principal` names the principal the same way `permission create` does. A principal with no grants
+on the object gets an empty list, and so does anyone else when the caller can only see their own
+grants.

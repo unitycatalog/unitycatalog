@@ -22,7 +22,7 @@ Get permissions
 |------------- | ------------- | ------------- | -------------|
 | **securable\_type** | [**SecurableType**](../Models/.md)| Type of securable. | [default to null] [enum: metastore, catalog, schema, table, function, volume, registered_model, external_location, credential] |
 | **full\_name** | **String**| Full name of securable. | [default to null] |
-| **principal** | **String**| If provided, only the permissions for the specified principal (user or group) are returned.  | [optional] [default to null] |
+| **principal** | **String**| If provided and not empty, only the permissions for the specified principal (user or group) are returned.  | [optional] [default to null] |
 
 ### Return type
 

@@ -140,6 +140,20 @@ public class UserRepository {
         /* readOnly= */ true);
   }
 
+  /**
+   * Looks up a user's id by email, matched as {@link #getUserByEmail(String)} matches it.
+   *
+   * @param email the email to look up
+   * @return the user's id, or empty if no user has that email
+   */
+  public Optional<UUID> findUserIdByEmail(String email) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> Optional.ofNullable(getUserByEmail(session, email)).map(UserDAO::getId),
+        "Failed to find user by email",
+        /* readOnly= */ true);
+  }
+
   public User getUserByExternalId(String externalId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,

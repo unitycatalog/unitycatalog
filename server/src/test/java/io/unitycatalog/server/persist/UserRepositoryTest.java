@@ -60,6 +60,17 @@ class UserRepositoryTest {
   }
 
   @Test
+  void findUserIdByEmailReturnsTheUsersIdOrEmpty() {
+    var user =
+        userRepository.createUser(
+            CreateUser.builder().name("Finder").email("find-me@example.com").build());
+
+    assertThat(userRepository.findUserIdByEmail("find-me@example.com"))
+        .contains(UUID.fromString(user.getId()));
+    assertThat(userRepository.findUserIdByEmail("missing@example.com")).isEmpty();
+  }
+
+  @Test
   void createUserAllowsMultipleNullExternalIds() {
     userRepository.createUser(
         CreateUser.builder().name("Human A").email("human-a@example.com").build());
