@@ -28,6 +28,7 @@ import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -73,6 +74,7 @@ public class IcebergRestCatalogServiceTest {
   private final UserRepository userRepository = mock();
   private final ServerProperties serverProperties = mock();
   private final TableRepository tableRepository = mock();
+  private final StagingTableRepository stagingTableRepository = mock();
   private final TableConfigService tableConfigService = mock();
   private final MetadataService metadataService = mock();
   private IcebergRestCatalogService service;
@@ -83,7 +85,7 @@ public class IcebergRestCatalogServiceTest {
     when(repositories.getKeyMapper()).thenReturn(keyMapper);
     when(repositories.getCatalogRepository()).thenReturn(mock(CatalogRepository.class));
     when(repositories.getSchemaRepository()).thenReturn(mock(SchemaRepository.class));
-    when(repositories.getStagingTableRepository()).thenReturn(mock(StagingTableRepository.class));
+    when(repositories.getStagingTableRepository()).thenReturn(stagingTableRepository);
     when(repositories.getTableRepository()).thenReturn(tableRepository);
     when(repositories.getSessionFactory()).thenReturn(mock(SessionFactory.class));
     service =
@@ -526,6 +528,18 @@ public class IcebergRestCatalogServiceTest {
 
     assertThatThrownBy(() -> service.updateTable("cat", "ns", "tbl", request)).isSameAs(failure);
     return writtenMetadataLocation();
+  }
+
+  @Test
+  public void managedCreateChecksTheStagingLocationForIcebergFiles() {
+    BaseException rejection = new BaseException(ErrorCode.INVALID_ARGUMENT, "too long");
+    when(stagingTableRepository.createStagingTable(any(), any())).thenThrow(rejection);
+    CreateTableRequest request =
+        CreateTableRequest.builder().withName("tbl").withSchema(SCHEMA).build();
+
+    assertThatThrownBy(() -> service.createTable("cat", "ns", request)).isSameAs(rejection);
+    verify(stagingTableRepository)
+        .createStagingTable(any(), eq(StorageLimits.Extent.ICEBERG_TABLE));
   }
 
   /**

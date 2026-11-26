@@ -16,6 +16,7 @@ import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.ServerProperties;
 
 public class StagingTableService extends AuthorizedService implements UnityCatalogRestService {
@@ -54,7 +55,8 @@ public class StagingTableService extends AuthorizedService implements UnityCatal
     serverProperties.checkDeltaApiOnlyEnabled(
         "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables");
     StagingTableInfo createdStagingTable =
-        stagingTableRepository.createStagingTable(createStagingTable);
+        stagingTableRepository.createStagingTable(
+            createStagingTable, StorageLimits.Extent.MANAGED_DELTA_TABLE);
     String catalog = createdStagingTable.getCatalogName();
     String schema = createdStagingTable.getSchemaName();
     initializeHierarchicalAuthorization(

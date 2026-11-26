@@ -57,6 +57,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.LocalStorageLocationValidator;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.service.iceberg.IcebergCommitLocationExtractor;
 import io.unitycatalog.server.service.iceberg.IcebergCommitTableTypeExtractor;
 import io.unitycatalog.server.service.iceberg.IcebergCreateTableTypeExtractor;
@@ -545,7 +546,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
               new CreateStagingTable()
                   .name(request.name())
                   .catalogName(catalog)
-                  .schemaName(namespace));
+                  .schemaName(namespace),
+              StorageLimits.Extent.ICEBERG_TABLE);
       initializeHierarchicalAuthorization(
           stagingTable.getId(), schemaRepository.getSchemaIdOrThrow(catalog, namespace).toString());
       tableType = TableType.MANAGED;

@@ -35,6 +35,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper;
@@ -899,6 +900,13 @@ public class TableRepository {
                 "External table storage location must include a non-empty path prefix: %s",
                 createTable.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
+            repositories
+                .getStorageLocationValidator()
+                .validateLocation(
+                    session,
+                    storageLocation,
+                    Constants.MAX_STORAGE_LOCATION_LENGTH,
+                    StorageLimits.Extent.ofTable(createTable.getDataSourceFormat()));
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());

@@ -11,6 +11,7 @@ import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.UriScheme;
 import java.time.Instant;
 import java.util.Optional;
 import software.amazon.awssdk.services.sts.model.Credentials;
@@ -49,6 +50,48 @@ public class CloudCredentialVendor implements AutoCloseable {
       case S3 -> vendAwsCredential(context);
       // For local file system, we return empty credentials
       case FILE, NULL -> new TemporaryCredentials();
+    };
+  }
+
+  /**
+   * Checks the cloud limits a vend for this context, or storing objects at its locations, would
+   * hit, without calling the cloud.
+   *
+   * @param extent whether objects are stored under the locations, or a location may name one
+   * @return why the locations can't be used, or empty
+   */
+  public Optional<String> limitViolation(CredentialContext context, StorageLimits.Extent extent) {
+    return switch (context.getStorageScheme()) {
+      case ABFS, ABFSS -> azureCredentialVendor.limitViolation(context, extent);
+      case GS -> gcpCredentialVendor.limitViolation(context, extent);
+      case S3 -> awsCredentialVendor.limitViolation(context, extent);
+      case FILE, NULL -> Optional.empty();
+    };
+  }
+
+  /**
+   * Checks only the cloud limits of {@link #limitViolation} that depend on the storage credential
+   * of the context: the AWS STS session policy and the GCS access boundary.
+   *
+   * @return why a vend for the context would fail on its credential, or empty
+   */
+  public Optional<String> credentialLimitViolation(CredentialContext context) {
+    return switch (context.getStorageScheme()) {
+      case S3 -> awsCredentialVendor.sessionPolicyViolation(context);
+      case GS -> gcpCredentialVendor.accessBoundaryViolation(context);
+      case ABFS, ABFSS, FILE, NULL -> Optional.empty();
+    };
+  }
+
+  /**
+   * Whether {@link #limitViolation} reads the storage credential of a location with this scheme. S3
+   * builds its policy from the credential. GCS builds an access boundary only for a location
+   * without one, since it can't vend with a storage credential yet.
+   */
+  public boolean limitsDependOnCredential(UriScheme scheme) {
+    return switch (scheme) {
+      case S3, GS -> true;
+      case ABFS, ABFSS, FILE, NULL -> false;
     };
   }
 
