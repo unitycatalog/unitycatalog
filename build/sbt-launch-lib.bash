@@ -263,12 +263,30 @@ process_args () {
 }
 
 run() {
-  # no jar? download it.
-  [[ -f "$sbt_jar" ]] || acquire_sbt_jar "$sbt_version" || {
-    # still no jar? uh-oh.
-    echo "Download failed. Obtain the sbt-launch.jar manually and place it at $sbt_jar"
-    exit 1
-  }
+  # -sbt-jar names an explicit launcher the caller supplies and is responsible for, so it must
+  # never go through the default launcher's acquisition/checksum checks below. process_args also
+  # assigns sbt_jar from -sbt-jar, but not until after those checks already ran, so an explicit
+  # jar has to be detected here first, before acquire_sbt_jar runs.
+  local explicit_sbt_jar=""
+  local run_args=("$@")
+  local run_arg_i
+  for ((run_arg_i = 0; run_arg_i < ${#run_args[@]}; run_arg_i++)); do
+    if [[ "${run_args[$run_arg_i]}" == "-sbt-jar" ]]; then
+      explicit_sbt_jar="${run_args[$((run_arg_i + 1))]}"
+      break
+    fi
+  done
+
+  if [[ -n "$explicit_sbt_jar" ]]; then
+    sbt_jar="$explicit_sbt_jar"
+  else
+    # no jar? download it.
+    [[ -f "$sbt_jar" ]] || acquire_sbt_jar "$sbt_version" || {
+      # still no jar? uh-oh.
+      echo "Download failed. Obtain the sbt-launch.jar manually and place it at $sbt_jar"
+      exit 1
+    }
+  fi
 
   # process the combined args, then reset "$@" to the residuals
   process_args "$@"
