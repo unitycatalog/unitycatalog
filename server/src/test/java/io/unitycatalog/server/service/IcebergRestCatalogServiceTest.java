@@ -4,6 +4,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.READ_O
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -14,12 +15,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
@@ -32,23 +38,29 @@ import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.SnapshotRefType;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
+import org.apache.iceberg.rest.responses.ErrorResponse;
+import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.types.Types;
 import org.hibernate.SessionFactory;
@@ -75,6 +87,8 @@ public class IcebergRestCatalogServiceTest {
   private final TableRepository tableRepository = mock();
   private final TableConfigService tableConfigService = mock();
   private final MetadataService metadataService = mock();
+  private final SchemaRepository schemaRepository = mock();
+  private final StagingTableRepository stagingTableRepository = mock();
   private IcebergRestCatalogService service;
 
   @BeforeEach
@@ -82,8 +96,8 @@ public class IcebergRestCatalogServiceTest {
     when(repositories.getUserRepository()).thenReturn(userRepository);
     when(repositories.getKeyMapper()).thenReturn(keyMapper);
     when(repositories.getCatalogRepository()).thenReturn(mock(CatalogRepository.class));
-    when(repositories.getSchemaRepository()).thenReturn(mock(SchemaRepository.class));
-    when(repositories.getStagingTableRepository()).thenReturn(mock(StagingTableRepository.class));
+    when(repositories.getSchemaRepository()).thenReturn(schemaRepository);
+    when(repositories.getStagingTableRepository()).thenReturn(stagingTableRepository);
     when(repositories.getTableRepository()).thenReturn(tableRepository);
     when(repositories.getSessionFactory()).thenReturn(mock(SessionFactory.class));
     service =
@@ -489,6 +503,211 @@ public class IcebergRestCatalogServiceTest {
     verify(metadataService, never()).deleteTableMetadata(any(), any());
     verify(tableRepository, never())
         .commitIcebergTable(any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  public void updateTableAsksAWriterWithAStaleSnapshotToRetry() {
+    // Another writer appended snapshot 2 to main after this writer read the table at snapshot 1,
+    // so the snapshot this writer adds to a new branch reuses sequence number 2.
+    TableMetadata base =
+        TableMetadata.buildFrom(
+                TableMetadata.newTableMetadata(
+                    SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of()))
+            .setBranchSnapshot(TestUtils.icebergAppendSnapshot(TABLE_LOCATION, 1, null, 1), "main")
+            .setBranchSnapshot(TestUtils.icebergAppendSnapshot(TABLE_LOCATION, 2, 1L, 2), "main")
+            .build();
+    givenTable(base);
+    UpdateTableRequest request =
+        new UpdateTableRequest(
+            List.of(
+                new UpdateRequirement.AssertTableUUID(base.uuid()),
+                new UpdateRequirement.AssertRefSnapshotID("audit", null)),
+            List.of(
+                new MetadataUpdate.AddSnapshot(
+                    TestUtils.icebergAppendSnapshot(TABLE_LOCATION, 3, 1L, 2)),
+                new MetadataUpdate.SetSnapshotRef(
+                    "audit", 3L, SnapshotRefType.BRANCH, null, null, null)));
+
+    ErrorResponse error =
+        icebergErrorResponse(
+            catchThrowable(() -> service.updateTable("cat", "ns", "tbl", request)));
+
+    assertThat(error.code()).isEqualTo(409);
+    assertThat(error.type()).isEqualTo("CommitFailedException");
+    assertThat(error.message()).startsWith("Validation failed, please retry: ");
+    verifyNothingWritten();
+  }
+
+  /** Updates Iceberg rejects for a reason a retry cannot fix, and the message prefix each gets. */
+  static Stream<Arguments> rejectedUpdates() {
+    return Stream.of(
+        Arguments.of(
+            new MetadataUpdate.SetSnapshotRef(
+                "main", 999L, SnapshotRefType.BRANCH, null, null, null),
+            "Invalid table metadata: "),
+        Arguments.of(new MetadataUpdate.SetCurrentViewVersion(1), "Invalid table update: "));
+  }
+
+  @ParameterizedTest
+  @MethodSource("rejectedUpdates")
+  public void updateTableAnswersAnUpdateIcebergRejectsAsABadRequest(
+      MetadataUpdate update, String messagePrefix) {
+    TableMetadata base =
+        TableMetadata.newTableMetadata(
+            SCHEMA, PartitionSpec.unpartitioned(), TABLE_LOCATION, Map.of());
+    givenTable(base);
+    UpdateTableRequest request =
+        new UpdateTableRequest(
+            List.of(new UpdateRequirement.AssertTableUUID(base.uuid())), List.of(update));
+
+    ErrorResponse error =
+        icebergErrorResponse(
+            catchThrowable(() -> service.updateTable("cat", "ns", "tbl", request)));
+
+    assertThat(error.code()).isEqualTo(400);
+    assertThat(error.type()).isEqualTo("BadRequestException");
+    assertThat(error.message()).startsWith(messagePrefix);
+    verifyNothingWritten();
+  }
+
+  /**
+   * The updates of {@link #rejectedUpdates}, plus a snapshot whose sequence number is behind. A
+   * staged create has no table state another commit could have moved, so that snapshot is a bad
+   * request there rather than a reason to retry.
+   */
+  static Stream<Arguments> rejectedCreateUpdates() {
+    return Stream.concat(
+        rejectedUpdates(),
+        Stream.of(
+            Arguments.of(
+                new MetadataUpdate.AddSnapshot(
+                    TestUtils.icebergAppendSnapshot(TABLE_LOCATION, 1, 7L, 0)),
+                "Invalid table metadata: ")));
+  }
+
+  @ParameterizedTest
+  @MethodSource("rejectedCreateUpdates")
+  public void stagedCreateCommitAnswersAnUpdateIcebergRejectsAsABadRequest(
+      MetadataUpdate update, String messagePrefix) {
+    UpdateTableRequest staged = stagedCreateCommit();
+    UpdateTableRequest request =
+        new UpdateTableRequest(
+            staged.requirements(),
+            Stream.concat(staged.updates().stream(), Stream.of(update)).toList());
+
+    ErrorResponse error =
+        icebergErrorResponse(
+            catchThrowable(() -> service.updateTable("cat", "ns", "tbl", request)));
+
+    assertThat(error.code()).isEqualTo(400);
+    assertThat(error.type()).isEqualTo("BadRequestException");
+    assertThat(error.message()).startsWith(messagePrefix);
+    verify(metadataService, never()).writeTableMetadata(any(), any(), any());
+    verify(tableRepository, never()).createTableForIceberg(any(), any());
+  }
+
+  /** The location of an external create, and none for a managed one. */
+  static Stream<Arguments> createLocations() {
+    return Stream.of(Arguments.of(TABLE_LOCATION), Arguments.of((String) null));
+  }
+
+  @ParameterizedTest
+  @MethodSource("createLocations")
+  public void createTableAnswersMetadataIcebergRejectsAsABadRequest(String location) {
+    CreateTableRequest request =
+        CreateTableRequest.builder()
+            .withName("tbl")
+            .withSchema(SCHEMA)
+            .withLocation(location)
+            // A metrics mode for a column the schema does not have.
+            .setProperty("write.metadata.metrics.column.missing", "full")
+            .build();
+
+    ErrorResponse error =
+        icebergErrorResponse(catchThrowable(() -> service.createTable("cat", "ns", request)));
+
+    assertThat(error.code()).isEqualTo(400);
+    assertThat(error.type()).isEqualTo("BadRequestException");
+    assertThat(error.message()).startsWith("Invalid table metadata: ");
+    verify(stagingTableRepository, never()).createStagingTable(any());
+    verify(metadataService, never()).writeTableMetadata(any(), any(), any());
+    verify(tableRepository, never()).createTableForIceberg(any(), any());
+  }
+
+  @Test
+  public void stagedCreateOfAManagedTableIsAtTheStagingLocation() {
+    UUID stagingId = UUID.randomUUID();
+    String stagingLocation = "s3://bucket/__unitystorage/tables/" + stagingId;
+    when(stagingTableRepository.createStagingTable(any()))
+        .thenReturn(
+            new StagingTableInfo().id(stagingId.toString()).stagingLocation(stagingLocation));
+    when(schemaRepository.getSchemaIdOrThrow("cat", "ns")).thenReturn(UUID.randomUUID());
+    CreateTableRequest request =
+        CreateTableRequest.builder()
+            .withName("tbl")
+            .withSchema(SCHEMA)
+            .setProperty("k", "v")
+            .stageCreate()
+            .build();
+
+    TableMetadata staged = service.createTable("cat", "ns", request).tableMetadata();
+
+    assertThat(staged.location()).isEqualTo(stagingLocation);
+    assertThat(staged.properties()).containsEntry("k", "v");
+    assertThat(staged.schema().asStruct()).isEqualTo(SCHEMA.asStruct());
+    verify(metadataService).prepareTableLocation(staged, NormalizedURL.from(stagingLocation));
+  }
+
+  @Test
+  public void loadTableOfStoredMetadataIcebergRejectsIsAServerError() {
+    when(tableRepository.getIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                UUID.randomUUID(),
+                DataSourceFormat.ICEBERG,
+                TABLE_LOCATION + "/metadata/00001-" + UUID.randomUUID() + ".metadata.json",
+                TABLE_LOCATION));
+    // What Iceberg's metadata parser raises for a stored file whose snapshots are inconsistent.
+    when(metadataService.readTableMetadata(any(), any()))
+        .thenThrow(new ValidationException("Invalid snapshot"));
+
+    ErrorResponse error =
+        icebergErrorResponse(
+            catchThrowable(
+                () -> service.loadTable("cat", "ns", "tbl", Optional.empty(), Optional.empty())));
+
+    assertThat(error.code()).isEqualTo(500);
+  }
+
+  /** Serves {@code metadata} as the current metadata of table {@code cat.ns.tbl}. */
+  private void givenTable(TableMetadata metadata) {
+    when(tableRepository.getNativeIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                UUID.randomUUID(),
+                DataSourceFormat.ICEBERG,
+                TABLE_LOCATION + "/metadata/00001-" + UUID.randomUUID() + ".metadata.json",
+                TABLE_LOCATION));
+    when(metadataService.readTableMetadata(any(), any())).thenReturn(metadata);
+  }
+
+  /** Checks that a rejected commit wrote no metadata file and left the metadata pointer alone. */
+  private void verifyNothingWritten() {
+    verify(metadataService, never()).writeTableMetadata(any(), any(), any());
+    verify(metadataService, never()).deleteTableMetadata(any(), any());
+    verify(tableRepository, never())
+        .commitIcebergTable(any(), any(), any(), any(), any(), any(), any());
+  }
+
+  /** The error response the Iceberg REST catalog sends for {@code failure}. */
+  private static ErrorResponse icebergErrorResponse(Throwable failure) {
+    HttpRequest request = HttpRequest.of(HttpMethod.POST, "/");
+    return ErrorResponseParser.fromJson(
+        IcebergRestExceptionHandler.INSTANCE
+            .handleException(ServiceRequestContext.of(request), request, failure)
+            .aggregate()
+            .join()
+            .contentUtf8());
   }
 
   /** The commit an Iceberg client sends to finish a staged create of an external table. */

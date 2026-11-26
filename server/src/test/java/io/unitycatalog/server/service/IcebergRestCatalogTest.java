@@ -71,6 +71,7 @@ import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SnapshotRefType;
 import org.apache.iceberg.SnapshotsTable;
 import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.Table;
@@ -1524,6 +1525,72 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
     assertThat(loaded.tableMetadata().metadataFileLocation()).contains("/metadata/00001-");
     assertThat(loaded.tableMetadata().schema().columns()).hasSize(2);
+  }
+
+  @Test
+  public void testCommitWithAStaleSnapshotIsRetriedAfterAConflict() throws Exception {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    String location =
+        Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-stale").toUri().toString();
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName(TestUtils.TABLE_NAME)
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .withLocation(location)
+            .build());
+    commitToBranch("main", TestUtils.icebergAppendSnapshot(location, 1, null, 1), null);
+
+    // Two writers read the table at snapshot 1. The first appends snapshot 2 to main; the second
+    // then adds a snapshot built from what it read to a new branch, reusing sequence number 2.
+    commitToBranch("main", TestUtils.icebergAppendSnapshot(location, 2, 1L, 2), 1L);
+    String committed =
+        icebergClient
+            .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME)
+            .tableMetadata()
+            .metadataFileLocation();
+    TestUtils.assertIcebergApiException(
+        () -> commitToBranch("audit", TestUtils.icebergAppendSnapshot(location, 3, 1L, 2), null),
+        409,
+        CommitFailedException.class,
+        "Validation failed, please retry: ");
+    assertThat(
+            icebergClient
+                .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME)
+                .tableMetadata()
+                .metadataFileLocation())
+        .isEqualTo(committed);
+
+    // Which is what an Iceberg client retries on: rebuilt from the refreshed table, it lands.
+    commitToBranch("audit", TestUtils.icebergAppendSnapshot(location, 3, 1L, 3), null);
+    TableMetadata retried =
+        icebergClient
+            .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME)
+            .tableMetadata();
+    assertThat(retried.ref("audit").snapshotId()).isEqualTo(3L);
+    assertThat(retried.currentSnapshot().snapshotId()).isEqualTo(2L);
+  }
+
+  /**
+   * Commits {@code snapshot} to {@code branch} as an Iceberg client commits an append, requiring
+   * the branch to still point at {@code expectedSnapshotId}.
+   */
+  private void commitToBranch(String branch, Snapshot snapshot, Long expectedSnapshotId)
+      throws ApiException {
+    icebergClient.updateTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        TestUtils.TABLE_NAME,
+        new UpdateTableRequest(
+            List.of(new UpdateRequirement.AssertRefSnapshotID(branch, expectedSnapshotId)),
+            List.of(
+                new MetadataUpdate.AddSnapshot(snapshot),
+                new MetadataUpdate.SetSnapshotRef(
+                    branch, snapshot.snapshotId(), SnapshotRefType.BRANCH, null, null, null))));
   }
 
   @Test
