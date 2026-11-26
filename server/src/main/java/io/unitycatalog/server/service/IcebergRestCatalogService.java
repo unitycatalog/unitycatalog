@@ -145,6 +145,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
           Endpoint.V1_DELETE_TABLE,
+          Endpoint.create("POST", "/v1/{prefix}/namespaces/{namespace}/tables/{table}/unregister"),
           Endpoint.V1_RENAME_TABLE);
 
   private final TableConfigService tableConfigService;
@@ -756,6 +757,34 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         "Keeping Iceberg metadata file {}: the commit that wrote it may have succeeded ({})",
         metadataLocation,
         failure.toString());
+  }
+
+  /**
+   * Removes a managed Iceberg table's registration and returns its final metadata, preserving
+   * files.
+   */
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/unregister")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @AuthorizeResourceKey(METASTORE)
+  public LoadTableResponse unregisterTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table) {
+    serverProperties.checkIcebergTableEnabled();
+    TableRepository.IcebergTableState state =
+        tableRepository.getManagedIcebergTableState(catalog, namespace, table);
+    // Cloud FileIO resolves credentials through the database, before the delete holds a connection.
+    TableMetadata metadata =
+        metadataService.readTableMetadata(
+            NormalizedURL.from(state.metadataLocation()),
+            NormalizedURL.from(state.storageLocation()));
+    TableInfoDAO dao =
+        tableRepository.unregisterManagedIcebergTable(
+            catalog, namespace, table, state.tableId(), state.metadataLocation());
+    removeHierarchicalAuthorizations(dao.getId().toString(), dao.getSchemaId().toString());
+    // The unregister response uses the metadata fields of a load response, without credentials.
+    return LoadTableResponse.builder().withTableMetadata(metadata).build();
   }
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")

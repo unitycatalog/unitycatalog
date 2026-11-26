@@ -623,32 +623,58 @@ public class TableRepository {
 
   public IcebergTableState getIcebergTableState(
       String catalogName, String schemaName, String tableName) {
-    return getIcebergTableState(catalogName, schemaName, tableName, false);
+    return getIcebergTableState(catalogName, schemaName, tableName, dao -> {});
   }
 
   public IcebergTableState getNativeIcebergTableState(
       String catalogName, String schemaName, String tableName) {
-    return getIcebergTableState(catalogName, schemaName, tableName, true);
+    return getIcebergTableState(
+        catalogName,
+        schemaName,
+        tableName,
+        dao -> {
+          if (!DataSourceFormat.ICEBERG.getValue().equals(dao.getDataSourceFormat())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Table is not a native Iceberg table and cannot be committed to via the Iceberg"
+                    + " REST catalog: "
+                    + catalogName
+                    + "."
+                    + schemaName
+                    + "."
+                    + tableName);
+          }
+        });
+  }
+
+  /**
+   * Returns the managed Iceberg table state to read before attempting unregister.
+   *
+   * @return state with ICEBERG format and a non-null metadata location
+   * @throws BaseException with INVALID_ARGUMENT for other table types, or TABLE_NOT_FOUND if the
+   *     table or its metadata location is absent
+   */
+  public IcebergTableState getManagedIcebergTableState(
+      String catalogName, String schemaName, String tableName) {
+    return getIcebergTableState(
+        catalogName,
+        schemaName,
+        tableName,
+        dao -> requireManagedIcebergTable(dao, catalogName, schemaName, tableName));
   }
 
   private IcebergTableState getIcebergTableState(
-      String catalogName, String schemaName, String tableName, boolean requireNativeIceberg) {
+      String catalogName, String schemaName, String tableName, Consumer<TableInfoDAO> check) {
     String fullName = catalogName + "." + schemaName + "." + tableName;
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalogName, schemaName, tableName);
+          check.accept(dao);
           DataSourceFormat dataSourceFormat =
               dao.getDataSourceFormat() == null
                   ? null
                   : DataSourceFormat.fromValue(dao.getDataSourceFormat());
-          if (requireNativeIceberg && dataSourceFormat != DataSourceFormat.ICEBERG) {
-            throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT,
-                "Table is not a native Iceberg table and cannot be committed to via the Iceberg"
-                    + " REST catalog: "
-                    + fullName);
-          }
           return new IcebergTableState(
               dao.getId(), dataSourceFormat, dao.getIcebergMetadataLocation(), dao.getUrl());
         },
@@ -1277,7 +1303,8 @@ public class TableRepository {
    * lazy fields.
    */
   public TableInfoDAO deleteTable(String catalog, String schema, String table) {
-    return deleteTable(catalog, schema, table, dao -> {});
+    return deleteTable(
+        catalog, schema, table, dao -> {}, /* shouldCleanUpStorageAndCommits= */ true);
   }
 
   /**
@@ -1286,28 +1313,101 @@ public class TableRepository {
    */
   public TableInfoDAO deleteTableForDelta(String catalog, String schema, String table) {
     return deleteTable(
-        catalog, schema, table, dao -> requireDeltaTable(dao, catalog, schema, table));
+        catalog,
+        schema,
+        table,
+        dao -> requireDeltaTable(dao, catalog, schema, table),
+        /* shouldCleanUpStorageAndCommits= */ true);
+  }
+
+  /**
+   * Removes a managed Iceberg table's registration without scheduling storage cleanup. Checks the
+   * previously read table identity and metadata pointer under the commit lock, so the caller's
+   * metadata is still final when the registration is removed.
+   *
+   * @param catalog the catalog name
+   * @param schema the schema name
+   * @param table the table name
+   * @param expectedTableId the table UUID used to read the metadata
+   * @param expectedMetadataLocation the stored metadata pointer used for that read
+   * @return the deleted table's detached DAO; do not access its lazy fields
+   * @throws BaseException with INVALID_ARGUMENT for other table types, or TABLE_NOT_FOUND if absent
+   * @throws BaseException with UNAVAILABLE if the table changed; retry after reading its metadata
+   */
+  public TableInfoDAO unregisterManagedIcebergTable(
+      String catalog,
+      String schema,
+      String table,
+      UUID expectedTableId,
+      String expectedMetadataLocation) {
+    return deleteTable(
+        catalog,
+        schema,
+        table,
+        dao -> {
+          requireManagedIcebergTable(dao, catalog, schema, table);
+          if (!dao.getId().equals(expectedTableId)
+              || !dao.getIcebergMetadataLocation().equals(expectedMetadataLocation)) {
+            throw new BaseException(
+                ErrorCode.UNAVAILABLE,
+                "Table changed while reading metadata: "
+                    + catalog
+                    + "."
+                    + schema
+                    + "."
+                    + table
+                    + "; retry unregister.");
+          }
+        },
+        /* shouldCleanUpStorageAndCommits= */ false);
+  }
+
+  private static void requireManagedIcebergTable(
+      TableInfoDAO dao, String catalog, String schema, String table) {
+    if (!TableType.MANAGED.getValue().equals(dao.getType())
+        || !DataSourceFormat.ICEBERG.getValue().equals(dao.getDataSourceFormat())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Only managed Iceberg tables can be unregistered: "
+              + catalog
+              + "."
+              + schema
+              + "."
+              + table);
+    }
+    if (dao.getIcebergMetadataLocation() == null) {
+      throw tableNotFound(table);
+    }
   }
 
   private TableInfoDAO deleteTable(
-      String catalog, String schema, String table, Consumer<TableInfoDAO> check) {
+      String catalog,
+      String schema,
+      String table,
+      Consumer<TableInfoDAO> check,
+      boolean shouldCleanUpStorageAndCommits) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          return deleteTable(session, schemaId, table, check);
+          return deleteTable(session, schemaId, table, check, shouldCleanUpStorageAndCommits);
         },
         "Failed to delete table",
         /* readOnly= */ false);
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
-    return deleteTable(session, schemaId, tableName, dao -> {});
+    return deleteTable(
+        session, schemaId, tableName, dao -> {}, /* shouldCleanUpStorageAndCommits= */ true);
   }
 
   private TableInfoDAO deleteTable(
-      Session session, UUID schemaId, String tableName, Consumer<TableInfoDAO> check) {
+      Session session,
+      UUID schemaId,
+      String tableName,
+      Consumer<TableInfoDAO> check,
+      boolean shouldCleanUpStorageAndCommits) {
     TableInfoDAO found = findBySchemaIdAndName(session, schemaId, tableName);
     if (found == null) {
       throw tableNotFound(tableName);
@@ -1324,7 +1424,8 @@ public class TableRepository {
             "table " + tableName,
             () -> tableNotFound(tableName));
     check.accept(tableInfoDAO);
-    if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
+    if (shouldCleanUpStorageAndCommits
+        && TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()
           .create(
