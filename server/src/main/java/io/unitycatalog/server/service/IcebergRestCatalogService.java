@@ -78,6 +78,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
@@ -93,6 +94,7 @@ import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.RESTCatalogProperties;
 import org.apache.iceberg.rest.RESTCatalogProperties.SnapshotMode;
@@ -537,6 +539,16 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           CreateTableRequest request) {
     serverProperties.checkIcebergTableEnabled();
     request.validate();
+    Map<String, String> properties = request.properties() == null ? Map.of() : request.properties();
+    PartitionSpec spec = request.spec() == null ? PartitionSpec.unpartitioned() : request.spec();
+    SortOrder writeOrder =
+        request.writeOrder() == null ? SortOrder.unsorted() : request.writeOrder();
+    // Built before the location is known so that metadata Iceberg rejects leaves no staging row.
+    TableMetadata withoutLocation =
+        rejectInvalidMetadata(
+            () ->
+                TableMetadata.newTableMetadata(
+                    request.schema(), spec, writeOrder, null, properties));
     NormalizedURL location;
     TableType tableType;
     if (request.location() == null || request.location().isEmpty()) {
@@ -557,13 +569,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       LocalStorageLocationValidator.validateLocalLocation(
           location, serverProperties, externalLocationUtils);
     }
-    Map<String, String> properties = request.properties() == null ? Map.of() : request.properties();
-    PartitionSpec spec = request.spec() == null ? PartitionSpec.unpartitioned() : request.spec();
-    SortOrder writeOrder =
-        request.writeOrder() == null ? SortOrder.unsorted() : request.writeOrder();
     TableMetadata tableMetadata =
-        TableMetadata.newTableMetadata(
-            request.schema(), spec, writeOrder, location.toString(), properties);
+        TableMetadata.buildFrom(withoutLocation).setLocation(location.toString()).build();
 
     if (request.stageCreate()) {
       // The permanent table is not registered and no metadata file is written. Managed creates
@@ -684,9 +691,17 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     TableMetadata base = metadataService.readTableMetadata(metadataLocation, tableLocation);
     request.requirements().forEach(requirement -> requirement.validate(base));
 
-    TableMetadata.Builder builder = TableMetadata.buildFrom(base);
-    applyUpdates(request.updates(), builder);
-    TableMetadata updatedWithoutLocation = builder.build();
+    TableMetadata updatedWithoutLocation;
+    try {
+      updatedWithoutLocation = applyUpdates(TableMetadata.buildFrom(base), request);
+    } catch (RetryableValidationException e) {
+      // The update carries table state, such as a sequence number, that another commit has moved
+      // past since the caller read the table. A CommitFailedException makes an Iceberg client
+      // refresh and retry, as Iceberg's reference catalog answers it.
+      throw new CommitFailedException(e, "Validation failed, please retry: %s", e.getMessage());
+    } catch (ValidationException e) {
+      throw invalidMetadata(e);
+    }
     if (updatedWithoutLocation.changes().isEmpty()) {
       // No-op update: requirements were validated, but there is no new metadata file or DAO write.
       return LoadTableResponse.builder()
@@ -760,25 +775,45 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   }
 
   /**
-   * Applies a commit's updates to {@code builder} as Iceberg's reference catalog does. An update
-   * built on table state that another commit has since moved past becomes a {@link
-   * CommitFailedException}, which an Iceberg client answers by refreshing the table and retrying
-   * the commit; a 5xx would instead leave the client unsure whether the commit happened. An update
-   * that does not apply to a table, such as a view update, is a bad request.
+   * Applies a commit's updates to {@code builder} and builds the result. An update that only
+   * applies to a view, such as {@code add-view-version}, is answered as a bad request.
    *
-   * @param updates the updates the commit carries
    * @param builder the builder of the table metadata the commit produces
-   * @throws CommitFailedException if an update carries stale table state
+   * @param request the commit whose updates are applied
+   * @return the table metadata the updates produce
    * @throws BadRequestException if an update does not apply to a table
    */
-  private static void applyUpdates(List<MetadataUpdate> updates, TableMetadata.Builder builder) {
-    try {
-      updates.forEach(update -> update.applyTo(builder));
-    } catch (RetryableValidationException e) {
-      throw new CommitFailedException(e, "Validation failed, please retry: %s", e.getMessage());
-    } catch (UnsupportedOperationException e) {
-      throw new BadRequestException(e, "%s", e.getMessage());
+  private static TableMetadata applyUpdates(
+      TableMetadata.Builder builder, UpdateTableRequest request) {
+    for (MetadataUpdate update : request.updates()) {
+      try {
+        update.applyTo(builder);
+      } catch (UnsupportedOperationException e) {
+        throw new BadRequestException(e, "Invalid table update: %s", e.getMessage());
+      }
     }
+    return builder.build();
+  }
+
+  /**
+   * Builds table metadata from a request, answering metadata Iceberg rejects as a bad request. Only
+   * metadata built from the request goes through this: metadata read from storage that fails
+   * validation is a server error, not the caller's.
+   *
+   * @param build builds the metadata from the request
+   * @return the metadata {@code build} returns
+   * @throws BadRequestException if Iceberg rejects the metadata, with that rejection as its cause
+   */
+  private static TableMetadata rejectInvalidMetadata(Supplier<TableMetadata> build) {
+    try {
+      return build.get();
+    } catch (ValidationException e) {
+      throw invalidMetadata(e);
+    }
+  }
+
+  private static BadRequestException invalidMetadata(ValidationException rejection) {
+    return new BadRequestException(rejection, "Invalid table metadata: %s", rejection.getMessage());
   }
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
@@ -855,8 +890,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     // buildFromEmpty(int) seeds the requested version; the no-arg overload uses the default.
     TableMetadata.Builder builder =
         formatVersion.map(TableMetadata::buildFromEmpty).orElseGet(TableMetadata::buildFromEmpty);
-    applyUpdates(request.updates(), builder);
-    TableMetadata tableMetadata = builder.build();
+    TableMetadata tableMetadata = rejectInvalidMetadata(() -> applyUpdates(builder, request));
     if (tableMetadata.location() == null || tableMetadata.location().isEmpty()) {
       throw new BadRequestException(
           "Create commit for %s must include a set-location update", fullName);

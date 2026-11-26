@@ -36,6 +36,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Flow;
 import java.util.function.Supplier;
+import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SnapshotParser;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.junit.jupiter.api.function.Executable;
@@ -562,5 +564,26 @@ public class TestUtils {
   public static HttpResponse<String> sendRawGet(
       ServerConfig config, String path, Optional<String> jsonBody) throws Exception {
     return sendRaw(config, "GET", path, jsonBody);
+  }
+
+  /**
+   * An Iceberg append snapshot of schema 0, as a writer commits it to a table at {@code
+   * tableLocation}. Its manifest list is never read, so it need not exist.
+   *
+   * @param tableLocation the location of the table the snapshot belongs to
+   * @param id the snapshot id
+   * @param parentId the id of the parent snapshot, or null for a table's first snapshot
+   * @param sequenceNumber the sequence number the writer assigned
+   * @return the snapshot
+   */
+  public static Snapshot icebergAppendSnapshot(
+      String tableLocation, long id, Long parentId, long sequenceNumber) {
+    String parent = parentId == null ? "" : "\"parent-snapshot-id\": " + parentId + ", ";
+    return SnapshotParser.fromJson(
+        """
+        {"snapshot-id": %d, %s"sequence-number": %d, "timestamp-ms": %d, "schema-id": 0,
+         "summary": {"operation": "append"}, "manifest-list": "%s/metadata/snap-%d.avro"}\
+        """
+            .formatted(id, parent, sequenceNumber, id * 1000, tableLocation, id));
   }
 }
