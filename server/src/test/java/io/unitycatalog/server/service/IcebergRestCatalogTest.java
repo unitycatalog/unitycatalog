@@ -53,6 +53,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1379,9 +1380,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
             .withLocation(tableDirectory.toUri().toString())
             .setProperties(
-                Map.of(
-                    TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED, "true",
-                    TableProperties.METADATA_PREVIOUS_VERSIONS_MAX, "1"))
+                new HashMap<>(
+                    Map.of(
+                        TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED, "true",
+                        TableProperties.METADATA_PREVIOUS_VERSIONS_MAX, "1")))
             .build();
     icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, createRequest);
 
