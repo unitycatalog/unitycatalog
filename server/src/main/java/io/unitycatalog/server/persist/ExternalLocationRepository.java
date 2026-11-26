@@ -67,26 +67,40 @@ public class ExternalLocationRepository {
 
   /**
    * Checks that a location can be reached with its credential: an {@code s3_compatible} credential
-   * names S3-compatible storage, so its locations must be {@code s3://} paths.
+   * names S3-compatible storage, so its locations must be {@code s3://} paths, and a {@code
+   * gcp_service_account_key} or {@code gcp_server_identity} credential names Google Cloud Storage,
+   * so its locations must be {@code gs://} paths.
    *
    * @param url the location URL
    * @param credentialDAO the location's storage credential, or null if it was force-deleted
    * @throws BaseException with INVALID_ARGUMENT if the credential cannot reach the URL
    */
   static void validateUrlForCredential(String url, CredentialDAO credentialDAO) {
-    // Only an s3_compatible credential limits its locations' URLs, so a location an earlier release
-    // stored with a URL that no longer parses can still change otherwise; such a URL is not an
-    // s3:// path.
-    if (credentialDAO == null
-        || credentialDAO.getCredentialType() != CredentialType.S3_COMPATIBLE) {
+    // Only s3_compatible, gcp_service_account_key and gcp_server_identity credentials limit their
+    // locations' URLs, so a location an earlier release stored with a URL that no longer parses can
+    // still change otherwise; such a URL is not an s3:// or gs:// path.
+    if (credentialDAO == null) {
       return;
     }
-    ValidationUtils.checkArgument(
-        NormalizedURL.isS3Path(url),
-        "Storage credential '%s' is an s3_compatible credential, so its external locations must be"
-            + " s3:// paths: %s",
-        credentialDAO.getName(),
-        url);
+    if (credentialDAO.getCredentialType() == CredentialType.S3_COMPATIBLE) {
+      ValidationUtils.checkArgument(
+          NormalizedURL.isS3Path(url),
+          "Storage credential '%s' is an s3_compatible credential, so its external locations must"
+              + " be s3:// paths: %s",
+          credentialDAO.getName(),
+          url);
+    } else if (credentialDAO.getCredentialType() == CredentialType.GCP_SERVICE_ACCOUNT_KEY
+        || credentialDAO.getCredentialType() == CredentialType.GCP_SERVER_IDENTITY) {
+      ValidationUtils.checkArgument(
+          NormalizedURL.isGsPath(url),
+          "Storage credential '%s' is a %s credential, so its external locations must be gs://"
+              + " paths: %s",
+          credentialDAO.getName(),
+          credentialDAO.getCredentialType() == CredentialType.GCP_SERVICE_ACCOUNT_KEY
+              ? "gcp_service_account_key"
+              : "gcp_server_identity",
+          url);
+    }
   }
 
   public ExternalLocationInfo addExternalLocation(CreateExternalLocation createExternalLocation) {

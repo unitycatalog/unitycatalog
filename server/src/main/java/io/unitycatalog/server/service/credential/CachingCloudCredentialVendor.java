@@ -13,6 +13,7 @@ import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
 import io.unitycatalog.server.utils.JsonUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -33,12 +34,12 @@ import lombok.SneakyThrows;
  * binding before calling it, so only the cloud vend is skipped; the binding is re-read on every
  * request.
  *
- * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}, plus, for
- * S3-compatible storage, the storage credential's version, its S3 endpoint and region, and whether
- * the server or a client uses it. It is served until {@code min(vendTime + maxAge, credentialExpiry
- * - expiryMargin)}, where {@code vendTime} is read before the cloud call; a static credential with
- * no expiry is bounded by the max age alone. Callers always receive a copy, so they cannot change a
- * cached credential.
+ * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}, plus, for a GCP
+ * service account key, the storage credential's version, and, for S3-compatible storage, the
+ * storage credential's version, its S3 endpoint and region, and whether the server or a client uses
+ * it. It is served until {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where
+ * {@code vendTime} is read before the cloud call; a static credential with no expiry is bounded by
+ * the max age alone. Callers always receive a copy, so they cannot change a cached credential.
  *
  * <p>Each request is recorded as a hit or a miss in {@link StorageCredentialCacheMetrics}.
  */
@@ -55,7 +56,21 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   /** Records each request's cache hit or miss in {@code metrics}. */
   public CachingCloudCredentialVendor(
       ServerProperties serverProperties, UnityCatalogMetrics metrics) {
-    this(serverProperties, Clock.systemUTC(), DEFAULT_EXPIRY_MARGIN, metrics);
+    this(
+        serverProperties,
+        GcpApplicationDefaultCredentials.DEFAULT,
+        Clock.systemUTC(),
+        DEFAULT_EXPIRY_MARGIN,
+        metrics);
+  }
+
+  /** Records each request's cache hit or miss in {@code metrics}. */
+  public CachingCloudCredentialVendor(
+      ServerProperties serverProperties,
+      GcpApplicationDefaultCredentials gcpDefaultCredentials,
+      UnityCatalogMetrics metrics) {
+    this(
+        serverProperties, gcpDefaultCredentials, Clock.systemUTC(), DEFAULT_EXPIRY_MARGIN, metrics);
   }
 
   /**
@@ -67,10 +82,19 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
       Clock clock,
       Duration expiryMargin,
       UnityCatalogMetrics metrics) {
+    this(serverProperties, GcpApplicationDefaultCredentials.DEFAULT, clock, expiryMargin, metrics);
+  }
+
+  private CachingCloudCredentialVendor(
+      ServerProperties serverProperties,
+      GcpApplicationDefaultCredentials gcpDefaultCredentials,
+      Clock clock,
+      Duration expiryMargin,
+      UnityCatalogMetrics metrics) {
     this(
         new AwsCredentialVendor(serverProperties),
         new AzureCredentialVendor(serverProperties),
-        new GcpCredentialVendor(serverProperties),
+        new GcpCredentialVendor(serverProperties, gcpDefaultCredentials),
         serverProperties,
         clock,
         expiryMargin,
@@ -135,20 +159,26 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   /**
    * The resolved credential binding. Changing the role or external ID of a location's credential
    * changes the key, so credentials cached under the previous binding are never reused. An {@code
-   * s3_compatible} credential is identified by the fingerprint of its stored payload instead, which
-   * every change of its key pair, endpoint or role changes. Server and client vends of such a
-   * credential can differ: without {@code assume_role}, the server gets the key pair without an
-   * expiration, and clients get only the endpoint ({@code endpoint-only}) or the key pair with a
-   * refetch time ({@code static-key}). So for every {@code s3_compatible} credential they never
-   * share an entry; {@code server.s3-compatible-storage.static-key-vending} is read once at
-   * startup, so entries never span two modes.
+   * s3_compatible}, {@code gcp_service_account_key} or {@code gcp_server_identity} credential is
+   * identified by its id and the fingerprint of its stored payload instead, which every change of
+   * its key pair, endpoint, role or service account key changes.
+   *
+   * <p>Server and client vends of an {@code s3_compatible} credential can differ: without {@code
+   * assume_role}, the server gets the key pair without an expiration, and clients get only the
+   * endpoint ({@code endpoint-only}) or the key pair with a refetch time ({@code static-key}). So
+   * for every {@code s3_compatible} credential they never share an entry; {@code
+   * server.s3-compatible-storage.static-key-vending} is read once at startup, so entries never span
+   * two modes. A {@code gcp_service_account_key} or {@code gcp_server_identity} credential is
+   * vended the same way to both. Its id and fingerprint are part of the key, so a token cached for
+   * the server's {@code gcs.*} settings cannot satisfy a request that uses it, and entries are
+   * replaced when the credential changes.
    */
   private record Key(
       List<NormalizedURL> locations,
       Set<CredentialContext.Privilege> privileges,
       String roleArn,
       String externalId,
-      Optional<CredentialVersion> s3CompatibleVersion,
+      Optional<CredentialVersion> credentialVersion,
       Optional<String> s3Endpoint,
       Optional<String> s3Region,
       boolean isServerAccess) {
@@ -166,20 +196,30 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
               .getCredentialDAO()
               .filter(dao -> dao.getCredentialType() == CredentialType.AWS_IAM_ROLE)
               .map(CredentialDAO::getAwsIamRoleResponse);
-      Optional<CredentialVersion> s3CompatibleVersion =
+      // The stored credential is the binding, so its id and payload fingerprint are the key.
+      Optional<CredentialVersion> credentialVersion =
+          context
+              .getCredentialDAO()
+              .filter(
+                  dao ->
+                      dao.getCredentialType() == CredentialType.S3_COMPATIBLE
+                          || dao.getCredentialType() == CredentialType.GCP_SERVICE_ACCOUNT_KEY
+                          || dao.getCredentialType() == CredentialType.GCP_SERVER_IDENTITY)
+              .map(dao -> new CredentialVersion(dao.getId(), dao.getCredentialFingerprint()));
+      boolean isS3Compatible =
           context
               .getCredentialDAO()
               .filter(dao -> dao.getCredentialType() == CredentialType.S3_COMPATIBLE)
-              .map(dao -> new CredentialVersion(dao.getId(), dao.getCredentialFingerprint()));
+              .isPresent();
       return new Key(
           context.getLocations(),
           context.getPrivileges(),
           awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(null),
           awsIamRole.map(AwsIamRoleResponse::getExternalId).orElse(null),
-          s3CompatibleVersion,
+          credentialVersion,
           context.getS3Endpoint(),
           context.getS3Region(),
-          context.isServerAccess() && s3CompatibleVersion.isPresent());
+          context.isServerAccess() && isS3Compatible);
     }
   }
 

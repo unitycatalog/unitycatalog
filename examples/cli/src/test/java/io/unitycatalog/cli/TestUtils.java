@@ -38,7 +38,7 @@ public class TestUtils {
     return executeCliCommandForOutput(commandLine);
   }
 
-  private static String executeCliCommandForOutput(List<String> args) {
+  static String executeCliCommandForOutput(List<String> args) {
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     PrintStream oldOut = System.out;
     try {

@@ -10,6 +10,7 @@ import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.time.Instant;
 import java.util.Optional;
@@ -22,9 +23,14 @@ public class CloudCredentialVendor implements AutoCloseable {
   private final GcpCredentialVendor gcpCredentialVendor;
 
   public CloudCredentialVendor(ServerProperties serverProperties) {
+    this(serverProperties, GcpApplicationDefaultCredentials.DEFAULT);
+  }
+
+  public CloudCredentialVendor(
+      ServerProperties serverProperties, GcpApplicationDefaultCredentials gcpDefaultCredentials) {
     this.awsCredentialVendor = new AwsCredentialVendor(serverProperties);
     this.azureCredentialVendor = new AzureCredentialVendor(serverProperties);
-    this.gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
+    this.gcpCredentialVendor = new GcpCredentialVendor(serverProperties, gcpDefaultCredentials);
   }
 
   public CloudCredentialVendor(

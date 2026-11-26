@@ -11,6 +11,9 @@ import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.GcpServerIdentityResponse;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
+import io.unitycatalog.server.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.server.model.S3AssumeRole;
 import io.unitycatalog.server.model.S3CompatibleRequest;
 import io.unitycatalog.server.model.S3CompatibleResponse;
@@ -18,19 +21,25 @@ import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.persist.secret.CredentialSecretStore.SecretContext;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.utils.GcpServiceAccountKeys;
 import io.unitycatalog.server.utils.ValidationUtils;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
@@ -60,12 +69,21 @@ import org.hibernate.annotations.DynamicUpdate;
 @EqualsAndHashCode(callSuper = true)
 public class CredentialDAO extends IdentifiableDAO {
   private static ObjectMapper objectMapper = new ObjectMapper();
-  // Write-only request field of s3_compatible: stored in the JSON next to the S3CompatibleResponse
-  // fields and dropped when the JSON is read back as a response.
+  // Write-only request fields: each is stored, encrypted, in the blob next to the fields of its
+  // response type and dropped when the blob is read back as a response.
   private static final String SECRET_ACCESS_KEY_FIELD = "secret_access_key";
+  private static final String PRIVATE_KEY_FIELD = "private_key";
+  // A Google service account key has an email of under 100 characters, a key id of 40, and an RSA
+  // private key of about 1.7 KB in PEM; these leave room without storing an unbounded value.
+  private static final int MAX_GCP_FIELD_LENGTH = 1024;
+  private static final int MAX_GCP_PRIVATE_KEY_LENGTH = 4096;
+  private static final List<String> WRITE_ONLY_FIELDS =
+      List.of(SECRET_ACCESS_KEY_FIELD, PRIVATE_KEY_FIELD);
 
   public enum CredentialType {
     AWS_IAM_ROLE,
+    GCP_SERVER_IDENTITY,
+    GCP_SERVICE_ACCOUNT_KEY,
     S3_COMPATIBLE,
     // Add other types as necessary
   }
@@ -126,20 +144,34 @@ public class CredentialDAO extends IdentifiableDAO {
             .updatedBy(callerId)
             .build();
     ValidationUtils.checkArgument(
-        createRequest.getAwsIamRole() == null || createRequest.getS3Compatible() == null,
-        "Specify only one of aws_iam_role and s3_compatible.");
+        Stream.of(
+                    createRequest.getAwsIamRole(),
+                    createRequest.getS3Compatible(),
+                    createRequest.getGcpServiceAccountKey(),
+                    createRequest.getGcpServerIdentity())
+                .filter(Objects::nonNull)
+                .count()
+            == 1,
+        "Specify exactly one of aws_iam_role, s3_compatible, gcp_service_account_key and"
+            + " gcp_server_identity.");
     if (createRequest.getAwsIamRole() != null) {
       dao.setAwsIamRole(createRequest.getAwsIamRole());
     } else if (createRequest.getS3Compatible() != null) {
       dao.setS3Compatible(createRequest.getS3Compatible(), secretStore);
+    } else if (createRequest.getGcpServiceAccountKey() != null) {
+      dao.setGcpServiceAccountKey(createRequest.getGcpServiceAccountKey(), secretStore);
     } else {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Specify exactly one of aws_iam_role and s3_compatible.");
+      dao.setGcpServerIdentity(createRequest.getGcpServerIdentity());
     }
     return dao;
   }
 
   public CredentialInfo toCredentialInfo(Optional<String> masterAwsIamRoleArn) {
+    return toCredentialInfo(masterAwsIamRoleArn, Optional.empty());
+  }
+
+  public CredentialInfo toCredentialInfo(
+      Optional<String> masterAwsIamRoleArn, Optional<String> gcpServerIdentityEmail) {
     CredentialInfo credentialInfo =
         new CredentialInfo()
             .id(getId().toString())
@@ -160,7 +192,15 @@ public class CredentialDAO extends IdentifiableDAO {
       case S3_COMPATIBLE:
         credentialInfo.setS3Compatible(getS3CompatibleResponse());
         break;
-      // TODO: support Azure and GCP.
+      case GCP_SERVICE_ACCOUNT_KEY:
+        credentialInfo.setGcpServiceAccountKey(getGcpServiceAccountKeyResponse());
+        break;
+      case GCP_SERVER_IDENTITY:
+        GcpServerIdentityResponse gcpServerIdentity = getGcpServerIdentityResponse();
+        gcpServerIdentityEmail.ifPresent(gcpServerIdentity::setUnityCatalogServiceAccountEmail);
+        credentialInfo.setGcpServerIdentity(gcpServerIdentity);
+        break;
+      // TODO: support Azure.
       default:
         throw new IllegalArgumentException("Unknown credential type: " + credentialType);
     }
@@ -197,7 +237,7 @@ public class CredentialDAO extends IdentifiableDAO {
   /** Parses the stored credential as its API response, without the write-only field. */
   private <T> T parseCredential(CredentialType expectedType, Class<T> clazz) {
     ObjectNode stored = readCredential(expectedType);
-    stored.remove(SECRET_ACCESS_KEY_FIELD);
+    WRITE_ONLY_FIELDS.forEach(stored::remove);
     try {
       return objectMapper.treeToValue(stored, clazz);
     } catch (JsonProcessingException e) {
@@ -249,6 +289,53 @@ public class CredentialDAO extends IdentifiableDAO {
     }
   }
 
+  /**
+   * Validates a {@code gcp_service_account_key} credential and stores it, replacing the stored
+   * credential; its {@code private_key} goes through {@code secretStore}, bound to this
+   * credential's id.
+   *
+   * @param key the credential to store
+   * @param secretStore keeps its {@code private_key}
+   */
+  public void setGcpServiceAccountKey(
+      GcpServiceAccountKeyRequest key, CredentialSecretStore secretStore) {
+    validateGcpServiceAccountKey(key);
+    ObjectNode stored = objectMapper.valueToTree(fromGcpServiceAccountKeyRequest(key));
+    stored.put(
+        PRIVATE_KEY_FIELD, secretStore.store(key.getPrivateKey(), getGcpPrivateKeyContext()));
+    setCredential(CredentialType.GCP_SERVICE_ACCOUNT_KEY, stored);
+  }
+
+  private static void validateGcpServiceAccountKey(GcpServiceAccountKeyRequest key) {
+    ValidationUtils.checkArgument(
+        key.getEmail() != null && !key.getEmail().isBlank(),
+        "gcp_service_account_key.email is required.");
+    ValidationUtils.checkArgument(
+        key.getPrivateKeyId() != null && !key.getPrivateKeyId().isBlank(),
+        "gcp_service_account_key.private_key_id is required.");
+    ValidationUtils.checkArgument(
+        key.getPrivateKey() != null && !key.getPrivateKey().isBlank(),
+        "gcp_service_account_key.private_key is required.");
+    checkLength("email", key.getEmail(), MAX_GCP_FIELD_LENGTH);
+    checkLength("private_key_id", key.getPrivateKeyId(), MAX_GCP_FIELD_LENGTH);
+    checkLength("private_key", key.getPrivateKey(), MAX_GCP_PRIVATE_KEY_LENGTH);
+    try {
+      GcpServiceAccountKeys.credentialsOf(key);
+    } catch (IOException | RuntimeException e) {
+      // The key is not part of the message.
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "gcp_service_account_key.private_key is not a PEM-encoded PKCS#8 private key.");
+    }
+  }
+
+  private static void checkLength(String field, String value, int maxLength) {
+    ValidationUtils.checkArgument(
+        value.length() <= maxLength,
+        String.format(
+            "gcp_service_account_key.%s is longer than %d characters.", field, maxLength));
+  }
+
   private <T> void setCredential(CredentialType type, T inputCredential) {
     credentialType = type;
     try {
@@ -263,6 +350,13 @@ public class CredentialDAO extends IdentifiableDAO {
     return new AwsIamRoleResponse()
         .roleArn(awsIamRoleRequest.getRoleArn())
         .externalId(UUID.randomUUID().toString());
+  }
+
+  private static GcpServiceAccountKeyResponse fromGcpServiceAccountKeyRequest(
+      GcpServiceAccountKeyRequest key) {
+    return new GcpServiceAccountKeyResponse()
+        .email(key.getEmail())
+        .privateKeyId(key.getPrivateKeyId());
   }
 
   private static S3CompatibleResponse fromS3CompatibleRequest(S3CompatibleRequest s3Compatible) {
@@ -280,6 +374,28 @@ public class CredentialDAO extends IdentifiableDAO {
 
   public S3CompatibleResponse getS3CompatibleResponse() {
     return parseCredential(CredentialType.S3_COMPATIBLE, S3CompatibleResponse.class);
+  }
+
+  /**
+   * Validates a {@code gcp_server_identity} credential and stores it. No secret is stored: the
+   * server uses its own Application Default Credentials at vend time.
+   *
+   * @param gcpServerIdentity must be an empty JSON object ({@code {}})
+   */
+  public void setGcpServerIdentity(Object gcpServerIdentity) {
+    ValidationUtils.checkArgument(
+        gcpServerIdentity instanceof Map<?, ?> map && map.isEmpty(),
+        "gcp_server_identity must be an empty JSON object ({}).");
+    setCredential(CredentialType.GCP_SERVER_IDENTITY, objectMapper.createObjectNode());
+  }
+
+  public GcpServiceAccountKeyResponse getGcpServiceAccountKeyResponse() {
+    return parseCredential(
+        CredentialType.GCP_SERVICE_ACCOUNT_KEY, GcpServiceAccountKeyResponse.class);
+  }
+
+  public GcpServerIdentityResponse getGcpServerIdentityResponse() {
+    return parseCredential(CredentialType.GCP_SERVER_IDENTITY, GcpServerIdentityResponse.class);
   }
 
   /**
@@ -314,5 +430,24 @@ public class CredentialDAO extends IdentifiableDAO {
   /** What the {@code secret_access_key} belongs to, for its store. */
   public SecretContext getS3SecretAccessKeyContext() {
     return new SecretContext(getId(), getName(), SECRET_ACCESS_KEY_FIELD);
+  }
+
+  /**
+   * @param secretStore the store that keeps it
+   * @return the write-only {@code private_key} of a {@code gcp_service_account_key} credential
+   */
+  public String getGcpPrivateKey(CredentialSecretStore secretStore) {
+    JsonNode stored = readCredential(CredentialType.GCP_SERVICE_ACCOUNT_KEY).get(PRIVATE_KEY_FIELD);
+    if (stored == null || !stored.isTextual()) {
+      throw new BaseException(
+          ErrorCode.INTERNAL,
+          String.format("Storage credential '%s' has no stored private_key.", getName()));
+    }
+    return secretStore.load(stored.asText(), getGcpPrivateKeyContext());
+  }
+
+  /** What the {@code private_key} belongs to, for its store. */
+  public SecretContext getGcpPrivateKeyContext() {
+    return new SecretContext(getId(), getName(), PRIVATE_KEY_FIELD);
   }
 }

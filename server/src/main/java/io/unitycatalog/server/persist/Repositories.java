@@ -10,6 +10,7 @@ import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendorImpl;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Objects;
 import java.util.Optional;
@@ -106,6 +107,26 @@ public class Repositories {
       UnaryOperator<FileOperations> fileOperationsDecorator,
       UnityCatalogMetrics metrics,
       Optional<Auditor> auditor) {
+    this(
+        sessionFactory,
+        serverProperties,
+        cloudCredentialVendor,
+        fileOperationsDecorator,
+        metrics,
+        auditor,
+        GcpApplicationDefaultCredentials.DEFAULT);
+  }
+
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor,
+      UnaryOperator<FileOperations> fileOperationsDecorator,
+      UnityCatalogMetrics metrics,
+      Optional<Auditor> auditor,
+      GcpApplicationDefaultCredentials gcpDefaultCredentials) {
+    GcpApplicationDefaultCredentials resolvedGcpDefaultCredentials =
+        Objects.requireNonNullElse(gcpDefaultCredentials, GcpApplicationDefaultCredentials.DEFAULT);
     UnityCatalogMetrics resolvedMetrics =
         Objects.requireNonNullElseGet(metrics, UnityCatalogMetrics::noop);
     this.sessionFactory = sessionFactory;
@@ -113,7 +134,9 @@ public class Repositories {
     this.ownedCloudCredentialVendor =
         cloudCredentialVendor != null
             ? Optional.empty()
-            : Optional.of(defaultCloudCredentialVendor(serverProperties, resolvedMetrics));
+            : Optional.of(
+                defaultCloudCredentialVendor(
+                    serverProperties, resolvedGcpDefaultCredentials, resolvedMetrics));
     CloudCredentialVendor resolvedCloudCredentialVendor =
         ownedCloudCredentialVendor.orElse(cloudCredentialVendor);
     // Wrap the vendor before FileOperationsImpl captures it, so the server's own and cleanup vends
@@ -139,7 +162,9 @@ public class Repositories {
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);
     this.functionRepository = new FunctionRepository(this, sessionFactory);
     this.modelRepository = new ModelRepository(this, sessionFactory, serverProperties);
-    this.credentialRepository = new CredentialRepository(this, sessionFactory, serverProperties);
+    this.credentialRepository =
+        new CredentialRepository(
+            this, sessionFactory, serverProperties, resolvedGcpDefaultCredentials);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
     this.deltaCommitRepository =
         new DeltaCommitRepository(sessionFactory, serverProperties, fileOperations);
@@ -153,8 +178,16 @@ public class Repositories {
 
   static CloudCredentialVendor defaultCloudCredentialVendor(
       ServerProperties serverProperties, UnityCatalogMetrics metrics) {
+    return defaultCloudCredentialVendor(
+        serverProperties, GcpApplicationDefaultCredentials.DEFAULT, metrics);
+  }
+
+  static CloudCredentialVendor defaultCloudCredentialVendor(
+      ServerProperties serverProperties,
+      GcpApplicationDefaultCredentials gcpDefaultCredentials,
+      UnityCatalogMetrics metrics) {
     return serverProperties.isStorageCredentialCacheEnabled()
-        ? new CachingCloudCredentialVendor(serverProperties, metrics)
-        : new CloudCredentialVendor(serverProperties);
+        ? new CachingCloudCredentialVendor(serverProperties, gcpDefaultCredentials, metrics)
+        : new CloudCredentialVendor(serverProperties, gcpDefaultCredentials);
   }
 }

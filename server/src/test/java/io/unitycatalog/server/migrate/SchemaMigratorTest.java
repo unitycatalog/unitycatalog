@@ -1029,10 +1029,11 @@ public class SchemaMigratorTest {
   }
 
   /**
-   * {@code fromBaseline}: a 0.7.0 database without schema history, so that steps 2 and 3 are both
-   * pending and step 2 is simulated first; otherwise only step 3 is pending. {@code onOtherTable}:
-   * another application's table has a constraint of the dropped name; PostgreSQL's constraint names
-   * are per table, so that is not the constraint that the step drops.
+   * {@code fromBaseline}: a 0.7.0 database without schema history, so that step 2 and the steps
+   * after it are all pending and step 2 is simulated first; otherwise only the steps after 2 are
+   * pending. {@code onOtherTable}: another application's table has a constraint of the dropped
+   * name; PostgreSQL's constraint names are per table, so that is not the constraint that the step
+   * drops.
    */
   @ParameterizedTest
   @CsvSource({"false, false", "true, false", "false, true", "true, true"})
@@ -1058,7 +1059,9 @@ public class SchemaMigratorTest {
               + " CHECK (x > 0)");
     }
     if (!fromBaseline) {
-      UpgradeTestUtils.execute(db, "DELETE FROM uc_schema_history WHERE version = '3'");
+      // Every step after 2 pending, so that a later step cannot be applied ahead of step 3.
+      UpgradeTestUtils.execute(
+          db, "DELETE FROM uc_schema_history WHERE CAST(version AS INTEGER) > 2");
     }
     String recorded = migrator.recordedVersion();
     ByteArrayOutputStream out = new ByteArrayOutputStream();

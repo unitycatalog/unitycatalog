@@ -96,6 +96,16 @@ public enum CliParams {
       "The STS endpoint to assume s3_role_arn at; defaults to s3_endpoint",
       "s3_sts_endpoint"),
   S3_ROLE_ARN("s3_role_arn", "The role to assume at s3_sts_endpoint", "s3_role_arn"),
+  GCP_SERVICE_ACCOUNT_KEY_FILE(
+      "gcp_service_account_key_file",
+      "The JSON key file of the Google Cloud service account of a gcp_service_account_key"
+          + " credential",
+      "gcp_service_account_key_file"),
+  GCP_SERVER_IDENTITY(
+      "gcp_server_identity",
+      "Use the Unity Catalog server's own Google Cloud Application Default Credentials",
+      "gcp_server_identity",
+      /* hasArg= */ false),
   S3_STS_REGION(
       "s3_sts_region",
       "The region to sign requests to s3_sts_endpoint with; the storage's region if not set",
@@ -107,11 +117,17 @@ public enum CliParams {
   private final String value;
   private final String helpMessage;
   private final String serverParam;
+  private final boolean hasArg;
 
   CliParams(String value, String helpMessage, String serverParam) {
+    this(value, helpMessage, serverParam, /* hasArg= */ true);
+  }
+
+  CliParams(String value, String helpMessage, String serverParam, boolean hasArg) {
     this.value = value;
     this.helpMessage = helpMessage;
     this.serverParam = serverParam;
+    this.hasArg = hasArg;
   }
 
   public String val() {
@@ -124,6 +140,10 @@ public enum CliParams {
 
   public String getServerParam() {
     return serverParam;
+  }
+
+  public boolean hasArg() {
+    return hasArg;
   }
 
   public static CliParams fromString(String text) {

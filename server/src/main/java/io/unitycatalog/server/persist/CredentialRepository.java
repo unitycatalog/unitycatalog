@@ -1,9 +1,11 @@
 package io.unitycatalog.server.persist;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
+import io.unitycatalog.server.model.GcpServerIdentityResponse;
 import io.unitycatalog.server.model.ListCredentialsResponse;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -12,15 +14,18 @@ import io.unitycatalog.server.persist.secret.CredentialSecretStore;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.io.IOException;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -36,6 +41,7 @@ public class CredentialRepository {
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
   private final CredentialSecretStore secretStore;
+  private final GcpApplicationDefaultCredentials gcpDefaultCredentials;
   private static final PagedListingHelper<CredentialDAO> LISTING_HELPER =
       new PagedListingHelper<>(CredentialDAO.class);
 
@@ -45,7 +51,21 @@ public class CredentialRepository {
         repositories,
         sessionFactory,
         serverProperties,
-        CredentialSecretStore.from(serverProperties));
+        CredentialSecretStore.from(serverProperties),
+        GcpApplicationDefaultCredentials.DEFAULT);
+  }
+
+  public CredentialRepository(
+      Repositories repositories,
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      GcpApplicationDefaultCredentials gcpDefaultCredentials) {
+    this(
+        repositories,
+        sessionFactory,
+        serverProperties,
+        CredentialSecretStore.from(serverProperties),
+        gcpDefaultCredentials);
   }
 
   /**
@@ -56,10 +76,30 @@ public class CredentialRepository {
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CredentialSecretStore secretStore) {
+    this(
+        repositories,
+        sessionFactory,
+        serverProperties,
+        secretStore,
+        GcpApplicationDefaultCredentials.DEFAULT);
+  }
+
+  /**
+   * @param secretStore keeps the secret values of credentials
+   * @param gcpDefaultCredentials loads the server's GCP Application Default Credentials
+   */
+  CredentialRepository(
+      Repositories repositories,
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CredentialSecretStore secretStore,
+      GcpApplicationDefaultCredentials gcpDefaultCredentials) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
     this.secretStore = secretStore;
+    this.gcpDefaultCredentials =
+        Objects.requireNonNullElse(gcpDefaultCredentials, GcpApplicationDefaultCredentials.DEFAULT);
   }
 
   public CredentialInfo addCredential(CreateCredentialRequest createCredentialRequest) {
@@ -69,6 +109,11 @@ public class CredentialRepository {
     }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     CredentialDAO dao = CredentialDAO.from(createCredentialRequest, callerId, secretStore);
+    // Validate ADC and resolve the server's service account email before opening a DB transaction.
+    Optional<String> gcpServerIdentityEmail =
+        dao.getCredentialType() == CredentialDAO.CredentialType.GCP_SERVER_IDENTITY
+            ? checkAndResolveGcpServerIdentityEmail()
+            : Optional.empty();
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -80,25 +125,29 @@ public class CredentialRepository {
           session.persist(dao);
           repositories.getOwnershipRepository().initializeOwner(session, dao.getId(), callerId);
           LOGGER.info("Added storage credential: {}", dao.getName());
-          return dao.toCredentialInfo(getAwsS3MasterRoleArn());
+          return dao.toCredentialInfo(getAwsS3MasterRoleArn(), gcpServerIdentityEmail);
         },
         "Failed to add storage credential",
         /* readOnly= */ false);
   }
 
   public CredentialInfo getCredential(String name) {
-    return TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          CredentialDAO dao = getCredentialDAO(session, name);
-          if (dao == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
-          }
-          LOGGER.info("Retrieved storage credential: {}", name);
-          return dao.toCredentialInfo(getAwsS3MasterRoleArn());
-        },
-        "Failed to get storage credential",
-        /* readOnly= */ true);
+    CredentialInfo info =
+        TransactionManager.executeWithTransaction(
+            sessionFactory,
+            session -> {
+              CredentialDAO dao = getCredentialDAO(session, name);
+              if (dao == null) {
+                throw new BaseException(
+                    ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
+              }
+              LOGGER.info("Retrieved storage credential: {}", name);
+              return dao.toCredentialInfo(getAwsS3MasterRoleArn());
+            },
+            "Failed to get storage credential",
+            /* readOnly= */ true);
+    populateGcpServerIdentityEmail(List.of(info));
+    return info;
   }
 
   /** Returns null if the credential no longer exists, e.g. after a force delete. */
@@ -129,25 +178,31 @@ public class CredentialRepository {
 
   public ListCredentialsResponse listCredentials(
       Optional<Integer> maxResults, Optional<String> pageToken) {
-    return TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          List<CredentialDAO> daoList =
-              LISTING_HELPER.listEntity(session, maxResults, pageToken, /* parentEntityId= */ null);
-          String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
-          List<CredentialInfo> results = new ArrayList<>();
-          for (CredentialDAO dao : daoList) {
-            try {
-              results.add(dao.toCredentialInfo(getAwsS3MasterRoleArn()));
-            } catch (Exception e) {
-              // Skip credentials that can't be processed
-              LOGGER.error("Failed to process credential: {}", dao.getName(), e);
-            }
-          }
-          return new ListCredentialsResponse().credentials(results).nextPageToken(nextPageToken);
-        },
-        "Failed to list storage credentials",
-        /* readOnly= */ true);
+    ListCredentialsResponse response =
+        TransactionManager.executeWithTransaction(
+            sessionFactory,
+            session -> {
+              List<CredentialDAO> daoList =
+                  LISTING_HELPER.listEntity(
+                      session, maxResults, pageToken, /* parentEntityId= */ null);
+              String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
+              List<CredentialInfo> results = new ArrayList<>();
+              for (CredentialDAO dao : daoList) {
+                try {
+                  results.add(dao.toCredentialInfo(getAwsS3MasterRoleArn()));
+                } catch (Exception e) {
+                  // Skip credentials that can't be processed
+                  LOGGER.error("Failed to process credential: {}", dao.getName(), e);
+                }
+              }
+              return new ListCredentialsResponse()
+                  .credentials(results)
+                  .nextPageToken(nextPageToken);
+            },
+            "Failed to list storage credentials",
+            /* readOnly= */ true);
+    populateGcpServerIdentityEmail(response.getCredentials());
+    return response;
   }
 
   public CredentialInfo updateCredential(String name, UpdateCredentialRequest updateCredential) {
@@ -163,56 +218,82 @@ public class CredentialRepository {
       serverProperties.checkS3CompatibleStorageEnabled();
     }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    return TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          CredentialDAO existingCredential = getCredentialDAOForUpdate(session, name);
-          if (existingCredential == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
-          }
+    CredentialInfo updated =
+        TransactionManager.executeWithTransaction(
+            sessionFactory,
+            session -> {
+              CredentialDAO existingCredential = getCredentialDAOForUpdate(session, name);
+              if (existingCredential == null) {
+                throw new BaseException(
+                    ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
+              }
 
-          if (updateCredential.getOwner() != null) {
-            existingCredential.setOwner(
-                repositories
-                    .getOwnershipRepository()
-                    .updateOwner(
-                        session, existingCredential, updateCredential.getOwner(), beforeCommit));
-          }
+              if (updateCredential.getOwner() != null) {
+                existingCredential.setOwner(
+                    repositories
+                        .getOwnershipRepository()
+                        .updateOwner(
+                            session,
+                            existingCredential,
+                            updateCredential.getOwner(),
+                            beforeCommit));
+              }
 
-          // Update fields if provided
-          if (updateCredential.getNewName() != null) {
-            ValidationUtils.validateSqlObjectName(updateCredential.getNewName());
-            if (getCredentialDAO(session, updateCredential.getNewName()) != null) {
-              throw new BaseException(
-                  ErrorCode.STORAGE_CREDENTIAL_ALREADY_EXISTS,
-                  "Storage credential already exists: " + updateCredential.getNewName());
-            }
-            existingCredential.setName(updateCredential.getNewName());
-          }
-          // Every part of a credential can change while external locations use it, including its
-          // type and S3 endpoint, as long as each location stays reachable with it (s3:// only for
-          // s3_compatible); the paths under those locations then reach storage the new way.
-          if (updateCredential.getAwsIamRole() != null) {
-            existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
-          } else if (updateCredential.getS3Compatible() != null) {
-            existingCredential.setS3Compatible(updateCredential.getS3Compatible(), secretStore);
-            validateLocationsAreS3Paths(session, existingCredential);
-          }
-          if (updateCredential.getComment() != null) {
-            existingCredential.setComment(updateCredential.getComment());
-          }
-          existingCredential.setUpdatedAt(new Date());
-          existingCredential.setUpdatedBy(callerId);
+              // Update fields if provided
+              if (updateCredential.getNewName() != null) {
+                ValidationUtils.validateSqlObjectName(updateCredential.getNewName());
+                if (getCredentialDAO(session, updateCredential.getNewName()) != null) {
+                  throw new BaseException(
+                      ErrorCode.STORAGE_CREDENTIAL_ALREADY_EXISTS,
+                      "Storage credential already exists: " + updateCredential.getNewName());
+                }
+                existingCredential.setName(updateCredential.getNewName());
+              }
+              // A gcp_service_account_key or gcp_server_identity credential reaches only gs://
+              // paths, so it cannot become another type; the update API has no field to change a
+              // GCP credential.
+              if (existingCredential.getCredentialType()
+                      == CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY
+                  || existingCredential.getCredentialType()
+                      == CredentialDAO.CredentialType.GCP_SERVER_IDENTITY) {
+                ValidationUtils.checkArgument(
+                    updateCredential.getAwsIamRole() == null
+                        && updateCredential.getS3Compatible() == null,
+                    "Storage credential '%s' is a %s credential, so aws_iam_role and s3_compatible"
+                        + " cannot be set on it.",
+                    name,
+                    existingCredential.getCredentialType()
+                            == CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY
+                        ? "gcp_service_account_key"
+                        : "gcp_server_identity");
+              }
+              // An aws_iam_role or s3_compatible credential can change in every part while external
+              // locations use it, including its type and S3 endpoint, as long as each location
+              // stays reachable with it (s3:// only for s3_compatible); the paths under those
+              // locations then reach storage the new way.
+              if (updateCredential.getAwsIamRole() != null) {
+                existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
+              } else if (updateCredential.getS3Compatible() != null) {
+                existingCredential.setS3Compatible(updateCredential.getS3Compatible(), secretStore);
+                validateLocationsAreS3Paths(session, existingCredential);
+              }
+              if (updateCredential.getComment() != null) {
+                existingCredential.setComment(updateCredential.getComment());
+              }
+              existingCredential.setUpdatedAt(new Date());
+              existingCredential.setUpdatedBy(callerId);
 
-          session.merge(existingCredential);
-          LOGGER.info("Updated storage credential: {}", name);
-          return existingCredential.toCredentialInfo(getAwsS3MasterRoleArn());
-        },
-        "Failed to update storage credential",
-        /* readOnly= */ false,
-        // Reads after the row lock see what was committed while it waited (see
-        // RepositoryUtils#getForUpdateByName).
-        Optional.of(Connection.TRANSACTION_READ_COMMITTED));
+              session.merge(existingCredential);
+              LOGGER.info("Updated storage credential: {}", name);
+              return existingCredential.toCredentialInfo(getAwsS3MasterRoleArn());
+            },
+            "Failed to update storage credential",
+            /* readOnly= */ false,
+            // Reads after the row lock see what was committed while it waited (see
+            // RepositoryUtils#getForUpdateByName).
+            Optional.of(Connection.TRANSACTION_READ_COMMITTED));
+    populateGcpServerIdentityEmail(List.of(updated));
+    return updated;
   }
 
   public UUID deleteCredential(String name, boolean force) {
@@ -249,8 +330,8 @@ public class CredentialRepository {
   }
 
   /**
-   * Reads the stored secret of every {@code s3_compatible} credential, so that a missing or changed
-   * {@code server.credential-encryption-key} shows at startup rather than on the first request.
+   * Reads the stored secret of every credential that has one, so that a missing or changed {@code
+   * server.credential-encryption-key} shows at startup rather than on the first request.
    *
    * @return the name of each credential whose secret cannot be read, with the failure
    */
@@ -261,11 +342,19 @@ public class CredentialRepository {
           Map<String, RuntimeException> unreadable = new TreeMap<>();
           Query<CredentialDAO> query =
               session.createQuery(
-                  "FROM CredentialDAO WHERE credentialType = :type", CredentialDAO.class);
-          query.setParameter("type", CredentialDAO.CredentialType.S3_COMPATIBLE);
+                  "FROM CredentialDAO WHERE credentialType IN :types", CredentialDAO.class);
+          query.setParameterList(
+              "types",
+              List.of(
+                  CredentialDAO.CredentialType.S3_COMPATIBLE,
+                  CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY));
           for (CredentialDAO dao : query.list()) {
             try {
-              dao.getS3SecretAccessKey(secretStore);
+              if (dao.getCredentialType() == CredentialDAO.CredentialType.S3_COMPATIBLE) {
+                dao.getS3SecretAccessKey(secretStore);
+              } else {
+                dao.getGcpPrivateKey(secretStore);
+              }
             } catch (RuntimeException e) {
               unreadable.put(dao.getName(), e);
             }
@@ -309,5 +398,98 @@ public class CredentialRepository {
 
   private Optional<String> getAwsS3MasterRoleArn() {
     return Optional.ofNullable(serverProperties.get(ServerProperties.Property.AWS_MASTER_ROLE_ARN));
+  }
+
+  /**
+   * Verifies that the server has usable Google Cloud Application Default Credentials and returns
+   * its service account email when the credentials identify one.
+   */
+  private Optional<String> checkAndResolveGcpServerIdentityEmail() {
+    GoogleCredentials credentials;
+    try {
+      credentials = gcpDefaultCredentials.load();
+    } catch (IOException | RuntimeException e) {
+      LOGGER.warn(
+          "Cannot create gcp_server_identity credential: Google Cloud Application Default"
+              + " Credentials are not available.",
+          e);
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "The server has no usable Google Cloud Application Default Credentials. Configure"
+              + " Application Default Credentials (for example, GKE Workload Identity or a"
+              + " Compute Engine service account) on the server before creating a"
+              + " gcp_server_identity credential.",
+          e);
+    }
+    try {
+      return GcpApplicationDefaultCredentials.serviceAccountEmail(credentials);
+    } catch (RuntimeException e) {
+      if (isPermanentMetadataIdentityFailure(e)) {
+        LOGGER.warn(
+            "Cannot create gcp_server_identity credential: server metadata service rejected"
+                + " service account lookup.",
+            e);
+        throw new BaseException(
+            ErrorCode.FAILED_PRECONDITION,
+            "The server has no usable Google Cloud Application Default Credentials. Configure"
+                + " Application Default Credentials (for example, GKE Workload Identity or a"
+                + " Compute Engine service account) on the server before creating a"
+                + " gcp_server_identity credential.",
+            e);
+      }
+      LOGGER.warn(
+          "Cannot create gcp_server_identity credential: failed to resolve server service account"
+              + " email.",
+          e);
+      throw new BaseException(
+          ErrorCode.UNAVAILABLE,
+          "Could not verify the server's Google Cloud identity. Try again.",
+          e);
+    }
+  }
+
+  private static boolean isPermanentMetadataIdentityFailure(Throwable failure) {
+    Throwable cause = failure;
+    for (int depth = 0; cause != null && depth < 10; depth++, cause = cause.getCause()) {
+      String message = cause.getMessage();
+      if (message != null
+          && (message.contains("Error code 404 trying to get service accounts")
+              || message.contains("Error code 401 trying to get service accounts")
+              || message.contains("Error code 403 trying to get service accounts"))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Populates {@code unity_catalog_service_account_email} on any {@code gcp_server_identity}
+   * responses, making at most one Application Default Credentials lookup outside any database
+   * transaction. If ADC is unavailable during reads or updates, logs a warning and leaves the email
+   * unset so existing credentials stay readable and manageable.
+   */
+  private void populateGcpServerIdentityEmail(List<CredentialInfo> credentials) {
+    List<GcpServerIdentityResponse> serverIdentities =
+        credentials.stream()
+            .map(CredentialInfo::getGcpServerIdentity)
+            .filter(Objects::nonNull)
+            .toList();
+    if (serverIdentities.isEmpty()) {
+      return;
+    }
+    try {
+      GoogleCredentials defaultCredentials = gcpDefaultCredentials.load();
+      GcpApplicationDefaultCredentials.serviceAccountEmail(defaultCredentials)
+          .ifPresent(
+              email ->
+                  serverIdentities.forEach(
+                      response -> response.setUnityCatalogServiceAccountEmail(email)));
+    } catch (IOException | RuntimeException e) {
+      LOGGER.warn(
+          "Could not resolve Google Cloud service account email from Application Default"
+              + " Credentials; returning gcp_server_identity without"
+              + " unity_catalog_service_account_email.",
+          e);
+    }
   }
 }

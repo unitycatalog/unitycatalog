@@ -10,6 +10,7 @@ import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.utils.GcpApplicationDefaultCredentials;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
@@ -44,6 +45,7 @@ public abstract class BaseServerTest {
   @TempDatabase protected TestDatabase testDatabase;
 
   protected CloudCredentialVendor cloudCredentialVendor;
+  protected GcpApplicationDefaultCredentials gcpApplicationDefaultCredentials;
 
   // All test data should be written under this directory. It will be cleaned up.
   @TempDir protected Path testDirectoryRoot;
@@ -175,6 +177,7 @@ public abstract class BaseServerTest {
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
+              .gcpApplicationDefaultCredentials(gcpApplicationDefaultCredentials)
               .fileOperationsDecorator(this::decorateFileOperations)
               .configurationFolder(configurationFolder);
       if (observabilityEnabled) {
