@@ -69,7 +69,9 @@ public enum CliParams {
   FORCE("force", "To force the operation even if it would otherwise be refused", "force"),
   SECURABLE_TYPE("securable_type", "The type of the securable", "securable_type"),
   PRINCIPAL(
-      "principal", "The email of the user whose permissions are changed or listed", "principal"),
+      "principal",
+      "The principal (a user's email) whose permissions are changed or listed",
+      "principal"),
   PRIVILEGE("privilege", "The privilege to grant or revoke", "privilege"),
   ID("id", "The unique id of the user", "id"),
   EXTERNAL_ID("external_id", "The identity provider's id for the user", "externalId"),

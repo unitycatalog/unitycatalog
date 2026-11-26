@@ -238,9 +238,16 @@ public class PermissionService implements UnityCatalogRestService {
         canReadAllGrants
             ? authorizer.listAuthorizations(resourceId)
             : Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
+    // Clients that cannot omit a query parameter send it empty, so empty means no filter.
+    Optional<String> principalFilter = principal.filter(email -> !email.isEmpty());
+    Optional<UUID> principalFilterId = principalFilter.flatMap(userRepository::findUserIdByEmail);
 
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
+            .filter(
+                entry ->
+                    principalFilter.isEmpty()
+                        || principalFilterId.filter(entry.getKey()::equals).isPresent())
             .map(
                 entry -> {
                   List<Privilege> privileges =
@@ -255,8 +262,6 @@ public class PermissionService implements UnityCatalogRestService {
                       .privileges(privileges);
                 })
             .filter(assignment -> !assignment.getPrivileges().isEmpty())
-            .filter(
-                assignment -> principal.map(p -> p.equals(assignment.getPrincipal())).orElse(true))
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));

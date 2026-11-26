@@ -71,26 +71,12 @@ inference, temporary credentials, writes, or permission changes.
 ## Viewing Grants
 
 `permission get` lists the privileges granted directly on an object. Add `--principal` to list only
-one user's grants:
+one principal's grants:
 
 ```sh
 bin/uc --auth_token $(cat etc/conf/token.txt) permission get --securable_type catalog --name unity --principal bobbie@rocinante
 ```
 
-`--principal` must match the user's email exactly as the result shows it. An email with no grants
-on the object, or one that is not a user, returns an empty list.
-
-These users see every user's grants on an object:
-
-- The metastore admin, and users with `READ METADATA` on the metastore. `MANAGE` cannot be granted
-  on the metastore.
-- Owners of the object, or of the schema or catalog that contains it.
-- For a catalog, external location, or storage credential: users with `MANAGE` or `READ METADATA`
-  on it.
-- For a schema: users with `MANAGE` or `READ METADATA` on its catalog, or on the schema together
-  with `USE CATALOG`.
-- For a table, function, volume, or registered model: users with `MANAGE` or `READ METADATA` on its
-  catalog, on its schema together with `USE CATALOG`, or on the object together with `USE CATALOG`
-  and `USE SCHEMA`.
-
-Other users see only their own grants, so for them any other email returns an empty list.
+`--principal` names the principal the same way `permission create` does. A principal with no grants
+on the object gets an empty list, and so does anyone else when the caller can only see their own
+grants.

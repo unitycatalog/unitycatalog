@@ -14,6 +14,7 @@ import static io.unitycatalog.server.persist.model.Privileges.OWNER;
 import static io.unitycatalog.server.persist.model.Privileges.SELECT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,9 +57,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.EnumSource;
 
 public class PermissionServiceHierarchyTest {
   private static final String ALICE = "alice@example.com";
@@ -115,6 +116,8 @@ public class PermissionServiceHierarchyTest {
     when(users.findPrincipalId()).thenReturn(principalId);
     when(users.getUser(principalId.toString())).thenReturn(new User().email(ALICE));
     when(users.getUser(otherPrincipalId.toString())).thenReturn(new User().email(BOB));
+    when(users.findUserIdByEmail(ALICE)).thenReturn(Optional.of(principalId));
+    when(users.findUserIdByEmail(BOB)).thenReturn(Optional.of(otherPrincipalId));
     when(metastores.getMetastoreId()).thenReturn(resources.get(METASTORE));
     when(catalogs.getCatalog(names.get(CATALOG))).thenReturn(new CatalogInfo().id(id(CATALOG)));
     when(schemas.getSchema(names.get(SCHEMA))).thenReturn(new SchemaInfo().schemaId(id(SCHEMA)));
@@ -171,19 +174,27 @@ public class PermissionServiceHierarchyTest {
     verify(authorizer).authorize(principalId, ownerType, resources.get(ownerType), OWNER);
   }
 
-  @ParameterizedTest
-  @EnumSource(SecurableType.class)
-  public void principalParameterFiltersEverySecurableType(SecurableType type) throws Exception {
-    stubGrantsAndCallerVisibility(type, /* canReadAllGrants= */ true);
+  @Test
+  public void principalParameterFiltersEverySecurableType() throws Exception {
+    Arrays.stream(SecurableType.values())
+        .forEach(type -> stubGrantsAndCallerVisibility(type, /* canReadAllGrants= */ true));
 
     Server server = Server.builder().http(0).annotatedService("/permissions", service).build();
     server.start().join();
     try {
       WebClient client = WebClient.of("http://127.0.0.1:" + server.activeLocalPort());
-      String path = "/permissions/" + type.getValue() + "/" + names.get(type);
-      assertThat(getPermissions(client, path + "?principal=" + BOB)).containsExactly(BOB_MODIFY);
-      assertThat(getPermissions(client, path + "?principal=")).isEmpty();
-      assertThat(getPermissions(client, path)).containsExactlyInAnyOrder(ALICE_SELECT, BOB_MODIFY);
+      for (SecurableType type : SecurableType.values()) {
+        String path = "/permissions/" + type.getValue() + "/" + names.get(type);
+        assertThat(getPermissions(client, path + "?principal=" + BOB))
+            .as(path)
+            .containsExactly(BOB_MODIFY);
+        assertThat(getPermissions(client, path + "?principal="))
+            .as(path)
+            .containsExactlyInAnyOrder(ALICE_SELECT, BOB_MODIFY);
+        assertThat(getPermissions(client, path))
+            .as(path)
+            .containsExactlyInAnyOrder(ALICE_SELECT, BOB_MODIFY);
+      }
     } finally {
       server.stop().join();
     }
@@ -193,27 +204,18 @@ public class PermissionServiceHierarchyTest {
   @CsvSource({
     "true, alice@example.com, alice@example.com",
     "true, bob@example.com, bob@example.com",
-    "true, BOB@example.com,",
-    "true, carol@example.com,",
-    "true, '',",
+    "true, carol@example.com, ''",
+    "true, '', alice@example.com bob@example.com",
     "false, alice@example.com, alice@example.com",
-    "false, bob@example.com,",
-    "false, carol@example.com,"
+    "false, bob@example.com, ''",
+    "false, carol@example.com, ''",
+    "false, '', alice@example.com"
   })
   public void principalParameterOnlyNarrowsTheGrantsTheCallerCanSee(
-      boolean canReadAllGrants, String principal, String expectedEmail) throws Exception {
+      boolean canReadAllGrants, String principal, String expectedEmails) throws Exception {
     stubGrantsAndCallerVisibility(CATALOG, canReadAllGrants);
-    UUID userWithoutEmail = UUID.randomUUID();
-    when(users.getUser(userWithoutEmail.toString())).thenReturn(new User());
-    when(authorizer.listAuthorizations(resources.get(CATALOG)))
-        .thenReturn(
-            Map.of(
-                principalId,
-                List.of(SELECT),
-                otherPrincipalId,
-                List.of(MODIFY),
-                userWithoutEmail,
-                List.of(SELECT)));
+    List<String> expected =
+        Arrays.stream(expectedEmails.split(" ")).filter(e -> !e.isEmpty()).toList();
 
     HttpResponse response =
         service.getCatalogAuthorization(names.get(CATALOG), Optional.of(principal));
@@ -222,10 +224,11 @@ public class PermissionServiceHierarchyTest {
             .readValue(response.aggregate().join().contentUtf8(), PermissionsList.class);
 
     assertThat(permissions.getPrivilegeAssignments())
-        .containsExactlyElementsOf(
-            Optional.ofNullable(expectedEmail)
-                .map(email -> List.of(ASSIGNMENTS_BY_EMAIL.get(email)))
-                .orElse(List.of()));
+        .containsExactlyInAnyOrderElementsOf(
+            expected.stream().map(ASSIGNMENTS_BY_EMAIL::get).toList());
+    Map.of(ALICE, principalId, BOB, otherPrincipalId).entrySet().stream()
+        .filter(user -> !expected.contains(user.getKey()))
+        .forEach(user -> verify(users, never()).getUser(user.getValue().toString()));
   }
 
   private void stubGrantsAndCallerVisibility(SecurableType type, boolean canReadAllGrants) {
