@@ -44,7 +44,6 @@ import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.JsonUtils;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -176,18 +175,13 @@ public class PermissionServiceGrantValidationTest {
                     + ", {'principal': 'typo@example.com', 'add': ['READ METADATA']}]}",
                 ErrorCode.NOT_FOUND,
                 "User not found: typo@example.com"));
-    return Arrays.stream(SecurableType.values())
-        .flatMap(
-            type ->
-                bodies.stream()
-                    .map(body -> Arguments.of(type, body.get(0), body.get(1), body.get(2))));
+    return bodies.stream().map(body -> Arguments.of(body.toArray()));
   }
 
   @ParameterizedTest
   @MethodSource("rejectedBodies")
-  public void rejectedUpdateWritesNoGrant(
-      SecurableType type, String json, ErrorCode errorCode, String message) {
-    Throwable thrown = catchThrowable(() -> update(type, json));
+  public void rejectedUpdateWritesNoGrant(String json, ErrorCode errorCode, String message) {
+    Throwable thrown = catchThrowable(() -> update(SecurableType.CATALOG, json));
 
     verify(authorizer, never()).grantAuthorization(any(), any(), any());
     verify(authorizer, never()).revokeAuthorization(any(), any(), any());
@@ -200,7 +194,17 @@ public class PermissionServiceGrantValidationTest {
 
   @ParameterizedTest
   @EnumSource(SecurableType.class)
-  public void updateAppliesEveryChangeInOrder(SecurableType type) throws Exception {
+  public void everyHandlerValidatesThenAppliesChangesInOrder(SecurableType type) throws Exception {
+    assertThatThrownBy(
+            () ->
+                update(
+                    type,
+                    "{'changes': ["
+                        + GRANT_ALICE
+                        + ", {'principal': 'typo@example.com', 'add': ['READ METADATA']}]}"))
+        .hasMessage("User not found: typo@example.com");
+    verify(authorizer, never()).grantAuthorization(any(), any(), any());
+
     when(authorizer.listAuthorizations(resourceId))
         .thenReturn(
             Map.of(
