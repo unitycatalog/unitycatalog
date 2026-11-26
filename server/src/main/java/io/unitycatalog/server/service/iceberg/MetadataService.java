@@ -8,13 +8,20 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadata.MetadataLogEntry;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
+import org.apache.iceberg.io.BulkDeletionFailureException;
 import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.SupportsBulkOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,6 +99,90 @@ public class MetadataService {
       // log at warn so a persistent cleanup failure (e.g. a credential or permission problem) stays
       // diagnosable rather than being silently swallowed.
       LOGGER.warn("Best-effort cleanup of Iceberg metadata file {} failed", metadataLocation, e);
+    }
+  }
+
+  /**
+   * Best-effort deletion of the metadata files a commit dropped from the table's metadata log, when
+   * the committed metadata sets {@link TableProperties#METADATA_DELETE_AFTER_COMMIT_ENABLED}. A
+   * REST client leaves this to the catalog. Only Iceberg metadata files under the persisted table
+   * location are deleted, since the log comes from metadata files this server may not have written.
+   *
+   * @param base the metadata the commit replaced
+   * @param committed the metadata the commit stored
+   * @param persistedTableLocation the table location every deleted file must be under
+   */
+  public void deleteRemovedMetadataFiles(
+      TableMetadata base, TableMetadata committed, NormalizedURL persistedTableLocation) {
+    if (!committed.propertyAsBoolean(
+        TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED,
+        TableProperties.METADATA_DELETE_AFTER_COMMIT_ENABLED_DEFAULT)) {
+      return;
+    }
+    Set<String> kept =
+        committed.previousFiles().stream().map(MetadataLogEntry::file).collect(Collectors.toSet());
+    Map<Boolean, List<String>> removedByDeletable =
+        base.previousFiles().stream()
+            .map(MetadataLogEntry::file)
+            .filter(file -> !kept.contains(file))
+            .collect(
+                Collectors.partitioningBy(
+                    file -> isMetadataFileUnder(file, persistedTableLocation)));
+    List<String> skipped = removedByDeletable.get(false);
+    if (!skipped.isEmpty()) {
+      LOGGER.warn(
+          "Keeping metadata log entries {} that are not Iceberg metadata files under {}",
+          skipped,
+          persistedTableLocation);
+    }
+    List<String> deletable =
+        removedByDeletable.get(true).stream()
+            .map(file -> NormalizedURL.from(file).toString())
+            .toList();
+    if (deletable.isEmpty()) {
+      return;
+    }
+    try (FileIO fileIO =
+        fileOperations.getFileIO(persistedTableLocation, CredentialContext.READ_WRITE)) {
+      deleteFiles(fileIO, deletable);
+    } catch (RuntimeException e) {
+      LOGGER.warn("Failed to delete Iceberg metadata files from {} after a commit", deletable, e);
+    }
+  }
+
+  private static boolean isMetadataFileUnder(String file, NormalizedURL persistedTableLocation) {
+    try {
+      NormalizedURL location = NormalizedURL.from(file);
+      validateMetadataLocation(location, persistedTableLocation);
+      return parseMetadataVersion(location) >= 0;
+    } catch (BaseException | IllegalArgumentException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Deletes {@code files} in one bulk request when the FileIO supports it, as Iceberg does.
+   *
+   * @throws BulkDeletionFailureException if any file could not be deleted
+   */
+  private static void deleteFiles(FileIO fileIO, List<String> files) {
+    if (fileIO instanceof SupportsBulkOperations bulkOperations) {
+      bulkOperations.deleteFiles(files);
+      return;
+    }
+    long failures = files.stream().filter(file -> !tryDeleteFile(fileIO, file)).count();
+    if (failures > 0) {
+      throw new BulkDeletionFailureException((int) failures);
+    }
+  }
+
+  private static boolean tryDeleteFile(FileIO fileIO, String file) {
+    try {
+      fileIO.deleteFile(file);
+      return true;
+    } catch (RuntimeException e) {
+      LOGGER.debug("Failed to delete Iceberg metadata file {}", file, e);
+      return false;
     }
   }
 
