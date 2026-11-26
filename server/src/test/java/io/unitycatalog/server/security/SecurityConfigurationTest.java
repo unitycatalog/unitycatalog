@@ -63,7 +63,9 @@ class SecurityConfigurationTest {
     "encrypted PKCS #1, is encrypted",
     "certificate only, No PRIVATE KEY PEM block",
     "garbage bytes, Cannot read the RSA private key",
-    "EC key, expected an unencrypted RSA private key"
+    "EC key, expected an unencrypted RSA private key",
+    "512-bit key, is 512 bits",
+    "512-bit key in PEM, is 512 bits"
   })
   void rejectsAnUnusablePrivateKey(String problem, String message) throws Exception {
     byte[] der = newKeyPair().getPrivate().getEncoded();
@@ -82,6 +84,18 @@ class SecurityConfigurationTest {
         ec.initialize(256);
         Files.writeString(
             privateKey, pem("PRIVATE" + " KEY", ec.generateKeyPair().getPrivate().getEncoded()));
+      }
+      case "512-bit key" -> {
+        // RS512 cannot sign with a key this small, so loading it must fail, not the first token.
+        KeyPairGenerator small = KeyPairGenerator.getInstance("RSA");
+        small.initialize(512);
+        Files.write(privateKey, small.generateKeyPair().getPrivate().getEncoded());
+      }
+      case "512-bit key in PEM" -> {
+        KeyPairGenerator small = KeyPairGenerator.getInstance("RSA");
+        small.initialize(512);
+        Files.writeString(
+            privateKey, pem("PRIVATE" + " KEY", small.generateKeyPair().getPrivate().getEncoded()));
       }
       default -> Files.write(privateKey, new byte[] {1, 2, 3});
     }

@@ -10,9 +10,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -193,12 +196,34 @@ public class SecurityConfiguration {
   private static RSAPrivateKey readPrivateKey(Path file) {
     PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(readKeyFile(file, "PRIVATE KEY"));
     try {
-      return (RSAPrivateKey) KeyFactory.getInstance("RSA").generatePrivate(spec);
+      RSAPrivateKey key = (RSAPrivateKey) KeyFactory.getInstance("RSA").generatePrivate(spec);
+      requireCanSignRs512(key, file);
+      return key;
     } catch (InvalidKeySpecException e) {
       throw new IllegalStateException(
           "Cannot read the RSA private key in "
               + file.toAbsolutePath()
               + "; expected an unencrypted RSA private key in PKCS #8 PEM or DER, or PKCS #1 PEM",
+          e);
+    }
+  }
+
+  // The server signs its tokens with RS512, which a very small RSA key cannot do. Fail here, naming
+  // the file, rather than when the first token is signed.
+  @SneakyThrows
+  private static void requireCanSignRs512(RSAPrivateKey key, Path file) {
+    Signature signature = Signature.getInstance("SHA512withRSA");
+    try {
+      signature.initSign(key);
+      signature.sign();
+    } catch (InvalidKeyException | SignatureException e) {
+      throw new IllegalStateException(
+          "The RSA private key in "
+              + file.toAbsolutePath()
+              + " is "
+              + key.getModulus().bitLength()
+              + " bits, too short to sign tokens with RS512; create a 2048-bit key with"
+              + " `openssl genrsa -out private_key.pem 2048`",
           e);
     }
   }
