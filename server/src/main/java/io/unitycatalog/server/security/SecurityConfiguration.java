@@ -44,6 +44,9 @@ public class SecurityConfiguration {
 
   private static final Logger log = LoggerFactory.getLogger(SecurityConfiguration.class);
 
+  // Keep the key-pair probe aligned with Algorithm.RSA512 used for token signing.
+  private static final String KEY_PAIR_CHECK_SIGNATURE_ALGORITHM = "SHA512withRSA";
+
   // DER AlgorithmIdentifier for rsaEncryption (OID 1.2.840.113549.1.1.1) with NULL parameters.
   private static final byte[] RSA_ALGORITHM_IDENTIFIER = {
     0x30,
@@ -76,10 +79,17 @@ public class SecurityConfiguration {
     Path publicKeyFile = configurationFolder.resolve("public_key.der");
     initializeIfMissing(privateKeyFile);
     privateKey = readPrivateKey(privateKeyFile);
-    if (privateKey instanceof RSAPrivateCrtKey) {
+    if (canDerivePublicKey(privateKey)) {
       publicKey = publicKeyOf(privateKey, privateKeyFile);
       writePublicKeyIfNeeded(publicKeyFile, publicKey);
     } else {
+      if (Files.notExists(publicKeyFile)) {
+        throw new IllegalStateException(
+            "The private key in "
+                + privateKeyFile.toAbsolutePath()
+                + " has no public exponent; a matching public key is required at "
+                + publicKeyFile.toAbsolutePath());
+      }
       publicKey = readPublicKey(publicKeyFile);
       verifyKeyPair(privateKey, publicKey, privateKeyFile, publicKeyFile);
     }
@@ -134,15 +144,20 @@ public class SecurityConfiguration {
     }
   }
 
+  private static boolean canDerivePublicKey(RSAPrivateKey privateKey) {
+    return privateKey instanceof RSAPrivateCrtKey;
+  }
+
   @SneakyThrows
   private static RSAPublicKey publicKeyOf(RSAPrivateKey privateKey, Path file) {
-    if (!(privateKey instanceof RSAPrivateCrtKey crtKey)) {
+    if (!canDerivePublicKey(privateKey)) {
       throw new IllegalStateException(
           "The key in "
               + file.toAbsolutePath()
               + " has no public exponent; create it with"
               + " `openssl genrsa`");
     }
+    RSAPrivateCrtKey crtKey = (RSAPrivateCrtKey) privateKey;
     return (RSAPublicKey)
         KeyFactory.getInstance("RSA")
             .generatePublic(new RSAPublicKeySpec(crtKey.getModulus(), crtKey.getPublicExponent()));
@@ -184,12 +199,12 @@ public class SecurityConfiguration {
   private static void verifyKeyPair(
       RSAPrivateKey privateKey, RSAPublicKey publicKey, Path privateKeyFile, Path publicKeyFile) {
     byte[] probe = "unitycatalog-key-pair-check".getBytes(StandardCharsets.US_ASCII);
-    Signature signer = Signature.getInstance("SHA512withRSA");
+    Signature signer = Signature.getInstance(KEY_PAIR_CHECK_SIGNATURE_ALGORITHM);
     signer.initSign(privateKey);
     signer.update(probe);
     byte[] signedProbe = signer.sign();
 
-    Signature verifier = Signature.getInstance("SHA512withRSA");
+    Signature verifier = Signature.getInstance(KEY_PAIR_CHECK_SIGNATURE_ALGORITHM);
     verifier.initVerify(publicKey);
     verifier.update(probe);
     String mismatchMessage =
