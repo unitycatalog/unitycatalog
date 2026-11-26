@@ -191,7 +191,9 @@ The server rejects a location with `INVALID_ARGUMENT` when its database column o
   (`_delta_log/00000000000000000000.json`, 37 characters and 2 path segments more), which every Delta table has. A
   managed Delta table uses V2 checkpoints, so it has to leave room for the temporary file of a checkpoint sidecar
   (`_delta_log/_sidecars/.<version>.checkpoint.<part>.<parts>.<uuid>.parquet.<uuid>.tmp`, 162 characters and 3 path
-  segments more). A table in another format, such as CSV, may be a single file. On Azure an object
+  segments more). An Iceberg table has to leave room for the manifest list each commit writes
+  (`metadata/snap-<snapshot id>-<attempt>-<uuid>.avro`, 78 characters and 2 path segments more with a 19 digit
+  snapshot id on the first attempt). A table in another format, such as CSV, may be a single file. On Azure an object
   name is at most 1,024 characters and 254 path segments, and on GCS at most 1,024 bytes, whatever the server is
   configured with. On S3 it is at most 1,024 bytes for a location whose storage credential is an `aws_iam_role`, or on a
   bucket the server is configured for without a custom credential generator. S3-compatible storage is not checked.

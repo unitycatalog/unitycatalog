@@ -674,8 +674,13 @@ public class StorageLocationValidatorTest {
                 + " characters, and the limit is 1024.");
   }
 
-  private static Stream<Arguments> deltaFiles() {
+  private static final String MANIFEST_LIST =
+      "/metadata/snap-9223372036854775807-1-3a0d65cd-4056-49b8-937b-95f9e3ee90e5.avro";
+
+  private static Stream<Arguments> tableFiles() {
     return Stream.of(
+        Arguments.of(
+            Extent.ICEBERG_TABLE, MANIFEST_LIST, "names of its Iceberg manifest lists have"),
         Arguments.of(Extent.DELTA_TABLE, FIRST_COMMIT, "name of its first Delta commit file has"),
         Arguments.of(
             Extent.MANAGED_DELTA_TABLE,
@@ -684,9 +689,8 @@ public class StorageLocationValidatorTest {
   }
 
   @ParameterizedTest
-  @MethodSource("deltaFiles")
-  public void testDeltaTablesLeaveRoomForTheirLongestFile(
-      Extent extent, String file, String files) {
+  @MethodSource("tableFiles")
+  public void testTablesLeaveRoomForTheirLongestFile(Extent extent, String file, String files) {
     StorageLocationValidator validator = validatorFor(Optional.empty());
     // The longest table location under which the file's object key is 1,024 bytes.
     NormalizedURL longest =
@@ -748,7 +752,7 @@ public class StorageLocationValidatorTest {
     Extent expected =
         switch (format) {
           case DELTA -> Extent.DELTA_TABLE;
-          case ICEBERG -> Extent.PREFIX;
+          case ICEBERG -> Extent.ICEBERG_TABLE;
           default -> Extent.OBJECT_OR_PREFIX;
         };
     assertThat(Extent.ofTable(format)).isEqualTo(expected);

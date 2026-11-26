@@ -80,6 +80,13 @@ public final class StorageLimits {
         "/_delta_log/_sidecars/.00000000000000000000.checkpoint.0000000000.0000000000."
             + "00000000-0000-0000-0000-000000000000.parquet."
             + "00000000-0000-0000-0000-000000000000.tmp"),
+    /**
+     * An Iceberg table. Its longest file name of a fixed length is the manifest list every commit
+     * writes, {@code metadata/snap-<snapshot id>-<attempt>-<uuid>.avro}, as Iceberg's {@code
+     * SnapshotProducer} names it. A snapshot id is a non-negative long, so it has at most 19
+     * digits, and the attempt is 1 unless the commit is retried.
+     */
+    ICEBERG_TABLE("/metadata/snap-9223372036854775807-1-00000000-0000-0000-0000-000000000000.avro"),
     /** The location may itself name an object, such as a CSV table that is a single file. */
     OBJECT_OR_PREFIX("");
 
@@ -101,7 +108,7 @@ public final class StorageLimits {
       if (format == DataSourceFormat.DELTA) {
         return DELTA_TABLE;
       }
-      return format == DataSourceFormat.ICEBERG ? PREFIX : OBJECT_OR_PREFIX;
+      return format == DataSourceFormat.ICEBERG ? ICEBERG_TABLE : OBJECT_OR_PREFIX;
     }
 
     private String describe(String kind, String measure) {
@@ -113,6 +120,8 @@ public final class StorageLimits {
             String.format(
                 "the %s names of its temporary Delta checkpoint sidecar files have %s",
                 kind, measure);
+        case ICEBERG_TABLE ->
+            String.format("the %s names of its Iceberg manifest lists have %s", kind, measure);
         case OBJECT_OR_PREFIX -> String.format("its %s name has %s", kind, measure);
       };
     }
