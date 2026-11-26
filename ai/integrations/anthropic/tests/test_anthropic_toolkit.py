@@ -347,12 +347,11 @@ def test_anthropic_tool_definition_generation():
                 "properties": {
                     "code": {
                         "anyOf": [{"type": "string"}, {"type": "null"}],
-                        "default": None,
                         "description": "Python code to execute. Remember to print the final result to stdout.",
                         "title": "Code",
                     }
                 },
-                "required": [],
+                "required": ["code"],
             },
         }
 
@@ -445,9 +444,8 @@ def test_anthropic_tool_definition_keeps_struct_definitions(
     resolved = _resolve_refs(
         {"properties": input_schema["properties"]}, input_schema.get("$defs", {})
     )
-    assert resolved["properties"] == {
-        "point": {**expected_property, "default": None, "description": ""}
-    }
+    assert resolved["properties"] == {"point": {**expected_property, "description": ""}}
+    assert input_schema["required"] == ["point"]
 
 
 @pytest.mark.parametrize(

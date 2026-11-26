@@ -374,3 +374,27 @@ async def test_tool_sends_arguments_as_json_values(function_info, encoded, use_a
     # A native Decimal is sent as its text, as before this change.
     expected = {**arguments, "amount": "12.5"} if native else arguments
     assert client.execute_function.call_args.kwargs["parameters"] == expected
+
+
+@pytest.mark.parametrize(
+    "function_info",
+    [
+        generate_function_info_with_params({"a": ("int", "integer"), "b": ("int", "integer")}),
+        generate_function_info_with_params_oss({"a": ("int", "integer"), "b": ("int", "integer")}),
+    ],
+    ids=["databricks", "oss"],
+)
+def test_tool_rejects_missing_argument_without_default(function_info):
+    client = mock.create_autospec(BaseFunctionClient, instance=True)
+    client.get_function.return_value = function_info
+    client.to_dict.return_value = {}
+    toolkit = UCFunctionToolkit(function_names=[function_info.full_name], client=client)
+    tool = toolkit.tools[0].to_structured_tool()
+
+    with pytest.raises(ValueError) as exc_info:
+        tool.invoke({"b": 1})
+
+    cause = exc_info.value.__cause__
+    assert isinstance(cause, ValidationError)
+    assert [(e["type"], e["loc"]) for e in cause.errors()] == [("missing", ("a",))]
+    client.execute_function.assert_not_called()
