@@ -840,4 +840,66 @@ public class GcpCredentialVendorTest {
     assertThat(error.getErrorCode()).isEqualTo(expectedCode);
     assertThat(error.getMessage()).doesNotContain("gcs_ambient_credential");
   }
+
+  @ParameterizedTest
+  @CsvSource({
+    "503, temporarily_unavailable, UNAVAILABLE",
+    "500, server_error, UNAVAILABLE",
+    "500, internal_failure, UNAVAILABLE",
+    "403, access_denied, FAILED_PRECONDITION"
+  })
+  public void testServerIdentityStsJsonErrors(
+      int statusCode, String oauthError, ErrorCode expectedCode) {
+    MockHttpTransport stsErrorTransport =
+        new MockHttpTransport() {
+          @Override
+          public LowLevelHttpRequest buildRequest(String method, String url) {
+            return new MockLowLevelHttpRequest(url) {
+              @Override
+              public LowLevelHttpResponse execute() {
+                if (url.contains("/universe/universe-domain")) {
+                  return new MockLowLevelHttpResponse()
+                      .setStatusCode(200)
+                      .setContent("googleapis.com");
+                }
+                if (url.contains("computeMetadata/v1")) {
+                  return new MockLowLevelHttpResponse()
+                      .setStatusCode(200)
+                      .setContentType("application/json")
+                      .setContent(
+                          "{\"access_token\": \"source-token\", \"expires_in\": 3600,"
+                              + " \"token_type\": \"Bearer\"}");
+                }
+                return new MockLowLevelHttpResponse()
+                    .setStatusCode(statusCode)
+                    .setContentType("application/json")
+                    .setContent(
+                        "{\"error\":\"" + oauthError + "\",\"error_description\":\"sts failure\"}");
+              }
+            };
+          }
+        };
+    GcpApplicationDefaultCredentials adc =
+        () ->
+            ComputeEngineCredentials.newBuilder()
+                .setHttpTransportFactory(() -> stsErrorTransport)
+                .build();
+    GcpCredentialVendor vendor =
+        new GcpCredentialVendor(
+            new ServerProperties(new Properties()),
+            SECRET_STORE,
+            null,
+            adc,
+            () -> stsErrorTransport);
+
+    BaseException error =
+        catchThrowableOfType(
+            BaseException.class,
+            () ->
+                vendor.vendGcpCredential(
+                    contextWithServerIdentity(CredentialContext.Privilege.SELECT)));
+
+    assertThat(error.getErrorCode()).isEqualTo(expectedCode);
+    assertThat(error.getMessage()).doesNotContain("gcs_ambient_credential");
+  }
 }

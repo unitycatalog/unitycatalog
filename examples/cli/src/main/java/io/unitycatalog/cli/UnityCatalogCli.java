@@ -11,6 +11,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 import org.apache.commons.cli.CommandLine;
@@ -194,20 +195,20 @@ public class UnityCatalogCli {
       CliUtils.printHelp();
       return false;
     } else {
-      String entity = cmd.getArgs()[0];
-      if (!CliUtils.cliOptions.containsKey(entity.toLowerCase())) {
-        System.out.println("Invalid entity provided: " + entity);
+      String entity = cmd.getArgs()[0].toLowerCase(Locale.ROOT);
+      if (!CliUtils.cliOptions.containsKey(entity)) {
+        System.out.println("Invalid entity provided: " + cmd.getArgs()[0]);
         CliUtils.printHelp();
         return false;
       }
       if (subArgs.length < 2) {
         System.out.println("Please provide an operation.");
-        CliUtils.printEntityHelp(subArgs[0]);
+        CliUtils.printEntityHelp(entity);
         return false;
       }
-      String operation = cmd.getArgs()[1];
-      if (!CliUtils.cliOptions.get(entity.toLowerCase()).containsKey(operation.toLowerCase())) {
-        System.out.println("Invalid operation provided: " + operation);
+      String operation = cmd.getArgs()[1].toLowerCase(Locale.ROOT);
+      if (!CliUtils.cliOptions.get(entity).containsKey(operation)) {
+        System.out.println("Invalid operation provided: " + cmd.getArgs()[1]);
         CliUtils.printEntityHelp(entity);
         return false;
       }
@@ -218,8 +219,7 @@ public class UnityCatalogCli {
         CliUtils.printSubCommandHelp(entity, operation);
         return false;
       }
-      CliUtils.CliOptions allowedOptions =
-          CliUtils.cliOptions.get(entity.toLowerCase()).get(operation.toLowerCase());
+      CliUtils.CliOptions allowedOptions = CliUtils.cliOptions.get(entity).get(operation);
       List<CliParams> requiredParams = allowedOptions.getNecessaryParams();
       List<CliParams> optionalParams = allowedOptions.getOptionalParams();
       List<CliParams> specifiedParams = new ArrayList<>();

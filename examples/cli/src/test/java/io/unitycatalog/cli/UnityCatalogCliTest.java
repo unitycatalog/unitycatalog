@@ -186,6 +186,18 @@ public class UnityCatalogCliTest {
     assertThat(requestPaths).isEmpty();
   }
 
+  @Test
+  public void testUnexpectedPositionalArgsWithMixedCaseDoesNotNpe() {
+    responseBody = "{\"catalogs\":[]}";
+    assertThat(runCliForOutput("", "Catalog", "list", "extra"))
+        .contains("Unexpected positional arguments: extra")
+        .contains("Usage: bin/uc catalog list");
+    assertThat(runCliForOutput("", "catalog", "LIST", "extra"))
+        .contains("Unexpected positional arguments: extra")
+        .contains("Usage: bin/uc catalog list");
+    assertThat(requestPaths).isEmpty();
+  }
+
   private JsonNode runCli(String serverPath, String... args) {
     return TestUtils.executeCliCommand(cliArgs(serverPath, args));
   }

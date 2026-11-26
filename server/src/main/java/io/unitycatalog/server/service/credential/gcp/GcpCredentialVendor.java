@@ -454,6 +454,17 @@ public class GcpCredentialVendor {
               + " Google Cloud Storage. Contact the server administrator.",
           e);
     }
+    // STS converts JSON error responses to OAuthException with isRetryable() == false and no
+    // HttpResponseException in the cause chain, so transient OAuth error codes must be classified
+    // as UNAVAILABLE before checking Retryable.
+    if (reasons.contains("Error code temporarily_unavailable")
+        || reasons.contains("Error code server_error")
+        || reasons.contains("Error code internal_failure")) {
+      return new BaseException(
+          ErrorCode.UNAVAILABLE,
+          "Could not get a Google access token for this location. Try again.",
+          e);
+    }
     if (isPermanentFailure(e)) {
       return new BaseException(
           ErrorCode.FAILED_PRECONDITION,
@@ -467,7 +478,10 @@ public class GcpCredentialVendor {
         e);
   }
 
-  /** Whether google-auth says that asking again cannot succeed, e.g. an HTTP 403 or 400. */
+  /**
+   * Whether the failure is permanent and asking again cannot succeed: a non-retryable 4xx {@link
+   * HttpResponseException} (excluding 408 and 429) or a {@link Retryable} marked non-retryable.
+   */
   private static boolean isPermanentFailure(Throwable failure) {
     for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
       if (cause instanceof HttpResponseException response) {

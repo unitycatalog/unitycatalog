@@ -186,7 +186,9 @@ public class GcpServerIdentityVendingTest extends BaseCRUDTest {
   @Test
   public void testPathOutsideLocationIsRefused() {
     assertThatThrownBy(() -> vend("gs://uc-ambient-bucket/other/table", PathOperation.PATH_READ))
-        .isInstanceOf(ApiException.class);
+        .isInstanceOf(ApiException.class)
+        .extracting(e -> ((ApiException) e).getCode())
+        .isEqualTo(400);
     assertThat(stsBodies).isEmpty();
   }
 }

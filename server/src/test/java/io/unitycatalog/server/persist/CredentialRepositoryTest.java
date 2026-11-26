@@ -706,7 +706,10 @@ class CredentialRepositoryTest {
         .isInstanceOf(BaseException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.FAILED_PRECONDITION);
-    assertThatThrownBy(() -> repo.getCredential("missing_adc")).isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> repo.getCredential("missing_adc"))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.NOT_FOUND);
 
     // 3. GCE metadata returning 404 for default email fails fast on create.
     MockHttpTransport metadata404 =
