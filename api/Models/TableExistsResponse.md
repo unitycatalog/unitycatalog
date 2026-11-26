@@ -1,0 +1,9 @@
+# TableExistsResponse
+## Properties
+
+| Name | Type | Description | Notes |
+|------------ | ------------- | ------------- | -------------|
+| **table\_exists** | **Boolean** | Whether the table exists. | [optional] [default to null] |
+
+[[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
+

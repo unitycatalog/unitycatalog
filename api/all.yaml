@@ -460,6 +460,36 @@ paths:
           content:
             application/json:
               schema: {}
+  /tables/{full_name}/exists:
+    get:
+      tags:
+        - Tables
+      operationId: tableExists
+      summary: Check whether a table exists
+      description: >-
+        Checks whether a table exists by its three-part name. A missing catalog, schema,
+        or table returns false. Existing tables require metadata access or BROWSE on
+        the parent catalog. Callers without visibility receive a permission error.
+      parameters:
+        - name: full_name
+          in: path
+          description: Full name of the table, in the form catalog.schema.table.
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The table existence check completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableExistsResponse'
+        '400':
+          description: The table name is invalid.
+        '401':
+          description: Authentication is required or the access token is invalid.
+        '403':
+          description: The caller cannot access the existing table.
   /volumes:
     post:
       tags:
@@ -1973,6 +2003,12 @@ components:
         - name
         - catalog_name
         - schema_name
+    TableExistsResponse:
+      type: object
+      properties:
+        table_exists:
+          type: boolean
+          description: Whether the table exists.
     ListTablesResponse:
       type: object
       properties:

@@ -2,7 +2,6 @@ package io.unitycatalog.server.auth.decorator;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.persist.model.Privileges.BROWSE;
@@ -27,7 +26,9 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.RegisteredModelInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +39,7 @@ import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class ResultFilterTest {
 
@@ -46,6 +48,7 @@ class ResultFilterTest {
   void listFilteringKeepsEachItemsOwnDecision(boolean includeBrowse, boolean browseGranted)
       throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    KeyMapper keyMapper = mock(KeyMapper.class);
     UUID principal = UUID.randomUUID();
     UUID metastore = UUID.randomUUID();
     UUID catalog = UUID.randomUUID();
@@ -75,7 +78,7 @@ class ResultFilterTest {
             includeBrowse ? AuthorizeExpressions.BROWSE_CATALOG : "",
             new HashMap<>(Map.of(METASTORE, metastore, CATALOG, catalog, SCHEMA, schema)),
             Map.of(),
-            mock(KeyMapper.class))
+            keyMapper)
         .filter(TABLE, items, BrowseOnlyConverter::toBrowseOnly);
 
     // Decisions are shared across items only for the same resource: alternating table grants must
@@ -90,6 +93,52 @@ class ResultFilterTest {
     verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
     verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
     verify(authorizer, times(includeBrowse ? 1 : 0)).authorize(principal, CATALOG, catalog, BROWSE);
+    verifyNoInteractions(keyMapper);
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "false,true,true",
+    "false,false,true",
+    "false,true,false",
+    "true,true,true",
+    "true,false,true",
+    "true,true,false"
+  })
+  void tableFilteringResolvesMissingParents(
+      boolean dao, boolean catalogGranted, boolean schemaGranted) throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    KeyMapper keyMapper = mock(KeyMapper.class);
+    UUID principal = UUID.randomUUID();
+    UUID table = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+    UUID schema = UUID.randomUUID();
+    Object item =
+        dao ? TableInfoDAO.builder().id(table).build() : new TableInfo().tableId(table.toString());
+    when(keyMapper.mapResourceKeys(Map.of(TABLE, table.toString())))
+        .thenReturn(Map.of(TABLE, table, CATALOG, catalog, SCHEMA, schema));
+    when(authorizer.authorize(principal, CATALOG, catalog, USE_CATALOG)).thenReturn(catalogGranted);
+    when(authorizer.authorize(principal, SCHEMA, schema, USE_SCHEMA)).thenReturn(schemaGranted);
+    when(authorizer.authorize(principal, TABLE, table, OWNER)).thenReturn(true);
+    ResultFilter filter =
+        new ResultFilter(
+            new UnityAccessEvaluator(authorizer, true),
+            principal,
+            "#authorize(#principal, #catalog, USE_CATALOG) && "
+                + "#authorize(#principal, #schema, USE_SCHEMA) && "
+                + "#authorize(#principal, #table, OWNER)",
+            "",
+            Map.of(METASTORE, UUID.randomUUID()),
+            Map.of(),
+            keyMapper);
+    List<Object> items = new ArrayList<>(List.of(item));
+
+    filter.filter(TABLE, items);
+
+    assertThat(items)
+        .containsExactlyElementsOf(catalogGranted && schemaGranted ? List.of(item) : List.of());
+    assertThat(filter.wasCalled()).isTrue();
+    verify(keyMapper).mapResourceKeys(Map.of(TABLE, table.toString()));
   }
 
   @Test
@@ -229,45 +278,91 @@ class ResultFilterTest {
     }
   }
 
-  @Test
-  void listFilteringPropagatesParentResolutionFailures() throws Exception {
+  @ParameterizedTest
+  @EnumSource(
+      value = SecurableType.class,
+      names = {"REGISTERED_MODEL", "TABLE"})
+  void listFilteringPropagatesParentResolutionFailures(SecurableType type) throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     KeyMapper keyMapper = mock(KeyMapper.class);
-    RegisteredModelInfo model =
-        new RegisteredModelInfo()
-            .id(UUID.randomUUID().toString())
-            .catalogName("catalog")
-            .schemaName("schema");
+    UUID id = UUID.randomUUID();
+    Object item =
+        type == TABLE
+            ? new TableInfo().tableId(id.toString())
+            : new RegisteredModelInfo()
+                .id(id.toString())
+                .catalogName("catalog")
+                .schemaName("schema");
+    Map<SecurableType, Object> keys =
+        type == TABLE ? Map.of(TABLE, id.toString()) : Map.of(CATALOG, "catalog", SCHEMA, "schema");
     BaseException failure =
-        new BaseException(ErrorCode.INTERNAL, "Failed to load model parents: private-db-detail");
+        new BaseException(ErrorCode.INTERNAL, "Failed to load resource parents: private-db-detail");
     RuntimeException unexpectedFailure =
         new IllegalStateException("Failed to open database session");
-    when(keyMapper.mapResourceKeys(
-            Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())))
-        .thenThrow(failure, unexpectedFailure);
+    when(keyMapper.mapResourceKeys(keys)).thenThrow(failure, unexpectedFailure);
     ResultFilter filter =
         new ResultFilter(
             new UnityAccessEvaluator(authorizer, true),
             UUID.randomUUID(),
-            "#authorize(#principal, #registered_model, OWNER)",
+            "#authorize(#principal, #catalog, OWNER)",
             "",
             Map.of(),
             Map.of(),
             keyMapper);
 
-    assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
+    assertThatThrownBy(() -> filter.filter(type, new ArrayList<>(List.of(item))))
         .isInstanceOf(BaseException.class)
         .hasMessage("Failed to authorize list items")
         .hasCause(failure)
         .extracting(error -> ((BaseException) error).getErrorCode())
         .isEqualTo(ErrorCode.INTERNAL);
 
-    assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
+    assertThatThrownBy(() -> filter.filter(type, new ArrayList<>(List.of(item))))
         .isInstanceOf(BaseException.class)
         .hasMessage("Failed to authorize list items")
         .hasCause(unexpectedFailure)
         .extracting(error -> ((BaseException) error).getErrorCode())
         .isEqualTo(ErrorCode.INTERNAL);
     verifyNoInteractions(authorizer);
+  }
+
+  @Test
+  void tableFilteringPropagatesAuthorizationFailures() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    KeyMapper keyMapper = mock(KeyMapper.class);
+    UUID principal = UUID.randomUUID();
+    UUID table = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+    when(keyMapper.mapResourceKeys(Map.of(TABLE, table.toString())))
+        .thenReturn(Map.of(TABLE, table, CATALOG, catalog, SCHEMA, UUID.randomUUID()));
+    BaseException failure = new BaseException(ErrorCode.INTERNAL, "Authorization unavailable");
+    RuntimeException unexpectedFailure = new IllegalStateException("Authorization failed");
+    when(authorizer.authorize(principal, CATALOG, catalog, USE_CATALOG))
+        .thenThrow(failure, unexpectedFailure);
+    ResultFilter filter =
+        new ResultFilter(
+            new UnityAccessEvaluator(authorizer, true),
+            principal,
+            "#authorize(#principal, #catalog, USE_CATALOG)",
+            "",
+            Map.of(METASTORE, UUID.randomUUID()),
+            Map.of(),
+            keyMapper);
+
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    TABLE, new ArrayList<>(List.of(new TableInfo().tableId(table.toString())))))
+        .isSameAs(failure);
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    TABLE, new ArrayList<>(List.of(new TableInfo().tableId(table.toString())))))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INTERNAL))
+        .hasMessage("Failed to authorize list items")
+        .hasRootCauseInstanceOf(IllegalStateException.class)
+        .hasRootCauseMessage("Authorization failed");
   }
 }

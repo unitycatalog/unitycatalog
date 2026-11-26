@@ -53,6 +53,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *TablesApi* | [**deleteTable**](Apis/TablesApi.md#deletetable) | **DELETE** /tables/{full_name} | Delete a table |
 *TablesApi* | [**getTable**](Apis/TablesApi.md#gettable) | **GET** /tables/{full_name} | Get a table |
 *TablesApi* | [**listTables**](Apis/TablesApi.md#listtables) | **GET** /tables | List tables |
+*TablesApi* | [**tableExists**](Apis/TablesApi.md#tableexists) | **GET** /tables/{full_name}/exists | Check whether a table exists |
 *TablesApi* | [**updateTable**](Apis/TablesApi.md#updatetable) | **PATCH** /tables/{full_name} | Update a table owner |
 | *TemporaryCredentialsApi* | [**generateTemporaryModelVersionCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarymodelversioncredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location. |
 *TemporaryCredentialsApi* | [**generateTemporaryPathCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarypathcredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials. |
@@ -140,6 +141,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [SecurableType](./Models/SecurableType.md)
  - [StagingTableInfo](./Models/StagingTableInfo.md)
  - [TableDependency](./Models/TableDependency.md)
+ - [TableExistsResponse](./Models/TableExistsResponse.md)
  - [TableInfo](./Models/TableInfo.md)
  - [TableOperation](./Models/TableOperation.md)
  - [TableType](./Models/TableType.md)

@@ -6,6 +6,7 @@ Use the `/tables` endpoint to work with tables.
 | ------ | ------------------------------------- | ---------------------------- |
 | GET    | Retrieve a list of tables             | /tables                      |
 | GET    | Retrieve metadata of a specific table | /tables/catalog.schema.table |
+| GET    | Check whether a table exists          | /tables/catalog.schema.table/exists |
 | POST   | Create a new table                    | /tables                      |
 | DELETE | Remove a table                        | /tables/catalog.schema.table |
 
@@ -87,6 +88,30 @@ This will return all available metadata for the specified table:
    'type_json': '{"name":"marks","type":"integer","nullable":true,"metadata":{}}',
    ...
 ```
+
+## How to check whether a table exists
+
+Send a GET request with the three-part table name to check its existence.
+
+```python
+import requests
+
+BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
+response = requests.get(f"{BASE_URL}/tables/unity.default.marksheet/exists")
+response.raise_for_status()
+print(response.json())
+```
+
+```json
+{"table_exists": true}
+```
+
+The response contains `false` when the catalog, schema, or table is missing.
+With authorization enabled, existing tables require metadata access or BROWSE
+on the parent catalog. A caller without visibility receives HTTP 403. Malformed
+three-part names receive HTTP 400. The check applies to managed and external
+tables in any format and returns a boolean without table metadata. For an
+authenticated server, include your bearer token in the `Authorization` header.
 
 ## How to create a table
 
