@@ -381,18 +381,29 @@ public class AwsCredentialVendor implements AutoCloseable {
     }
     return StorageLimits.objectNameViolation(
             context.getLocations(), "S3 object key", StorageLimits.Unit.UTF8_BYTES, extent)
-        .or(
-            () ->
-                awsStsRole(context)
-                    .flatMap(
-                        role ->
-                            AwsPolicyGenerator.sessionPolicyViolation(
-                                AwsPolicyGenerator.generatePolicy(
-                                    context.getPrivileges(),
-                                    context.getLocations(),
-                                    role.roleArn(),
-                                    role.region(),
-                                    /* isS3Compatible= */ false))));
+        .or(() -> sessionPolicyViolation(context));
+  }
+
+  /**
+   * Checks the AWS STS session policy limit, the one limit that depends on the storage credential,
+   * when a vend for this context assumes a role on AWS STS.
+   *
+   * @return why the policy for the locations is too long, or empty
+   */
+  public Optional<String> sessionPolicyViolation(CredentialContext context) {
+    if (!isOnAwsS3(context)) {
+      return Optional.empty();
+    }
+    return awsStsRole(context)
+        .flatMap(
+            role ->
+                AwsPolicyGenerator.sessionPolicyViolation(
+                    AwsPolicyGenerator.generatePolicy(
+                        context.getPrivileges(),
+                        context.getLocations(),
+                        role.roleArn(),
+                        role.region(),
+                        /* isS3Compatible= */ false)));
   }
 
   private boolean isOnAwsS3(CredentialContext context) {

@@ -889,6 +889,47 @@ public class StorageLocationValidatorTest {
   }
 
   @Test
+  public void testCredentialChangeChecksOnlyTheLimitsThatDependOnTheCredential() {
+    StorageLocationValidator validator = validatorFor(Optional.empty());
+    CredentialDAO awsIamRole =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("role-credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(new AwsIamRoleRequest().roleArn(ROLE_ARN)),
+            "test-user",
+            SECRET_STORE);
+    // Each URL breaks a limit that depends on the URL alone: the column, the Azure blob name, the
+    // GCS object name, or the shape of a cloud URL.
+    List<String> urls =
+        List.of(
+            "s3://external-bucket/" + "c".repeat(240),
+            "abfss://container@account.dfs.core.windows.net/" + "a".repeat(1100),
+            "gs://gcs-bucket/" + "g".repeat(1100),
+            "s3:/a/b");
+    for (String url : urls) {
+      NormalizedURL location = NormalizedURL.from(url);
+      assertThat(
+              accepts(
+                  () ->
+                      validator.validateExternalLocationUrl(
+                          location, 255, Optional.of(awsIamRole))))
+          .as(url)
+          .isFalse();
+      assertThatCode(() -> validator.validateExternalLocationCredential(location, awsIamRole))
+          .as(url)
+          .doesNotThrowAnyException();
+    }
+
+    NormalizedURL policyExpanding = NormalizedURL.from("s3://external-bucket/" + "*".repeat(100));
+    assertThatThrownBy(
+            () -> validator.validateExternalLocationCredential(policyExpanding, awsIamRole))
+        .isInstanceOf(BaseException.class)
+        .hasMessageStartingWith("Storage location is too long: its AWS STS session policy is");
+    assertThat(stsRequests).isEmpty();
+  }
+
+  @Test
   public void testGcsObjectNamesAreCountedInBytes() {
     StorageLocationValidator validator = validatorFor(Optional.empty());
     // An unconfigured bucket builds no access boundary, so only the object name limit applies.

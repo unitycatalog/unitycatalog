@@ -70,6 +70,20 @@ public class CloudCredentialVendor implements AutoCloseable {
   }
 
   /**
+   * Checks only the cloud limits of {@link #limitViolation} that depend on the storage credential
+   * of the context: the AWS STS session policy and the GCS access boundary.
+   *
+   * @return why a vend for the context would fail on its credential, or empty
+   */
+  public Optional<String> credentialLimitViolation(CredentialContext context) {
+    return switch (context.getStorageScheme()) {
+      case S3 -> awsCredentialVendor.sessionPolicyViolation(context);
+      case GS -> gcpCredentialVendor.accessBoundaryViolation(context);
+      case ABFS, ABFSS, FILE, NULL -> Optional.empty();
+    };
+  }
+
+  /**
    * Whether {@link #limitViolation} reads the storage credential of a location with this scheme. S3
    * builds its policy from the credential. GCS builds an access boundary only for a location
    * without one, since it can't vend with a storage credential yet.

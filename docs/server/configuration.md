@@ -205,6 +205,9 @@ The server rejects a location with `INVALID_ARGUMENT` when its database column o
   the access boundary it builds has to fit its limit.
 - When the storage credential of an S3 or GCS location can't be found, such as after it was force-deleted, only the
   column width is checked, because a vend then fails on the missing credential.
+- Changing only the storage credential of an external location checks only the limits that depend on the credential,
+  the AWS STS session policy of an S3 location on AWS. The column width and object name limits depend on the URL
+  alone, so they aren't checked again.
 
 On an Azure storage account with a hierarchical namespace, a path has at most 63 segments, counting the account and
 container. Nothing the server is given says whether an account has one, so it doesn't check that limit. Under a

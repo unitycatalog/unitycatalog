@@ -179,14 +179,22 @@ public class GcpCredentialVendor {
   public Optional<String> limitViolation(CredentialContext context, StorageLimits.Extent extent) {
     return StorageLimits.objectNameViolation(
             context.getLocations(), "GCS object", StorageLimits.Unit.UTF8_BYTES, extent)
-        .or(
-            () ->
-                buildsAccessBoundary(context)
-                    ? context.getLocations().stream()
-                        .map(location -> conditionViolation(accessBoundaryCondition(location)))
-                        .flatMap(Optional::stream)
-                        .findFirst()
-                    : Optional.empty());
+        .or(() -> accessBoundaryViolation(context));
+  }
+
+  /**
+   * Checks the access boundary condition limit, the one GCS limit that depends on the storage
+   * credential: the vend builds an access boundary only for a location without one.
+   *
+   * @return why the access boundary for the locations is too long, or empty
+   */
+  public Optional<String> accessBoundaryViolation(CredentialContext context) {
+    return buildsAccessBoundary(context)
+        ? context.getLocations().stream()
+            .map(location -> conditionViolation(accessBoundaryCondition(location)))
+            .flatMap(Optional::stream)
+            .findFirst()
+        : Optional.empty();
   }
 
   private boolean buildsAccessBoundary(CredentialContext context) {

@@ -395,6 +395,38 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testCredentialChangeChecksOnlyTheLimitsThatDependOnTheCredential()
+      throws ApiException {
+    create(EXTERNAL_LOCATION_NAME, testUrl());
+    // Stored before cloud URLs had to name a bucket. That rule doesn't depend on the credential, so
+    // the credential can still change.
+    setStoredUrl(EXTERNAL_LOCATION_NAME, "s3:/legacy/path");
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME,
+                    new UpdateExternalLocation().credentialName(ANOTHER_CREDENTIAL_NAME))
+                .getCredentialName())
+        .isEqualTo(ANOTHER_CREDENTIAL_NAME);
+
+    // Stored before session policies were checked. Every vend with the new credential would fail
+    // on its policy, so the credential change is refused and the credential stays.
+    setStoredUrl(EXTERNAL_LOCATION_NAME, "s3://uc-unconfigured-bucket/" + "*".repeat(100));
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().credentialName(CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        "its AWS STS session policy is");
+    assertThat(
+            externalLocationOperations
+                .getExternalLocation(EXTERNAL_LOCATION_NAME)
+                .getCredentialName())
+        .isEqualTo(ANOTHER_CREDENTIAL_NAME);
+  }
+
+  @Test
   public void testUrlLengthIsCountedTheWayTheDatabaseCountsIt() throws ApiException {
     // An emoji is one character in PostgreSQL and MySQL, which count code points, and two in H2,
     // which counts UTF-16 code units.

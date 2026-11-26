@@ -297,7 +297,11 @@ public class ExternalLocationRepository {
             } else {
               // A URL an earlier release stored that no longer parses can still move.
               storedUrlToCheck(existingLocation.getUrl())
-                  .ifPresent(url -> validateUrlLimits(url.toString(), Optional.of(credentialDAO)));
+                  .ifPresent(
+                      url ->
+                          repositories
+                              .getStorageLocationValidator()
+                              .validateExternalLocationCredential(url, credentialDAO));
             }
           } else {
             // Keep the current credential. Locked on its first read in this session: a lock taken

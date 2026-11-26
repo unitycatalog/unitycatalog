@@ -139,6 +139,27 @@ public class StorageLocationValidator {
   }
 
   /**
+   * Validates the stored URL of an external location whose storage credential changes and whose URL
+   * does not. Only the limits that depend on the credential are checked. The column width and the
+   * object name limits depend on the URL alone, so a URL stored before they were checked can still
+   * change its credential.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a vend for the URL with the
+   *     credential would fail on a limit
+   */
+  public void validateExternalLocationCredential(NormalizedURL url, CredentialDAO credential) {
+    cloudCredentialVendor
+        .credentialLimitViolation(
+            CredentialContext.create(url, Use.REQUESTED.privileges, Optional.of(credential)))
+        .ifPresent(
+            violation -> {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  String.format("Storage location is too long: %s.", violation));
+            });
+  }
+
+  /**
    * Validates a location the server derived for a new managed entity.
    *
    * @param maxBytes the width of the column the location is stored in, counted in UTF-8 bytes
