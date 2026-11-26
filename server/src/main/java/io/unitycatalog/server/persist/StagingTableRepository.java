@@ -77,6 +77,8 @@ public class StagingTableRepository {
    * location is automatically generated and must be committed before the table becomes permanent.
    *
    * @param createStagingTable the request containing catalog name, schema name, and table name
+   * @param extent the files the table's format stores under the staging location, which have to fit
+   *     there, such as {@link StorageLimits.Extent#MANAGED_DELTA_TABLE} for a Delta table
    * @return StagingTableInfo containing the created staging table details including the staging
    *     location
    * @throws BaseException with ErrorCode.ALREADY_EXISTS if a regular table with the same name
@@ -84,7 +86,8 @@ public class StagingTableRepository {
    * @throws BaseException with ErrorCode.CATALOG_NOT_FOUND or ErrorCode.SCHEMA_NOT_FOUND if the
    *     specified catalog or schema does not exist
    */
-  public StagingTableInfo createStagingTable(CreateStagingTable createStagingTable) {
+  public StagingTableInfo createStagingTable(
+      CreateStagingTable createStagingTable, StorageLimits.Extent extent) {
     serverProperties.checkManagedTableEnabled();
     ValidationUtils.validateSqlObjectName(createStagingTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -105,10 +108,7 @@ public class StagingTableRepository {
           repositories
               .getStorageLocationValidator()
               .validateManagedLocation(
-                  session,
-                  stagingLocation,
-                  Constants.MAX_STORAGE_LOCATION_LENGTH,
-                  StorageLimits.Extent.MANAGED_DELTA_TABLE);
+                  session, stagingLocation, Constants.MAX_STORAGE_LOCATION_LENGTH, extent);
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 

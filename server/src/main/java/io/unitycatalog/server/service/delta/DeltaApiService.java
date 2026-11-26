@@ -48,6 +48,7 @@ import io.unitycatalog.server.service.RegisteredService;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
@@ -201,7 +202,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
             new CreateStagingTable()
                 .catalogName(catalog)
                 .schemaName(schema)
-                .name(request.getName()));
+                .name(request.getName()),
+            StorageLimits.Extent.MANAGED_DELTA_TABLE);
     initializeHierarchicalAuthorization(
         staging.getId(), schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
 

@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -14,7 +15,9 @@ import com.linecorp.armeria.server.ServiceRequestContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.audit.CapturingAuditSink;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
@@ -35,6 +38,7 @@ import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
+import io.unitycatalog.server.service.credential.StorageLimits;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.Constants;
@@ -281,6 +285,63 @@ class RepositoriesTest {
           .extracting(TableInfo::getProperties)
           .containsOnly(tableProperties);
     }
+  }
+
+  @Test
+  void stagingTableLocationLeavesRoomForTheLongestFileOfItsTableFormat() {
+    String container = "abfss://container@account.dfs.core.windows.net/";
+    UUID catalogId = UUID.randomUUID();
+    // A staging location adds /tables/<uuid>, 44 characters, so under the longest schema location
+    // an Iceberg manifest list name has exactly 1,024 characters.
+    String longest = container + "s".repeat(902);
+    sessionFactory.inTransaction(
+        session -> {
+          session.persist(
+              CatalogInfoDAO.builder().id(catalogId).name("cat").createdAt(new Date()).build());
+          for (Map.Entry<String, String> schema :
+              Map.of("fits", longest, "too_long", longest + "s").entrySet()) {
+            session.persist(
+                SchemaInfoDAO.builder()
+                    .id(UUID.randomUUID())
+                    .name(schema.getKey())
+                    .catalogId(catalogId)
+                    .storageLocation(schema.getValue())
+                    .createdAt(new Date())
+                    .build());
+          }
+        });
+    StagingTableRepository stagingTables =
+        new Repositories(sessionFactory, serverProperties).getStagingTableRepository();
+
+    try (SafeCloseable ignored =
+        ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/")).push()) {
+      assertThat(
+              stagingTables
+                  .createStagingTable(
+                      staging("fits", "iceberg"), StorageLimits.Extent.ICEBERG_TABLE)
+                  .getStagingLocation())
+          .startsWith(longest + "/tables/");
+      assertThatThrownBy(
+              () ->
+                  stagingTables.createStagingTable(
+                      staging("too_long", "iceberg"), StorageLimits.Extent.ICEBERG_TABLE))
+          .isInstanceOf(BaseException.class)
+          .hasMessage(
+              "Storage location is too long: the Azure blob names of its Iceberg manifest lists"
+                  + " have 1025 characters, and the limit is 1024.");
+      assertThatThrownBy(
+              () ->
+                  stagingTables.createStagingTable(
+                      staging("fits", "delta"), StorageLimits.Extent.MANAGED_DELTA_TABLE))
+          .isInstanceOf(BaseException.class)
+          .hasMessage(
+              "Storage location is too long: the Azure blob names of its temporary Delta"
+                  + " checkpoint sidecar files have 1108 characters, and the limit is 1024.");
+    }
+  }
+
+  private static CreateStagingTable staging(String schema, String name) {
+    return new CreateStagingTable().catalogName("cat").schemaName(schema).name(name);
   }
 
   /** Test wrapper that records its delegate; methods forward, but the tests only check identity. */
