@@ -8,8 +8,6 @@ import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
-import io.unitycatalog.hadoop.internal.auth.AzureCredential;
-import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.time.Duration;
@@ -18,7 +16,6 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiFunction;
 import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -33,8 +30,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 /**
  * Covers the {@link CredPropsUtil} encoder side credential cache: reuse across queries with the
  * same credential identity, separation by credential identity, cache-disable, and clock-driven
- * expiry with and without renewal. The cache is cloud-agnostic, so most run once against S3; reuse
- * without renewal also runs against each cloud's fixed token key. The per-cloud property matrix
+ * expiry. The cache is cloud-agnostic, so these run once against S3; the per-cloud property matrix
  * lives in {@link CredPropsBaseTest} and its subclasses.
  */
 class CredPropsCacheTest {
@@ -145,86 +141,69 @@ class CredPropsCacheTest {
   }
 
   /**
-   * Without renewal the cached credential is written as fixed keys that nothing renews, so it is
-   * reused only while at least half of the lifetime it was vended with remains.
+   * A cached credential is reused only while at least half of the lifetime it had left when
+   * received remains. Without renewal it is written as fixed keys that nothing refreshes, so a
+   * query never starts on one that is about to expire.
    */
-  @ParameterizedTest(name = "{0} {1}")
-  @MethodSource("entryPointsByCloud")
-  void fixedCredentialIsReplacedOnceHalfItsLifetimeHasPassed(EntryPoint entryPoint, Cloud cloud)
+  @ParameterizedTest(name = "{0} renew={1}")
+  @MethodSource("entryPointsByRenewal")
+  void cachedCredentialIsReusedUntilHalfItsLifetimeRemains(EntryPoint entryPoint, boolean renew)
       throws Exception {
-    AtomicInteger fetches = installCountingFetcher(cloud, Duration.ofHours(1).toMillis());
+    AtomicInteger fetches = installCountingFetcher(Duration.ofHours(1), Duration.ZERO);
     Configuration conf = clockConf(30_000L);
+    String tokenKey = renew ? "fs.s3a.init.session.token" : "fs.s3a.session.token";
 
-    assertThat(entryPoint.call(false, conf, cloud.scheme, "http://uc"))
-        .containsEntry(cloud.fixedTokenKey, "token1");
-    clock.sleep(Duration.ofMinutes(10));
-    assertThat(entryPoint.call(false, conf, cloud.scheme, "http://uc"))
-        .containsEntry(cloud.fixedTokenKey, "token1");
+    entryPoint.call(renew, conf, "s3", "http://uc");
+    clock.sleep(Duration.ofMinutes(30).minusMillis(1));
+    assertThat(entryPoint.call(renew, conf, "s3", "http://uc")).containsEntry(tokenKey, "st1");
     assertThat(fetches.get()).isEqualTo(1);
 
-    clock.sleep(Duration.ofMinutes(49).plusSeconds(29));
-    assertThat(entryPoint.call(false, conf, cloud.scheme, "http://uc"))
-        .containsEntry(cloud.fixedTokenKey, "token2");
+    clock.sleep(Duration.ofMillis(1));
+    assertThat(entryPoint.call(renew, conf, "s3", "http://uc")).containsEntry(tokenKey, "st2");
     assertThat(fetches.get()).isEqualTo(2);
   }
 
   /**
-   * Without renewal a cached credential is replaced once less than half its lifetime, or less than
-   * the renewal lead time, remains.
+   * A credential received with less lifetime left, such as one the server served from its own
+   * cache, is reused for half of what it had left, and never within the renewal lead time.
    */
-  @ParameterizedTest(name = "lifetime={0}ms leadTime={1}ms reusedFor={2}ms")
-  @CsvSource({"3600000, 30000, 1800000", "40000, 30000, 10000"})
-  void fixedCredentialIsReusedUntilItsThreshold(
-      long lifetimeMillis, long leadTimeMillis, long reusedForMillis) throws Exception {
-    AtomicInteger fetches = installCountingFetcher(Cloud.S3, lifetimeMillis);
+  @ParameterizedTest(name = "lifetimeLeft={0} leadTime={1}ms reusedFor={2}")
+  @CsvSource({"PT10M, 30000, PT5M", "PT40S, 30000, PT10S"})
+  void cachedCredentialIsReusedUntilItsThreshold(
+      Duration lifetimeLeft, long leadTimeMillis, Duration reusedFor) throws Exception {
+    AtomicInteger fetches = installCountingFetcher(lifetimeLeft, Duration.ZERO);
     Configuration conf = clockConf(leadTimeMillis);
 
     EntryPoint.TABLE.call(false, conf, "s3", "http://uc");
-    clock.sleep(Duration.ofMillis(reusedForMillis - 1));
+    clock.sleep(reusedFor.minusMillis(1));
     assertThat(EntryPoint.TABLE.call(false, conf, "s3", "http://uc"))
-        .containsEntry("fs.s3a.session.token", "token1");
+        .containsEntry("fs.s3a.session.token", "st1");
     assertThat(fetches.get()).isEqualTo(1);
 
     clock.sleep(Duration.ofMillis(1));
     assertThat(EntryPoint.TABLE.call(false, conf, "s3", "http://uc"))
-        .containsEntry("fs.s3a.session.token", "token2");
+        .containsEntry("fs.s3a.session.token", "st2");
     assertThat(fetches.get()).isEqualTo(2);
   }
 
   /**
-   * With renewal the vended provider renews the credential, so it is reused until the lead time.
-   */
-  @ParameterizedTest
-  @EnumSource(EntryPoint.class)
-  void renewableCredentialIsReusedUntilTheLeadTime(EntryPoint entryPoint) throws Exception {
-    AtomicInteger fetches = installCountingFetcher(Cloud.S3, Duration.ofHours(1).toMillis());
-    Configuration conf = clockConf(30_000L);
-
-    entryPoint.call(true, conf, "s3", "http://uc");
-    clock.sleep(Duration.ofMinutes(59).plusSeconds(29));
-    entryPoint.call(true, conf, "s3", "http://uc");
-    assertThat(fetches.get()).isEqualTo(1);
-
-    clock.sleep(Duration.ofSeconds(1));
-    entryPoint.call(true, conf, "s3", "http://uc");
-    assertThat(fetches.get()).isEqualTo(2);
-  }
-
-  /**
-   * A load without renewal does not take a credential cached for a load with renewal once half its
-   * lifetime has passed, and the credential it fetches instead does not replace that one.
+   * The lifetime is measured from when the fetch returns: a credential vended with 10 minutes left
+   * that takes 2 minutes to arrive has 8 left, so it is reused for 4 minutes after it arrives.
    */
   @Test
-  void renewableAndFixedCredentialsAreCachedSeparately() throws Exception {
-    AtomicInteger fetches = installCountingFetcher(Cloud.S3, Duration.ofHours(1).toMillis());
+  void thresholdIsMeasuredFromWhenTheCredentialIsReceived() throws Exception {
+    AtomicInteger fetches = installCountingFetcher(Duration.ofMinutes(10), Duration.ofMinutes(2));
     Configuration conf = clockConf(30_000L);
 
-    EntryPoint.TABLE.call(true, conf, "s3", "http://uc");
-    clock.sleep(Duration.ofMinutes(40));
+    EntryPoint.TABLE.call(false, conf, "s3", "http://uc");
+    clock.sleep(Duration.ofMinutes(4).minusMillis(1));
     assertThat(EntryPoint.TABLE.call(false, conf, "s3", "http://uc"))
-        .containsEntry("fs.s3a.session.token", "token2");
-    assertThat(EntryPoint.TABLE.call(true, conf, "s3", "http://uc"))
-        .containsEntry(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "token1");
+        .containsEntry("fs.s3a.session.token", "st1");
+    assertThat(fetches.get()).isEqualTo(1);
+
+    clock.sleep(Duration.ofMillis(1));
+    assertThat(EntryPoint.TABLE.call(false, conf, "s3", "http://uc"))
+        .containsEntry("fs.s3a.session.token", "st2");
     assertThat(fetches.get()).isEqualTo(2);
   }
 
@@ -306,52 +285,29 @@ class CredPropsCacheTest {
         throws Exception;
   }
 
-  /** A cloud's vended credential and the key that serves its token when renewal is off. */
-  private enum Cloud {
-    S3(
-        "s3",
-        "fs.s3a.session.token",
-        (token, exp) -> new AwsCredential("ak", "sk", token, exp, null)),
-    ABFS(
-        "abfss", "fs.azure.sas.fixed.token", (token, exp) -> new AzureCredential(token, exp, null)),
-    GCS(
-        "gs",
-        "fs.gs.auth.access.token.credential",
-        (token, exp) -> new GcsCredential(token, exp, null));
-
-    private final String scheme;
-    private final String fixedTokenKey;
-    private final BiFunction<String, Long, GenericCredential> credential;
-
-    Cloud(
-        String scheme,
-        String fixedTokenKey,
-        BiFunction<String, Long, GenericCredential> credential) {
-      this.scheme = scheme;
-      this.fixedTokenKey = fixedTokenKey;
-      this.credential = credential;
-    }
-  }
-
-  private static Stream<Arguments> entryPointsByCloud() {
+  private static Stream<Arguments> entryPointsByRenewal() {
     return Arrays.stream(EntryPoint.values())
-        .flatMap(entryPoint -> Arrays.stream(Cloud.values()).map(c -> Arguments.of(entryPoint, c)));
+        .flatMap(
+            entryPoint ->
+                Stream.of(Arguments.of(entryPoint, false), Arguments.of(entryPoint, true)));
   }
 
   /**
-   * Installs a fetcher that vends {@code cloud}'s credential with token {@code "token<n>"} on the
-   * n-th fetch, expiring {@code lifetimeMillis} after it is vended.
+   * Installs a fetcher whose n-th fetch vends an S3 credential with session token {@code "st<n>"}.
+   * The credential expires {@code lifetime} after the fetch starts, and the fetch takes {@code
+   * fetchTime} on the test clock.
    *
    * @return the number of fetches so far
    */
-  private AtomicInteger installCountingFetcher(Cloud cloud, long lifetimeMillis) {
+  private AtomicInteger installCountingFetcher(Duration lifetime, Duration fetchTime) {
     AtomicInteger fetches = new AtomicInteger();
     CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, credId) ->
-            mockGenericCredentialFetcher(
-                cloud.credential.apply(
-                    "token" + fetches.incrementAndGet(),
-                    clock.now().toEpochMilli() + lifetimeMillis));
+        (apiClient, credId) -> {
+          long expirationMillis = clock.now().plus(lifetime).toEpochMilli();
+          ((Clock.ManualClock) clock).sleep(fetchTime);
+          return mockGenericCredentialFetcher(
+              s3CredsExpiringAt(String.valueOf(fetches.incrementAndGet()), expirationMillis));
+        };
     return fetches;
   }
 

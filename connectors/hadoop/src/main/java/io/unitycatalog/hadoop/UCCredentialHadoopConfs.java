@@ -126,9 +126,7 @@ public final class UCCredentialHadoopConfs {
     /**
      * Whether to enable automatic credential renewal (default {@code true}). When enabled,
      * configures a vended-token provider that refreshes credentials before they expire. When
-     * disabled, the vended credential is set as fixed keys that are never refreshed, and one cached
-     * from an earlier build for the same table or path is reused only while at least half of its
-     * lifetime remains.
+     * disabled, the vended credential is set as fixed keys that are never refreshed.
      */
     public Builder enableCredentialRenewal(boolean enabled) {
       this.credentialRenewalEnabled = enabled;

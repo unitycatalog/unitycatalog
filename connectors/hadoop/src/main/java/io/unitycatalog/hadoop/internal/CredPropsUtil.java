@@ -52,8 +52,15 @@ public class CredPropsUtil {
   public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
       GenericCredentialFetcher::create;
 
-  static final CredentialCache<InitialCredKey, List<GenericCredential>> initialCredCache =
+  static final CredentialCache<CredId, List<GenericCredential>> initialCredCache =
       CredentialCache.createInitialCredentialCache();
+
+  /**
+   * The least part of the lifetime a credential had left when received that must remain for {@link
+   * #initialCredCache} to hand it to another load. Without renewal the credential is written as
+   * fixed keys that nothing refreshes, so this is the least a query starts with.
+   */
+  private static final double MIN_REMAINING_LIFETIME_FRACTION = 0.5;
 
   // Keys used to build the credential-context id (see #credContextId).
   private static final String CRED_CONTEXT_CATALOG_URI_KEY = "catalogUri";
@@ -195,13 +202,7 @@ public class CredPropsUtil {
     }
     List<GenericCredential> credentials =
         fetchGenericCredentials(
-            renewCredEnabled,
-            hadoopConf,
-            apiClient,
-            catalogUri,
-            tokenProvider,
-            appVersions,
-            credId);
+            hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
     // A table's credentials are assumed to be all with keys or all without: this connector does
     // not yet support mixing them, as it sets one S3A credentials provider for every path, while a
     // location vended only its S3 endpoint relies on the engine's own keys.
@@ -254,7 +255,6 @@ public class CredPropsUtil {
   }
 
   private static List<GenericCredential> fetchGenericCredentials(
-      boolean renewCredEnabled,
       Configuration hadoopConf,
       ApiClient apiClient,
       String catalogUri,
@@ -276,12 +276,12 @@ public class CredPropsUtil {
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
 
     return initialCredCache.access(
-        new InitialCredKey(credId, renewCredEnabled),
+        credId,
         () -> {
           Clock clock = ClockUtil.resolveClock(hadoopConf);
           List<GenericCredential> credentials =
               createCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
-          long vendedAtMillis = clock.now().toEpochMilli();
+          long receivedAtMillis = clock.now().toEpochMilli();
           return new RenewableCredential<>(credentials) {
             @Override
             public boolean readyToRenew() {
@@ -290,32 +290,31 @@ public class CredPropsUtil {
                       c ->
                           c.readyToRenew(
                               clock,
-                              renewCredEnabled
-                                  ? renewalLeadTimeMillis
-                                  : fixedCredLeadTimeMillis(
-                                      c, vendedAtMillis, renewalLeadTimeMillis)));
+                              reuseLeadTimeMillis(c, receivedAtMillis, renewalLeadTimeMillis)));
             }
           };
         });
   }
 
   /**
-   * Returns how long before its expiration a cached credential stops being reused when renewal is
-   * disabled. Nothing renews the fixed keys it is written as, so a query must not start on one that
-   * is about to expire: it is reused only while at least half of the lifetime it was vended with
-   * remains, and never within the renewal lead time.
+   * Returns how long before its expiration a cached credential stops being reused: once less than
+   * {@link #MIN_REMAINING_LIFETIME_FRACTION} of the lifetime it had left when received remains, or
+   * once it is within the renewal lead time, whichever comes first.
    *
    * @param credential the cached credential
-   * @param vendedAtMillis when {@code credential} was received from Unity Catalog, in epoch ms
-   * @param renewalLeadTimeMillis the lead time a renewable credential is renewed at
+   * @param receivedAtMillis when {@code credential} was received from Unity Catalog, in epoch ms
+   * @param renewalLeadTimeMillis the lead time before expiration at which credentials are renewed
    * @return the lead time to pass to {@link GenericCredential#readyToRenew}
    */
-  private static long fixedCredLeadTimeMillis(
-      GenericCredential credential, long vendedAtMillis, long renewalLeadTimeMillis) {
+  private static long reuseLeadTimeMillis(
+      GenericCredential credential, long receivedAtMillis, long renewalLeadTimeMillis) {
     Long expirationTimeMillis = credential.expirationTimeMillis();
-    return expirationTimeMillis == null
-        ? renewalLeadTimeMillis
-        : Math.max(renewalLeadTimeMillis, (expirationTimeMillis - vendedAtMillis) / 2);
+    if (expirationTimeMillis == null) {
+      return renewalLeadTimeMillis;
+    }
+    long lifetimeLeftWhenReceived = expirationTimeMillis - receivedAtMillis;
+    return Math.max(
+        renewalLeadTimeMillis, (long) (lifetimeLeftWhenReceived * MIN_REMAINING_LIFETIME_FRACTION));
   }
 
   private static List<GenericCredential> createCredentials(
@@ -341,33 +340,5 @@ public class CredPropsUtil {
 
   private static boolean hasKeys(GenericCredential credential) {
     return !(credential instanceof AwsCredential) || ((AwsCredential) credential).hasKeys();
-  }
-
-  /**
-   * Key of {@link #initialCredCache}. Loads with and without renewal reuse a credential for
-   * different lengths of time, so they never share one.
-   */
-  static final class InitialCredKey {
-    private final CredId credId;
-    private final boolean renewCredEnabled;
-
-    InitialCredKey(CredId credId, boolean renewCredEnabled) {
-      this.credId = credId;
-      this.renewCredEnabled = renewCredEnabled;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (!(o instanceof InitialCredKey)) {
-        return false;
-      }
-      InitialCredKey that = (InitialCredKey) o;
-      return renewCredEnabled == that.renewCredEnabled && credId.equals(that.credId);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(credId, renewCredEnabled);
-    }
   }
 }
