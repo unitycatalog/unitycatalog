@@ -55,6 +55,13 @@ public class CredPropsUtil {
   static final CredentialCache<CredId, List<GenericCredential>> initialCredCache =
       CredentialCache.createInitialCredentialCache();
 
+  /**
+   * The least part of the lifetime a credential had left when received that must remain for {@link
+   * #initialCredCache} to hand it to another load. Without renewal the credential is written as
+   * fixed keys that nothing refreshes, so this is the least a query starts with.
+   */
+  private static final double MIN_REMAINING_LIFETIME_FRACTION = 0.5;
+
   // Keys used to build the credential-context id (see #credContextId).
   private static final String CRED_CONTEXT_CATALOG_URI_KEY = "catalogUri";
   private static final String CRED_CONTEXT_SCHEME_KEY = "scheme";
@@ -274,14 +281,40 @@ public class CredPropsUtil {
           Clock clock = ClockUtil.resolveClock(hadoopConf);
           List<GenericCredential> credentials =
               createCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
+          long receivedAtMillis = clock.now().toEpochMilli();
           return new RenewableCredential<>(credentials) {
             @Override
             public boolean readyToRenew() {
               return credentials.stream()
-                  .anyMatch(c -> c.readyToRenew(clock, renewalLeadTimeMillis));
+                  .anyMatch(
+                      c ->
+                          c.readyToRenew(
+                              clock,
+                              reuseLeadTimeMillis(c, receivedAtMillis, renewalLeadTimeMillis)));
             }
           };
         });
+  }
+
+  /**
+   * Returns how long before its expiration a cached credential stops being reused: once less than
+   * {@link #MIN_REMAINING_LIFETIME_FRACTION} of the lifetime it had left when received remains, or
+   * once it is within the renewal lead time, whichever comes first.
+   *
+   * @param credential the cached credential
+   * @param receivedAtMillis when {@code credential} was received from Unity Catalog, in epoch ms
+   * @param renewalLeadTimeMillis the lead time before expiration at which credentials are renewed
+   * @return the lead time to pass to {@link GenericCredential#readyToRenew}
+   */
+  private static long reuseLeadTimeMillis(
+      GenericCredential credential, long receivedAtMillis, long renewalLeadTimeMillis) {
+    Long expirationTimeMillis = credential.expirationTimeMillis();
+    if (expirationTimeMillis == null) {
+      return renewalLeadTimeMillis;
+    }
+    long lifetimeLeftWhenReceived = expirationTimeMillis - receivedAtMillis;
+    return Math.max(
+        renewalLeadTimeMillis, (long) (lifetimeLeftWhenReceived * MIN_REMAINING_LIFETIME_FRACTION));
   }
 
   private static List<GenericCredential> createCredentials(

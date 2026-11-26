@@ -11,6 +11,7 @@ import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
@@ -22,6 +23,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
@@ -32,6 +35,9 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class CredPropsCacheTest {
 
+  private final String clockName = UUID.randomUUID().toString();
+  private final Clock clock = Clock.getManualClock(clockName);
+
   @BeforeEach
   void clearCredentialCache() {
     CredPropsUtil.initialCredCache.clear();
@@ -41,6 +47,7 @@ class CredPropsCacheTest {
   void resetFactory() {
     CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
     CredPropsUtil.initialCredCache.clear();
+    Clock.removeManualClock(clockName);
   }
 
   @Test
@@ -100,10 +107,9 @@ class CredPropsCacheTest {
    * io.unitycatalog.hadoop.internal.id.CredId} variant produced by the {@code create*CredProps}
    * entry points.
    */
-  @ParameterizedTest(name = "{0}")
-  @MethodSource("credIdVariants")
-  void sameResourceDifferentCatalogUriCachedSeparately(String variant, CredPropsFetch fetch)
-      throws Exception {
+  @ParameterizedTest
+  @EnumSource(EntryPoint.class)
+  void sameResourceDifferentCatalogUriCachedSeparately(EntryPoint entryPoint) throws Exception {
     AtomicInteger fetches = new AtomicInteger();
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> {
@@ -111,8 +117,8 @@ class CredPropsCacheTest {
           return mockGenericCredentialFetcher(s3Creds());
         };
 
-    fetch.fetch("http://uc-a");
-    fetch.fetch("http://uc-b");
+    entryPoint.call(false, new Configuration(false), "s3", "http://uc-a");
+    entryPoint.call(false, new Configuration(false), "s3", "http://uc-b");
 
     assertThat(fetches.get()).isEqualTo(2);
   }
@@ -134,99 +140,182 @@ class CredPropsCacheTest {
     assertThat(fetches.get()).isEqualTo(2);
   }
 
+  /**
+   * A cached credential is reused only while at least half of the lifetime it had left when
+   * received remains. Without renewal it is written as fixed keys that nothing refreshes, so a
+   * query never starts on one that is about to expire.
+   */
+  @ParameterizedTest(name = "{0} renew={1}")
+  @MethodSource("entryPointsByRenewal")
+  void cachedCredentialIsReusedUntilHalfItsLifetimeRemains(EntryPoint entryPoint, boolean renew)
+      throws Exception {
+    AtomicInteger fetches = installCountingFetcher(Duration.ofHours(1), Duration.ZERO);
+    Configuration conf = clockConf(30_000L);
+    String tokenKey = renew ? "fs.s3a.init.session.token" : "fs.s3a.session.token";
+
+    entryPoint.call(renew, conf, "s3", "http://uc");
+    clock.sleep(Duration.ofMinutes(30).minusMillis(1));
+    assertThat(entryPoint.call(renew, conf, "s3", "http://uc")).containsEntry(tokenKey, "st1");
+    assertThat(fetches.get()).isEqualTo(1);
+
+    clock.sleep(Duration.ofMillis(1));
+    assertThat(entryPoint.call(renew, conf, "s3", "http://uc")).containsEntry(tokenKey, "st2");
+    assertThat(fetches.get()).isEqualTo(2);
+  }
+
+  /**
+   * A credential received with less lifetime left, such as one the server served from its own
+   * cache, is reused for half of what it had left, and never within the renewal lead time.
+   */
+  @ParameterizedTest(name = "lifetimeLeft={0} leadTime={1}ms reusedFor={2}")
+  @CsvSource({"PT10M, 30000, PT5M", "PT40S, 30000, PT10S"})
+  void cachedCredentialIsReusedUntilItsThreshold(
+      Duration lifetimeLeft, long leadTimeMillis, Duration reusedFor) throws Exception {
+    AtomicInteger fetches = installCountingFetcher(lifetimeLeft, Duration.ZERO);
+    Configuration conf = clockConf(leadTimeMillis);
+
+    EntryPoint.TABLE.call(false, conf, "s3", "http://uc");
+    clock.sleep(reusedFor.minusMillis(1));
+    assertThat(EntryPoint.TABLE.call(false, conf, "s3", "http://uc"))
+        .containsEntry("fs.s3a.session.token", "st1");
+    assertThat(fetches.get()).isEqualTo(1);
+
+    clock.sleep(Duration.ofMillis(1));
+    assertThat(EntryPoint.TABLE.call(false, conf, "s3", "http://uc"))
+        .containsEntry("fs.s3a.session.token", "st2");
+    assertThat(fetches.get()).isEqualTo(2);
+  }
+
+  /**
+   * The lifetime is measured from when the fetch returns: a credential vended with 10 minutes left
+   * that takes 2 minutes to arrive has 8 left, so it is reused for 4 minutes after it arrives.
+   */
   @Test
-  void expiredCachedCredentialIsRefetched() throws Exception {
-    String clockName = UUID.randomUUID().toString();
-    Clock clock = Clock.getManualClock(clockName);
-    try {
-      GenericCredential cred1 = s3CredsExpiringAt("1", clock.now().toEpochMilli() + 2000L);
-      GenericCredential cred2 = s3CredsExpiringAt("2", clock.now().toEpochMilli() + 20000L);
-      AtomicInteger fetches = new AtomicInteger();
-      CredPropsUtil.genericCredFetcherFactory =
-          (apiClient, credId) ->
-              mockGenericCredentialFetcher(fetches.getAndIncrement() == 0 ? cred1 : cred2);
+  void thresholdIsMeasuredFromWhenTheCredentialIsReceived() throws Exception {
+    AtomicInteger fetches = installCountingFetcher(Duration.ofMinutes(10), Duration.ofMinutes(2));
+    Configuration conf = clockConf(30_000L);
 
-      Configuration conf = new Configuration(false);
-      conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
-      conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    EntryPoint.TABLE.call(false, conf, "s3", "http://uc");
+    clock.sleep(Duration.ofMinutes(4).minusMillis(1));
+    assertThat(EntryPoint.TABLE.call(false, conf, "s3", "http://uc"))
+        .containsEntry("fs.s3a.session.token", "st1");
+    assertThat(fetches.get()).isEqualTo(1);
 
-      // 1st query fetches cred1 and caches it.
-      assertThat(createTableCredProps(conf)).containsEntry("fs.s3a.session.token", "st1");
-      // 2nd query reuses cred1 while it is still valid.
-      assertThat(createTableCredProps(conf)).containsEntry("fs.s3a.session.token", "st1");
-      assertThat(fetches.get()).isEqualTo(1);
-
-      // Advance the clock so cred1 is within the renewal lead time; the next query refetches cred2.
-      clock.sleep(Duration.ofMillis(1500));
-      assertThat(createTableCredProps(conf)).containsEntry("fs.s3a.session.token", "st2");
-      assertThat(fetches.get()).isEqualTo(2);
-    } finally {
-      Clock.removeManualClock(clockName);
-    }
+    clock.sleep(Duration.ofMillis(1));
+    assertThat(EntryPoint.TABLE.call(false, conf, "s3", "http://uc"))
+        .containsEntry("fs.s3a.session.token", "st2");
+    assertThat(fetches.get()).isEqualTo(2);
   }
 
   // ---- test fixtures -------------------------------------------------------------------------
 
-  /** Fetches credential props for one fixed resource + auth against the given catalog. */
-  @FunctionalInterface
-  private interface CredPropsFetch {
-    void fetch(String catalogUri) throws Exception;
+  /** A {@code create*CredProps} entry point, called for one fixed resource and auth. */
+  private enum EntryPoint {
+    TABLE(
+        (renew, conf, scheme, catalogUri) ->
+            CredPropsUtil.createTableCredProps(
+                renew,
+                false,
+                conf,
+                scheme,
+                null,
+                catalogUri,
+                tokenProvider(),
+                "shared-table",
+                UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+                Map.of())),
+    PATH(
+        (renew, conf, scheme, catalogUri) ->
+            CredPropsUtil.createPathCredProps(
+                renew,
+                false,
+                conf,
+                scheme,
+                null,
+                catalogUri,
+                tokenProvider(),
+                scheme + "://bucket/shared",
+                UCCredentialHadoopConfs.PathOperation.PATH_READ_WRITE,
+                Map.of())),
+    DELTA_TABLE(
+        (renew, conf, scheme, catalogUri) ->
+            CredPropsUtil.createDeltaTableCredProps(
+                renew,
+                false,
+                conf,
+                scheme,
+                null,
+                catalogUri,
+                tokenProvider(),
+                UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
+                scheme + "://bucket/tbl",
+                UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+                Map.of())),
+    DELTA_STAGING_TABLE(
+        (renew, conf, scheme, catalogUri) ->
+            CredPropsUtil.createDeltaStagingTableCredProps(
+                renew,
+                false,
+                conf,
+                scheme,
+                null,
+                catalogUri,
+                tokenProvider(),
+                "staging-uuid",
+                scheme + "://bucket/staging",
+                Map.of()));
+
+    private final CredPropsCall call;
+
+    EntryPoint(CredPropsCall call) {
+      this.call = call;
+    }
+
+    Map<String, String> call(
+        boolean renewCredEnabled, Configuration conf, String scheme, String catalogUri)
+        throws Exception {
+      return call.call(renewCredEnabled, conf, scheme, catalogUri);
+    }
   }
 
-  private static Stream<Arguments> credIdVariants() {
-    return Stream.of(
-        Arguments.of(
-            "TableCredId",
-            (CredPropsFetch)
-                catalogUri ->
-                    createTableCredProps(
-                        new Configuration(false), catalogUri, "shared-table", tokenProvider())),
-        Arguments.of(
-            "PathCredId",
-            (CredPropsFetch)
-                catalogUri ->
-                    CredPropsUtil.createPathCredProps(
-                        false,
-                        false,
-                        new Configuration(false),
-                        "s3",
-                        null,
-                        catalogUri,
-                        tokenProvider(),
-                        "s3://bucket/shared",
-                        UCCredentialHadoopConfs.PathOperation.PATH_READ_WRITE,
-                        Map.of())),
-        Arguments.of(
-            "DeltaTableCredId",
-            (CredPropsFetch)
-                catalogUri ->
-                    CredPropsUtil.createDeltaTableCredProps(
-                        false,
-                        false,
-                        new Configuration(false),
-                        "s3",
-                        null,
-                        catalogUri,
-                        tokenProvider(),
-                        UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
-                        "s3://bucket/tbl",
-                        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
-                        Map.of())),
-        Arguments.of(
-            "DeltaStagingTableCredId",
-            (CredPropsFetch)
-                catalogUri ->
-                    CredPropsUtil.createDeltaStagingTableCredProps(
-                        false,
-                        false,
-                        new Configuration(false),
-                        "s3",
-                        null,
-                        catalogUri,
-                        tokenProvider(),
-                        "staging-uuid",
-                        "s3://bucket/staging",
-                        Map.of())));
+  @FunctionalInterface
+  private interface CredPropsCall {
+    Map<String, String> call(
+        boolean renewCredEnabled, Configuration conf, String scheme, String catalogUri)
+        throws Exception;
+  }
+
+  private static Stream<Arguments> entryPointsByRenewal() {
+    return Arrays.stream(EntryPoint.values())
+        .flatMap(
+            entryPoint ->
+                Stream.of(Arguments.of(entryPoint, false), Arguments.of(entryPoint, true)));
+  }
+
+  /**
+   * Installs a fetcher whose n-th fetch vends an S3 credential with session token {@code "st<n>"}.
+   * The credential expires {@code lifetime} after the fetch starts, and the fetch takes {@code
+   * fetchTime} on the test clock.
+   *
+   * @return the number of fetches so far
+   */
+  private AtomicInteger installCountingFetcher(Duration lifetime, Duration fetchTime) {
+    AtomicInteger fetches = new AtomicInteger();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> {
+          long expirationMillis = clock.now().plus(lifetime).toEpochMilli();
+          ((Clock.ManualClock) clock).sleep(fetchTime);
+          return mockGenericCredentialFetcher(
+              s3CredsExpiringAt(String.valueOf(fetches.incrementAndGet()), expirationMillis));
+        };
+    return fetches;
+  }
+
+  private Configuration clockConf(long leadTimeMillis) {
+    Configuration conf = new Configuration(false);
+    conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, leadTimeMillis);
+    return conf;
   }
 
   private static Map<String, String> createTableCredProps(Configuration conf) throws Exception {
@@ -240,19 +329,13 @@ class CredPropsCacheTest {
 
   private static Map<String, String> createTableCredProps(
       Configuration conf, String tableId, TokenProvider tokenProvider) throws Exception {
-    return createTableCredProps(conf, "http://uc", tableId, tokenProvider);
-  }
-
-  private static Map<String, String> createTableCredProps(
-      Configuration conf, String catalogUri, String tableId, TokenProvider tokenProvider)
-      throws Exception {
     return CredPropsUtil.createTableCredProps(
         false,
         false,
         conf,
         "s3",
         null,
-        catalogUri,
+        "http://uc",
         tokenProvider,
         tableId,
         UCCredentialHadoopConfs.TableOperation.READ_WRITE,
