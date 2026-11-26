@@ -740,6 +740,41 @@ class CredentialRepositoryTest {
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.FAILED_PRECONDITION);
 
+    // 3b. Transient GCE metadata failure (503) during email lookup maps to UNAVAILABLE.
+    MockHttpTransport metadata503 =
+        new MockHttpTransport() {
+          @Override
+          public LowLevelHttpRequest buildRequest(String method, String url) {
+            return new MockLowLevelHttpRequest(url) {
+              @Override
+              public LowLevelHttpResponse execute() {
+                return new MockLowLevelHttpResponse()
+                    .setStatusCode(503)
+                    .setContent("service unavailable");
+              }
+            };
+          }
+        };
+    adcBehavior.set(
+        () ->
+            ComputeEngineCredentials.newBuilder()
+                .setHttpTransportFactory(() -> metadata503)
+                .build());
+    assertThatThrownBy(
+            () ->
+                repo.addCredential(
+                    new CreateCredentialRequest()
+                        .name("transient_gce_error")
+                        .purpose(CredentialPurpose.STORAGE)
+                        .gcpServerIdentity(Map.of())))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.UNAVAILABLE);
+    assertThatThrownBy(() -> repo.getCredential("transient_gce_error"))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.NOT_FOUND);
+
     // 4. Service-account ADC succeeds without an encryption key and returns the server SA email.
     String serverEmail = "uc-server@my-project.iam.gserviceaccount.com";
     GoogleCredentials saCreds =

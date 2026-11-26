@@ -405,9 +405,9 @@ public class CredentialRepository {
    * its service account email when the credentials identify one.
    */
   private Optional<String> checkAndResolveGcpServerIdentityEmail() {
+    GoogleCredentials credentials;
     try {
-      GoogleCredentials credentials = gcpDefaultCredentials.load();
-      return GcpApplicationDefaultCredentials.serviceAccountEmail(credentials);
+      credentials = gcpDefaultCredentials.load();
     } catch (IOException | RuntimeException e) {
       LOGGER.warn(
           "Cannot create gcp_server_identity credential: Google Cloud Application Default"
@@ -421,6 +421,45 @@ public class CredentialRepository {
               + " gcp_server_identity credential.",
           e);
     }
+    try {
+      return GcpApplicationDefaultCredentials.serviceAccountEmail(credentials);
+    } catch (RuntimeException e) {
+      if (isPermanentMetadataIdentityFailure(e)) {
+        LOGGER.warn(
+            "Cannot create gcp_server_identity credential: server metadata service rejected"
+                + " service account lookup.",
+            e);
+        throw new BaseException(
+            ErrorCode.FAILED_PRECONDITION,
+            "The server has no usable Google Cloud Application Default Credentials. Configure"
+                + " Application Default Credentials (for example, GKE Workload Identity or a"
+                + " Compute Engine service account) on the server before creating a"
+                + " gcp_server_identity credential.",
+            e);
+      }
+      LOGGER.warn(
+          "Cannot create gcp_server_identity credential: failed to resolve server service account"
+              + " email.",
+          e);
+      throw new BaseException(
+          ErrorCode.UNAVAILABLE,
+          "Could not verify the server's Google Cloud identity. Try again.",
+          e);
+    }
+  }
+
+  private static boolean isPermanentMetadataIdentityFailure(Throwable failure) {
+    Throwable cause = failure;
+    for (int depth = 0; cause != null && depth < 10; depth++, cause = cause.getCause()) {
+      String message = cause.getMessage();
+      if (message != null
+          && (message.contains("Error code 404 trying to get service accounts")
+              || message.contains("Error code 401 trying to get service accounts")
+              || message.contains("Error code 403 trying to get service accounts"))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
