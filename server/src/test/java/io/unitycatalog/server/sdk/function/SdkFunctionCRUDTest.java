@@ -227,6 +227,50 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
   }
 
   @Test
+  public void testGeoTypesInFunctions() throws ApiException {
+    createCommonResources();
+    for (ColumnTypeName type : List.of(ColumnTypeName.GEOMETRY, ColumnTypeName.GEOGRAPHY)) {
+      String name = "fn_" + type.getValue().toLowerCase();
+      FunctionInfo created =
+          functionOperations.createFunction(
+              new CreateFunctionRequest()
+                  .functionInfo(
+                      new CreateFunction()
+                          .name(name)
+                          .catalogName(CATALOG_NAME)
+                          .schemaName(SCHEMA_NAME)
+                          .parameterStyle(CreateFunction.ParameterStyleEnum.S)
+                          .isDeterministic(true)
+                          .externalLanguage("python")
+                          .dataType(type)
+                          .fullDataType(type.getValue())
+                          .isNullCall(false)
+                          .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
+                          .routineDefinition("return x")
+                          .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
+                          .specificName(name)
+                          .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
+                          .inputParams(
+                              new FunctionParameterInfos()
+                                  .parameters(
+                                      List.of(
+                                          new FunctionParameterInfo()
+                                              .name("x")
+                                              .typeText(type.getValue().toLowerCase())
+                                              .typeName(type)
+                                              .position(0))))));
+      assertThat(created.getDataType()).isEqualTo(type);
+      FunctionInfo loaded =
+          functionOperations.getFunction(CATALOG_NAME + "." + SCHEMA_NAME + "." + name);
+      assertThat(loaded.getDataType()).isEqualTo(type);
+      assertThat(loaded.getInputParams().getParameters())
+          .singleElement()
+          .extracting(FunctionParameterInfo::getTypeName)
+          .isEqualTo(type);
+    }
+  }
+
+  @Test
   public void testInvalidFunctionPropertiesRejected() throws ApiException {
     createCommonResources();
     for (String properties :

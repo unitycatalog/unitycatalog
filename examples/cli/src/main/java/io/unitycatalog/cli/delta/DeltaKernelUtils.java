@@ -10,6 +10,7 @@ import io.delta.kernel.data.Row;
 import io.delta.kernel.defaults.engine.DefaultEngine;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.internal.SnapshotImpl;
+import io.delta.kernel.internal.types.DataTypeJsonSerDe;
 import io.delta.kernel.types.BasePrimitiveType;
 import io.delta.kernel.types.DataType;
 import io.delta.kernel.types.DecimalType;
@@ -287,7 +288,22 @@ public class DeltaKernelUtils {
       }
       return new DecimalType(column.getTypePrecision(), column.getTypeScale());
     }
+    if (column.getTypeName() == ColumnTypeName.GEOMETRY
+        || column.getTypeName() == ColumnTypeName.GEOGRAPHY) {
+      return parseGeoType(column);
+    }
     return findBasicTypeFromString(column.getTypeName().toString());
+  }
+
+  /** Reads a geo type, with its CRS and algorithm, from the column's {@code type_json}. */
+  private static DataType parseGeoType(ColumnInfo column) {
+    if (column.getTypeJson() == null) {
+      throw new IllegalArgumentException("Column type JSON is missing: " + column.getName());
+    }
+    return DataTypeJsonSerDe.deserializeStructType(
+            "{\"type\":\"struct\",\"fields\":[" + column.getTypeJson() + "]}")
+        .at(0)
+        .getDataType();
   }
 
   public static DataType findBasicTypeFromString(String typeText) {
