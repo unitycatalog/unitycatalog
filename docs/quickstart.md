@@ -7,7 +7,7 @@ This quickstart shows how to run Unity Catalog on localhost which is great for e
 Start by cloning the open source Unity Catalog GitHub repository:
 
 ```sh
-git clone git@github.com:unitycatalog/unitycatalog.git
+git clone https://github.com/unitycatalog/unitycatalog.git
 ```
 
 > To start Unity Catalog in Docker, refer to the [Docker
