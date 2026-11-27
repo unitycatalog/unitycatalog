@@ -34,6 +34,7 @@
 - Annotate DATE, TIMESTAMP, DECIMAL and INTERVAL so get_function_as_callable and get_function_source load by @maharanay22 in #2322
 - Pass LangChain tool arguments named config or run_manager to the function by @maharanay22 in #2343
 - Declare Gemini tools by their tool name so same-named functions can be used together by @maharanay22 in #2349
+- Inline struct definitions in DSPy tool schemas by @greglum in #2391
 
 ## Unity Catalog AI 0.4.0
 

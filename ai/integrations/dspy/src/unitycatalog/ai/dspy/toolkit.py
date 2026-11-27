@@ -24,35 +24,33 @@ _logger = logging.getLogger(__name__)
 def _inline_schema_refs(schema: Dict[str, Any]) -> Dict[str, Any]:
     """Inline Pydantic's local `$defs` references so each DSPy argument schema is self-contained."""
     defs = schema.get("$defs")
-    if not isinstance(defs, dict) or not defs:
+    if not defs:
         return deepcopy(schema)
 
-    def inline(node: Any, visiting: frozenset[str]) -> Any:
+    def inline(node: Any) -> Any:
         if not isinstance(node, dict):
             return deepcopy(node)
 
         result: Dict[str, Any] = {}
         for keyword, value in node.items():
-            if keyword == "properties" and isinstance(value, dict):
-                result[keyword] = {k: inline(v, visiting) for k, v in value.items()}
+            if keyword == "properties":
+                result[keyword] = {k: inline(v) for k, v in value.items()}
             elif keyword in ("items", "additionalProperties"):
-                result[keyword] = inline(value, visiting)
-            elif keyword in ("anyOf", "oneOf", "allOf", "prefixItems") and isinstance(value, list):
-                result[keyword] = [inline(item, visiting) for item in value]
+                result[keyword] = inline(value)
+            elif keyword in ("anyOf", "oneOf", "allOf", "prefixItems"):
+                result[keyword] = [inline(item) for item in value]
             else:
                 result[keyword] = deepcopy(value)
 
         ref = result.get("$ref")
         if isinstance(ref, str) and ref.startswith("#/$defs/"):
             name = ref[len("#/$defs/") :]
-            if name in defs and name not in visiting:
+            if name in defs:
                 result.pop("$ref")
-                target = inline(defs[name], visiting | {name})
-                if isinstance(target, dict):
-                    return {**target, **result}
+                return {**inline(defs[name]), **result}
         return result
 
-    return inline({k: v for k, v in schema.items() if k != "$defs"}, frozenset())
+    return inline({k: v for k, v in schema.items() if k != "$defs"})
 
 
 class UnityCatalogDSPyToolWrapper(BaseModel):

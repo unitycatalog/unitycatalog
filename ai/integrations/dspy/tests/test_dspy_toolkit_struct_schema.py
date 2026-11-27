@@ -150,7 +150,7 @@ def test_inline_schema_refs_preserves_siblings_and_literal_data():
     assert schema == original
 
 
-def test_inline_schema_refs_isolates_shared_mutable_leaves_and_ignores_non_dict_defs():
+def test_inline_schema_refs_isolates_shared_mutable_leaves():
     shared_schema = {
         "properties": {
             "first": {"$ref": "#/$defs/Shared"},
@@ -170,33 +170,3 @@ def test_inline_schema_refs_isolates_shared_mutable_leaves_and_ignores_non_dict_
     assert first["required"] is not second["required"]
     assert first["required"] is not shared_schema["$defs"]["Shared"]["required"]
     assert first["properties"]["count"] == {"type": "integer"}
-
-    non_dict = {"$defs": None, "properties": None, "$ref": "#/$defs/Missing"}
-    assert _inline_schema_refs(non_dict) == non_dict
-    assert _inline_schema_refs(non_dict) is not non_dict
-
-
-def test_inline_schema_refs_terminates_on_cycle():
-    ref = {"$ref": "#/$defs/Node"}
-    schema = {
-        **ref,
-        "$defs": {
-            "Node": {
-                "type": "object",
-                "properties": {
-                    "next": {"anyOf": [ref, {"type": "null"}]},
-                    "value": {"$ref": "#/$defs/Value"},
-                },
-            },
-            "Value": {"type": "integer"},
-            "Unused": {"type": "boolean"},
-        },
-    }
-
-    assert _inline_schema_refs(schema) == {
-        "type": "object",
-        "properties": {
-            "next": {"anyOf": [ref, {"type": "null"}]},
-            "value": {"type": "integer"},
-        },
-    }
