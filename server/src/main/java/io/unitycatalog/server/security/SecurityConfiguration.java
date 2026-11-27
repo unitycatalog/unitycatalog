@@ -122,6 +122,10 @@ public class SecurityConfiguration {
     if (Files.notExists(file)) {
       throw new IllegalStateException("No token signing key file at " + file.toAbsolutePath());
     }
+    if (!Files.isRegularFile(file)) {
+      throw new IllegalStateException(
+          "Token signing key path is not a regular file: " + file.toAbsolutePath());
+    }
   }
 
   @SneakyThrows

@@ -63,7 +63,8 @@ class SecurityConfigurationTest {
     "encrypted PKCS #1, is encrypted",
     "certificate only, No PRIVATE KEY PEM block",
     "garbage bytes, Cannot read the RSA private key",
-    "EC key, expected an unencrypted RSA private key"
+    "EC key, expected an unencrypted RSA private key",
+    "directory, is not a regular file"
   })
   void rejectsAnUnusablePrivateKey(String problem, String message) throws Exception {
     byte[] der = newKeyPair().getPrivate().getEncoded();
@@ -83,6 +84,7 @@ class SecurityConfigurationTest {
         Files.writeString(
             privateKey, pem("PRIVATE" + " KEY", ec.generateKeyPair().getPrivate().getEncoded()));
       }
+      case "directory" -> Files.createDirectory(privateKey);
       default -> Files.write(privateKey, new byte[] {1, 2, 3});
     }
 
