@@ -89,6 +89,7 @@ public final class TestDatabases {
     Flyway.configure()
         .dataSource(database.dataSource())
         .locations("classpath:db/migration/" + database.jdbcUrl().split(":")[1])
+        .javaMigrations(io.unitycatalog.server.migrate.SchemaMigrator.javaMigrations())
         .table("uc_schema_history")
         .failOnMissingLocations(true)
         .validateMigrationNaming(true)

@@ -27,6 +27,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class ColumnUtils {
@@ -51,6 +53,15 @@ public class ColumnUtils {
     return typeNameVsTypeText.getOrDefault(
         typeName.getValue(), typeName.getValue().toLowerCase(Locale.ROOT));
   }
+
+  // Geo type strings as Delta Kernel parses them: geometry[(<crs>)] and
+  // geography[(<crs>[, <algorithm>]) | (<algorithm>)]. A CRS is <authority>:<code>.
+  private static final Pattern GEOMETRY_TYPE =
+      Pattern.compile("geometry(?:\\(\\s*\\w+:-?\\w+\\s*\\))?");
+  private static final Pattern GEOGRAPHY_TYPE =
+      Pattern.compile("geography(?:\\(\\s*(?:\\w+:-?\\w+(?:\\s*,\\s*(\\w+))?|(\\w+))\\s*\\))?");
+  private static final Set<String> GEOGRAPHY_ALGORITHMS =
+      Set.of("spherical", "vincenty", "thomas", "andoyer", "karney");
 
   static String getTypeJson(
       ColumnTypeName typeName, String columnName, boolean isNullable, String precisionAndScale) {
@@ -420,7 +431,10 @@ public class ColumnUtils {
       }
       return sb.append(">").toString();
     }
-    return getTypeText(resolveColumnTypeName(type));
+    ColumnTypeName typeName = resolveColumnTypeName(type);
+    // A geo type keeps its CRS and algorithm in the text, e.g. geometry(OGC:CRS84).
+    boolean isGeo = typeName == ColumnTypeName.GEOMETRY || typeName == ColumnTypeName.GEOGRAPHY;
+    return isGeo ? type.getType() : getTypeText(typeName);
   }
 
   private static String extractComment(DeltaStructField field) {
@@ -453,8 +467,12 @@ public class ColumnUtils {
     //   - CHAR / UDT: Spark's Delta writer normalizes CHAR/VARCHAR to STRING (via
     //     CharVarcharUtils) and unwraps UDTs to their underlying sqlType before persisting, so
     //     Delta clients never send "char(n)" or {"type":"udt",...}.
+    //   - GEOMETRY / GEOGRAPHY: matched by resolveGeoTypeName above, since the type string carries
+    //     the CRS and algorithm.
     //   - TABLE_TYPE: UC-internal (foreign tables); doesn't flow over the Delta wire.
     String primitive = type.getType();
+    ColumnTypeName geoType = resolveGeoTypeName(primitive);
+    if (geoType != null) return geoType;
     return switch (primitive) {
       case "boolean" -> ColumnTypeName.BOOLEAN;
       case "byte" -> ColumnTypeName.BYTE;
@@ -473,6 +491,29 @@ public class ColumnUtils {
           throw new BaseException(
               ErrorCode.INVALID_ARGUMENT, "Unsupported Delta primitive type: " + primitive);
     };
+  }
+
+  /**
+   * Returns {@code GEOMETRY} or {@code GEOGRAPHY} if {@code primitive} is a geo type string, null
+   * if it is not one.
+   *
+   * @throws BaseException with {@code INVALID_ARGUMENT} for a geography algorithm Delta does not
+   *     define.
+   */
+  private static ColumnTypeName resolveGeoTypeName(String primitive) {
+    if (GEOMETRY_TYPE.matcher(primitive).matches()) return ColumnTypeName.GEOMETRY;
+    Matcher geography = GEOGRAPHY_TYPE.matcher(primitive);
+    if (!geography.matches()) return null;
+    String algorithm = geography.group(1) != null ? geography.group(1) : geography.group(2);
+    if (algorithm != null && !GEOGRAPHY_ALGORITHMS.contains(algorithm.toLowerCase(Locale.ROOT))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Unsupported geography algorithm: "
+              + algorithm
+              + ". Expected one of "
+              + GEOGRAPHY_ALGORITHMS);
+    }
+    return ColumnTypeName.GEOGRAPHY;
   }
 
   /**

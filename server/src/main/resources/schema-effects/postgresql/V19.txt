@@ -1,0 +1,1 @@
++ check uc_function_params (((type_name >= 0) AND (type_name <= 23)))
