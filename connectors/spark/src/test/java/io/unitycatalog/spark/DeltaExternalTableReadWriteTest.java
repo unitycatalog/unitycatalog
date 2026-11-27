@@ -1,8 +1,8 @@
 package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
-import static org.assertj.core.api.Assertions.assertThat;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.File;

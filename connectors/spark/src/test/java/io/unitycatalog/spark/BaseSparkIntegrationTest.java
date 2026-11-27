@@ -506,7 +506,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
             Set.of(CredentialContext.Privilege.SELECT),
             List.of(NormalizedURL.from(stored)),
             null,
-            null);
+            null,
+            /* isS3Compatible= */ false);
     org.assertj.core.api.SoftAssertions softly = new org.assertj.core.api.SoftAssertions();
     softly
         .assertThat(policy)
