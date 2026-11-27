@@ -1,8 +1,10 @@
 package io.unitycatalog.server.sdk.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
@@ -20,8 +22,10 @@ import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
+import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -33,6 +37,7 @@ import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -117,6 +122,39 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             externalTableRequest(externalName, externalLocation));
     assertThat(extResp.getMetadata().getTableType()).isEqualTo(DeltaTableType.EXTERNAL);
     assertThat(extResp.getMetadata().getLocation()).isEqualTo(externalLocation);
+
+    // -------- geo columns keep their CRS and algorithm, and a bad algorithm is rejected --------
+    String geoName = "tbl_geo";
+    String geoLocation = "s3://test-bucket0/external-path/tbl_geo";
+    List<String> geoTypes = List.of("geometry(OGC:CRS84)", "geography(OGC:CRS84, spherical)");
+    DeltaLoadTableResponse geoResp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME2,
+            TestUtils.SCHEMA_NAME2,
+            externalTableRequest(geoName, geoLocation).columns(geoSchema(geoTypes)));
+    assertThat(geoResp.getMetadata().getColumns().getFields())
+        .extracting(f -> ((DeltaPrimitiveType) f.getType()).getType())
+        .containsExactlyElementsOf(geoTypes);
+    TableInfo geoTable =
+        new TablesApi(TestUtils.createApiClient(serverConfig))
+            .getTable(
+                TestUtils.CATALOG_NAME2 + "." + TestUtils.SCHEMA_NAME2 + "." + geoName,
+                null,
+                null,
+                /* includeBrowse= */ false);
+    assertThat(geoTable.getColumns())
+        .extracting(c -> c.getTypeName(), c -> c.getTypeText())
+        .containsExactly(
+            tuple(ColumnTypeName.GEOMETRY, "geometry(OGC:CRS84)"),
+            tuple(ColumnTypeName.GEOGRAPHY, "geography(OGC:CRS84, spherical)"));
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                externalTableRequest("tbl_geo_bad", "s3://test-bucket0/external-path/tbl_geo_bad")
+                    .columns(geoSchema(List.of("geography(OGC:CRS84, planar)")))),
+        "Unsupported geography algorithm: planar");
 
     // -------- name missing --------
     assertDeltaInvalidParam(
@@ -423,6 +461,20 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                     .type(new DeltaPrimitiveType().type("double"))
                     .nullable(true)
                     .metadata(new DeltaStructFieldMetadata())));
+  }
+
+  /** A schema with one nullable column per geo type string, named g0, g1, .... */
+  private static DeltaStructType geoSchema(List<String> types) {
+    List<DeltaStructField> fields = new ArrayList<>();
+    for (int i = 0; i < types.size(); i++) {
+      fields.add(
+          new DeltaStructField()
+              .name("g" + i)
+              .type(new DeltaPrimitiveType().type(types.get(i)))
+              .nullable(true)
+              .metadata(new DeltaStructFieldMetadata()));
+    }
+    return new DeltaStructType().type("struct").fields(fields);
   }
 
   /**

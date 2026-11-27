@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.callback.Callback;
 import org.flywaydb.core.api.callback.Context;
 import org.flywaydb.core.api.callback.Event;
@@ -66,10 +65,8 @@ final class UpgradeTestUtils {
 
   /** Runs this build's steps up to {@code version} on {@code db}, as a new install does. */
   static void migrateTo(TestDatabase db, String version) {
-    Flyway.configure()
-        .dataSource(db.dataSource())
-        .locations("classpath:db/migration/" + DatabaseKind.of(db.dataSource()).folder())
-        .table("uc_schema_history")
+    new SchemaMigrator(db.dataSource())
+        .flyway()
         .baselineOnMigrate(true)
         .baselineVersion("0")
         .target(version)

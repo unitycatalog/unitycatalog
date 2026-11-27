@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -23,7 +24,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.StringValue;
+import net.sf.jsqlparser.expression.operators.relational.Between;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.expression.operators.relational.InExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
@@ -166,7 +169,9 @@ public class MigrationStepRulesTest {
                 + expected);
       }
       // A step that shows no change cannot be told from one that did not run.
-      if (before.equals(after) && !parse(Files.readString(stepFile(kind, step))).isEmpty()) {
+      Optional<Path> sqlFile = stepFile(kind, step);
+      if (before.equals(after)
+          && (sqlFile.isEmpty() || !parse(Files.readString(sqlFile.get())).isEmpty())) {
         problems.add("step " + step + " changes nothing the schema snapshot shows");
       }
       before = after;
@@ -191,20 +196,29 @@ public class MigrationStepRulesTest {
       String step = entry.getKey();
       SchemaSnapshot before = previous == null ? SchemaSnapshot.NONE : migrator.expected(previous);
       previous = step;
-      Path file = stepFile(kind, step);
+      String stepLabel = stepFile(kind, step).map(Path::toString).orElse("step V" + step);
       List<String> sent = entry.getValue();
       if (!step.equals(first) && sent.size() > 1) {
-        problems.add(file + " sends " + sent.size() + " statements; a step holds one: " + sent);
+        problems.add(
+            stepLabel + " sends " + sent.size() + " statements; a step holds one: " + sent);
       }
       for (String sql : sent) {
         String refusal = refusalOfSent(sql, kind, step.equals(first), before);
         if (refusal != null) {
-          problems.add(file + ": " + refusal + ": " + sql);
+          problems.add(stepLabel + ": " + refusal + ": " + sql);
+        } else if (!step.equals(first)) {
+          String dropTable = standaloneDropConstraintTable(sql);
+          if (dropTable != null) {
+            String dropProblem = dropCheckDiffProblem(before, migrator.expected(step), dropTable);
+            if (dropProblem != null) {
+              problems.add(stepLabel + ": " + dropProblem);
+            }
+          }
         }
       }
       if (!step.equals(first)) {
         for (String problem : regrownIndexes(kind, before, migrator.expected(step))) {
-          problems.add(file + ": " + problem);
+          problems.add(stepLabel + ": " + problem);
         }
       }
     }
@@ -337,7 +351,18 @@ public class MigrationStepRulesTest {
         "MYSQL|ALTER TABLE t MODIFY c mediumtext NOT NULL|",
         "MYSQL|ALTER TABLE t MODIFY c varchar(20) NOT NULL DEFAULT 'x'|",
         "MYSQL|ALTER TABLE t MODIFY c varchar(20) COLLATE utf8mb4_bin NULL|",
-        "MYSQL|ALTER TABLE t MODIFY c INT PRIMARY KEY|is not an allowed change"
+        "MYSQL|ALTER TABLE t MODIFY c INT PRIMARY KEY|is not an allowed change",
+        // Widening an integer range CHECK in two steps: add a wider BETWEEN check, then drop the
+        // narrower one while the wider check is already present.
+        "H2|ALTER TABLE t ADD CONSTRAINT k CHECK (r BETWEEN 0 AND 23)|",
+        "POSTGRESQL|ALTER TABLE t ADD CONSTRAINT k CHECK (r BETWEEN 0 AND 23)|",
+        "MYSQL|ALTER TABLE t ADD CONSTRAINT k CHECK (r BETWEEN 0 AND 23)|",
+        "H2|ALTER TABLE t ADD CONSTRAINT k CHECK (r BETWEEN 0 AND 20)|is not an allowed change",
+        "H2|ALTER TABLE t ADD CONSTRAINT k CHECK (b BETWEEN 0 AND 23)|is not an allowed change",
+        "H2|ALTER TABLE t2 DROP CONSTRAINT \"CONSTRAINT_1\"|",
+        "POSTGRESQL|ALTER TABLE t2 DROP CONSTRAINT \"t2_r_check\"|",
+        "MYSQL|ALTER TABLE t2 DROP CONSTRAINT `t2_chk_1`|",
+        "H2|ALTER TABLE t DROP CONSTRAINT \"CONSTRAINT_1\"|is not an allowed change"
       })
   void laterStepsOnlyMakeChangesRowsCannotFail(DatabaseKind kind, String sql, String refusal) {
     SchemaSnapshot before =
@@ -363,7 +388,10 @@ public class MigrationStepRulesTest {
                 "column t.binbig type=binary varying size=100000 nullable=YES default=null",
                 "check t (((c)::text = 'A'::text))",
                 "check t (((a)::text = ANY ((ARRAY['X'::character varying, 'Y'::character"
-                    + " varying])::text[])))"));
+                    + " varying])::text[])))",
+                "check t \"R\" BETWEEN 0 AND 21",
+                "check t2 \"R\" BETWEEN 0 AND 21",
+                "check t2 \"R\" BETWEEN 0 AND 23"));
     assertThat(refusalOfSent(sql, kind, false, before)).isEqualTo(refusal);
   }
 
@@ -717,8 +745,11 @@ public class MigrationStepRulesTest {
     AlterExpression change = alter.getAlterExpressions().get(0);
     boolean allowed =
         switch (change.getOperation()) {
-          // ALTER TABLE t ADD c <type> [NULL | DEFAULT x | NOT NULL DEFAULT x]
-          case ADD -> NEW_COLUMN.matcher(columnSpecs(change)).matches();
+          // ALTER TABLE t ADD c <type> [NULL | DEFAULT x | NOT NULL DEFAULT x], or
+          // ALTER TABLE t ADD CHECK (c BETWEEN low AND high) widening an existing range CHECK
+          case ADD ->
+              NEW_COLUMN.matcher(columnSpecs(change)).matches()
+                  || addsWiderRangeCheck(alter, change, before);
           // PostgreSQL and H2: ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE <type>, or
           // ALTER TABLE t ALTER COLUMN c DROP NOT NULL
           case ALTER ->
@@ -730,9 +761,163 @@ public class MigrationStepRulesTest {
           // must restate the column's default and collation (typeChangesWiden checks they stay)
           case MODIFY ->
               kind == DatabaseKind.MYSQL && MODIFY_SPECS.matcher(columnSpecs(change)).matches();
+          // Dropping an older range CHECK once a wider range CHECK on the same column is in place
+          case DROP -> dropsRedundantRangeCheck(kind, alter, change, before);
           default -> false;
         };
     return allowed ? null : "is not an allowed change";
+  }
+
+  private static final Pattern BETWEEN_CHECK =
+      Pattern.compile(
+          "(?i)^\\(?\\s*[\"`]?(\\w+)[\"`]?\\s+between\\s+"
+              + "(-?\\d+)\\s+and\\s+(-?\\d+)\\s*\\)?$");
+
+  private static final Pattern PG_RANGE_CHECK =
+      Pattern.compile(
+          "(?i)^\\(+(\\w+)\\s*>=\\s*(-?\\d+)\\)?\\s+and\\s+\\(?\\1\\s*<=\\s*(-?\\d+)\\)+$");
+
+  private record RangeCheck(String column, long min, long max) {}
+
+  private static List<RangeCheck> rangeChecks(SchemaSnapshot snapshot, String table) {
+    String prefix = "check " + table + " ";
+    List<RangeCheck> checks = new ArrayList<>();
+    for (String entry : snapshot.entries()) {
+      if (!entry.startsWith(prefix)) {
+        continue;
+      }
+      String clause = entry.substring(prefix.length()).trim();
+      RangeCheck parsed = parseRangeCheck(clause);
+      if (parsed != null) {
+        checks.add(parsed);
+      }
+    }
+    return checks;
+  }
+
+  private static boolean addsWiderRangeCheck(
+      Alter alter, AlterExpression change, SchemaSnapshot before) {
+    if (!(change.getIndex() instanceof CheckConstraint check)
+        || !(check.getExpression() instanceof Between between)
+        || between.isNot()
+        || !(between.getLeftExpression() instanceof Column column)
+        || !(between.getBetweenExpressionStart() instanceof LongValue start)
+        || !(between.getBetweenExpressionEnd() instanceof LongValue end)) {
+      return false;
+    }
+    String table = unquoted(alter.getTable().getName());
+    String col = unquoted(column.getColumnName());
+    long newMin = start.getValue();
+    long newMax = end.getValue();
+    return rangeChecks(before, table).stream()
+        .anyMatch(rc -> rc.column().equals(col) && newMin <= rc.min() && newMax >= rc.max());
+  }
+
+  private static boolean dropsRedundantRangeCheck(
+      DatabaseKind kind, Alter alter, AlterExpression change, SchemaSnapshot before) {
+    if (change.getConstraintName() == null) {
+      return false;
+    }
+    String table = unquoted(alter.getTable().getName());
+    List<RangeCheck> checks = rangeChecks(before, table);
+    for (RangeCheck a : checks) {
+      for (RangeCheck b : checks) {
+        if (a.column().equals(b.column())
+            && b.min() <= a.min()
+            && b.max() >= a.max()
+            && (b.min() < a.min() || b.max() > a.max())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static String standaloneDropConstraintTable(String sql) {
+    List<Statement> statements = parse(sql);
+    if (statements.size() == 1
+        && statements.get(0) instanceof Alter alter
+        && alter.getAlterExpressions().size() == 1
+        && alter.getAlterExpressions().get(0).getOperation() == AlterOperation.DROP) {
+      return unquoted(alter.getTable().getName());
+    }
+    return null;
+  }
+
+  /**
+   * Verifies that a standalone DROP constraint step removes only a single range CHECK on {@code
+   * table} and leaves a strictly wider range CHECK on the same column in {@code after}.
+   */
+  private static String dropCheckDiffProblem(
+      SchemaSnapshot before, SchemaSnapshot after, String table) {
+    List<String> diff = before.changesTo(after);
+    String prefix = "- check " + table + " ";
+    if (diff.size() != 1 || !diff.get(0).startsWith(prefix)) {
+      return "DROP constraint must remove exactly one CHECK on " + table + ", got: " + diff;
+    }
+    RangeCheck dropped = parseRangeCheck(diff.get(0).substring(prefix.length()).trim());
+    if (dropped == null) {
+      return "DROP constraint removed a non-range CHECK: " + diff.get(0);
+    }
+    boolean coveredByWider =
+        rangeChecks(after, table).stream()
+            .anyMatch(
+                kept ->
+                    kept.column().equals(dropped.column())
+                        && kept.min() <= dropped.min()
+                        && kept.max() >= dropped.max()
+                        && (kept.min() < dropped.min() || kept.max() > dropped.max()));
+    if (!coveredByWider) {
+      return "DROP constraint removed "
+          + diff.get(0)
+          + " without leaving a strictly wider range CHECK on "
+          + table
+          + "."
+          + dropped.column();
+    }
+    return null;
+  }
+
+  private static RangeCheck parseRangeCheck(String clause) {
+    Matcher m = BETWEEN_CHECK.matcher(clause);
+    if (!m.matches()) {
+      m = PG_RANGE_CHECK.matcher(clause);
+    }
+    if (!m.matches()) {
+      return null;
+    }
+    return new RangeCheck(
+        m.group(1).toLowerCase(Locale.ROOT),
+        Long.parseLong(m.group(2)),
+        Long.parseLong(m.group(3)));
+  }
+
+  @Test
+  void dropCheckMustKeepAWiderRangeCheck() {
+    String narrow = "check t2 \"R\" BETWEEN 0 AND 21";
+    String wide = "check t2 \"R\" BETWEEN 0 AND 23";
+    String unrelated = "check t2 \"OTHER\" BETWEEN 0 AND 2";
+    String stringCheck = "check t2 (((c)::text = 'A'::text))";
+    SchemaSnapshot before = new SchemaSnapshot(List.of(narrow, wide, unrelated, stringCheck));
+
+    // Removing the narrower check while the wider check remains on the same column is allowed.
+    SchemaSnapshot keptWide = new SchemaSnapshot(List.of(wide, unrelated, stringCheck));
+    assertThat(dropCheckDiffProblem(before, keptWide, "t2")).isNull();
+
+    // Removing the wider check and leaving only the narrower check is rejected.
+    SchemaSnapshot droppedWide = new SchemaSnapshot(List.of(narrow, unrelated, stringCheck));
+    assertThat(dropCheckDiffProblem(before, droppedWide, "t2"))
+        .contains("without leaving a strictly wider range CHECK on t2.r");
+
+    // Removing an unrelated range check on another column is rejected.
+    SchemaSnapshot droppedUnrelated = new SchemaSnapshot(List.of(narrow, wide, stringCheck));
+    assertThat(dropCheckDiffProblem(before, droppedUnrelated, "t2"))
+        .contains("without leaving a strictly wider range CHECK on t2.other");
+
+    // Removing a non-range check is rejected.
+    SchemaSnapshot droppedString = new SchemaSnapshot(List.of(narrow, wide, unrelated));
+    assertThat(dropCheckDiffProblem(before, droppedString, "t2"))
+        .contains("removed a non-range CHECK");
   }
 
   /** A PostgreSQL CHECK of one column's values, as the snapshot reads it, with one or more. */
@@ -1094,13 +1279,12 @@ public class MigrationStepRulesTest {
     }
   }
 
-  /** The SQL file of step {@code version} for {@code kind}. */
-  private static Path stepFile(DatabaseKind kind, String version) throws IOException {
+  /** The SQL file of step {@code version} for {@code kind}, if it is a SQL step. */
+  private static Optional<Path> stepFile(DatabaseKind kind, String version) throws IOException {
     try (Stream<Path> files = Files.list(STEPS.resolve(kind.folder()))) {
       return files
           .filter(f -> f.getFileName().toString().startsWith("V" + version + "__"))
-          .findFirst()
-          .orElseThrow();
+          .findFirst();
     }
   }
 }
