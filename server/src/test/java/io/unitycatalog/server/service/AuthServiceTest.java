@@ -367,9 +367,10 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   /**
-   * An unknown key id is the caller's error: a UC token and an exchanged IdP token both get 401,
-   * with no per-request ERROR log and no WARN from the key lookup. Each is sent twice so the IdP
-   * path also hits the rate-limited key refresh.
+   * An unknown key id on an IdP token sent for exchange is the caller's error: it gets 401, with no
+   * per-request ERROR log and no WARN from the key lookup. It is sent twice so the path also hits
+   * the rate-limited key refresh. The server's own tokens ignore the key id, so they have no such
+   * case.
    */
   @Test
   public void testUnknownSigningKeyIdIsUnauthenticated() throws Exception {
@@ -386,14 +387,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     Configurator.setLevel(jwksLogger.getName(), Level.DEBUG);
     try {
       for (int i = 0; i < 2; i++) {
-        String ucToken =
-            JWT.create()
-                .withIssuer(INTERNAL)
-                .withKeyId("unknown-kid-" + i)
-                .withExpiresAt(Date.from(Instant.now().plus(Duration.ofMinutes(5))))
-                .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
-                .withClaim(JwtClaim.SUBJECT.key(), ENABLED_USER_EMAIL)
-                .sign(securityContext.getAlgorithm());
         String identityToken =
             createIdentityToken(
                 ENABLED_USER_EMAIL,
@@ -401,13 +394,11 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
                 TEST_AUDIENCE,
                 testIssuerAlgorithm,
                 "unknown-kid-" + i);
-        for (AggregatedHttpResponse response :
-            List.of(listCatalogs(ucToken), exchangeToken(identityToken))) {
-          assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
-          JsonNode error = MAPPER.readTree(response.contentUtf8());
-          assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
-          assertThat(error.get("message").asText()).isEqualTo("Unknown signing key");
-        }
+        AggregatedHttpResponse response = exchangeToken(identityToken);
+        assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        JsonNode error = MAPPER.readTree(response.contentUtf8());
+        assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
+        assertThat(error.get("message").asText()).isEqualTo("Unknown signing key");
       }
     } finally {
       logger.removeAppender(appender);
@@ -426,7 +417,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     var builder =
         JWT.create()
             .withIssuer(INTERNAL)
-            .withKeyId(securityContext.getKeyId())
             .withExpiresAt(expiresAt)
             .withClaim(JwtClaim.SUBJECT.key(), ENABLED_USER_EMAIL);
     if (type != null) {
