@@ -1,4 +1,5 @@
 import logging
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
@@ -18,6 +19,40 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 _logger = logging.getLogger(__name__)
+
+
+def _inline_schema_refs(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Inline Pydantic's local `$defs` references so each DSPy argument schema is self-contained."""
+    defs = schema.get("$defs")
+    if not isinstance(defs, dict) or not defs:
+        return deepcopy(schema)
+
+    def inline(node: Any, visiting: frozenset[str]) -> Any:
+        if not isinstance(node, dict):
+            return deepcopy(node)
+
+        result: Dict[str, Any] = {}
+        for keyword, value in node.items():
+            if keyword == "properties" and isinstance(value, dict):
+                result[keyword] = {k: inline(v, visiting) for k, v in value.items()}
+            elif keyword in ("items", "additionalProperties"):
+                result[keyword] = inline(value, visiting)
+            elif keyword in ("anyOf", "oneOf", "allOf", "prefixItems") and isinstance(value, list):
+                result[keyword] = [inline(item, visiting) for item in value]
+            else:
+                result[keyword] = deepcopy(value)
+
+        ref = result.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/$defs/"):
+            name = ref[len("#/$defs/") :]
+            if name in defs and name not in visiting:
+                result.pop("$ref")
+                target = inline(defs[name], visiting | {name})
+                if isinstance(target, dict):
+                    return {**target, **result}
+        return result
+
+    return inline({k: v for k, v in schema.items() if k != "$defs"}, frozenset())
 
 
 class UnityCatalogDSPyToolWrapper(BaseModel):
@@ -107,7 +142,7 @@ class UCFunctionToolkit(BaseModel):
 
         for param_info in param_infos:
             pydantic_field = param_info_to_pydantic_type(param_info, strict=strict)
-            args = TypeAdapter(pydantic_field.pydantic_type).json_schema()
+            args = _inline_schema_refs(TypeAdapter(pydantic_field.pydantic_type).json_schema())
 
             if pydantic_field.default:
                 args["default"] = pydantic_field.default
