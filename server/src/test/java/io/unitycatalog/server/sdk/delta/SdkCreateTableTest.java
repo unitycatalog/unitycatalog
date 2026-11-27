@@ -452,7 +452,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
           .isEqualTo(metadataLocation);
 
       String fullName = catalog + "." + TestUtils.SCHEMA_NAME2 + ".tbl_folder";
-      assertThat(ucTablesApi.getTable(fullName, null, null).getStorageLocation())
+      assertThat(ucTablesApi.getTable(fullName, null, null, null).getStorageLocation())
           .isEqualTo(staging.getLocation());
       DeltaLoadTableResponse loaded =
           deltaTablesApi.loadTable(catalog, TestUtils.SCHEMA_NAME2, "tbl_folder");

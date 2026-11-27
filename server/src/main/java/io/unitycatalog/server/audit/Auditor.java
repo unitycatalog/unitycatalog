@@ -171,6 +171,17 @@ public final class Auditor implements AutoCloseable {
                 .build());
   }
 
+  /** Parses a stored location as its literal path, then sanitizes it like a vended path. */
+  private String sanitizeLocation(String storedLocation) {
+    try {
+      return sanitizeLocation(NormalizedURL.from(storedLocation));
+    } catch (RuntimeException e) {
+      // As in sanitizeLocation(NormalizedURL): neither the location nor the error is logged.
+      LOGGER.warn("Audit record written without its location: cannot parse it");
+      return null;
+    }
+  }
+
   /**
    * Runs {@code action} only once the session's transaction commits; not on rollback or failure.
    */
