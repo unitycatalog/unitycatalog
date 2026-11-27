@@ -17,6 +17,7 @@ import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -597,6 +598,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
    * literal used in the INSERT, the expected toString() from the result row (null for BINARY, whose
    * raw bytes are compared directly), and the expected UC catalog metadata fields.
    */
+  /** POINT(1 2) as little-endian WKB. */
+  private static final String POINT_WKB_HEX = "0101000000000000000000F03F0000000000000040";
+
   @Getter
   private static final class ColSpec {
     private final String name;
@@ -607,6 +611,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private final String typeText;
     private final boolean nullable;
     private final String typeJson;
+    // What to SELECT to read the column back; geo values have no stable string form.
+    private String selectExpr;
 
     private ColSpec(
         String name,
@@ -637,6 +643,12 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       this.typeText = typeText;
       this.nullable = nullable;
       this.typeJson = structFieldTypeJson(name, dataTypeJson, nullable, metadataJson);
+      this.selectExpr = name;
+    }
+
+    private ColSpec readAs(String expression) {
+      this.selectExpr = expression;
+      return this;
     }
   }
 
@@ -844,6 +856,31 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 ColumnTypeName.VARIANT,
                 "variant",
                 "\"variant\""));
+    if (testingDelta() && isSparkAtLeast(4, 2)) {
+      // Spark 4.0 has no geo types and 4.1's Parquet writer can't write them (see
+      // DeltaManagedTableReadWriteTest#testGeoColumnsAreStoredAndLoaded, which needs no write).
+      cols = new ArrayList<>(cols);
+      cols.add(
+          new ColSpec(
+                  "col_geometry",
+                  "GEOMETRY(4326)",
+                  "ST_SetSrid(ST_GeomFromWKB(X'0101000000000000000000F03F0000000000000040'), 4326)",
+                  POINT_WKB_HEX,
+                  ColumnTypeName.GEOMETRY,
+                  "geometry(OGC:CRS84)",
+                  "\"geometry(OGC:CRS84)\"")
+              .readAs("hex(ST_AsBinary(col_geometry))"));
+      cols.add(
+          new ColSpec(
+                  "col_geography",
+                  "GEOGRAPHY(4326)",
+                  "ST_GeogFromWKB(X'0101000000000000000000F03F0000000000000040')",
+                  POINT_WKB_HEX,
+                  ColumnTypeName.GEOGRAPHY,
+                  "geography(OGC:CRS84, SPHERICAL)",
+                  "\"geography(OGC:CRS84, SPHERICAL)\"")
+              .readAs("hex(ST_AsBinary(col_geography))"));
+    }
     if (!isSparkAtLeast(4, 1)) {
       // VARIANT round-trips through a managed Delta table only when Delta's `variantType` writer
       // table feature is supported. The Delta build for Spark 4.0 does not support it (writes fail
@@ -889,7 +926,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         colNames,
         cols.stream().map(ColSpec::getInsertValue).collect(Collectors.joining(", ")));
 
-    List<Row> queryResult = sql("SELECT %s FROM %s", colNames, fullTableName);
+    String selectExprs =
+        cols.stream().map(ColSpec::getSelectExpr).collect(Collectors.joining(", "));
+    List<Row> queryResult = sql("SELECT %s FROM %s", selectExprs, fullTableName);
     assertThat(queryResult).hasSize(1);
     Row resultRow = queryResult.get(0);
     List<String> row =
