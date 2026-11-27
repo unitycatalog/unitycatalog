@@ -1,6 +1,8 @@
 package io.unitycatalog.server.service.iceberg;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +10,8 @@ import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import java.util.List;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.exceptions.BadRequestException;
+import org.apache.iceberg.types.EdgeAlgorithm;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
 
@@ -94,6 +98,43 @@ public class IcebergSchemaConverterTest {
     ColumnInfo key = IcebergSchemaConverter.toColumnInfos(schema).get(0);
     assertThat(key.getTypeName()).isEqualTo(ColumnTypeName.STRING);
     assertThat(key.getTypeText()).isEqualTo("string");
+  }
+
+  @Test
+  public void convertsGeoTypesKeepingCrsAndAlgorithm() throws Exception {
+    Schema schema =
+        new Schema(
+            Types.NestedField.optional(1, "geom", Types.GeometryType.crs84()),
+            Types.NestedField.optional(2, "geom_4326", Types.GeometryType.of("EPSG:4326")),
+            Types.NestedField.optional(3, "geog", Types.GeographyType.crs84()),
+            Types.NestedField.optional(
+                4, "geog_karney", Types.GeographyType.of("EPSG:4326", EdgeAlgorithm.KARNEY)));
+
+    List<ColumnInfo> columns = IcebergSchemaConverter.toColumnInfos(schema);
+
+    assertThat(columns)
+        .extracting(ColumnInfo::getTypeName, ColumnInfo::getTypeText)
+        .containsExactly(
+            tuple(ColumnTypeName.GEOMETRY, "geometry(OGC:CRS84)"),
+            tuple(ColumnTypeName.GEOMETRY, "geometry(EPSG:4326)"),
+            tuple(ColumnTypeName.GEOGRAPHY, "geography(OGC:CRS84, spherical)"),
+            tuple(ColumnTypeName.GEOGRAPHY, "geography(EPSG:4326, karney)"));
+    for (ColumnInfo column : columns) {
+      JsonNode field = MAPPER.readTree(column.getTypeJson());
+      assertThat(field.get("type").asText()).isEqualTo(column.getTypeText());
+    }
+  }
+
+  @Test
+  public void rejectsGeoCrsDeltaCannotParse() {
+    Schema schema =
+        new Schema(
+            Types.NestedField.optional(
+                1, "g", Types.GeometryType.of("{\"type\":\"ProjectedCRS\"}")));
+
+    assertThatThrownBy(() -> IcebergSchemaConverter.toColumnInfos(schema))
+        .isInstanceOf(BadRequestException.class)
+        .hasMessageContaining("the CRS must be <authority>:<code>");
   }
 
   @Test

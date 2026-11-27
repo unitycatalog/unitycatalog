@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
+import io.unitycatalog.server.utils.ColumnUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -130,13 +131,31 @@ public final class IcebergSchemaConverter {
         yield String.format("decimal(%d,%d)", decimal.precision(), decimal.scale());
       }
       case VARIANT -> "variant";
-      // Iceberg has no standard GEOMETRY or GEOGRAPHY primitive type today. Add explicit mappings
-      // here if those types are standardized instead of silently coercing extension types.
+      case GEOMETRY -> geoTypeString("geometry(" + ((Types.GeometryType) type).crs() + ")");
+      case GEOGRAPHY -> {
+        Types.GeographyType geography = (Types.GeographyType) type;
+        String algorithm = geography.algorithm().name().toLowerCase(Locale.ROOT);
+        yield geoTypeString("geography(" + geography.crs() + ", " + algorithm + ")");
+      }
       default ->
           throw new BadRequestException(
               "Iceberg type %s is not supported by Unity Catalog",
               type.toString().toUpperCase(Locale.ROOT));
     };
+  }
+
+  /**
+   * Returns {@code geoType}, the Delta form of an Iceberg geo type, if Delta can parse it. Iceberg
+   * accepts any CRS string, such as inline PROJJSON, but Delta clients only parse {@code
+   * <authority>:<code>}, so a table with another CRS would be unreadable to them.
+   */
+  private static String geoTypeString(String geoType) {
+    if (ColumnUtils.resolveGeoTypeName(geoType) == null) {
+      throw new BadRequestException(
+          "Iceberg type %s is not supported by Unity Catalog: the CRS must be <authority>:<code>",
+          geoType);
+    }
+    return geoType;
   }
 
   private static ColumnTypeName typeName(Type type) {
@@ -155,11 +174,11 @@ public final class IcebergSchemaConverter {
       case FIXED, BINARY -> ColumnTypeName.BINARY;
       case DECIMAL -> ColumnTypeName.DECIMAL;
       case VARIANT -> ColumnTypeName.VARIANT;
+      case GEOMETRY -> ColumnTypeName.GEOMETRY;
+      case GEOGRAPHY -> ColumnTypeName.GEOGRAPHY;
       case STRUCT -> ColumnTypeName.STRUCT;
       case LIST -> ColumnTypeName.ARRAY;
       case MAP -> ColumnTypeName.MAP;
-      // Iceberg has no standard GEOMETRY or GEOGRAPHY primitive type today. Keep this rejection in
-      // sync with primitiveTypeName until Iceberg defines interoperable type IDs for them.
       default ->
           throw new BadRequestException(
               "Iceberg type %s is not supported by Unity Catalog",

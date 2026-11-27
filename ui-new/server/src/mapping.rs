@@ -415,6 +415,8 @@ fn column_type(value: Option<&str>) -> EnumValue<ColumnTypeName> {
         Some("NULL") => ColumnTypeName::Null,
         Some("USER_DEFINED_TYPE") => ColumnTypeName::UserDefinedType,
         Some("TABLE_TYPE") => ColumnTypeName::TableType,
+        Some("GEOMETRY") => ColumnTypeName::Geometry,
+        Some("GEOGRAPHY") => ColumnTypeName::Geography,
         _ => ColumnTypeName::Unspecified,
     }
     .into()
@@ -574,6 +576,17 @@ mod tests {
                 ("m", 3),
                 "{key}"
             );
+        }
+    }
+
+    #[test]
+    fn maps_geo_column_types() {
+        for (name, expected) in [
+            ("GEOMETRY", ColumnTypeName::Geometry),
+            ("GEOGRAPHY", ColumnTypeName::Geography),
+            ("NOT_A_TYPE", ColumnTypeName::Unspecified),
+        ] {
+            assert_eq!(column_type(Some(name)).as_known(), Some(expected), "{name}");
         }
     }
 

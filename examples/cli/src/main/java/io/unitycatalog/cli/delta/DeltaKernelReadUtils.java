@@ -19,6 +19,8 @@ import io.delta.kernel.types.DateType;
 import io.delta.kernel.types.DecimalType;
 import io.delta.kernel.types.DoubleType;
 import io.delta.kernel.types.FloatType;
+import io.delta.kernel.types.GeographyType;
+import io.delta.kernel.types.GeometryType;
 import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.LongType;
 import io.delta.kernel.types.ShortType;
@@ -35,6 +37,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 
@@ -95,6 +98,9 @@ public class DeltaKernelReadUtils {
       return new String(row.getBinary(columnOrdinal));
     } else if (dataType instanceof DecimalType) {
       return row.getDecimal(columnOrdinal).toString();
+    } else if (dataType instanceof GeometryType || dataType instanceof GeographyType) {
+      // The value is well-known binary (WKB); show it as hex.
+      return "0x" + HexFormat.of().formatHex(row.getBinary(columnOrdinal));
     } else {
       throw new UnsupportedOperationException("unsupported data type: " + dataType);
     }

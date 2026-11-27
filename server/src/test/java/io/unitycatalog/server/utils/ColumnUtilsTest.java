@@ -17,6 +17,7 @@ import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Tests for ColumnUtils.toStructField parsing typeJson into typed DeltaStructField. */
@@ -404,6 +405,71 @@ public class ColumnUtilsTest {
           .as("unsupported primitive: %s", unsupported)
           .isInstanceOf(BaseException.class)
           .hasMessageContaining("Unsupported Delta primitive type: " + unsupported);
+    }
+  }
+
+  private static DeltaStructField geoField(String type) {
+    return new DeltaStructField()
+        .name("g")
+        .type(new DeltaPrimitiveType().type(type))
+        .nullable(true)
+        .metadata(new DeltaStructFieldMetadata());
+  }
+
+  /** Every form Delta Kernel parses; the CRS and algorithm stay in type_text and type_json. */
+  @Test
+  public void testToColumnInfoAcceptsGeoTypes() {
+    Map<String, ColumnTypeName> valid =
+        Map.of(
+            "geometry", ColumnTypeName.GEOMETRY,
+            "geometry(OGC:CRS84)", ColumnTypeName.GEOMETRY,
+            "geometry( EPSG:-1 )", ColumnTypeName.GEOMETRY,
+            "geography", ColumnTypeName.GEOGRAPHY,
+            "geography(OGC:CRS84)", ColumnTypeName.GEOGRAPHY,
+            "geography(OGC:CRS84, spherical)", ColumnTypeName.GEOGRAPHY,
+            "geography(EPSG:4326,karney)", ColumnTypeName.GEOGRAPHY,
+            "geography(vincenty)", ColumnTypeName.GEOGRAPHY,
+            "geography(OGC:CRS84, SPHERICAL)", ColumnTypeName.GEOGRAPHY);
+    valid.forEach(
+        (type, typeName) -> {
+          ColumnInfo column = ColumnUtils.toColumnInfo(geoField(type), 0);
+          assertThat(column.getTypeName()).as(type).isEqualTo(typeName);
+          assertThat(column.getTypeText()).as(type).isEqualTo(type);
+          assertThat(column.getTypeJson()).as(type).contains("\"type\":\"" + type + "\"");
+          assertThat(ColumnUtils.toStructField(column).getType())
+              .as(type)
+              .isEqualTo(new DeltaPrimitiveType().type(type));
+        });
+  }
+
+  @Test
+  public void testToColumnInfoRejectsMalformedGeoTypes() {
+    for (String malformed :
+        List.of(
+            "Geometry",
+            "geometry()",
+            "geometry(OGC)",
+            "geometry(OGC:CRS84, spherical)",
+            "geometry(OGC:CRS84",
+            "geography()",
+            "geography(OGC:CRS84,)",
+            "geography(OGC:CRS84, spherical, x)",
+            "geography(spherical, OGC:CRS84)",
+            "geometry(OGC:CRS84) ")) {
+      assertThatThrownBy(() -> ColumnUtils.toColumnInfo(geoField(malformed), 0))
+          .as("malformed geo type: %s", malformed)
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("Unsupported Delta primitive type: " + malformed);
+    }
+  }
+
+  @Test
+  public void testToColumnInfoRejectsUnknownGeographyAlgorithm() {
+    for (String type : List.of("geography(OGC:CRS84, planar)", "geography(planar)")) {
+      assertThatThrownBy(() -> ColumnUtils.toColumnInfo(geoField(type), 0))
+          .as(type)
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("Unsupported geography algorithm: planar");
     }
   }
 

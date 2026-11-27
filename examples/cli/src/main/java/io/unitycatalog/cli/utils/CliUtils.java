@@ -765,6 +765,10 @@ public class CliUtils {
     return null;
   }
 
+  private static boolean isGeoType(String typeName) {
+    return typeName.equals("GEOMETRY") || typeName.equals("GEOGRAPHY");
+  }
+
   private static String setPrecisionAndScale(
       ColumnInfo columnInfo, String typeText, String params) {
     if (typeText.equals("DECIMAL")) {
@@ -835,6 +839,10 @@ public class CliUtils {
         }
 
         String precisionAndScale = setPrecisionAndScale(columnInfo, typeName, params);
+        if (isGeoType(typeName) && params != null) {
+          // GEOMETRY(<crs>) or GEOGRAPHY(<crs>[, <algorithm>]): keep the CRS and algorithm.
+          precisionAndScale = "(" + params.trim().replaceAll("\\s*,\\s*", ", ") + ")";
+        }
 
         columnInfo.setName(name);
         columnInfo.setTypeText(
