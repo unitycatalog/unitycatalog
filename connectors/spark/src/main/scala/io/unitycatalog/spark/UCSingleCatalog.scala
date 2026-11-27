@@ -573,10 +573,10 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    // Spark represents ALTER TABLE ... RENAME COLUMN as a structured TableChange here.
-    if (changes.exists(_.isInstanceOf[TableChange.RenameColumn])) {
+    if (changes.size > 1 && changes.exists(_.isInstanceOf[TableChange.RenameColumn])) {
       throw new UnsupportedOperationException(
-        "ALTER TABLE RENAME COLUMN is not supported for Unity Catalog tables yet")
+        "RENAME COLUMN must be issued as its own ALTER TABLE statement, " +
+          "not combined with other changes")
     }
     delegate.alterTable(ident, changes: _*)
   }

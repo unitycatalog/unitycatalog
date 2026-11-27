@@ -14,17 +14,22 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.connector.catalog.TableChange;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -311,14 +316,80 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   }
 
   @Test
-  public void testAlterTableRenameColumnIsRejectedFromSql() {
+  public void testAlterTableRenameWithPropertyDoesNotPartiallyCommit(@TempDir Path tempDir)
+      throws Exception {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    String path = tempDir.resolve("rename_with_property").toString();
+    String tableName = String.format("delta.`%s`", path);
+    sql(new TableSetupOptions().createDeltaPathTableSql(path));
+    assertThat(sql("SHOW TBLPROPERTIES %s", tableName))
+        .noneMatch(
+            row ->
+                row.getString(0).equals("delta.columnMapping.mode")
+                    && !row.getString(1).equals("none"));
+
+    UCSingleCatalog catalog =
+        (UCSingleCatalog) session.sessionState().catalogManager().catalog(SPARK_CATALOG);
+    Identifier ident = Identifier.of(new String[] {"delta"}, path);
+    Throwable failure =
+        catchThrowable(
+            () ->
+                catalog.alterTable(
+                    ident,
+                    new TableChange[] {
+                      TableChange.setProperty("delta.appendOnly", "true"),
+                      TableChange.renameColumn(new String[] {"s"}, "full_name")
+                    }));
+
+    assertThat(failure).isNotNull();
+    assertThat(sql("SHOW TBLPROPERTIES %s", tableName))
+        .noneMatch(
+            row -> row.getString(0).equals("delta.appendOnly") && row.getString(1).equals("true"));
+    assertThat(session.table(tableName).schema().fieldNames())
+        .contains("s")
+        .doesNotContain("full_name");
+    assertThat(failure)
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("RENAME COLUMN must be issued as its own ALTER TABLE statement");
+  }
+
+  @Test
+  public void testAlterTableRenameColumnTopLevel() {
+    // The connector delegates RENAME COLUMN to Delta's DeltaCatalog for execution.
+    // This test exercises the same-session path (SELECT reads the Delta-log schema). Cross-session
+    // identity preservation requires additional server-side Delta integration and is tested
+    // separately.
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     ensureSparkCatalogSchemaExists();
     String fullTableName =
         setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+    sql("INSERT INTO %s VALUES (1, 'before')", fullTableName);
+    sql("ALTER TABLE %s RENAME COLUMN s TO full_name", fullTableName);
+    validateRows(
+        sql("SELECT i, full_name FROM %s ORDER BY i", fullTableName), Pair.of(1, "before"));
+    assertThatThrownBy(() -> sql("SELECT s FROM %s", fullTableName))
+        .isInstanceOf(AnalysisException.class)
+        .satisfies(
+            e ->
+                assertThat(((AnalysisException) e).getCondition())
+                    .isEqualTo("UNRESOLVED_COLUMN.WITH_SUGGESTION"));
+  }
 
-    assertThatThrownBy(() -> sql("ALTER TABLE %s RENAME COLUMN i TO renamed_i", fullTableName))
-        .hasMessageContaining("ALTER TABLE RENAME COLUMN");
+  @Test
+  public void testAlterTableRenameNestedStructField() {
+    // The connector delegates RENAME COLUMN for nested struct fields to Delta's DeltaCatalog.
+    // This test exercises the same-session path only. Cross-session identity preservation for
+    // nested fields requires additional server-side Delta integration and is tested separately.
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String t =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+    sql("ALTER TABLE %s ADD COLUMNS (info STRUCT<first: STRING, last: STRING>)", t);
+    sql("INSERT INTO %s VALUES (1, 'x', named_struct('first','f','last','l'))", t);
+    sql("ALTER TABLE %s RENAME COLUMN info.first TO given", t);
+    List<Row> rows = sql("SELECT info.given FROM %s", t);
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getString(0)).isEqualTo("f");
   }
 
   /**
