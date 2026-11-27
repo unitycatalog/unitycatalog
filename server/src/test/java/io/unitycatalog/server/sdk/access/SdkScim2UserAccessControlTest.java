@@ -1,21 +1,27 @@
 package io.unitycatalog.server.sdk.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.linecorp.armeria.common.HttpStatus;
+import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
+import io.unitycatalog.control.model.Email;
 import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.control.model.UserResourceList;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import lombok.SneakyThrows;
@@ -31,6 +37,8 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
           + "\"Operations\":[{\"op\":\"replace\",\"value\":{\"active\":false}}]}";
 
+  private static final String BOOTSTRAP_ADMIN_REFUSED =
+      "The bootstrap admin user can't be deleted or renamed: ";
   private static final String OWNER_REFUSED =
       "The metastore owner can't be deleted or deactivated: admin";
 
@@ -120,13 +128,29 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(delete.getResponseBody()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
     assertThat(delete.getResponseBody()).contains(OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
+
+    // A new email would leave the next start creating "admin" again with OWNER.
+    ApiException rename =
+        assertThrows(
+            ApiException.class,
+            () ->
+                usersApi.updateUser(
+                    owner.getId(),
+                    new UserResource()
+                        .id(owner.getId())
+                        .emails(List.of(primaryEmail("root@localhost")))));
+    assertThat(rename.getCode()).isEqualTo(400);
+    assertThat(rename.getResponseBody()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
+    assertThat(rename.getResponseBody()).contains(BOOTSTRAP_ADMIN_REFUSED + "admin");
+    assertThat(usersApi.getUser(owner.getId()).getEmails().get(0).getValue()).isEqualTo("admin");
   }
 
   @Test
   @SneakyThrows
-  public void testMetastoreOwnerCanBeDeactivatedAndDeletedWithAuthorizationDisabled() {
+  public void testMetastoreOwnerCanBeDeactivatedButNotDeletedWithAuthorizationDisabled() {
     // With authorization disabled the server uses AllowingAuthorizer, which allows every OWNER
-    // check, so the service skips the owner check and the owner can be deactivated and deleted.
+    // check, so the service skips the owner check and the owner can be deactivated. The bootstrap
+    // admin still can't be deleted or renamed.
     String ownerId =
         usersApi.listUsers(null, null, null).getResources().stream()
             .filter(user -> "admin".equals(user.getEmails().get(0).getValue()))
@@ -146,7 +170,140 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     var owner = service.getUser(ownerId);
     owner.setActive(false);
     assertThat(service.updateUser(ownerId, owner).getActive()).isFalse();
-    assertThat(service.deleteUser(ownerId).aggregate().join().status()).isEqualTo(HttpStatus.OK);
+    // The bootstrap admin row stays, or the next start would create it again with OWNER.
+    assertThatThrownBy(() -> service.deleteUser(ownerId))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> {
+              assertThat(e.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION);
+              assertThat(e).hasMessage(BOOTSTRAP_ADMIN_REFUSED + "admin");
+            });
+    assertThat(service.getUser(ownerId).getId()).isEqualTo(ownerId);
+  }
+
+  @Test
+  @SneakyThrows
+  public void testDeleteRemovesTheUserAndFreesTheEmail() {
+    grantPermissions(
+        OTHER_USER, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+    String catalogPath = "/api/2.1/unity-catalog/catalogs/" + TestUtils.CATALOG_NAME;
+    assertThat(
+            TestUtils.sendRawGet(createTestUserServerConfig(OTHER_USER), catalogPath).statusCode())
+        .isEqualTo(200);
+    String userPath = SCIM_USERS_PATH + "/" + otherUser.getId();
+    String put =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\""
+            + otherUser.getId()
+            + "\",\"displayName\":\"Renamed\"}";
+
+    assertThat(TestUtils.sendRaw(adminConfig, "DELETE", userPath, Optional.empty()).statusCode())
+        .isEqualTo(200);
+
+    // Every later call on the id is a 404.
+    String notFound = "User not found: " + otherUser.getId();
+    for (HttpResponse<String> response :
+        List.of(
+            TestUtils.sendRaw(adminConfig, "GET", userPath, Optional.empty()),
+            TestUtils.sendRaw(adminConfig, "PUT", userPath, Optional.of(put)),
+            TestUtils.sendRaw(adminConfig, "PATCH", userPath, Optional.of(DEACTIVATE)),
+            TestUtils.sendRaw(adminConfig, "DELETE", userPath, Optional.empty()))) {
+      assertThat(response.statusCode()).isEqualTo(404);
+      assertThat(response.body()).contains(notFound);
+    }
+    assertThat(usersApi.listUsers(null, null, null).getResources())
+        .extracting(UserResource::getId)
+        .doesNotContain(otherUser.getId());
+
+    // The email can be created again, as a new user without the old grants.
+    UserResource recreated = createTestUser(OTHER_USER, "Other User Again");
+    assertThat(recreated.getId()).isNotEqualTo(otherUser.getId());
+    assertThat(
+            TestUtils.sendRawGet(createTestUserServerConfig(OTHER_USER), catalogPath).statusCode())
+        .isEqualTo(403);
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPutUpdatesTheEmail() {
+    UserResource renamed =
+        usersApi.updateUser(
+            otherUser.getId(),
+            new UserResource()
+                .id(otherUser.getId())
+                .emails(List.of(primaryEmail("moved@localhost"))));
+
+    assertThat(renamed.getId()).isEqualTo(otherUser.getId());
+    assertThat(renamed.getEmails().get(0).getValue()).isEqualTo("moved@localhost");
+    assertThat(usersApi.getUser(otherUser.getId()).getEmails().get(0).getValue())
+        .isEqualTo("moved@localhost");
+    // The old email is free again, and there is no alias for it.
+    createTestUser(OTHER_USER, "Takes The Old Email");
+
+    // The user's own email is not a clash.
+    assertThat(
+            usersApi
+                .updateUser(
+                    otherUser.getId(),
+                    new UserResource()
+                        .id(otherUser.getId())
+                        .emails(List.of(primaryEmail("moved@localhost"))))
+                .getEmails()
+                .get(0)
+                .getValue())
+        .isEqualTo("moved@localhost");
+
+    // An email that belongs to another user is a conflict.
+    ApiException clash =
+        assertThrows(
+            ApiException.class,
+            () ->
+                usersApi.updateUser(
+                    otherUser.getId(),
+                    new UserResource()
+                        .id(otherUser.getId())
+                        .emails(List.of(primaryEmail(REGULAR_USER)))));
+    assertThat(clash.getCode()).isEqualTo(409);
+    assertThat(clash.getResponseBody()).contains("User already exists: " + REGULAR_USER);
+    assertThat(usersApi.getUser(otherUser.getId()).getEmails().get(0).getValue())
+        .isEqualTo("moved@localhost");
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPutWithAbsentOrEmptyEmailsKeepsTheEmail() {
+    // `uc user update` without --email sends `emails: []`.
+    for (List<Email> emails : java.util.Arrays.asList(null, List.<Email>of())) {
+      UserResource updated =
+          usersApi.updateUser(
+              otherUser.getId(),
+              new UserResource().id(otherUser.getId()).displayName("Renamed").emails(emails));
+
+      assertThat(updated.getDisplayName()).isEqualTo("Renamed");
+      assertThat(updated.getEmails().get(0).getValue()).isEqualTo(OTHER_USER);
+      assertThat(usersApi.getUser(otherUser.getId()).getEmails().get(0).getValue())
+          .isEqualTo(OTHER_USER);
+    }
+  }
+
+  @Test
+  @SneakyThrows
+  public void testEmailWithoutPrimaryIsRefusedOnPutAndPost() {
+    String noPrimary = "\"emails\":[{\"value\":\"no-primary@localhost\"}]";
+    String userPath = SCIM_USERS_PATH + "/" + otherUser.getId();
+    String put = "{\"id\":\"" + otherUser.getId() + "\"," + noPrimary + "}";
+    String post = "{\"displayName\":\"No Primary\"," + noPrimary + "}";
+
+    for (HttpResponse<String> response :
+        List.of(
+            TestUtils.sendRaw(adminConfig, "PUT", userPath, Optional.of(put)),
+            TestUtils.sendRaw(adminConfig, "POST", SCIM_USERS_PATH, Optional.of(post)))) {
+      assertThat(response.statusCode()).isEqualTo(412);
+      assertThat(response.body()).contains("User does not have a primary email.");
+    }
+  }
+
+  private static Email primaryEmail(String value) {
+    return new Email().value(value).primary(true);
   }
 
   private static void assertScimPermissionDenied(Executable request) {
