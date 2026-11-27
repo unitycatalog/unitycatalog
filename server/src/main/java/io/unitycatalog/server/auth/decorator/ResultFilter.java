@@ -3,6 +3,7 @@ package io.unitycatalog.server.auth.decorator;
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
 
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.exception.BaseException;
@@ -51,9 +52,8 @@ import org.springframework.expression.spel.SpelEvaluationException;
  *
  * <p><b>Resource ID Resolution:</b><br>
  * For each item in the list, the filter resolves resource IDs of items but expect the catalog and
- * schema IDs to be provided in the request already. Special handling exists for REGISTERED_MODEL
- * because models can be listed without specifying catalog/schema filters. In this case, the filter
- * extracts the catalog and schema names from each model and resolves them to IDs.
+ * schema IDs to be provided in the request already. Model listings without catalog/schema filters
+ * and table existence checks resolve parents from the item when the request has no parent IDs.
  *
  * <p><b>Security:</b><br>
  * The {@code wasCalled()} method allows UnityAccessDecorator to verify that the filter was actually
@@ -215,21 +215,23 @@ public class ResultFilter {
     UUID itemId = resolveResourceId(securableType, item);
     Map<SecurableType, UUID> combined = new HashMap<>(preResolvedIds);
     combined.put(securableType, itemId);
-    // For REGISTERED_MODEL, resolve catalog and schema if both are not present.
-    if (securableType == REGISTERED_MODEL
+    // Model listings and table existence checks can defer parent resolution to the filter.
+    if ((securableType == REGISTERED_MODEL || securableType == TABLE)
         && !preResolvedIds.containsKey(CATALOG)
         && !preResolvedIds.containsKey(SCHEMA)) {
-      RegisteredModelInfo model = (RegisteredModelInfo) item;
+      Map<SecurableType, Object> parentKeys;
+      if (securableType == TABLE) {
+        parentKeys = Map.of(TABLE, itemId.toString());
+      } else {
+        RegisteredModelInfo model = (RegisteredModelInfo) item;
+        parentKeys = Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName());
+      }
       try {
-        combined.putAll(
-            keyMapper.mapResourceKeys(
-                Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+        combined.putAll(keyMapper.mapResourceKeys(parentKeys));
       } catch (BaseException e) {
         throw new BaseException(e.getErrorCode(), "Failed to authorize list items", e);
       }
     }
-    // For everything else, the catalog and schema IDs are already included in preResolvedIds
-    // if needed.
     return combined;
   }
 

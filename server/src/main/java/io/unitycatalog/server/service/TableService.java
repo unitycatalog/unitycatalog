@@ -21,10 +21,13 @@ import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.decorator.BrowseOnlyConverter;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.model.TableExistsResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.persist.Repositories;
@@ -32,6 +35,9 @@ import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import lombok.SneakyThrows;
 
@@ -110,6 +116,44 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
     TableInfo tableInfo = tableRepository.getTable(fullName);
     return HttpResponse.ofJson(
         applyGetResponseFilter(SecurableType.TABLE, tableInfo, BrowseOnlyConverter::toBrowseOnly));
+  }
+
+  /**
+   * Checks a regular table's existence using the same visibility policy as table metadata reads.
+   *
+   * @param fullName the three-part table name
+   * @return a boolean response, with permission failures preserved for existing tables
+   */
+  @Get("/{full_name}/exists")
+  @AuthorizeExpression(
+      "("
+          + AuthorizeExpressions.GET_TABLE
+          + ") || "
+          + AuthorizeExpressions.BROWSE_CATALOG
+          + " || #authorize(#principal, #schema, BROWSE)")
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse tableExists(@Param("full_name") String fullName) {
+    String[] parts = ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
+    for (String part : parts) {
+      ValidationUtils.validateSqlObjectName(part);
+    }
+    // Resolve the table in the handler so an absent ancestor can also return false.
+    List<TableInfoDAO> tables = new ArrayList<>();
+    try {
+      tables.add(tableRepository.findTableOrThrow(parts[0], parts[1], parts[2]));
+    } catch (BaseException e) {
+      switch (e.getErrorCode()) {
+        case CATALOG_NOT_FOUND, SCHEMA_NOT_FOUND, TABLE_NOT_FOUND -> {}
+        default -> throw e;
+      }
+    }
+    boolean exists = !tables.isEmpty();
+    applyResponseFilter(TABLE, tables);
+    if (exists && tables.isEmpty()) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    }
+    return HttpResponse.ofJson(new TableExistsResponse().tableExists(exists));
   }
 
   @Get("")

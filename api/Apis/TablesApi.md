@@ -9,6 +9,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 | [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /tables/{full_name} | Delete a table |
 | [**getTable**](TablesApi.md#getTable) | **GET** /tables/{full_name} | Get a table |
 | [**listTables**](TablesApi.md#listTables) | **GET** /tables | List tables |
+| [**tableExists**](TablesApi.md#tableExists) | **GET** /tables/{full_name}/exists | Check whether a table exists |
 | [**updateTable**](TablesApi.md#updateTable) | **PATCH** /tables/{full_name} | Update a table owner |
 
 
@@ -144,6 +145,33 @@ List tables
 ### Return type
 
 [**ListTablesResponse**](../Models/ListTablesResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json
+
+<a name="tableExists"></a>
+# **tableExists**
+> TableExistsResponse tableExists(full\_name)
+
+Check whether a table exists
+
+    Checks whether a table exists by its three-part name. A missing catalog, schema, or table returns false. Existing tables require metadata access or BROWSE on the parent catalog. Callers without visibility receive a permission error.
+
+### Parameters
+
+|Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String**| Full name of the table, in the form catalog.schema.table. | [default to null] |
+
+### Return type
+
+[**TableExistsResponse**](../Models/TableExistsResponse.md)
 
 ### Authorization
 
