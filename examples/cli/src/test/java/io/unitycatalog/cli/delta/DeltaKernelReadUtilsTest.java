@@ -5,13 +5,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.delta.kernel.data.ColumnVector;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.defaults.internal.data.DefaultColumnarBatch;
+import io.delta.kernel.defaults.internal.data.vector.DefaultBinaryVector;
 import io.delta.kernel.defaults.internal.data.vector.DefaultLongVector;
 import io.delta.kernel.types.DataType;
+import io.delta.kernel.types.GeographyType;
+import io.delta.kernel.types.GeometryType;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.types.TimestampNTZType;
 import io.delta.kernel.types.TimestampType;
 import io.delta.kernel.utils.CloseableIterator;
 import java.io.IOException;
+import java.util.HexFormat;
 import java.util.Optional;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -39,5 +43,20 @@ public class DeltaKernelReadUtilsTest {
   public void testTimestampValues(long micros, String expected) throws IOException {
     assertThat(readTimestamp(TimestampType.TIMESTAMP, micros)).isEqualTo(expected);
     assertThat(readTimestamp(TimestampNTZType.TIMESTAMP_NTZ, micros)).isEqualTo(expected);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"GEOMETRY", "GEOGRAPHY"})
+  public void testGeoValuesAreShownAsWkbHex(String kind) throws IOException {
+    DataType type = kind.equals("GEOMETRY") ? GeometryType.ofDefault() : GeographyType.ofDefault();
+    // POINT(1 2) as little-endian WKB.
+    byte[] wkb = HexFormat.of().parseHex("0101000000000000000000f03f0000000000000040");
+    ColumnVector vector = new DefaultBinaryVector(type, 1, new byte[][] {wkb});
+    StructType schema = new StructType().add("g", type);
+    try (CloseableIterator<Row> rows =
+        new DefaultColumnarBatch(1, schema, new ColumnVector[] {vector}).getRows()) {
+      assertThat(DeltaKernelReadUtils.getValue(rows.next(), 0))
+          .isEqualTo("0x0101000000000000000000f03f0000000000000040");
+    }
   }
 }

@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import io.delta.kernel.data.ColumnVector;
 import io.delta.kernel.types.DecimalType;
+import io.delta.kernel.types.GeographyType;
+import io.delta.kernel.types.GeometryType;
 import io.delta.kernel.types.StructType;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.delta.DeltaKernelWriteUtils;
@@ -102,9 +104,47 @@ public class CliUtilsTest {
             tuple("a", "int", 0, 0), tuple("b", "int", 0, 0), tuple("c", "decimal(10,0)", 10, 0));
   }
 
+  @Test
+  public void testParseGeoColumnsKeepsCrsAndAlgorithm() {
+    List<ColumnInfo> columns =
+        CliUtils.parseColumns(
+            "a GEOMETRY, b geometry(OGC:CRS84), c GEOGRAPHY, d GEOGRAPHY(EPSG:4326,karney),"
+                + " e geography(vincenty)");
+    assertThat(columns)
+        .extracting(ColumnInfo::getTypeName, ColumnInfo::getTypeText)
+        .containsExactly(
+            tuple(ColumnTypeName.GEOMETRY, "geometry"),
+            tuple(ColumnTypeName.GEOMETRY, "geometry(OGC:CRS84)"),
+            tuple(ColumnTypeName.GEOGRAPHY, "geography"),
+            tuple(ColumnTypeName.GEOGRAPHY, "geography(EPSG:4326, karney)"),
+            tuple(ColumnTypeName.GEOGRAPHY, "geography(vincenty)"));
+    assertThat(columns.get(3).getTypeJson()).contains("\"type\":\"geography(EPSG:4326, karney)\"");
+  }
+
+  @Test
+  public void testGeoColumnTypeComesFromTypeJson() {
+    assertThat(
+            DeltaKernelUtils.getSchema(
+                CliUtils.parseColumns(
+                    "a GEOMETRY, b geometry(EPSG:4326), c GEOGRAPHY, d"
+                        + " GEOGRAPHY(EPSG:4326,karney)")))
+        .isEqualTo(
+            new StructType()
+                .add("a", GeometryType.ofDefault())
+                .add("b", GeometryType.ofCRS("EPSG:4326"))
+                .add("c", GeographyType.ofDefault())
+                .add("d", new GeographyType("EPSG:4326", "karney")));
+    ColumnInfo noJson = new ColumnInfo().name("g").typeName(ColumnTypeName.GEOMETRY);
+    assertThatThrownBy(() -> DeltaKernelUtils.getDataType(noJson))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Column type JSON is missing: g");
+  }
+
   @ParameterizedTest
   @CsvSource({
     "price, 'DECIMAL(10,2)'",
+    "place, GEOMETRY",
+    "area, 'GEOGRAPHY(OGC:CRS84, spherical)'",
     "flag, BOOLEAN",
     "day, DATE",
     "ts, TIMESTAMP",

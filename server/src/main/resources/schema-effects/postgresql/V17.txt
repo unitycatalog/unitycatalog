@@ -1,0 +1,1 @@
++ check uc_functions (((data_type >= 0) AND (data_type <= 23)))
