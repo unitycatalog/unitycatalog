@@ -15,7 +15,6 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
-import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -32,6 +31,7 @@ import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.CredentialRepository;
 import io.unitycatalog.server.persist.ExternalLocationRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
+import io.unitycatalog.server.persist.GroupRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
@@ -49,13 +49,18 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PermissionService implements UnityCatalogRestService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(PermissionService.class);
 
   private final UnityCatalogAuthorizer authorizer;
   private final boolean strictPrivilegeChecks;
   private final MetastoreRepository metastoreRepository;
   private final UserRepository userRepository;
+  private final GroupRepository groupRepository;
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
   private final TableRepository tableRepository;
@@ -73,6 +78,7 @@ public class PermissionService implements UnityCatalogRestService {
     this.strictPrivilegeChecks = serverProperties.isStrictPrivilegeChecksEnabled();
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.userRepository = repositories.getUserRepository();
+    this.groupRepository = repositories.getGroupRepository();
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.tableRepository = repositories.getTableRepository();
@@ -241,9 +247,10 @@ public class PermissionService implements UnityCatalogRestService {
                           .filter(Objects::nonNull)
                           .toList();
                   return new PrivilegeAssignment()
-                      .principal(userRepository.getUser(entry.getKey().toString()).getEmail())
+                      .principal(principalName(entry.getKey()))
                       .privileges(privileges);
                 })
+            .filter(assignment -> assignment.getPrincipal() != null)
             .filter(assignment -> !assignment.getPrivileges().isEmpty())
             .collect(Collectors.toList());
 
@@ -346,9 +353,7 @@ public class PermissionService implements UnityCatalogRestService {
     Set<UUID> principalIds = new HashSet<>();
     changes.forEach(
         change -> {
-          String principal = change.getPrincipal();
-          User user = userRepository.getUserByEmail(principal);
-          UUID principalId = UUID.fromString(Objects.requireNonNull(user.getId()));
+          UUID principalId = principalId(change.getPrincipal());
           principalIds.add(principalId);
           change
               .getAdd()
@@ -382,13 +387,50 @@ public class PermissionService implements UnityCatalogRestService {
                           .filter(Objects::nonNull)
                           .toList();
                   return new PrivilegeAssignment()
-                      .principal(userRepository.getUser(entry.getKey().toString()).getEmail())
+                      .principal(principalName(entry.getKey()))
                       .privileges(privileges);
                 })
+            .filter(assignment -> assignment.getPrincipal() != null)
             .filter(assignment -> !assignment.getPrivileges().isEmpty())
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));
+  }
+
+  /**
+   * Resolves a grant's principal: a user's email first, then a group's name, so a group named like
+   * a user's email never takes that user's grants. A name that is neither fails as before, with the
+   * user lookup's NOT_FOUND.
+   */
+  private UUID principalId(String name) {
+    // TODO(#2149): let ownership transfer take a group as the new owner, resolved as here.
+    try {
+      return UUID.fromString(Objects.requireNonNull(userRepository.getUserByEmail(name).getId()));
+    } catch (BaseException e) {
+      if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
+        throw e;
+      }
+      return groupRepository.findGroupIdByName(name).orElseThrow(() -> e);
+    }
+  }
+
+  /**
+   * Names a grant's principal: a user's email, else a group's name. Returns null for a principal
+   * that no longer exists (a grant that raced its group's delete), so listings skip that grant.
+   */
+  private String principalName(UUID id) {
+    try {
+      return userRepository.getUser(id.toString()).getEmail();
+    } catch (BaseException e) {
+      if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
+        throw e;
+      }
+      Optional<String> groupName = groupRepository.findGroupName(id);
+      if (groupName.isEmpty()) {
+        LOGGER.warn("Skipping grant to principal {}: no such user or group", id);
+      }
+      return groupName.orElse(null);
+    }
   }
 
   /** Validates additions only, so grants saved on invalid object types can still be removed. */

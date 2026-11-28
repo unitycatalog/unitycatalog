@@ -1,0 +1,7 @@
++ column uc_group_members.group_id type=binary size=16 nullable=NO default=null
++ column uc_group_members.user_id type=binary size=16 nullable=NO default=null
++ index uc_group_members.primary unique=true column=group_id#1
++ index uc_group_members.primary unique=true column=user_id#2
++ pk uc_group_members.group_id#1
++ pk uc_group_members.user_id#2
++ table uc_group_members
