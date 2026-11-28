@@ -264,8 +264,6 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             "gs://shared-bucket/data",
             "s3:/shared-bucket/data",
             "s3:///shared-bucket/data",
-            "s3://?shared-bucket",
-            "s3://#shared-bucket",
             "s3://:9000/data",
             "s3://:/data",
             "s3://@/data",
@@ -275,6 +273,15 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
           () -> createLocation("el_other", url, COMPAT_CREDENTIAL_NAME),
           ErrorCode.INVALID_ARGUMENT,
           "its external locations must be s3:// paths");
+    }
+
+    // A ? or # ends the bucket, which is refused as a cloud path before the credential is looked
+    // at.
+    for (String url : List.of("s3://?shared-bucket", "s3://#shared-bucket")) {
+      assertApiException(
+          () -> createLocation("el_other", url, COMPAT_CREDENTIAL_NAME),
+          ErrorCode.INVALID_ARGUMENT,
+          "Cloud storage location cannot contain '?' or '#'");
     }
 
     // A bucket name S3 allows that a URI host does not, such as one with an underscore.
@@ -370,7 +377,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     // managing a credential does not grant reading its locations, and moving the location to an
     // s3_compatible credential is refused rather than failing in the parser.
     createCompatCredential(COMPAT_CREDENTIAL_NAME, "http://s3:9000");
-    for (String storedUrl : List.of("s3://secret-bucket/a b", "S3://secret-bucket/x", "s3:///")) {
+    for (String storedUrl : List.of("s3://secret-bucket/a?b", "S3://secret-bucket/x", "s3:///")) {
       setStoredUrl(NEW_EXTERNAL_LOCATION_NAME, storedUrl);
       ApiException credentialChange =
           assertThrows(
@@ -407,7 +414,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             + EXTERNAL_LOCATION_NAME
             + "' cannot be checked for use, as it does not parse. Set force to true to skip this"
             + " check.";
-    for (String storedUrl : List.of("s3:///", "s3://secret-bucket/a b")) {
+    for (String storedUrl : List.of("s3:///", "s3://secret-bucket/a?b")) {
       setStoredUrl(EXTERNAL_LOCATION_NAME, storedUrl);
       assertApiException(
           () ->
