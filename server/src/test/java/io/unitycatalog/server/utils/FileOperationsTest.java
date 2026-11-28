@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -686,6 +687,7 @@ public class FileOperationsTest {
     S3ClientBuilder builder = mock(S3ClientBuilder.class);
     when(builder.credentialsProvider(any())).thenReturn(builder);
     when(builder.region(any())).thenReturn(builder);
+    when(builder.overrideConfiguration(any(Consumer.class))).thenReturn(builder);
     when(builder.build()).thenReturn(mockS3);
     return new FileOperationsImpl(
         awsCredentialVendor(), new ServerProperties(new Properties()), () -> builder);
@@ -710,13 +712,14 @@ public class FileOperationsTest {
         .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-central-1").build());
     FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
 
+    // A valid bucket name that is not a valid host name.
     Map<String, String> config =
-        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my_bucket/table"));
 
     assertThat(config).containsEntry(AwsClientProperties.CLIENT_REGION, "eu-central-1");
     ArgumentCaptor<HeadBucketRequest> request = ArgumentCaptor.forClass(HeadBucketRequest.class);
     verify(s3).headBucket(request.capture());
-    assertThat(request.getValue().bucket()).isEqualTo("my-bucket");
+    assertThat(request.getValue().bucket()).isEqualTo("my_bucket");
   }
 
   @Test
