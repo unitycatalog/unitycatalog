@@ -4,7 +4,7 @@
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
 | **name** | **String** | The table name | [default to null] |
-| **location** | **String** | Storage location | [default to null] |
+| **location** | **String** | Storage location of the table, as a URI. For a managed table this is the URI form of the location returned by createStagingTable (a space is sent as %20). | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) |  | [default to null] |
 | **comment** | **String** | Table comment | [optional] [default to null] |
 | **columns** | [**DeltaStructType**](DeltaStructType.md) |  | [default to null] |

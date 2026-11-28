@@ -5,7 +5,7 @@
 |------------ | ------------- | ------------- | -------------|
 | **table-id** | **UUID** | Table UUID allocated by UC | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) | Table type (always MANAGED for staging tables) | [default to null] |
-| **location** | **String** | UC allocated storage location for this table | [default to null] |
+| **location** | **String** | UC allocated storage location for this table, as a Hadoop-style path: the literal object path with no URI escaping. Convert it to a URI (for example with new Path(location).toUri().toString()) before passing it to createTable. | [default to null] |
 | **storage-credentials** | [**List**](DeltaStorageCredential.md) | Temporary credentials for initial commit | [default to null] |
 | **required-protocol** | [**DeltaStagingTableResponse_required_protocol**](DeltaStagingTableResponse_required_protocol.md) |  | [default to null] |
 | **suggested-protocol** | [**DeltaStagingTableResponse_suggested_protocol**](DeltaStagingTableResponse_suggested_protocol.md) |  | [optional] [default to null] |

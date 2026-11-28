@@ -69,7 +69,7 @@ class AuditorTest {
 
   @Test
   void cleanupCredentialNamesTheCleanupUserAndResource() {
-    NormalizedURL path = NormalizedURL.from("s3://key:secret@bkt/root/tables/" + ID + "?sig=x");
+    NormalizedURL path = NormalizedURL.from("s3://key:secret@bkt/root/tables/" + ID);
     TemporaryCredentials credential = new TemporaryCredentials().expirationTime(1792500120000L);
     StorageCredentialVendor delegate = mock(StorageCredentialVendor.class);
     when(delegate.vendCredential(path, CredentialContext.READ_WRITE, CredentialUse.cleanup(ID)))
@@ -102,13 +102,19 @@ class AuditorTest {
     }
     assertThat(CapturingAuditSink.RECORDS.get(2).getUser()).isEqualTo("bob@example.com");
     // ABFS keeps its container@account authority.
-    assertThat(auditor.sanitizeLocation("abfss://my-ctr@acct.dfs.core.windows.net/p?sv=x"))
+    assertThat(
+            auditor.sanitizeLocation(
+                NormalizedURL.from("abfss://my-ctr@acct.dfs.core.windows.net/p")))
         .isEqualTo("abfss://my-ctr@acct.dfs.core.windows.net/p");
     // Anything else before the @ may be a secret.
-    assertThat(auditor.sanitizeLocation("abfss://user:pw@acct.dfs.core.windows.net/p"))
+    assertThat(
+            auditor.sanitizeLocation(
+                NormalizedURL.from("abfss://user:pw@acct.dfs.core.windows.net/p")))
         .isEqualTo("abfss://[REDACTED]@acct.dfs.core.windows.net/p");
     // Vending decodes the authority, so an encoded @ ends user info too.
-    assertThat(auditor.sanitizeLocation("abfss://user%3Apw%40acct.dfs.core.windows.net/p"))
+    assertThat(
+            auditor.sanitizeLocation(
+                NormalizedURL.from("abfss://user%3Apw%40acct.dfs.core.windows.net/p")))
         .isEqualTo("abfss://[REDACTED]@acct.dfs.core.windows.net/p");
     assertThat(FileAuditSink.toJson(r))
         .isEqualTo(
@@ -120,6 +126,27 @@ class AuditorTest {
                 + "\"resource_id\":\""
                 + ID
                 + "\"}");
+  }
+
+  @Test
+  void literalCloudPathKeepsItsLocation() {
+    for (String in :
+        new String[] {
+          "s3://bkt/team reports",
+          "s3://bkt/50%",
+          "s3://bkt/team%20reports",
+          "gs://bkt/team reports",
+          "abfss://ctr@acct.dfs.core.windows.net/team reports",
+          "s3://key:secret@bkt/team reports"
+        }) {
+      NormalizedURL path = NormalizedURL.from(in);
+      CapturingAuditSink.reset();
+      auditor.recordCredential(
+          path, CredentialContext.READ_ONLY, CredentialUse.CLIENT, new TemporaryCredentials());
+      assertThat(CapturingAuditSink.RECORDS.get(0).getLocation())
+          .as("input %s", in)
+          .isEqualTo(in.replace("key:secret@", ""));
+    }
   }
 
   @Test
