@@ -108,7 +108,16 @@ public final class GroupMembershipAuthorizer implements UnityCatalogAuthorizer, 
     return delegate.listAuthorizations(resource);
   }
 
-  // TODO(#2149): forward the new reloadAuthorizations() to the delegate once #2149 adds it.
+  @Override
+  public void loadOwner(UUID resource) {
+    delegate.loadOwner(resource);
+  }
+
+  @Override
+  public void reloadAuthorizations() {
+    delegate.reloadAuthorizations();
+  }
+
   @Override
   public boolean refreshAuthorizations(long operationStartNanos) {
     return delegate.refreshAuthorizations(operationStartNanos);
