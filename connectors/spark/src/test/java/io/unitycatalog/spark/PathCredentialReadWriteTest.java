@@ -23,6 +23,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation;
 import org.apache.spark.sql.catalyst.parser.ParseException;
+import org.apache.spark.sql.catalyst.plans.logical.InsertIntoDir;
 import org.apache.spark.sql.catalyst.plans.logical.InsertIntoStatement;
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan;
 import org.assertj.core.api.ThrowableAssert;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Tests for {@link ResolvePathCredentials}: Unity Catalog credentials are vended for cloud paths
@@ -374,6 +376,64 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   /** Applies the analyzer path-credential rule to a parsed plan (parser is side-effect free). */
   private LogicalPlan injectPathCredentials(LogicalPlan plan) {
     return new ResolvePathCredentials(session).apply(plan);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"team%20reports", "team reports"})
+  public void testDirectoryWriteCredentialPathMatchesExecutionPath(String directory)
+      throws IOException, ParseException {
+    session = createPathCredSession(SPARK_CATALOG);
+    session.conf().set(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, "false");
+    String location = bucketPath(directory);
+
+    AtomicInteger vends = new AtomicInteger();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            () ->
+                List.of(
+                    new AwsCredential(
+                        "accessKey0",
+                        "secretKey0",
+                        "sessionToken" + vends.incrementAndGet(),
+                        Long.MAX_VALUE,
+                        null));
+    try {
+      LogicalPlan parsed =
+          session
+              .sessionState()
+              .sqlParser()
+              .parsePlan(
+                  String.format(
+                      "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i", location));
+
+      InsertIntoDir withCredentials = (InsertIntoDir) injectPathCredentials(parsed);
+      assertThat(withCredentials.storage().properties().apply(UCHadoopConfConstants.UC_PATH_KEY))
+          .isEqualTo(location);
+      assertThat(injectPathCredentials(withCredentials)).isSameAs(withCredentials);
+      assertThat(vends.get()).isEqualTo(1);
+    } finally {
+      CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
+    }
+  }
+
+  /** A directory write that UC cannot vend for leaves the plan without credentials. */
+  @ParameterizedTest
+  @ValueSource(strings = {"team%20reports", "team reports"})
+  public void testDirectoryWriteMissLeavesNoCredentials(String directory)
+      throws IOException, ParseException {
+    session = createPathCredSession(SPARK_CATALOG);
+    String location = "s3://" + NO_CREDS_BUCKET + new File(dataDir, directory).getCanonicalPath();
+    LogicalPlan parsed =
+        session
+            .sessionState()
+            .sqlParser()
+            .parsePlan(
+                String.format(
+                    "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i", location));
+
+    InsertIntoDir result = (InsertIntoDir) injectPathCredentials(parsed);
+    assertThat(result.storage().properties().contains(UCHadoopConfConstants.UC_PATH_KEY)).isFalse();
+    assertThat(result.storage().properties().contains("fs.s3a.access.key")).isFalse();
   }
 
   /** Finds a bare {@code format.`cloud-path`} relation anywhere in a parsed plan tree. */

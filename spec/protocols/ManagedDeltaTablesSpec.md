@@ -221,7 +221,7 @@ Field Name | Data Type | Description | Optional/Required
 -|-|-|-
 table-id | string | Unique identifier generated for the staging table. This can be used to reference the staging table in subsequent operations.<br>Type: UUID string. | required
 table-type | string | Always `MANAGED` for staging tables. | required
-location | string | URI generated for the staging table. This is the cloud storage location where data will be staged.<br>Format: URI string (`s3://`, `abfss://`, `gs://`, etc.). | required
+location | string | Cloud storage location where data will be staged, with the scheme `s3://`, `abfss://`, `gs://`, etc.<br>Format: a Hadoop-style path, which is the literal object path with no URI escaping (a folder named `team reports` is returned as `s3://bucket/team reports`). To use it as a URI, convert it first, for example with `new Path(location).toUri().toString()`. | required
 storage-credentials | array of DeltaStorageCredential | Temporary credentials for writing the initial commit. See [Get Table Credentials](#get-table-credentials) for the `DeltaStorageCredential` schema. | required
 required-protocol | DeltaProtocol | The minimum Delta protocol the client must write in the initial commit. | required
 &nbsp;&nbsp;required-protocol.min-reader-version | int32 | Minimum reader version. | required
@@ -420,7 +420,7 @@ Field Name | Data Type | Description | Optional/Required
 -|-|-|-
 name | string | Name of the table, relative to the parent schema. Should be the same name used at [`createStagingTable`](#create-a-staging-table). Name uniqueness is enforced here (not at staging time). | required
 table-type | string | The type of the table. For Unity Catalog managed tables, must be set to `MANAGED`. | required
-location | string | For Unity Catalog managed tables, this must match the `location` returned by [`createStagingTable`](#create-a-staging-table); it is how the server resolves the staging table being finalized.<br>Format: URI string (`s3://`, `abfss://`, `gs://`, etc.). | required
+location | string | For Unity Catalog managed tables, this must match the `location` returned by [`createStagingTable`](#create-a-staging-table); it is how the server resolves the staging table being finalized.<br>Format: URI string (`s3://`, `abfss://`, `gs://`, etc.), the URI form of the returned path (for example `new Path(location).toUri().toString()`, so a space is sent as `%20`), not the returned string unchanged. | required
 comment | string | Table comment. | optional
 columns | DeltaStructType | The table's column definitions, expressed as a `DeltaStructType` (the same shape as `metaData.schemaString` in the Delta commit log). See [Column Schema](#column-schema) for the structure. | required
 partition-columns | array of string | List of partition column names. | optional
@@ -525,7 +525,7 @@ BadRequestException | 400 | Malformed request, missing required fields, or inval
 InvalidParameterValueException | 400 | Server side check failed for the Unity Catalog Managed Delta Table, which could include but is not limited to (1) missing required table features or properties, (2) `io.unitycatalog.tableId` missing or not matching the staging table's ID, (3) invalid or inconsistent UniForm metadata, (4) the staging table was already finalized (see [Create recovery](#create-recovery) before treating this as a failure).
 PermissionDeniedException | 403 | User lacks necessary permissions (`USE CATALOG` on the catalog; `USE SCHEMA` and `CREATE TABLE` on the schema, or schema ownership).<br>The client should check with their Unity Catalog Admin to grant them the necessary rights to create a table.
 NoSuchSchemaException | 404 | The specified catalog or schema doesn't exist.<br>The client should check the spelling of the catalog and schema, or create them first.
-NoSuchTableException | 404 | No staging table exists at the provided `location`.<br>The client should call [`createStagingTable`](#create-a-staging-table) first and pass back the location it returned.
+NoSuchTableException | 404 | No staging table exists at the provided `location`.<br>The client should call [`createStagingTable`](#create-a-staging-table) first and pass back the URI form of the location it returned.
 AlreadyExistsException | 409 | A table with the same name already exists.<br>The client should provide a different table name.
 
 ### Load a Table
