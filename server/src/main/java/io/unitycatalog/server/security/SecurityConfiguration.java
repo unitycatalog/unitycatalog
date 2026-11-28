@@ -8,11 +8,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -20,6 +22,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.RSAPublicKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,12 +36,17 @@ import org.slf4j.LoggerFactory;
  * <p>The private key is read from the file set in {@code server.token-signing-private-key-file}: an
  * unencrypted PEM key (PKCS #8 or PKCS #1), or a PKCS #8 DER key. The public key is derived from it
  * once, when the configuration is loaded. Leaving the setting unset is deprecated: the server then
- * uses {@code private_key.der} and {@code public_key.der} in the UC configuration folder,
- * generating them on first start.
+ * uses {@code private_key.der} in the UC configuration folder, deriving the public key from it when
+ * possible. For older private keys without CRT fields, it reads and verifies {@code
+ * public_key.der}. The public key file is updated best-effort for compatibility with earlier
+ * versions.
  */
 public class SecurityConfiguration {
 
   private static final Logger log = LoggerFactory.getLogger(SecurityConfiguration.class);
+
+  // Keep the key-pair probe aligned with Algorithm.RSA512 used for token signing.
+  private static final String KEY_PAIR_CHECK_SIGNATURE_ALGORITHM = "SHA512withRSA";
 
   // DER AlgorithmIdentifier for rsaEncryption (OID 1.2.840.113549.1.1.1) with NULL parameters.
   private static final byte[] RSA_ALGORITHM_IDENTIFIER = {
@@ -70,9 +78,22 @@ public class SecurityConfiguration {
   public SecurityConfiguration(Path configurationFolder) {
     Path privateKeyFile = configurationFolder.resolve("private_key.der");
     Path publicKeyFile = configurationFolder.resolve("public_key.der");
-    initializeIfMissing(privateKeyFile, publicKeyFile);
+    initializeIfMissing(privateKeyFile);
     privateKey = readPrivateKey(privateKeyFile);
-    publicKey = readPublicKey(publicKeyFile);
+    if (canDerivePublicKey(privateKey)) {
+      publicKey = publicKeyOf(privateKey, privateKeyFile);
+      writePublicKeyIfNeeded(publicKeyFile, publicKey);
+    } else {
+      if (Files.notExists(publicKeyFile)) {
+        throw new IllegalStateException(
+            "The private key in "
+                + privateKeyFile.toAbsolutePath()
+                + " has no public exponent; a matching public key is required at "
+                + publicKeyFile.toAbsolutePath());
+      }
+      publicKey = readPublicKey(publicKeyFile);
+      verifyKeyPair(privateKey, publicKey, privateKeyFile, publicKeyFile);
+    }
   }
 
   private SecurityConfiguration(RSAPrivateKey privateKey, RSAPublicKey publicKey) {
@@ -124,35 +145,99 @@ public class SecurityConfiguration {
     }
   }
 
+  private static boolean canDerivePublicKey(RSAPrivateKey privateKey) {
+    return privateKey instanceof RSAPrivateCrtKey;
+  }
+
   @SneakyThrows
   private static RSAPublicKey publicKeyOf(RSAPrivateKey privateKey, Path file) {
-    if (!(privateKey instanceof RSAPrivateCrtKey crtKey)) {
+    if (!canDerivePublicKey(privateKey)) {
       throw new IllegalStateException(
           "The key in "
               + file.toAbsolutePath()
               + " has no public exponent; create it with"
               + " `openssl genrsa`");
     }
+    RSAPrivateCrtKey crtKey = (RSAPrivateCrtKey) privateKey;
     return (RSAPublicKey)
         KeyFactory.getInstance("RSA")
             .generatePublic(new RSAPublicKeySpec(crtKey.getModulus(), crtKey.getPublicExponent()));
   }
 
   @SneakyThrows
-  private static void initializeIfMissing(Path privateKeyFile, Path publicKeyFile) {
-    if (Files.notExists(publicKeyFile) || Files.notExists(privateKeyFile)) {
+  private static void initializeIfMissing(Path privateKeyFile) {
+    if (Files.notExists(privateKeyFile)) {
       log.info("Initializing security configuration.");
       KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
       keyPairGenerator.initialize(2048);
       KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
       // Create parent directory first if it does not exist
-      Path parentDirectory = publicKeyFile.getParent();
+      Path parentDirectory = privateKeyFile.getParent();
       if (parentDirectory != null && !Files.exists(parentDirectory)) {
         Files.createDirectories(parentDirectory);
       }
-      Files.write(publicKeyFile, keyPair.getPublic().getEncoded(), StandardOpenOption.CREATE);
       writeOwnerOnly(privateKeyFile, keyPair.getPrivate().getEncoded());
+    }
+  }
+
+  private static void writePublicKeyIfNeeded(Path file, RSAPublicKey publicKey) {
+    byte[] encoded = publicKey.getEncoded();
+    Path temporaryFile = null;
+    try {
+      if (Files.notExists(file) || !Arrays.equals(Files.readAllBytes(file), encoded)) {
+        temporaryFile =
+            Files.createTempFile(
+                file.toAbsolutePath().getParent(), file.getFileName().toString(), ".tmp");
+        Files.write(temporaryFile, encoded);
+        Files.move(
+            temporaryFile,
+            file,
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE);
+        temporaryFile = null;
+      }
+    } catch (IOException e) {
+      log.warn(
+          "Could not write compatibility public key file {}. The server will continue using the"
+              + " public key derived from the private key.",
+          file,
+          e);
+    } finally {
+      if (temporaryFile != null) {
+        try {
+          Files.deleteIfExists(temporaryFile);
+        } catch (IOException e) {
+          log.warn("Could not remove temporary compatibility public key file {}", temporaryFile, e);
+        }
+      }
+    }
+  }
+
+  @SneakyThrows
+  private static void verifyKeyPair(
+      RSAPrivateKey privateKey, RSAPublicKey publicKey, Path privateKeyFile, Path publicKeyFile) {
+    byte[] probe = "unitycatalog-key-pair-check".getBytes(StandardCharsets.US_ASCII);
+    Signature signer = Signature.getInstance(KEY_PAIR_CHECK_SIGNATURE_ALGORITHM);
+    signer.initSign(privateKey);
+    signer.update(probe);
+    byte[] signedProbe = signer.sign();
+
+    Signature verifier = Signature.getInstance(KEY_PAIR_CHECK_SIGNATURE_ALGORITHM);
+    verifier.initVerify(publicKey);
+    verifier.update(probe);
+    String mismatchMessage =
+        "The RSA keys in "
+            + privateKeyFile.toAbsolutePath()
+            + " and "
+            + publicKeyFile.toAbsolutePath()
+            + " do not match";
+    try {
+      if (!verifier.verify(signedProbe)) {
+        throw new IllegalStateException(mismatchMessage);
+      }
+    } catch (SignatureException e) {
+      throw new IllegalStateException(mismatchMessage, e);
     }
   }
 
