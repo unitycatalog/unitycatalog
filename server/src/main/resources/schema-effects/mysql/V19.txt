@@ -1,0 +1,1 @@
++ index uc_group_members.uc_group_members_user_idx unique=false column=user_id#1

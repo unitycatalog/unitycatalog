@@ -37,6 +37,7 @@ public class Repositories {
   private final VolumeRepository volumeRepository;
   private final UserRepository userRepository;
   private final OwnershipRepository ownershipRepository;
+  private final GroupRepository groupRepository;
   private final MetastoreRepository metastoreRepository;
   private final FunctionRepository functionRepository;
   private final ModelRepository modelRepository;
@@ -136,6 +137,7 @@ public class Repositories {
     this.userRepository = new UserRepository(this, sessionFactory);
     this.ownershipRepository =
         new OwnershipRepository(userRepository, serverProperties.isAuthorizationEnabled(), auditor);
+    this.groupRepository = new GroupRepository(this, sessionFactory);
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);
     this.functionRepository = new FunctionRepository(this, sessionFactory);
     this.modelRepository = new ModelRepository(this, sessionFactory, serverProperties);
