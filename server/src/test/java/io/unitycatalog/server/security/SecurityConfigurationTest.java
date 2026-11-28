@@ -2,10 +2,15 @@ package io.unitycatalog.server.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mockStatic;
 
 import io.unitycatalog.server.utils.ServerProperties;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyFactory;
 import java.security.KeyPair;
@@ -22,6 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 class SecurityConfigurationTest {
 
@@ -182,6 +189,47 @@ class SecurityConfigurationTest {
 
     assertThat(configuration.rsaPublicKey()).isEqualTo(keyPair.getPublic());
     assertThat(publicKeyFile).isDirectory();
+  }
+
+  @Test
+  void keepsMatchingPemPublicKeyWhenCompatibilityWriteFails() throws Exception {
+    KeyPair keyPair = newKeyPair();
+    Files.write(configurationFolder.resolve("private_key.der"), keyPair.getPrivate().getEncoded());
+    Path publicKeyFile = configurationFolder.resolve("public_key.der");
+    byte[] pemPublicKey = pem("PUBLIC KEY", keyPair.getPublic().getEncoded()).getBytes();
+    Files.write(publicKeyFile, pemPublicKey);
+
+    try (MockedStatic<Files> files = mockStatic(Files.class, Mockito.CALLS_REAL_METHODS)) {
+      files
+          .when(
+              () ->
+                  Files.write(
+                      argThat(
+                          file ->
+                              file.getParent().equals(configurationFolder)
+                                  && file.getFileName().toString().startsWith("public_key.der")),
+                      any(byte[].class)))
+          .thenAnswer(
+              invocation -> {
+                Path temporaryFile = invocation.getArgument(0);
+                Files.newOutputStream(
+                        temporaryFile,
+                        StandardOpenOption.WRITE,
+                        StandardOpenOption.TRUNCATE_EXISTING)
+                    .close();
+                throw new IOException("No space left on device");
+              });
+
+      SecurityConfiguration configuration = new SecurityConfiguration(configurationFolder);
+
+      assertThat(configuration.rsaPublicKey()).isEqualTo(keyPair.getPublic());
+    }
+
+    assertThat(Files.readAllBytes(publicKeyFile)).isEqualTo(pemPublicKey);
+    try (var files = Files.list(configurationFolder)) {
+      assertThat(files)
+          .containsExactlyInAnyOrder(configurationFolder.resolve("private_key.der"), publicKeyFile);
+    }
   }
 
   @Test

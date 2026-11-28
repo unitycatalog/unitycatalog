@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyFactory;
 import java.security.KeyPair;
@@ -182,9 +183,19 @@ public class SecurityConfiguration {
 
   private static void writePublicKeyIfNeeded(Path file, RSAPublicKey publicKey) {
     byte[] encoded = publicKey.getEncoded();
+    Path temporaryFile = null;
     try {
       if (Files.notExists(file) || !Arrays.equals(Files.readAllBytes(file), encoded)) {
-        Files.write(file, encoded);
+        temporaryFile =
+            Files.createTempFile(
+                file.toAbsolutePath().getParent(), file.getFileName().toString(), ".tmp");
+        Files.write(temporaryFile, encoded);
+        Files.move(
+            temporaryFile,
+            file,
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE);
+        temporaryFile = null;
       }
     } catch (IOException e) {
       log.warn(
@@ -192,6 +203,14 @@ public class SecurityConfiguration {
               + " public key derived from the private key.",
           file,
           e);
+    } finally {
+      if (temporaryFile != null) {
+        try {
+          Files.deleteIfExists(temporaryFile);
+        } catch (IOException e) {
+          log.warn("Could not remove temporary compatibility public key file {}", temporaryFile, e);
+        }
+      }
     }
   }
 
